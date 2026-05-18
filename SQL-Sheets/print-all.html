@@ -144,6 +144,28 @@
 			const btn = document.getElementById('print-btn');
 			const status = document.getElementById('status');
 			const container = document.getElementById('sheets-container');
+			const parser = new DOMParser();
+			const injectedStyles = new Set();
+
+			async function injectPage(url) {
+				const html = await fetch(url).then(r => r.text());
+				const doc = parser.parseFromString(html, 'text/html');
+				doc.querySelectorAll('head style').forEach(style => {
+					const key = style.textContent.trim().slice(0, 60);
+					if (!injectedStyles.has(key)) {
+						injectedStyles.add(key);
+						const s = document.createElement('style');
+						s.textContent = style.textContent;
+						document.head.appendChild(s);
+					}
+				});
+				const wrapper = document.createElement('div');
+				wrapper.className = 'sheet-page';
+				const bodyId = doc.body.getAttribute('id');
+				if (bodyId) wrapper.id = bodyId;
+				wrapper.innerHTML = doc.body.innerHTML;
+				return wrapper;
+			}
 
 			btn.addEventListener('click', async () => {
 				btn.disabled = true;
@@ -153,61 +175,44 @@
 				try {
 					const { pages } = await fetch('manifest.json').then(r => r.json());
 
-					// Build TOC page from manifest data
-					const tocPage = document.createElement('div');
-					tocPage.className = 'sheet-page';
-					tocPage.id = 'toc';
-					tocPage.innerHTML = `
-						<header class="page-header">
-							<div class="sheet-number">SQL Cheat Sheets</div>
-							<h1>Table of Contents</h1>
-							<div class="sheet-desc">${pages.length} reference sheets · syntax · examples · notes</div>
-						</header>
-						<main class="toc" id="sql-toc">
-							<nav aria-label="SQL cheat sheet pages" id="toc-nav"></nav>
-						</main>
-						<footer class="page-footer">
-							<nav aria-label="Sheet navigation">
-								<span></span>
-								<span class="nav-toc">SQL Cheat Sheets · ${pages.length} sheets</span>
-								<span></span>
-							</nav>
-						</footer>
-					`;
-					const tocNav = tocPage.querySelector('#toc-nav');
-					pages.forEach((page, i) => {
-						const a = document.createElement('a');
-						a.id = `toc_entry_${i + 1}`;
-						a.className = 'toc_entry';
-						const h2 = document.createElement('h2');
-						h2.textContent = `Sheet ${i + 1}`;
-						const h3 = document.createElement('h3');
-						h3.textContent = page.title;
-						const p = document.createElement('p');
-						p.textContent = page.desc;
-						a.append(h2, h3, p);
-						tocNav.appendChild(a);
-					});
-					container.appendChild(tocPage);
+					// 1. Cover page
+					container.appendChild(await injectPage('cover.html'));
 
-					// Fetch and inject all sheets
-					const texts = await Promise.all(pages.map(p => fetch(p.file).then(r => r.text())));
+					// 2. Blank page
+					const blank = document.createElement('div');
+					blank.className = 'sheet-page';
+					container.appendChild(blank);
 
-					const parser = new DOMParser();
-					texts.forEach((html, i) => {
-						const doc = parser.parseFromString(html, 'text/html');
-						const wrapper = document.createElement('div');
-						wrapper.className = 'sheet-page';
-						const bodyId = doc.body.getAttribute('id');
-						if (bodyId) wrapper.id = bodyId;
-						wrapper.innerHTML = doc.body.innerHTML;
-						container.appendChild(wrapper);
+					// 3. TOC — inject index.html and populate nav from manifest
+					const tocWrapper = await injectPage('index.html');
+					const tocNav = tocWrapper.querySelector('#toc-nav');
+					if (tocNav) {
+						pages.forEach((page, i) => {
+							const a = document.createElement('a');
+							a.id = `toc_entry_${i + 1}`;
+							a.className = 'toc_entry';
+							a.append(
+								Object.assign(document.createElement('h2'), { textContent: `Sheet ${i + 1}` }),
+								Object.assign(document.createElement('h3'), { textContent: page.title }),
+								Object.assign(document.createElement('p'), { textContent: page.desc })
+							);
+							tocNav.appendChild(a);
+						});
+					}
+					const tocCount = tocWrapper.querySelector('#toc-count');
+					if (tocCount) tocCount.textContent = `${pages.length} reference sheets · syntax · examples · notes`;
+					const tocFooter = tocWrapper.querySelector('#toc-footer-label');
+					if (tocFooter) tocFooter.textContent = `SQL Cheat Sheets · ${pages.length} sheets`;
+					container.appendChild(tocWrapper);
+
+					// 4. Manifest pages
+					for (let i = 0; i < pages.length; i++) {
+						container.appendChild(await injectPage(pages[i].file));
 						status.textContent = `${i + 1} / ${pages.length}`;
-					});
+					}
 
 					if (window.Prism) Prism.highlightAll();
-
-					status.textContent = `${pages.length} sheets ready`;
+					status.textContent = `${pages.length + 3} pages ready`;
 					btn.disabled = false;
 					window.print();
 				} catch (err) {
