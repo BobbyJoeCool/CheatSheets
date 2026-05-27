@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 88: HTTP Server</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s88">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 88</div>
+			<h1>HTTP Server</h1>
+			<div class="sheet-desc">http.createServer · request · response · routing · headers · serving files</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Key objects -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Node's Built-in HTTP Module</h2>
+					<div class="description">
+						Node's <code>http</code> module lets you create a web server without any
+						framework. <code>http.createServer(callback)</code> returns a server instance;
+						the callback receives an <strong>IncomingMessage</strong> (request) and a
+						<strong>ServerResponse</strong> (response) on every connection. While real
+						applications almost always use Express or Fastify on top, understanding the raw
+						HTTP layer is essential for debugging and for writing lightweight utilities.
+						The server runs in the event loop — each request fires a new callback invocation;
+						the server itself never blocks.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Key Objects</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>req.method</code> — "GET" | "POST" | "PUT" …</li>
+						<li class="note-item"><code>req.url</code> — path + query string e.g. "/users?id=1"</li>
+						<li class="note-item"><code>req.headers</code> — object of request headers</li>
+						<li class="note-item"><code>req</code> is a Readable stream — body arrives in chunks</li>
+						<li class="note-item"><code>res.writeHead(status, headers)</code> — send status + headers</li>
+						<li class="note-item"><code>res.setHeader(name, value)</code> — set individual header</li>
+						<li class="note-item"><code>res.end(body)</code> — send body and close response</li>
+						<li class="note-item"><code>res.write(chunk)</code> — stream body in chunks</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">HTTP Server Examples</h2>
+					<pre><code class="language-javascript">import http from "http";
+import fs   from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ── Minimal server ────────────────────────────────────────────
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Hello, Node!\n");
+});
+server.listen(3000, () => console.log("Listening on :3000"));
+
+// ── Manual routing ────────────────────────────────────────────
+http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://localhost`);
+
+  if (req.method === "GET" && url.pathname === "/") {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end("<h1>Home</h1>");
+
+  } else if (req.method === "GET" && url.pathname === "/api/users") {
+    const users = [{ id: 1, name: "Alice" }];
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(users));
+
+  } else if (req.method === "POST" && url.pathname === "/api/users") {
+    const body = await readBody(req);
+    const data = JSON.parse(body);
+    res.writeHead(201, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ id: 2, ...data }));
+
+  } else {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not found" }));
+  }
+}).listen(3000);
+
+// ── Read request body (streams in as chunks) ──────────────────
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data",  chunk  => chunks.push(chunk));
+    req.on("end",   ()     => resolve(Buffer.concat(chunks).toString()));
+    req.on("error", reject);
+  });
+}
+
+// ── Serve a static file ───────────────────────────────────────
+http.createServer((req, res) => {
+  const filePath = path.join(__dirname, "public", req.url);
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404); res.end("Not found"); return;
+    }
+    res.writeHead(200);
+    res.end(data);
+  });
+}).listen(3000);
+
+// ── HTTPS server ──────────────────────────────────────────────
+import https from "https";
+const options = {
+  key:  fs.readFileSync("./key.pem"),
+  cert: fs.readFileSync("./cert.pem"),
+};
+https.createServer(options, (req, res) => {
+  res.end("Secure!");
+}).listen(443);
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>req.url</code> is a raw string — always parse with <code>new URL(req.url, base)</code> to safely extract pathname and query params</div>
+						<div class="explain-item">The request body is a stream — it arrives in chunks; collect all chunks then join with <code>Buffer.concat(chunks).toString()</code></div>
+						<div class="explain-item"><code>res.writeHead()</code> must be called before any <code>res.write()</code> or <code>res.end()</code> — headers cannot be sent after the body starts</div>
+						<div class="explain-item"><code>res.end()</code> is mandatory — forgetting it leaves the connection hanging and the client waiting indefinitely</div>
+						<div class="explain-item">For production, use Express (Sheet 89) or Fastify — they handle routing, body parsing, and error handling automatically</div>
+						<div class="explain-item">For local HTTPS dev, use <code>mkcert</code> to generate trusted certificates without browser warnings</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Forgetting <code>res.end()</code> — request hangs; client times out</li>
+						<li class="note-item">Calling <code>res.writeHead()</code> after writing body — throws "Cannot set headers after they are sent"</li>
+						<li class="note-item">Reading <code>req.url</code> directly without parsing — misses query strings and can't decode encoded characters</li>
+						<li class="note-item">Not handling the <code>"error"</code> event on <code>req</code> — unhandled stream errors crash the process</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use the raw <code>http</code> module for ultra-lightweight proxies, health-check endpoints, or learning — use a framework for everything else</li>
+						<li class="note-item">Wrap your server callback in a <code>try/catch</code> and call <code>res.writeHead(500)</code> in the catch — unhandled errors otherwise leave the connection open</li>
+						<li class="note-item">Use <code>server.listen(0)</code> in tests — Node picks a random available port; read it back with <code>server.address().port</code></li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>http.createServer(cb)</code> · <code>server.listen(port)</code></li>
+						<li class="note-item"><code>req.method · req.url · req.headers</code> — request info · body is a stream</li>
+						<li class="note-item"><code>res.writeHead(status, headers)</code> · <code>res.end(body)</code> — always call end</li>
+						<li class="note-item">For production: use Express (Sheet 89) or Fastify</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-87-serialization.html">Serialization</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-89-node-express.html">Express Basics</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

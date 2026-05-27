@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 90: Express Advanced</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s90">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 90</div>
+			<h1>Express Advanced</h1>
+			<div class="sheet-desc">Router · auth middleware · async handlers · TS typing · validation · project structure</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Routers, Middleware &amp; TypeScript</h2>
+					<div class="description">
+						<code>express.Router()</code> creates a mini-app with its own middleware and
+						routes — mount it on a path to keep your main <code>app.ts</code> clean.
+						<strong>Middleware factories</strong> are functions that return middleware, allowing
+						configuration (e.g. <code>authenticate({ role: "admin" })</code>). Async route
+						handlers need a wrapper to forward rejected Promises to the error handler — Express
+						4 doesn't catch them automatically (Express 5 does). TypeScript requires augmenting
+						the <code>Request</code> interface to add custom properties like <code>req.user</code>.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Project Structure</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>src/app.ts</code> — create app, register middleware</li>
+						<li class="note-item"><code>src/server.ts</code> — call <code>app.listen()</code></li>
+						<li class="note-item"><code>src/routes/users.ts</code> — Router for /users</li>
+						<li class="note-item"><code>src/middleware/auth.ts</code> — auth middleware</li>
+						<li class="note-item"><code>src/middleware/validate.ts</code> — zod validation</li>
+						<li class="note-item"><code>src/types/express.d.ts</code> — Request augmentation</li>
+						<li class="note-item">Separate <code>app</code> from <code>server.listen</code> — easier to test</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Advanced Express Examples</h2>
+					<pre><code class="language-typescript">import express, { Request, Response, NextFunction, Router } from "express";
+
+// ── express.Router — group related routes ─────────────────────
+// src/routes/users.ts
+const router = Router();
+
+router.get("/",      getUsers);
+router.get("/:id",   getUserById);
+router.post("/",     createUser);
+router.patch("/:id", updateUser);
+router.delete("/:id",deleteUser);
+
+export default router;
+
+// src/app.ts
+import usersRouter from "./routes/users.js";
+app.use("/users", usersRouter);        // routes → /users, /users/:id …
+
+// ── Async handler wrapper (Express 4) ─────────────────────────
+const asyncHandler = (fn: (req: Request, res: Response,
+                           next: NextFunction) => Promise<void>) =>
+  (req: Request, res: Response, next: NextFunction) =>
+    fn(req, res, next).catch(next);    // forward rejection to error mw
+
+router.get("/:id", asyncHandler(async (req, res) => {
+  const user = await db.users.findById(Number(req.params.id));
+  if (!user) return res.status(404).json({ error: "Not found" });
+  res.json(user);
+}));
+
+// ── Auth middleware factory ────────────────────────────────────
+function authenticate(options: { role?: string } = {}) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) return res.status(401).json({ error: "No token" });
+    try {
+      const payload = verifyJWT(token);
+      if (options.role &amp;&amp; payload.role !== options.role) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      req.user = payload;              // attach to request
+      next();
+    } catch {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  };
+}
+
+router.get("/admin", authenticate({ role: "admin" }), adminHandler);
+
+// ── Zod validation middleware ─────────────────────────────────
+import { z, ZodSchema } from "zod";
+
+function validate(schema: ZodSchema) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const result = schema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ errors: result.error.flatten().fieldErrors });
+    }
+    req.body = result.data;            // replace with parsed+coerced data
+    next();
+  };
+}
+
+const CreateUserSchema = z.object({
+  name:  z.string().min(1),
+  email: z.string().email(),
+});
+router.post("/", validate(CreateUserSchema), createUser);
+
+// ── TypeScript: augment Request type ──────────────────────────
+// src/types/express.d.ts
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: number; role: string };
+    }
+  }
+}
+// Now req.user is typed throughout the app
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>Router()</code> — scoped middleware and routes; mounting at <code>/users</code> prepends that prefix to all router paths</div>
+						<div class="explain-item">Async wrapper — in Express 4, unhandled Promise rejections in route handlers crash the process; wrapping with <code>.catch(next)</code> forwards them to the error handler</div>
+						<div class="explain-item">Middleware factories — functions that return middleware allow runtime configuration; much cleaner than checking flags inside a single middleware</div>
+						<div class="explain-item">Validation middleware — replacing <code>req.body</code> with zod's parsed output means downstream handlers get typed, coerced data</div>
+						<div class="explain-item">Request augmentation — the <code>express.d.ts</code> declaration file extends Express's <code>Request</code> interface globally; include it in <code>tsconfig.json</code> <code>include</code> array</div>
+						<div class="explain-item">Express 5 (stable 2024) handles async errors natively — no wrapper needed; check your Express version</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Not wrapping async handlers in Express 4 — unhandled rejections crash the server in Node 15+</li>
+						<li class="note-item">Forgetting <code>export default router</code> then importing the file — gets an empty object</li>
+						<li class="note-item">Augmenting <code>Request</code> but not including the <code>.d.ts</code> in tsconfig — TS doesn't see the custom properties</li>
+						<li class="note-item">Mounting the error handler before routes — it never receives errors from routes registered after it</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Create a single <code>asyncHandler</code> utility and use it on every async route — one missed wrapper can crash your server</li>
+						<li class="note-item">Separate <code>app.ts</code> (middleware + routes) from <code>server.ts</code> (listen) — makes the app importable in tests without starting a port</li>
+						<li class="note-item">Use <code>router.param("id", cb)</code> to preload and validate a resource once for all routes that share the same param</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>express.Router()</code> — scoped routes; mount with <code>app.use("/prefix", router)</code></li>
+						<li class="note-item">Async wrapper — <code>fn(req,res,next).catch(next)</code> required in Express 4</li>
+						<li class="note-item">Middleware factories — return middleware to enable configuration</li>
+						<li class="note-item">TS: augment <code>Express.Request</code> in a <code>.d.ts</code> file to add <code>req.user</code> etc.</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-89-node-express.html">Express Basics</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-91-node-streams.html">Streams</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

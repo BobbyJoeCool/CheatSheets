@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 62: CSV</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s62">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 62</div>
+			<h1>CSV</h1>
+			<div class="sheet-desc">Manual parsing · papaparse · generating CSV · browser FileReader · Node streams</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | CSV gotchas -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Working with CSV</h2>
+					<div class="description">
+						CSV (Comma-Separated Values) looks simple but has many edge cases: fields with
+						commas must be quoted, quotes inside fields are escaped by doubling them
+						(<code>""</code>), and line endings vary (<code>\r\n</code> vs <code>\n</code>).
+						Writing a production-grade CSV parser from scratch is error-prone — use
+						<strong>papaparse</strong> (browser + Node) for parsing, and build simple output
+						with array methods for small cases. In Node.js, large CSV files should be streamed
+						rather than loaded entirely into memory. The browser <strong>FileReader</strong>
+						API reads user-uploaded CSV files as text for in-browser parsing.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">CSV Edge Cases</h2>
+					<ul class="note-list">
+						<li class="note-item">Fields with commas must be wrapped in quotes</li>
+						<li class="note-item">Quotes inside quoted fields are doubled: <code>""</code></li>
+						<li class="note-item">Line endings: <code>\r\n</code> (Windows) or <code>\n</code> (Unix)</li>
+						<li class="note-item">Some tools use <code>;</code> or <code>\t</code> as delimiter</li>
+						<li class="note-item">First row is often (but not always) a header</li>
+						<li class="note-item">Numbers/booleans are always strings after naive parsing</li>
+						<li class="note-item">Empty fields: <code>a,,b</code> → <code>["a", "", "b"]</code></li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">CSV Examples</h2>
+					<pre><code class="language-javascript">// ── Simple manual parse (no edge cases) ──────────────────────
+function parseCSVSimple(text) {
+  const lines = text.trim().split("\n");
+  const headers = lines[0].split(",");
+  return lines.slice(1).map(line => {
+    const values = line.split(",");
+    return Object.fromEntries(headers.map((h, i) => [h.trim(), values[i]?.trim()]));
+  });
+}
+// Only safe for CSV with no quoted fields or embedded commas
+
+// ── papaparse — production-grade CSV parser ───────────────────
+// npm install papaparse
+import Papa from "papaparse";
+
+// Parse CSV string
+const result = Papa.parse(csvString, {
+  header: true,          // use first row as object keys
+  dynamicTyping: true,   // auto-convert numbers and booleans
+  skipEmptyLines: true,
+});
+result.data;             // array of objects
+result.errors;           // any parse errors
+
+// Parse from file (Node)
+import { createReadStream } from "fs";
+Papa.parse(createReadStream("./data.csv"), {
+  header: true,
+  dynamicTyping: true,
+  step: (row) => {        // process row-by-row (streaming)
+    console.log(row.data);
+  },
+  complete: (results) => {
+    console.log("Done:", results.data.length, "rows");
+  },
+});
+
+// Parse from browser file input
+fileInput.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  Papa.parse(file, {
+    header: true,
+    dynamicTyping: true,
+    complete: (results) => {
+      console.log(results.data);
+    },
+  });
+});
+
+// ── Generating CSV ─────────────────────────────────────────────
+const users = [
+  { name: "Alice", age: 30, city: "NYC" },
+  { name: "Bob, Jr.", age: 25, city: "LA" },  // comma in name
+];
+
+// Manual generation with proper quoting
+function toCSV(rows) {
+  if (!rows.length) return "";
+  const headers = Object.keys(rows[0]);
+  const escape  = (v) => {
+    const s = String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  };
+  const lines = [
+    headers.join(","),
+    ...rows.map(row => headers.map(h => escape(row[h])).join(","))
+  ];
+  return lines.join("\n");
+}
+
+// Using papaparse to generate
+const csv = Papa.unparse(users);   // array of objects → CSV string
+
+// ── Browser FileReader — read uploaded CSV ────────────────────
+fileInput.addEventListener("change", (e) => {
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const text = event.target.result;   // full CSV as string
+    const parsed = Papa.parse(text, { header: true });
+    console.log(parsed.data);
+  };
+  reader.readAsText(e.target.files[0]);
+});
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Manual parsing with <code>split(",")</code> breaks on fields containing commas or newlines — only safe for controlled simple data</div>
+						<div class="explain-item">papaparse <code>dynamicTyping: true</code> — auto-converts <code>"42"</code> to <code>42</code> and <code>"true"</code> to <code>true</code>; turn off if you need raw strings</div>
+						<div class="explain-item">papaparse <code>step</code> callback — processes one row at a time; essential for large files; no full array in memory</div>
+						<div class="explain-item">Proper CSV quoting — a field must be quoted if it contains a comma, quote, or newline; quotes inside are doubled (<code>""</code>), not backslash-escaped</div>
+						<div class="explain-item"><code>FileReader.readAsText()</code> — asynchronous; result is available in the <code>onload</code> callback</div>
+						<div class="explain-item">For download in browser: <code>const blob = new Blob([csv], { type: "text/csv" })</code> then create an anchor with <code>URL.createObjectURL(blob)</code></div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Splitting on <code>","</code> naively — breaks for quoted fields containing commas</li>
+						<li class="note-item">Not quoting fields with embedded commas in output — produces malformed CSV</li>
+						<li class="note-item">Loading a 500MB CSV with <code>readFile</code> into memory — use streaming with papaparse <code>step</code> callback</li>
+						<li class="note-item">Assuming all CSV uses <code>,</code> delimiter — some locales use <code>;</code>; check or make configurable</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use papaparse for both reading and writing — it is the de facto standard and handles all edge cases</li>
+						<li class="note-item">Always use <code>dynamicTyping: true</code> when you want numbers/booleans — avoids manual conversion of every field</li>
+						<li class="note-item">For browser downloads, create a Blob and programmatically click a hidden anchor with <code>download</code> attribute</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Manual <code>split(",")</code> — only for trivial cases; breaks on quoted fields</li>
+						<li class="note-item">papaparse — production parser; handles all edge cases; streaming support</li>
+						<li class="note-item">Generating CSV — quote fields with commas/quotes/newlines; double embedded quotes</li>
+						<li class="note-item">Browser: <code>FileReader.readAsText()</code> → string → parse · Node: stream with <code>step</code> for large files</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-61-json.html">JSON</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-63-xml.html">XML</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

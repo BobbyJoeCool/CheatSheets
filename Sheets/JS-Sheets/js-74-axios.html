@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 74: Axios</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s74">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 74</div>
+			<h1>Axios</h1>
+			<div class="sheet-desc">axios · instances · interceptors · error handling · TypeScript generics · vs fetch</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: axios vs fetch table -->
+			<div class="row">
+				<section id="tbl-vs-fetch">
+					<h2 class="section-title">Axios vs Fetch</h2>
+					<table>
+						<thead><tr><th>Feature</th><th>Axios</th><th>fetch</th></tr></thead>
+						<tbody>
+							<tr><td>HTTP errors throw</td><td class="desc center">✔ (4xx/5xx reject)</td><td class="desc">✖ (must check res.ok)</td></tr>
+							<tr><td>Auto JSON parse</td><td class="desc center">✔</td><td class="desc">✖ (call res.json())</td></tr>
+							<tr><td>Request interceptors</td><td class="desc center">✔</td><td class="desc">✖ manual wrapper</td></tr>
+							<tr><td>Response interceptors</td><td class="desc center">✔</td><td class="desc">✖ manual wrapper</td></tr>
+							<tr><td>Request cancellation</td><td class="desc">AbortController / CancelToken</td><td class="desc">AbortController</td></tr>
+							<tr><td>Upload progress</td><td class="desc center">✔ onUploadProgress</td><td class="desc">✖ manual streams</td></tr>
+							<tr><td>Base URL / defaults</td><td class="desc center">✔ (instances)</td><td class="desc">✖ manual</td></tr>
+							<tr><td>Node.js support</td><td class="desc center">✔ built-in</td><td class="desc">Node 18+ only</td></tr>
+							<tr><td>Bundle size</td><td class="desc">~13KB gzip</td><td class="desc">0 (browser native)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Axios Examples</h2>
+					<pre><code class="language-typescript">// npm install axios
+import axios from "axios";
+
+// ── Basic requests ────────────────────────────────────────────
+const { data } = await axios.get("/api/users");        // auto-parsed JSON
+const res      = await axios.post("/api/users", { name: "Alice" });
+await axios.put(`/api/users/${id}`, updatedUser);
+await axios.delete(`/api/users/${id}`);
+await axios.patch(`/api/users/${id}`, { name: "Bob" });
+
+// ── TypeScript: typed responses ───────────────────────────────
+interface User { id: number; name: string; email: string; }
+
+const { data: user } = await axios.get&lt;User&gt;(`/api/users/1`);
+// user is typed as User
+
+const { data: users } = await axios.get&lt;User[]&gt;("/api/users");
+// users is User[]
+
+// ── Creating an instance ──────────────────────────────────────
+const api = axios.create({
+  baseURL: "https://api.example.com/v1",
+  timeout: 10_000,                       // 10 second timeout
+  headers: { "Content-Type": "application/json" },
+});
+
+// All requests use the base URL and default headers
+const { data: profile } = await api.get("/users/me");
+
+// ── Request interceptor — add auth token ─────────────────────
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    return config;                        // must return config
+  },
+  (error) => Promise.reject(error)
+);
+
+// ── Response interceptor — handle errors globally ────────────
+api.interceptors.response.use(
+  (response) =&gt; response,                // pass through successes
+  async (error) =&gt; {
+    if (error.response?.status === 401) {
+      await refreshToken();               // try to refresh
+      return api(error.config);          // retry original request
+    }
+    return Promise.reject(error);        // re-throw other errors
+  }
+);
+
+// ── Error handling ────────────────────────────────────────────
+try {
+  await api.get("/protected");
+} catch (err) {
+  if (axios.isAxiosError(err)) {
+    console.error("Status:", err.response?.status);
+    console.error("Message:", err.response?.data?.message);
+    console.error("URL:", err.config?.url);
+  } else {
+    throw err;                           // unexpected error
+  }
+}
+
+// ── Request with query params ─────────────────────────────────
+const { data: results } = await api.get("/search", {
+  params: { q: "typescript", page: 2, limit: 10 },
+});
+// GET /search?q=typescript&page=2&limit=10
+
+// ── Cancellation ──────────────────────────────────────────────
+const controller = new AbortController();
+const { data: stream } = await api.get("/feed", {
+  signal: controller.signal,
+});
+// Later:
+controller.abort();
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Axios throws on 4xx/5xx responses — no manual <code>res.ok</code> check needed; the error is in <code>err.response</code></div>
+						<div class="explain-item">Auto JSON — axios parses JSON responses and serialises JSON request bodies automatically; no <code>JSON.stringify/parse</code> needed</div>
+						<div class="explain-item">Instances with <code>baseURL</code> — each axios instance has its own interceptors and defaults; create one per API endpoint domain</div>
+						<div class="explain-item">Request interceptors — run before the request is sent; use for auth headers, request IDs, logging</div>
+						<div class="explain-item">Response interceptors — run before the caller receives the response; use for 401 refresh flows, global error handling, response transforms</div>
+						<div class="explain-item"><code>axios.isAxiosError(err)</code> — type guard that narrows the error to <code>AxiosError</code> with typed <code>response</code>, <code>config</code>, and <code>request</code> fields</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Not using <code>axios.isAxiosError()</code> in catch — accessing <code>err.response</code> on a non-Axios error throws</li>
+						<li class="note-item">Adding auth headers in every request instead of using a request interceptor — hard to maintain and easy to forget</li>
+						<li class="note-item">Forgetting to <code>return config</code> from a request interceptor — the request hangs or throws</li>
+						<li class="note-item">Creating a new axios instance for every request — instances should be singletons, created once and reused</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Create one axios instance per API and export it — consistent baseURL, timeout, and interceptors across the whole feature</li>
+						<li class="note-item">Use a response interceptor for 401 token refresh — centralises auth logic so every request benefits automatically</li>
+						<li class="note-item">For simple projects, native <code>fetch</code> + a small wrapper is often enough; reach for axios when you need interceptors or older Node support</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Axios throws on 4xx/5xx · auto-parses JSON · no <code>res.ok</code> check needed</li>
+						<li class="note-item">Instances — <code>axios.create({ baseURL, timeout, headers })</code> for per-API config</li>
+						<li class="note-item">Interceptors — request (add auth) · response (refresh token, global errors)</li>
+						<li class="note-item"><code>axios.get&lt;User&gt;(url)</code> — TypeScript generic types the <code>data</code> field</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-73-fetch-api.html">Fetch API</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-75-zod.html">Zod — Validation</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

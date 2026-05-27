@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 84: API Advanced</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s84">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 84</div>
+			<h1>API Advanced</h1>
+			<div class="sheet-desc">Auth headers · rate limiting · retries · AbortController · env credentials · CORS</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Auth patterns -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Advanced API Patterns</h2>
+					<div class="description">
+						Production API clients need more than basic fetch calls. <strong>Authentication</strong>
+						headers must be attached to every protected request — an axios interceptor or a
+						fetch wrapper handles this centrally. <strong>Rate limiting</strong> on the client
+						side prevents hammering APIs and getting blocked. <strong>Retry with exponential
+						backoff</strong> handles transient failures gracefully. <strong>AbortController</strong>
+						signals prevent stale responses updating state after navigation. On the server side,
+						<strong>CORS</strong> headers control which origins can call your API and must be
+						configured correctly for browser clients.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Auth Patterns</h2>
+					<ul class="note-list">
+						<li class="note-item"><strong>Bearer token</strong> — <code>Authorization: Bearer &lt;token&gt;</code></li>
+						<li class="note-item"><strong>API key header</strong> — <code>X-API-Key: &lt;key&gt;</code></li>
+						<li class="note-item"><strong>Basic auth</strong> — <code>Authorization: Basic &lt;base64&gt;</code></li>
+						<li class="note-item"><strong>Cookie</strong> — httpOnly; sent automatically by browser</li>
+						<li class="note-item">Store tokens in memory or httpOnly cookies — never localStorage for sensitive tokens</li>
+						<li class="note-item">Refresh tokens in a 401 interceptor</li>
+						<li class="note-item">Env vars for API keys — never hardcode</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Advanced API Examples</h2>
+					<pre><code class="language-javascript">// ── Retry with exponential backoff ───────────────────────────
+async function fetchWithRetry(url, options = {}, retries = 3) {
+  for (let attempt = 0; attempt &lt; retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429 || res.status >= 500) {
+        const delay = Math.min(1000 * 2 ** attempt, 30_000); // cap at 30s
+        await new Promise(r =&gt; setTimeout(r, delay));
+        continue;                   // retry
+      }
+      return res;
+    } catch (err) {
+      if (attempt === retries - 1) throw err; // last attempt — give up
+      await new Promise(r =&gt; setTimeout(r, 1000 * 2 ** attempt));
+    }
+  }
+}
+
+// ── Client-side rate limiter ──────────────────────────────────
+class RateLimiter {
+  #queue = [];
+  #running = 0;
+  constructor(private maxConcurrent = 5) {}
+
+  async run(fn) {
+    while (this.#running >= this.maxConcurrent) {
+      await new Promise(r =&gt; this.#queue.push(r));
+    }
+    this.#running++;
+    try     { return await fn(); }
+    finally {
+      this.#running--;
+      this.#queue.shift()?.();     // unblock next in queue
+    }
+  }
+}
+const limiter = new RateLimiter(5);
+const results = await Promise.all(
+  items.map(item =&gt; limiter.run(() =&gt; fetchItem(item)))
+);
+
+// ── Abort on component unmount (React) ────────────────────────
+// In a React useEffect:
+const controller = new AbortController();
+fetch("/api/data", { signal: controller.signal })
+  .then(r =&gt; r.json())
+  .then(setData)
+  .catch(err =&gt; { if (err.name !== "AbortError") setError(err); });
+// cleanup: return () =&gt; controller.abort();
+
+// ── CORS headers (Express server) ────────────────────────────
+import cors from "cors";
+app.use(cors({
+  origin:      ["https://myapp.com", "http://localhost:3000"],
+  methods:     ["GET","POST","PUT","PATCH","DELETE"],
+  allowedHeaders: ["Content-Type","Authorization"],
+  credentials: true,               // allow cookies/auth headers
+}));
+
+// Manual CORS for a single route
+app.options("/api/*", (req, res) =&gt; {
+  res.setHeader("Access-Control-Allow-Origin", "https://myapp.com");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST");
+  res.status(204).end();
+});
+
+// ── API key from env (server-side) ────────────────────────────
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
+if (!OPENAI_KEY) throw new Error("Missing OPENAI_API_KEY");
+
+const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  method:  "POST",
+  headers: {
+    "Authorization": `Bearer ${OPENAI_KEY}`,
+    "Content-Type":  "application/json",
+  },
+  body: JSON.stringify({ model: "gpt-4o", messages: [...] }),
+  signal: AbortSignal.timeout(30_000),
+});
+
+// ── Structured error from API ─────────────────────────────────
+async function apiRequest(url, init) {
+  const res = await fetch(url, init);
+  if (res.ok) return res.json();
+  const body = await res.json().catch(() => ({}));
+  const err  = new Error(body.error ?? res.statusText);
+  err.status = res.status;
+  err.body   = body;
+  throw err;
+}
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Exponential backoff — double the delay on each retry; cap at a maximum to avoid waiting minutes; jitter (random addition) prevents thundering herds</div>
+						<div class="explain-item">Rate limiter — controls max concurrent requests; prevents overwhelming an API or exhausting connection pools</div>
+						<div class="explain-item">CORS preflight — browsers send <code>OPTIONS</code> before cross-origin POST/PATCH/DELETE; your server must respond with <code>204</code> and the correct headers</div>
+						<div class="explain-item"><code>credentials: true</code> in CORS — required for cookies/auth headers across origins; the client must also set <code>credentials: "include"</code> in fetch</div>
+						<div class="explain-item">Never expose API keys to the browser — call third-party APIs from your server and proxy the response to the client</div>
+						<div class="explain-item">Attaching <code>err.status</code> and <code>err.body</code> to thrown errors allows callers to handle specific HTTP errors differently</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Retrying on 4xx errors — only retry 429 (rate limit) and 5xx (server errors); 4xx are client errors that won't resolve on retry</li>
+						<li class="note-item">Exposing third-party API keys to the browser — they appear in network requests and can be stolen; proxy through your server</li>
+						<li class="note-item">Setting <code>Access-Control-Allow-Origin: *</code> with <code>credentials: true</code> — browsers reject this combination; must specify exact origin</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Add jitter to retries: <code>delay + Math.random() * 1000</code> — prevents multiple clients retrying in sync and overwhelming the server</li>
+						<li class="note-item">Use <code>AbortSignal.timeout(ms)</code> on all external API calls — prevents hanging requests from blocking your server indefinitely</li>
+						<li class="note-item">Log the <code>X-Request-ID</code> or correlation ID from API error responses — makes it possible to match your logs with the upstream provider's logs</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Retry on 429/5xx with exponential backoff — never retry 4xx</li>
+						<li class="note-item">Rate limit concurrent requests to avoid overwhelming APIs</li>
+						<li class="note-item">CORS — configure <code>origin</code>, <code>methods</code>, <code>credentials</code> on the server · handle <code>OPTIONS</code> preflight</li>
+						<li class="note-item">API keys in env vars · proxied server-side · never in browser code</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-83-rest-apis.html">REST APIs</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-85-regex.html">Regular Expressions</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

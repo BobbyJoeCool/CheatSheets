@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 81: Databases — SQL</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s81">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 81</div>
+			<h1>Databases — SQL</h1>
+			<div class="sheet-desc">pg · mysql2 · better-sqlite3 · connection · CRUD · parameterised queries · transactions</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Driver comparison table -->
+			<div class="row">
+				<section id="tbl-drivers">
+					<h2 class="section-title">SQL Drivers for Node.js</h2>
+					<table>
+						<thead><tr><th>Library</th><th>Database</th><th>Async</th><th>Notes</th></tr></thead>
+						<tbody>
+							<tr><td>pg</td><td class="desc">PostgreSQL</td><td class="desc center">✔ Promise</td><td class="desc">Most popular Postgres client; supports connection pools</td></tr>
+							<tr><td>mysql2</td><td class="desc">MySQL / MariaDB</td><td class="desc center">✔ Promise</td><td class="desc">Successor to mysql; faster; prepared statements</td></tr>
+							<tr><td>better-sqlite3</td><td class="desc">SQLite</td><td class="desc center">✖ Sync</td><td class="desc">Synchronous; embedded; great for local/test/CLI apps</td></tr>
+							<tr><td>@libsql/client</td><td class="desc">Turso / SQLite</td><td class="desc center">✔ Promise</td><td class="desc">Edge-compatible SQLite client (Turso/LibSQL)</td></tr>
+							<tr><td>tedious</td><td class="desc">SQL Server</td><td class="desc center">✔</td><td class="desc">Microsoft SQL Server driver</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">SQL Database Examples</h2>
+					<pre><code class="language-javascript">// ── PostgreSQL with pg ────────────────────────────────────────
+// npm install pg
+import { Pool } from "pg";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 10,                          // max connections in pool
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 2_000,
+});
+
+// Query (parameterised — NEVER interpolate user input)
+const { rows } = await pool.query(
+  "SELECT * FROM users WHERE id = $1",
+  [userId]
+);
+const user = rows[0];               // undefined if not found
+
+// Insert with returning
+const { rows: [created] } = await pool.query(
+  "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *",
+  [name, email]
+);
+
+// ── MySQL with mysql2 ─────────────────────────────────────────
+// npm install mysql2
+import mysql from "mysql2/promise";
+
+const conn = await mysql.createConnection({
+  host:     process.env.DB_HOST,
+  user:     process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+});
+
+const [rows2] = await conn.execute(
+  "SELECT * FROM users WHERE email = ?",
+  [email]
+);
+
+// Pool (preferred for servers)
+const pool2 = mysql.createPool({
+  host: process.env.DB_HOST,
+  /* ... */
+  waitForConnections: true,
+  connectionLimit: 10,
+});
+const [results] = await pool2.execute("SELECT * FROM products WHERE active = ?", [1]);
+
+// ── SQLite with better-sqlite3 ────────────────────────────────
+// npm install better-sqlite3
+import Database from "better-sqlite3";
+
+const db = new Database("./app.db");  // creates if not exists
+
+// Create table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name  TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL
+  )
+`);
+
+// Prepare statements (reusable, efficient)
+const insert = db.prepare("INSERT INTO users (name, email) VALUES (?, ?)");
+const findById = db.prepare("SELECT * FROM users WHERE id = ?");
+
+insert.run("Alice", "alice@example.com");
+const found = findById.get(1);       // returns row object or undefined
+const all   = db.prepare("SELECT * FROM users").all(); // returns array
+
+// ── Transactions ──────────────────────────────────────────────
+// better-sqlite3 (sync)
+const transferFn = db.transaction((from, to, amount) => {
+  db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?")
+    .run(amount, from);
+  db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?")
+    .run(amount, to);
+});
+transferFn(1, 2, 100);              // atomic — rolls back on throw
+
+// pg (async)
+const client = await pool.connect();
+try {
+  await client.query("BEGIN");
+  await client.query("UPDATE accounts SET balance = balance - $1 WHERE id = $2", [100, fromId]);
+  await client.query("UPDATE accounts SET balance = balance + $1 WHERE id = $2", [100, toId]);
+  await client.query("COMMIT");
+} catch (err) {
+  await client.query("ROLLBACK");
+  throw err;
+} finally {
+  client.release();                 // return to pool
+}
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><strong>Always use parameterised queries</strong> — never interpolate user input into SQL strings; SQL injection is the most critical web security vulnerability</div>
+						<div class="explain-item">Connection pools — reuse connections across requests; creating a new connection per query is expensive; set pool size based on DB limits</div>
+						<div class="explain-item"><code>pg</code> uses <code>$1, $2</code> placeholders · <code>mysql2</code> uses <code>?</code> · <code>better-sqlite3</code> uses <code>?</code> or named <code>:name</code></div>
+						<div class="explain-item"><code>pool.connect()</code> + <code>client.release()</code> — required for transactions to keep them on one connection; always release in <code>finally</code></div>
+						<div class="explain-item"><code>better-sqlite3</code> is synchronous — do not use in a high-concurrency HTTP server; ideal for CLIs, tests, and Electron apps</div>
+						<div class="explain-item">Transactions are atomic — if any statement throws, rolling back undoes all statements in the transaction</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">String-interpolating user input into SQL: <code>`SELECT * FROM users WHERE id = ${req.params.id}`</code> — SQL injection vulnerability</li>
+						<li class="note-item">Not releasing the client in a <code>pg</code> transaction — pool exhausts after a few requests</li>
+						<li class="note-item">Creating a new connection per request instead of using a pool — crushes the database with connection overhead</li>
+						<li class="note-item">Not handling unique constraint violations — insert errors with code <code>23505</code> (pg) should return 409, not 500</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use prepared statements in <code>better-sqlite3</code> (<code>db.prepare()</code>) — parse the SQL once, run many times; faster and safer</li>
+						<li class="note-item">Use <code>pg</code>'s <code>pool.query()</code> for simple queries (auto-manages connection) · <code>pool.connect()</code> only for transactions</li>
+						<li class="note-item">Store the connection string in an environment variable — never hardcode credentials in source</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Always use parameterised queries — <code>$1/$2</code> (pg) or <code>?</code> (mysql2/sqlite)</li>
+						<li class="note-item">Use connection pools for servers · <code>better-sqlite3</code> is sync-only (CLI/tests)</li>
+						<li class="note-item">Transactions — <code>BEGIN/COMMIT/ROLLBACK</code> for atomic operations; always release client in <code>finally</code></li>
+						<li class="note-item">Connection string from env vars — never hardcode credentials</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-80-abort-storage.html">AbortController &amp; Storage</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-82-databases-orm.html">Databases — ORMs</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

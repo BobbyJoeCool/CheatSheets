@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 37: Decorators (TS)</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>Decorators (TS)</h1>
+			<div class="sheet-desc">Class · method · property · parameter decorators · decorator factories · TC39 stage</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Decorator types -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">TypeScript Decorators</h2>
+					<div class="description">
+						Decorators are a <strong>stage 3 TC39 proposal</strong> (now in the ECMAScript
+						standard) that TypeScript has supported experimentally for years. They are special
+						functions prefixed with <code>@</code> that attach metadata or modify the behaviour of
+						classes, methods, properties, and parameters at definition time. There are two
+						decorator systems in TypeScript: the <strong>legacy experimental</strong> system
+						(enabled via <code>experimentalDecorators: true</code> in tsconfig — used by NestJS,
+						Angular, TypeORM) and the new <strong>TC39/ES2023</strong> decorators (enabled
+						by default in TS 5.0+ without the flag). This sheet covers the modern TC39 style with
+						notes on the legacy API where it differs.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Decorator Types</h2>
+					<ul class="note-list">
+						<li class="note-item"><strong>Class</strong> — decorates the whole class</li>
+						<li class="note-item"><strong>Method</strong> — decorates a class method</li>
+						<li class="note-item"><strong>Field</strong> — decorates a class property/field</li>
+						<li class="note-item"><strong>Getter/Setter</strong> — decorates an accessor</li>
+						<li class="note-item"><strong>Accessor</strong> — <code>@accessor</code> auto-generates get/set</li>
+						<li class="note-item"><strong>Decorator factory</strong> — function that returns a decorator</li>
+						<li class="note-item">Applied bottom-up when multiple decorators stack</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Decorator Examples</h2>
+					<pre><code class="language-typescript">// ── Class decorator ───────────────────────────────────────────
+function sealed(constructor: Function) {
+  Object.seal(constructor);
+  Object.seal(constructor.prototype);
+}
+
+@sealed
+class BankAccount {
+  balance = 0;
+}
+
+// ── Method decorator — log execution time ────────────────────
+function logTime(
+  _target: any,
+  name: string,
+  descriptor: PropertyDescriptor
+) {
+  const original = descriptor.value;
+  descriptor.value = function (...args: any[]) {
+    const start = performance.now();
+    const result = original.apply(this, args);
+    console.log(`${name} took ${(performance.now() - start).toFixed(2)}ms`);
+    return result;
+  };
+  return descriptor;
+}
+
+class DataService {
+  @logTime
+  processData(items: string[]) {
+    return items.map((s) => s.toUpperCase());
+  }
+}
+
+// ── Decorator factory — configurable ─────────────────────────
+function retry(times: number) {
+  return function (
+    _target: any,
+    _name: string,
+    descriptor: PropertyDescriptor
+  ) {
+    const original = descriptor.value;
+    descriptor.value = async function (...args: any[]) {
+      for (let i = 0; i < times; i++) {
+        try {
+          return await original.apply(this, args);
+        } catch (err) {
+          if (i === times - 1) throw err;
+          console.warn(`Retry ${i + 1}/${times}`);
+        }
+      }
+    };
+    return descriptor;
+  };
+}
+
+class ApiClient {
+  @retry(3)
+  async fetchUser(id: string) {
+    const res = await fetch(`/api/users/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+}
+
+// ── Common framework decorators (NestJS/Angular style) ────────
+// These use experimentalDecorators: true
+@Controller("/users")           // route prefix
+class UserController {
+  @Get("/:id")                  // HTTP GET handler
+  @UseGuards(AuthGuard)         // apply middleware/guard
+  async getUser(@Param("id") id: string) {
+    return this.userService.find(id);
+  }
+}
+
+// ── Property/field decorator ──────────────────────────────────
+function readonly(
+  _target: any,
+  propertyKey: string
+) {
+  Object.defineProperty(_target, propertyKey, { writable: false });
+}
+
+class Config {
+  @readonly
+  apiVersion = "v2";
+}
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Decorators run at <em>class definition time</em>, not when instances are created — they modify the class/method in place</div>
+						<div class="explain-item">Method decorators receive <code>(target, propertyKey, descriptor)</code> — modify <code>descriptor.value</code> to wrap the method</div>
+						<div class="explain-item">Decorator factories — a function that takes config params and returns the actual decorator function; enables <code>@retry(3)</code> syntax</div>
+						<div class="explain-item">Multiple decorators stack bottom-up: <code>@A @B method</code> applies <code>B</code> first, then <code>A</code> wraps the result</div>
+						<div class="explain-item">Legacy (<code>experimentalDecorators</code>) vs TC39 decorators have slightly different signatures — check which your framework uses</div>
+						<div class="explain-item">NestJS, Angular, TypeORM, and MikroORM all rely heavily on decorators — in those ecosystems, <code>experimentalDecorators: true</code> is standard</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using legacy decorator syntax with TS 5+ without <code>experimentalDecorators: true</code> — different APIs, will break</li>
+						<li class="note-item">Forgetting that decorators run at definition time — side effects happen once when the module loads, not per instance</li>
+						<li class="note-item">Mutating <code>descriptor.value</code> without returning the descriptor — the modification won't apply</li>
+						<li class="note-item">Using decorators in plain <code>.js</code> files — decorators require TypeScript or Babel with the decorator transform</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use decorator factories (<code>@decorator(config)</code>) rather than plain decorators — they are more flexible and reusable</li>
+						<li class="note-item">Keep decorators focused — one concern per decorator (logging, caching, validation, auth) makes them composable</li>
+						<li class="note-item">Check your framework docs for which decorator system it expects — NestJS and Angular pin to <code>experimentalDecorators</code></li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>@decorator</code> — runs at class definition time; modifies class, method, field, or accessor</li>
+						<li class="note-item">Method decorators — receive <code>(target, name, descriptor)</code>; wrap <code>descriptor.value</code></li>
+						<li class="note-item">Decorator factories — <code>@factory(config)</code> returns the real decorator with config baked in</li>
+						<li class="note-item">Legacy (<code>experimentalDecorators</code>) used by NestJS/Angular · TC39 style is the modern standard (TS 5+)</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-36-ts-generics-functions.html">TS Generics in Functions</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-38-arrays-basics.html">Array Basics</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

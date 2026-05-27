@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 91: Streams</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s91">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 91</div>
+			<h1>Streams</h1>
+			<div class="sheet-desc">Readable · Writable · Transform · pipeline · backpressure · stream/promises</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Stream types table -->
+			<div class="row">
+				<section id="tbl-types">
+					<h2 class="section-title">Stream Types</h2>
+					<table>
+						<thead><tr><th>Type</th><th>Direction</th><th>Events</th><th>Common Use</th></tr></thead>
+						<tbody>
+							<tr><td>Readable</td><td class="desc">Read from</td><td class="desc"><code>data · end · error</code></td><td class="desc">File read, HTTP request body, stdin</td></tr>
+							<tr><td>Writable</td><td class="desc">Write to</td><td class="desc"><code>drain · finish · error</code></td><td class="desc">File write, HTTP response, stdout</td></tr>
+							<tr><td>Duplex</td><td class="desc">Both</td><td class="desc">Both sets</td><td class="desc">TCP socket, WebSocket</td></tr>
+							<tr><td>Transform</td><td class="desc">Both + modify</td><td class="desc">Both sets</td><td class="desc">Gzip, encryption, CSV parse, uppercase</td></tr>
+							<tr><td>PassThrough</td><td class="desc">Both (no-op)</td><td class="desc">Both sets</td><td class="desc">Inspect data mid-pipeline</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Stream Examples</h2>
+					<pre><code class="language-javascript">import { createReadStream, createWriteStream } from "fs";
+import { createGzip, createGunzip }            from "zlib";
+import { Transform, PassThrough }              from "stream";
+import { pipeline }                            from "stream/promises";
+
+// ── pipeline — connect streams safely ────────────────────────
+// Handles errors and cleanup automatically — always prefer over .pipe()
+await pipeline(
+  createReadStream("./big.log"),
+  createGzip(),
+  createWriteStream("./big.log.gz")
+);
+// File is gzipped; all streams closed even on error
+
+// ── Decompress ────────────────────────────────────────────────
+await pipeline(
+  createReadStream("./big.log.gz"),
+  createGunzip(),
+  createWriteStream("./big.log")
+);
+
+// ── Custom Transform stream ───────────────────────────────────
+class UpperCaseTransform extends Transform {
+  _transform(chunk, encoding, callback) {
+    this.push(chunk.toString().toUpperCase()); // push transformed chunk
+    callback();                               // signal chunk is done
+  }
+}
+
+await pipeline(
+  createReadStream("./input.txt"),
+  new UpperCaseTransform(),
+  createWriteStream("./output.txt")
+);
+
+// ── Collect all chunks from a Readable ────────────────────────
+async function streamToString(readable) {
+  const chunks = [];
+  for await (const chunk of readable) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+// ── Create a Readable from a string or array ──────────────────
+import { Readable } from "stream";
+
+const readable = Readable.from(["line one\n", "line two\n", "line three\n"]);
+const readable2 = Readable.from(async function* () {
+  yield "chunk 1";
+  await sleep(100);
+  yield "chunk 2";
+}());
+
+// ── Pipe HTTP response to file ────────────────────────────────
+import https from "https";
+await new Promise((resolve, reject) => {
+  const file = createWriteStream("./download.zip");
+  https.get("https://example.com/file.zip", res =&gt; {
+    pipeline(res, file).then(resolve).catch(reject);
+  });
+});
+
+// ── Backpressure — respect Writable's drain ───────────────────
+async function writeLines(writable, lines) {
+  for (const line of lines) {
+    const canContinue = writable.write(line + "\n");
+    if (!canContinue) {
+      await new Promise(r =&gt; writable.once("drain", r)); // wait for drain
+    }
+  }
+  writable.end();
+}
+
+// ── PassThrough — inspect bytes mid-pipeline ──────────────────
+let byteCount = 0;
+const counter = new PassThrough();
+counter.on("data", chunk =&gt; { byteCount += chunk.length; });
+
+await pipeline(
+  createReadStream("./file.bin"),
+  counter,
+  createWriteStream("./copy.bin")
+);
+console.log("Bytes copied:", byteCount);
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>pipeline()</code> from <code>stream/promises</code> — always prefer over manual <code>.pipe()</code>; handles errors in every stage and properly closes all streams</div>
+						<div class="explain-item"><code>Transform._transform(chunk, enc, cb)</code> — call <code>this.push(data)</code> to emit output, then <code>callback()</code> to signal readiness for next chunk</div>
+						<div class="explain-item"><code>for await (const chunk of readable)</code> — the async iterator protocol works on any Node Readable stream; clean alternative to manual event listeners</div>
+						<div class="explain-item"><strong>Backpressure</strong> — <code>writable.write()</code> returns <code>false</code> when the internal buffer is full; wait for the <code>"drain"</code> event before writing more to avoid memory buildup</div>
+						<div class="explain-item"><code>Readable.from(iterable)</code> — create a Readable from any sync or async iterable; excellent for testing or building data sources</div>
+						<div class="explain-item">Streams process data chunk-by-chunk — memory usage stays constant even for GB-scale files</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using <code>.pipe()</code> instead of <code>pipeline()</code> — <code>.pipe()</code> doesn't propagate errors or close downstream streams on failure</li>
+						<li class="note-item">Ignoring backpressure — writing without checking the return value of <code>write()</code> buffers data in memory and can OOM the process</li>
+						<li class="note-item">Forgetting to call <code>callback()</code> in <code>_transform</code> — the stream stalls and no more chunks are processed</li>
+						<li class="note-item">Not handling <code>"error"</code> events on streams — unhandled stream errors crash the process</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Always use <code>pipeline()</code> from <code>stream/promises</code> — it's the modern, safe way to connect streams</li>
+						<li class="note-item">Use <code>for await...of</code> to consume a Readable — it handles backpressure automatically and integrates cleanly with async/await</li>
+						<li class="note-item">Use <code>PassThrough</code> to add observability (byte counting, logging) mid-pipeline without modifying the data</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">4 types: Readable · Writable · Duplex · Transform</li>
+						<li class="note-item"><code>pipeline(r, t, w)</code> from <code>stream/promises</code> — always prefer over <code>.pipe()</code></li>
+						<li class="note-item"><code>for await (const chunk of readable)</code> — clean async consumption</li>
+						<li class="note-item">Backpressure — check <code>write()</code> return; await <code>"drain"</code> when false</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-90-node-express-advanced.html">Express Advanced</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-92-node-events.html">EventEmitter</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

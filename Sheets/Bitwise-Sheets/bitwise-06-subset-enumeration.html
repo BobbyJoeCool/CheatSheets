@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Bitwise — 06: Subset Enumeration</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/bitwise-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s06">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 06</div>
+			<h1>Subset Enumeration</h1>
+			<div class="sheet-desc">bitmask sets · all subsets · Gosper's hack · bitmask DP · combinatorics</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">A Bit Per Element — Representing Sets</h2>
+					<div class="description">
+						If a collection has <strong>N elements</strong>, any subset can be represented by an N-bit integer where <strong>bit i is 1 if element i is in the subset</strong>, and 0 if it is not. Counting from <code>0</code> to <code>2ᴺ − 1</code> visits every possible subset exactly once — all 2ᴺ of them. This is <strong>bitmask enumeration</strong>: the foundation of bitmask dynamic programming (bitmask DP), which solves NP-hard problems like the Travelling Salesman Problem, minimum cost scheduling, and set-cover on small N (typically N ≤ 20). The key insight is that set union is OR, intersection is AND, complement is XOR-with-full-mask, and membership test is a single bit check — all in one CPU instruction.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Complexity Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">All subsets of N elements: <strong>2ᴺ</strong> iterations</li>
+						<li class="note-item">All subsets of all subsets: <strong>3ᴺ</strong> total (sum of C(N,k)×2ᵏ)</li>
+						<li class="note-item">N=20 → ~1M subsets; N=25 → ~33M; N=30 → ~1B (slow)</li>
+						<li class="note-item">Bitmask DP state space: often O(2ᴺ × N) time, O(2ᴺ) space</li>
+						<li class="note-item">Gosper's Hack iterates only subsets of a given mask in O(subsets) — no wasted iterations</li>
+						<li class="note-item">Empty set (mask=0) is always a valid subset — don't skip it</li>
+						<li class="note-item">Full set of N elements: <code>(1 &lt;&lt; N) - 1</code></li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Subset operations table -->
+			<div class="row">
+				<section id="tbl-subset-ops">
+					<h2 class="section-title">Subset Operations Reference</h2>
+					<table>
+						<thead>
+							<tr><th>Operation</th><th>Formula</th><th>Meaning</th></tr>
+						</thead>
+						<tbody>
+							<tr><td>Is element i in S?</td><td class="desc">(S &gt;&gt; i) &amp; 1</td><td class="desc">Test bit i of S</td></tr>
+							<tr><td>Add element i to S</td><td class="desc">S | (1 &lt;&lt; i)</td><td class="desc">Set bit i</td></tr>
+							<tr><td>Remove element i from S</td><td class="desc">S &amp; ~(1 &lt;&lt; i)</td><td class="desc">Clear bit i</td></tr>
+							<tr><td>Toggle element i</td><td class="desc">S ^ (1 &lt;&lt; i)</td><td class="desc">XOR bit i</td></tr>
+							<tr><td>Is S a subset of T?</td><td class="desc">(S &amp; T) == S</td><td class="desc">All bits of S also in T</td></tr>
+							<tr><td>Union of S and T</td><td class="desc">S | T</td><td class="desc">Elements in either set</td></tr>
+							<tr><td>Intersection of S and T</td><td class="desc">S &amp; T</td><td class="desc">Elements in both sets</td></tr>
+							<tr><td>Difference S − T</td><td class="desc">S &amp; ~T</td><td class="desc">Elements in S but not T</td></tr>
+							<tr><td>Complement of S (N-elem)</td><td class="desc">S ^ ((1 &lt;&lt; N) - 1)</td><td class="desc">Flip all N bits</td></tr>
+							<tr><td>Size of S (# elements)</td><td class="desc">popcount(S)</td><td class="desc">Count set bits</td></tr>
+							<tr><td>Full set (all N elements)</td><td class="desc">(1 &lt;&lt; N) - 1</td><td class="desc">All N bits set to 1</td></tr>
+							<tr><td>Next subset of mask</td><td class="desc">(S - 1) &amp; mask</td><td class="desc">Gosper's sub-mask step</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 3: Code | Explain -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Enumerate All Subsets + Gosper's Hack</h2>
+					<pre><code class="language-javascript">const items = ["apple", "banana", "cherry"];
+const N = items.length;   // 3 elements → 8 subsets (2³)
+
+// ── Enumerate ALL subsets of items ───────────────────────────
+for (let mask = 0; mask < (1 << N); mask++) {
+  let subset = [];
+  for (let i = 0; i < N; i++) {
+    if ((mask >> i) & 1) subset.push(items[i]);
+  }
+  console.log(`mask=${mask.toString(2).padStart(N,'0')}`, subset);
+}
+// mask=000 []
+// mask=001 ["apple"]
+// mask=010 ["banana"]
+// mask=011 ["apple","banana"]
+// mask=100 ["cherry"]
+// mask=101 ["apple","cherry"]
+// mask=110 ["banana","cherry"]
+// mask=111 ["apple","banana","cherry"]
+
+// ── Enumerate only subsets of a given mask (Gosper's Hack) ───
+// E.g. find all subsets of the mask that includes apple+cherry
+let target = 0b101;   // bits 0 and 2 set = {apple, cherry}
+
+for (let s = target; s > 0; s = (s - 1) & target) {
+  // visits: 0b101, 0b100, 0b001
+  // i.e. {apple,cherry}, {cherry}, {apple}
+  // empty set (s=0) exits loop — handle separately if needed
+}
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Counting mask from <code>0</code> to <code>2ᴺ−1</code> covers every subset because binary counting visits every combination of N bits</div>
+						<div class="explain-item"><code>(mask &gt;&gt; i) &amp; 1</code> — shift element i's bit down to position 0, then AND to isolate it</div>
+						<div class="explain-item">Gosper's step <code>(s-1) &amp; mask</code> — subtracting 1 borrows through trailing zeros and flips the lowest set bit; AND with mask keeps the result within the parent set's bits</div>
+						<div class="explain-item">Gosper's loop exits at <code>s=0</code> (empty set); the loop condition <code>s &gt; 0</code> means the empty set is not visited — add it manually if needed</div>
+						<div class="explain-item">Total iterations for all subsets of all subsets of an N-element set: 3ᴺ (each element is in the outer set, inner set, or neither)</div>
+						<div class="explain-item">Bitmask DP: store results indexed by subset mask in a <code>dp[mask]</code> array — transition by adding or removing one element at a time</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Footer Trio -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using N &gt; 30 with 32-bit integers — 2³¹ = 2 billion iterations; use 64-bit integers for N up to 62, or a different algorithm above that</li>
+						<li class="note-item">Off-by-one: full set is <code>(1 &lt;&lt; N) - 1</code>, not <code>(1 &lt;&lt; N)</code> — the latter is one past the end and overflows for N=32</li>
+						<li class="note-item">Skipping the empty set (mask=0) — it is a valid subset and often a base case in bitmask DP</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>popcount(mask)</code> inside the loop to know how many elements are in the current subset — useful for filtering by size</li>
+						<li class="note-item">Bitmask DP is the standard approach for TSP, minimum Steiner tree, and scheduling problems when N ≤ 20 — learn the pattern once, apply everywhere</li>
+						<li class="note-item">Draw out the 3-element case by hand (8 rows, 3 columns) before coding a bitmask DP — it immediately reveals the transition structure</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Bit i = whether element i is in the subset</li>
+						<li class="note-item">Loop <code>0</code> → <code>(1&lt;&lt;N)-1</code> to enumerate all 2ᴺ subsets</li>
+						<li class="note-item">Gosper's <code>(s-1)&amp;mask</code> iterates only subsets of a given mask</li>
+						<li class="note-item">Union=OR, Intersection=AND, Difference=<code>&amp;~</code>, Complement=XOR full-mask</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="bitwise-05-packing-and-fields.html">Packing &amp; Fields</a>
+				<a class="nav-toc" href="index.html">Bitwise Reference · 8 Sheets</a>
+				<a class="nav-link next" href="bitwise-07-bit-counting.html">Bit Counting</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+
+	</body>
+</html>

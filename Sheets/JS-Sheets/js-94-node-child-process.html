@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 94: Child Processes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s94">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 94</div>
+			<h1>Child Processes</h1>
+			<div class="sheet-desc">exec · execFile · spawn · fork · stdio · shell commands · TS types</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: API comparison table -->
+			<div class="row">
+				<section id="tbl-api">
+					<h2 class="section-title">Child Process Functions Compared</h2>
+					<table>
+						<thead><tr><th>Function</th><th>Shell</th><th>Output</th><th>Best For</th></tr></thead>
+						<tbody>
+							<tr><td>exec(cmd, cb)</td><td class="desc center">✔</td><td class="desc">Buffered string</td><td class="desc">Short shell commands; output fits in memory</td></tr>
+							<tr><td>execFile(file, args, cb)</td><td class="desc center">✖</td><td class="desc">Buffered string</td><td class="desc">Run a binary directly; safer than exec</td></tr>
+							<tr><td>spawn(cmd, args)</td><td class="desc center">✖</td><td class="desc">Streams</td><td class="desc">Long-running processes; large output</td></tr>
+							<tr><td>fork(modulePath)</td><td class="desc center">✖</td><td class="desc">Streams + IPC</td><td class="desc">Spawn another Node.js script with IPC channel</td></tr>
+							<tr><td>execSync / spawnSync</td><td class="desc center">✔/✖</td><td class="desc">Buffered (blocks)</td><td class="desc">Scripts only — blocks the event loop</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Child Process Examples</h2>
+					<pre><code class="language-javascript">import { exec, execFile, spawn, fork } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+
+// ── exec — run a shell command ────────────────────────────────
+const { stdout, stderr } = await execAsync("ls -la ./src");
+console.log(stdout);
+
+// With options
+const { stdout: out } = await execAsync("git log --oneline -5", {
+  cwd: "/path/to/repo",
+  timeout: 5000,              // kill if takes longer than 5s
+});
+
+// ── execFile — run binary without shell ───────────────────────
+const { stdout: version } = await promisify(execFile)("node", ["--version"]);
+console.log(version.trim());  // "v20.11.0"
+
+// ── spawn — streaming output (long-running) ───────────────────
+const proc = spawn("npm", ["install"], { cwd: "./my-project" });
+
+proc.stdout.on("data", chunk =&gt; process.stdout.write(chunk));
+proc.stderr.on("data", chunk =&gt; process.stderr.write(chunk));
+
+const exitCode = await new Promise((resolve, reject) =&gt; {
+  proc.on("close", resolve);
+  proc.on("error", reject);
+});
+console.log("Exit code:", exitCode);
+
+// ── spawn with pipe — capture output as string ────────────────
+function runCommand(cmd, args, options = {}) {
+  return new Promise((resolve, reject) =&gt; {
+    const child = spawn(cmd, args, { ...options, stdio: "pipe" });
+    const out = [], err = [];
+    child.stdout.on("data", d =&gt; out.push(d));
+    child.stderr.on("data", d =&gt; err.push(d));
+    child.on("close", code =&gt; {
+      if (code === 0) resolve(Buffer.concat(out).toString());
+      else reject(new Error(Buffer.concat(err).toString()));
+    });
+  });
+}
+const result = await runCommand("git", ["status", "--short"]);
+
+// ── fork — spawn another Node script with IPC ─────────────────
+// child.js:
+process.on("message", ({ task, data }) =&gt; {
+  const result = heavyWork(data);
+  process.send({ task, result });
+});
+
+// main.js:
+const child = fork("./child.js");
+child.send({ task: "compute", data: [1, 2, 3] });
+child.on("message", ({ result }) =&gt; console.log(result));
+child.on("exit",    code =&gt; console.log("Done:", code));
+
+// ── stdio options ─────────────────────────────────────────────
+spawn("node", ["script.js"], {
+  stdio: "inherit",           // child uses parent's stdin/stdout/stderr
+});
+spawn("node", ["script.js"], {
+  stdio: "pipe",              // capture all stdio
+});
+spawn("node", ["script.js"], {
+  stdio: ["inherit", "pipe", "pipe"], // stdin inherit, stdout+err piped
+});
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>exec</code> uses a shell — allows pipes and shell features (<code>ls | grep</code>); never pass unsanitised user input to exec (shell injection risk)</div>
+						<div class="explain-item"><code>execFile</code> skips the shell — faster and safer for running known binaries; arguments are passed as an array, not concatenated</div>
+						<div class="explain-item"><code>spawn</code> returns streams — handles GB of output without buffering in memory; the right choice for long-running processes</div>
+						<div class="explain-item"><code>fork</code> is spawn specialised for Node scripts — adds a built-in IPC channel; <code>process.send()</code> and <code>.on("message")</code> work automatically</div>
+						<div class="explain-item"><code>stdio: "inherit"</code> — child shares parent's terminal; useful for interactive processes or forwarding coloured output</div>
+						<div class="explain-item">Always handle <code>"error"</code> events — if the binary isn't found, <code>spawn</code> emits an error (not an exit code)</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Passing user input to <code>exec()</code> — shell injection vulnerability; use <code>execFile()</code> or <code>spawn()</code> with args array instead</li>
+						<li class="note-item">Using <code>execSync</code> in a server — blocks the entire event loop for all concurrent requests</li>
+						<li class="note-item">Not setting a <code>timeout</code> on <code>exec</code> — a hung process keeps your Node process alive indefinitely</li>
+						<li class="note-item">Ignoring stderr — exit code 0 doesn't mean success; check stderr for warnings and errors</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>promisify(exec)</code> for clean async/await syntax with short commands; use <code>spawn</code> for streaming output</li>
+						<li class="note-item">Always set <code>{ cwd }</code> explicitly when running commands relative to a specific directory — don't rely on the inherited working directory</li>
+						<li class="note-item">Use <code>fork</code> + IPC instead of worker threads when you want to run a completely separate Node script with its own module graph</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>exec</code> — shell, buffered · <code>execFile</code> — no shell, safer · <code>spawn</code> — streaming · <code>fork</code> — Node + IPC</li>
+						<li class="note-item">Never pass user input to <code>exec</code> — use <code>spawn</code> with args array</li>
+						<li class="note-item">Sync variants block the event loop — CLI/scripts only</li>
+						<li class="note-item">Always handle <code>"error"</code> + <code>"close"</code> events; set a <code>timeout</code></li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-93-node-workers.html">Worker Threads</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-95-node-cluster.html">Cluster &amp; PM2</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

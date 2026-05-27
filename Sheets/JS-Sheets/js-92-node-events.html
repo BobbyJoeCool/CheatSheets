@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 92: EventEmitter</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s92">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 92</div>
+			<h1>EventEmitter</h1>
+			<div class="sheet-desc">on · emit · once · off · removeAllListeners · typed events · extending</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: API table -->
+			<div class="row">
+				<section id="tbl-api">
+					<h2 class="section-title">EventEmitter API</h2>
+					<table>
+						<thead><tr><th>Method</th><th>Returns</th><th>Notes</th></tr></thead>
+						<tbody>
+							<tr><td>.on(event, listener)</td><td class="desc">emitter</td><td class="desc">Add listener; fires every time event is emitted</td></tr>
+							<tr><td>.once(event, listener)</td><td class="desc">emitter</td><td class="desc">Add listener that fires exactly once then auto-removes</td></tr>
+							<tr><td>.emit(event, ...args)</td><td class="desc">boolean</td><td class="desc">Fire event synchronously; returns true if listeners exist</td></tr>
+							<tr><td>.off(event, listener)</td><td class="desc">emitter</td><td class="desc">Remove specific listener (same reference required)</td></tr>
+							<tr><td>.removeAllListeners(event?)</td><td class="desc">emitter</td><td class="desc">Remove all listeners for event, or all events if omitted</td></tr>
+							<tr><td>.listeners(event)</td><td class="desc">Function[]</td><td class="desc">Array of registered listeners for an event</td></tr>
+							<tr><td>.listenerCount(event)</td><td class="desc">number</td><td class="desc">Number of listeners for an event</td></tr>
+							<tr><td>.setMaxListeners(n)</td><td class="desc">emitter</td><td class="desc">Default max is 10; raise to suppress memory leak warnings</td></tr>
+							<tr><td>.prependListener(ev, fn)</td><td class="desc">emitter</td><td class="desc">Add listener to the front of the queue</td></tr>
+							<tr><td>EventEmitter.once(emitter, ev)</td><td class="desc">Promise</td><td class="desc">Static — await the next emission of an event</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">EventEmitter Examples</h2>
+					<pre><code class="language-typescript">import { EventEmitter } from "events";
+
+// ── Basic usage ───────────────────────────────────────────────
+const emitter = new EventEmitter();
+
+emitter.on("data", (value) => {
+  console.log("Received:", value);
+});
+emitter.on("data", (value) => {
+  console.log("Also received:", value);
+});
+
+emitter.emit("data", 42);            // both listeners fire: 42, 42
+emitter.emit("data", "hello");       // 42 → "hello"
+
+// ── once — fire exactly once ──────────────────────────────────
+emitter.once("connect", () => {
+  console.log("Connected!");
+});
+emitter.emit("connect");             // "Connected!"
+emitter.emit("connect");             // (nothing — already removed)
+
+// ── Removing listeners ────────────────────────────────────────
+function handler(msg) { console.log(msg); }
+emitter.on("msg", handler);
+emitter.off("msg", handler);         // must pass the SAME reference
+
+// ── Error events — special handling ──────────────────────────
+// If "error" is emitted with no listener, Node throws
+emitter.on("error", (err) => {
+  console.error("Caught:", err.message); // always add an error listener
+});
+emitter.emit("error", new Error("Something broke"));
+
+// ── Extending EventEmitter ────────────────────────────────────
+class Store extends EventEmitter {
+  #data = {};
+
+  set(key, value) {
+    this.#data[key] = value;
+    this.emit("change", { key, value });   // notify listeners
+  }
+
+  get(key) { return this.#data[key]; }
+}
+
+const store = new Store();
+store.on("change", ({ key, value }) => {
+  console.log(`${key} changed to`, value);
+});
+store.set("theme", "dark");            // "theme changed to dark"
+
+// ── TypeScript: typed EventEmitter ────────────────────────────
+import { TypedEmitter } from "tiny-typed-emitter"; // npm install tiny-typed-emitter
+
+interface AppEvents {
+  "user:login":  (userId: number) => void;
+  "user:logout": (userId: number) => void;
+  "data:update": (key: string, value: unknown) => void;
+  "error":       (err: Error) => void;
+}
+
+class AppEmitter extends TypedEmitter&lt;AppEvents&gt; {}
+const app = new AppEmitter();
+
+app.on("user:login", (userId) => {    // userId is typed as number
+  console.log("User logged in:", userId);
+});
+app.emit("user:login", 42);           // ✔
+app.emit("user:login", "not-a-number"); // ✖ TS Error
+
+// ── Await next event with EventEmitter.once ───────────────────
+const { once } = EventEmitter;
+const [value] = await once(emitter, "ready"); // waits for "ready"
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>emit()</code> is synchronous — all listeners run to completion before <code>emit()</code> returns; use <code>setImmediate</code> or async listeners for non-blocking handlers</div>
+						<div class="explain-item"><strong>Error events are special</strong> — if <code>"error"</code> is emitted with no listener, Node throws an uncaught exception and crashes; always add an error listener</div>
+						<div class="explain-item">Max listeners warning — Node warns at 10+ listeners per event (memory leak signal); call <code>setMaxListeners(0)</code> to disable if you legitimately need more</div>
+						<div class="explain-item"><code>.off()</code> requires the exact same function reference — arrow functions stored inline cannot be removed; always assign to a variable</div>
+						<div class="explain-item">Extending EventEmitter — the standard Node pattern for observable objects (streams, servers, and process itself all extend it)</div>
+						<div class="explain-item"><code>tiny-typed-emitter</code> — lightweight TS wrapper that adds full type checking to event names and payload types</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Emitting <code>"error"</code> with no listener — Node throws an unhandled exception; always add an error handler</li>
+						<li class="note-item">Trying to remove an anonymous function with <code>.off()</code> — impossible without a reference; assign listeners to named variables</li>
+						<li class="note-item">Adding listeners in a loop without removing them — creates a memory leak; use <code>removeAllListeners()</code> in cleanup</li>
+						<li class="note-item">Expecting async listeners to be awaited — <code>emit()</code> is sync; async listeners fire but their Promises are not awaited</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>EventEmitter.once(emitter, "event")</code> to await a one-time event in async code — cleaner than wrapping in a Promise manually</li>
+						<li class="note-item">Use <code>tiny-typed-emitter</code> or write a typed wrapper — catches misspelled event names and wrong payload types at compile time</li>
+						<li class="note-item">Always remove event listeners when tearing down objects (servers closing, components unmounting) to prevent memory leaks</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>.on(ev, fn)</code> — subscribe · <code>.once(ev, fn)</code> — one shot · <code>.off(ev, fn)</code> — unsubscribe (same ref)</li>
+						<li class="note-item"><code>.emit(ev, ...args)</code> — synchronous; fires all listeners immediately</li>
+						<li class="note-item">Always handle <code>"error"</code> events — unhandled error events crash Node</li>
+						<li class="note-item">Extend EventEmitter for observable domain objects; use <code>tiny-typed-emitter</code> for TS type safety</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-91-node-streams.html">Streams</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-93-node-workers.html">Worker Threads</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

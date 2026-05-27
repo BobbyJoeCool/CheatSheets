@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 95: Cluster &amp; PM2</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s95">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 95</div>
+			<h1>Cluster &amp; PM2</h1>
+			<div class="sheet-desc">cluster module · fork workers · load balancing · PM2 commands · ecosystem file</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: PM2 commands table -->
+			<div class="row">
+				<section id="tbl-pm2">
+					<h2 class="section-title">PM2 Common Commands</h2>
+					<table>
+						<thead><tr><th>Command</th><th>Action</th></tr></thead>
+						<tbody>
+							<tr><td>pm2 start app.js</td><td class="desc">Start app in background</td></tr>
+							<tr><td>pm2 start app.js -i max</td><td class="desc">Start in cluster mode — one instance per CPU</td></tr>
+							<tr><td>pm2 start app.js --name "api"</td><td class="desc">Start with a name</td></tr>
+							<tr><td>pm2 start ecosystem.config.js</td><td class="desc">Start from config file</td></tr>
+							<tr><td>pm2 list</td><td class="desc">Show all running processes</td></tr>
+							<tr><td>pm2 logs</td><td class="desc">Stream logs from all processes</td></tr>
+							<tr><td>pm2 logs api</td><td class="desc">Logs for a specific app</td></tr>
+							<tr><td>pm2 restart api</td><td class="desc">Restart a process</td></tr>
+							<tr><td>pm2 reload api</td><td class="desc">Zero-downtime reload (cluster mode)</td></tr>
+							<tr><td>pm2 stop api</td><td class="desc">Stop without removing</td></tr>
+							<tr><td>pm2 delete api</td><td class="desc">Stop and remove from list</td></tr>
+							<tr><td>pm2 monit</td><td class="desc">Real-time dashboard</td></tr>
+							<tr><td>pm2 startup</td><td class="desc">Generate startup script (survives reboot)</td></tr>
+							<tr><td>pm2 save</td><td class="desc">Save current process list for startup</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Cluster &amp; PM2 Examples</h2>
+					<pre><code class="language-javascript">// ── Node cluster module ───────────────────────────────────────
+import cluster from "cluster";
+import http    from "http";
+import os      from "os";
+
+const NUM_CPUS = os.cpus().length;
+
+if (cluster.isPrimary) {
+  console.log(`Primary ${process.pid} — forking ${NUM_CPUS} workers`);
+
+  // Fork one worker per CPU
+  for (let i = 0; i < NUM_CPUS; i++) {
+    cluster.fork();
+  }
+
+  // Restart crashed workers
+  cluster.on("exit", (worker, code, signal) => {
+    console.warn(`Worker ${worker.process.pid} died (${signal || code}). Restarting...`);
+    cluster.fork();
+  });
+
+} else {
+  // Each worker runs this independently
+  http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end(`Worker ${process.pid} handled this\n`);
+  }).listen(3000);
+
+  console.log(`Worker ${process.pid} started`);
+}
+
+// ── PM2 ecosystem.config.js ───────────────────────────────────
+// npm install -g pm2
+module.exports = {
+  apps: [
+    {
+      name:         "api",
+      script:       "./dist/server.js",
+      instances:    "max",             // one per CPU (cluster mode)
+      exec_mode:    "cluster",
+      watch:        false,             // don't watch in production
+      max_memory_restart: "500M",      // restart if over 500MB RAM
+      env: {
+        NODE_ENV: "production",
+        PORT:     3000,
+      },
+      env_development: {
+        NODE_ENV: "development",
+        PORT:     3001,
+      },
+      error_file:   "./logs/error.log",
+      out_file:     "./logs/out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+    },
+    {
+      name:    "worker",
+      script:  "./dist/queue-worker.js",
+      instances: 2,
+      exec_mode: "fork",              // not cluster — separate scripts
+    }
+  ]
+};
+
+// Start: pm2 start ecosystem.config.js --env production
+// Zero-downtime deploy:
+//   1. Build new code: npm run build
+//   2. pm2 reload ecosystem.config.js --env production
+
+// ── Graceful shutdown ─────────────────────────────────────────
+// Handle SIGTERM from PM2 (sent before killing process)
+process.on("SIGTERM", async () => {
+  console.log("SIGTERM received — shutting down gracefully");
+  server.close(async () => {          // stop accepting new requests
+    await db.disconnect();            // close DB connections
+    process.exit(0);
+  });
+  // Force exit after 10s if cleanup takes too long
+  setTimeout(() => process.exit(1), 10_000);
+});
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Node cluster — the primary process distributes incoming connections across worker processes using round-robin (Linux) or OS-level load balancing (Windows)</div>
+						<div class="explain-item">Cluster vs Worker Threads — cluster forks separate processes (separate memory); workers share memory; cluster is for network servers, workers for CPU tasks</div>
+						<div class="explain-item">PM2 cluster mode — handles the clustering automatically; <code>-i max</code> or <code>instances: "max"</code> creates one process per logical CPU</div>
+						<div class="explain-item"><code>pm2 reload</code> — zero-downtime restart; workers are recycled one at a time so the app stays available during deployment</div>
+						<div class="explain-item">Graceful shutdown — PM2 sends <code>SIGTERM</code> before <code>SIGKILL</code>; handle it to finish in-flight requests before exiting</div>
+						<div class="explain-item"><code>pm2 startup</code> + <code>pm2 save</code> — generates and installs an OS init script so PM2 restarts your apps automatically after a server reboot</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using in-memory state (sessions, caches) in a clustered app — each worker has its own memory; use Redis for shared state</li>
+						<li class="note-item">Forgetting <code>pm2 save</code> after adding processes — they won't restart after a reboot</li>
+						<li class="note-item">Not handling <code>SIGTERM</code> — PM2 force-kills after timeout, dropping in-flight requests</li>
+						<li class="note-item">Running more instances than CPU cores — context-switching overhead reduces performance</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use PM2 over manual cluster code — it handles restarts, logs, monitoring, and zero-downtime reloads out of the box</li>
+						<li class="note-item">In containers (Docker/Kubernetes), run a single Node process per container — let the orchestrator handle scaling; PM2 cluster is for bare metal/VMs</li>
+						<li class="note-item">Use <code>pm2 monit</code> for a live dashboard showing CPU, RAM, and restarts per process — great for quick diagnostics</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Cluster — fork one worker per CPU; primary distributes connections; restart crashed workers</li>
+						<li class="note-item">PM2 — production process manager; cluster mode, logs, monitoring, zero-downtime reload</li>
+						<li class="note-item"><code>pm2 start -i max</code> · <code>pm2 reload</code> · <code>pm2 startup &amp;&amp; pm2 save</code></li>
+						<li class="note-item">Handle <code>SIGTERM</code> for graceful shutdown · use Redis for shared state across workers</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-94-node-child-process.html">Child Processes</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-96-node-crypto.html">Crypto &amp; Security</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

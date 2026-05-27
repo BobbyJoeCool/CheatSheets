@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 78: Async / Await</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s78">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 78</div>
+			<h1>Async / Await</h1>
+			<div class="sheet-desc">async · await · error handling · parallel patterns · top-level await · TS types</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Async / Await</h2>
+					<div class="description">
+						<code>async/await</code> is syntactic sugar over Promises — it makes asynchronous
+						code look and read like synchronous code. An <code>async</code> function always
+						returns a Promise. <code>await</code> pauses execution until the awaited Promise
+						settles, then unwraps the value. Errors from rejected Promises become thrown
+						exceptions that <code>try/catch</code> handles naturally. The key trap is
+						sequential vs parallel execution — <code>await</code>ing two independent
+						operations one after the other is slower than running them in parallel with
+						<code>Promise.all</code>.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Key Rules</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>async</code> functions always return a Promise</li>
+						<li class="note-item"><code>await</code> can only be used inside <code>async</code> functions (or top-level ESM)</li>
+						<li class="note-item">Awaiting a non-Promise value just returns it</li>
+						<li class="note-item">Rejected Promises become thrown errors</li>
+						<li class="note-item">Sequential <code>await</code> = serial; use <code>Promise.all</code> for parallel</li>
+						<li class="note-item">TS: <code>async fn(): Promise&lt;T&gt;</code> — return type is always <code>Promise&lt;T&gt;</code></li>
+						<li class="note-item">Top-level <code>await</code> works in ESM files (Node 14.8+)</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Async/Await Examples</h2>
+					<pre><code class="language-javascript">// ── Basic async function ──────────────────────────────────────
+async function getUser(id) {
+  const res  = await fetch(`/api/users/${id}`);
+  const user = await res.json();
+  return user;                       // implicitly wrapped in Promise
+}
+
+// Returns a Promise — both work:
+getUser(1).then(console.log);
+const user = await getUser(1);       // inside another async fn
+
+// ── Error handling ────────────────────────────────────────────
+async function fetchSafe(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error("Fetch failed:", err.message);
+    return null;
+  }
+}
+
+// ── Sequential (slow) vs parallel (fast) ─────────────────────
+// ✖ Sequential — total time = A + B + C
+async function sequential() {
+  const a = await fetchA();          // wait for A
+  const b = await fetchB();          // then wait for B
+  const c = await fetchC();          // then wait for C
+  return { a, b, c };
+}
+
+// ✔ Parallel — total time = max(A, B, C)
+async function parallel() {
+  const [a, b, c] = await Promise.all([fetchA(), fetchB(), fetchC()]);
+  return { a, b, c };
+}
+
+// ✔ Start all, await separately (same as Promise.all)
+async function parallelAlt() {
+  const pA = fetchA();               // start immediately (no await)
+  const pB = fetchB();
+  const pC = fetchC();
+  return { a: await pA, b: await pB, c: await pC };
+}
+
+// ── Async in loops ────────────────────────────────────────────
+// ✖ forEach doesn't await — all run concurrently (uncontrolled)
+items.forEach(async item => { await process(item); });
+
+// ✔ Sequential processing with for...of
+for (const item of items) {
+  await process(item);               // processes one at a time
+}
+
+// ✔ Parallel with concurrency control (process N at a time)
+const BATCH = 5;
+for (let i = 0; i < items.length; i += BATCH) {
+  await Promise.all(items.slice(i, i + BATCH).map(process));
+}
+
+// ── TypeScript: typed async functions ────────────────────────
+async function fetchUser(id: number): Promise&lt;User&gt; {
+  const res = await fetch(`/api/users/${id}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise&lt;User&gt;;
+}
+
+// Awaited utility type — get the resolved type
+type UserResult = Awaited&lt;ReturnType&lt;typeof fetchUser&gt;&gt;; // User
+
+// ── Top-level await (ESM only) ────────────────────────────────
+const config = await loadConfig();   // no async wrapper needed
+const db     = await connectDb(config.dbUrl);
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">An <code>async</code> function that <code>return</code>s a value wraps it in <code>Promise.resolve()</code>; throwing wraps in <code>Promise.reject()</code></div>
+						<div class="explain-item"><code>await</code> unwraps nested Promises — <code>await Promise.resolve(Promise.resolve(42))</code> yields <code>42</code></div>
+						<div class="explain-item">The sequential vs parallel trap — always ask: "do these operations depend on each other?" If not, use <code>Promise.all</code></div>
+						<div class="explain-item"><code>forEach</code> with async — the callback returns a Promise that <code>forEach</code> ignores; the loop finishes before any work completes</div>
+						<div class="explain-item">Batch processing — <code>Promise.all</code> with full array can overwhelm a server; batching limits concurrent requests to N at a time</div>
+						<div class="explain-item">TS <code>Awaited&lt;T&gt;</code> — unwraps <code>Promise&lt;Promise&lt;User&gt;&gt;</code> all the way to <code>User</code></div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Sequential <code>await</code> for independent operations — adds latency unnecessarily; use <code>Promise.all</code></li>
+						<li class="note-item">Using <code>async</code> in <code>forEach</code> — the loop doesn't wait; use <code>for...of</code> or <code>Promise.all(arr.map(async ...))</code></li>
+						<li class="note-item">Forgetting that unhandled async errors still crash/silently fail — always wrap in try/catch or attach .catch()</li>
+						<li class="note-item">Using top-level <code>await</code> in a CommonJS file — only works in ESM; throws a SyntaxError</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Start independent Promises before awaiting them: <code>const p1 = fetch(a); const p2 = fetch(b); await p1; await p2</code> — both run in parallel</li>
+						<li class="note-item">Use <code>for...of</code> with <code>await</code> for sequential processing where order matters</li>
+						<li class="note-item">Use <code>Promise.all(arr.map(async item =&gt; ...))</code> to map an array of async operations in parallel</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>async</code> always returns a Promise · <code>await</code> unwraps it · rejected Promises throw</li>
+						<li class="note-item">Sequential <code>await</code> = serial · <code>Promise.all([...])</code> = parallel</li>
+						<li class="note-item">Never use <code>async</code> in <code>forEach</code> — use <code>for...of</code> or <code>Promise.all(arr.map(...))</code></li>
+						<li class="note-item">Top-level <code>await</code> in ESM files — no async wrapper needed</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-77-promises.html">Promises</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-79-event-loop.html">Event Loop</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

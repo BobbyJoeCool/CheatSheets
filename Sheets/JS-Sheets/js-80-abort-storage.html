@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 80: AbortController &amp; Storage</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s80">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 80</div>
+			<h1>AbortController &amp; Storage</h1>
+			<div class="sheet-desc">AbortController · AbortSignal · localStorage · sessionStorage · IndexedDB intro</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: localStorage API table -->
+			<div class="row row-tables">
+				<section id="tbl-storage">
+					<h2 class="section-title">Web Storage API</h2>
+					<table>
+						<thead><tr><th>Method / Property</th><th>localStorage</th><th>sessionStorage</th></tr></thead>
+						<tbody>
+							<tr><td>.setItem(key, val)</td><td class="desc">Persist across sessions</td><td class="desc">Tab only — clears on close</td></tr>
+							<tr><td>.getItem(key)</td><td class="desc">Returns string | null</td><td class="desc">Returns string | null</td></tr>
+							<tr><td>.removeItem(key)</td><td class="desc">Delete one key</td><td class="desc">Delete one key</td></tr>
+							<tr><td>.clear()</td><td class="desc">Delete all keys</td><td class="desc">Delete all keys</td></tr>
+							<tr><td>.key(index)</td><td class="desc">Get key by index</td><td class="desc">Get key by index</td></tr>
+							<tr><td>.length</td><td class="desc">Number of keys</td><td class="desc">Number of keys</td></tr>
+							<tr><td>Capacity</td><td class="desc">~5–10 MB per origin</td><td class="desc">~5 MB per tab</td></tr>
+							<tr><td>Values</td><td class="desc">Strings only</td><td class="desc">Strings only</td></tr>
+						</tbody>
+					</table>
+				</section>
+				<section id="tbl-abort">
+					<h2 class="section-title">AbortController API</h2>
+					<table>
+						<thead><tr><th>API</th><th>Notes</th></tr></thead>
+						<tbody>
+							<tr><td>new AbortController()</td><td class="desc">Creates controller with a signal</td></tr>
+							<tr><td>controller.signal</td><td class="desc">AbortSignal — pass to fetch/listeners</td></tr>
+							<tr><td>controller.abort(reason?)</td><td class="desc">Cancel all operations using the signal</td></tr>
+							<tr><td>signal.aborted</td><td class="desc">boolean — true after abort()</td></tr>
+							<tr><td>signal.reason</td><td class="desc">The reason passed to abort()</td></tr>
+							<tr><td>AbortSignal.timeout(ms)</td><td class="desc">Static — signal that fires after ms (ES2022)</td></tr>
+							<tr><td>AbortSignal.any([...signals])</td><td class="desc">Fire when any signal aborts</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">AbortController &amp; Storage Examples</h2>
+					<pre><code class="language-javascript">// ── AbortController with fetch ────────────────────────────────
+const controller = new AbortController();
+
+// Cancel after 5 seconds
+const timeoutId = setTimeout(() => controller.abort("Timeout"), 5000);
+
+try {
+  const res = await fetch("/api/data", { signal: controller.signal });
+  clearTimeout(timeoutId);
+  return await res.json();
+} catch (err) {
+  if (err.name === "AbortError") console.warn("Request aborted:", err.message);
+  else throw err;
+}
+
+// ── AbortSignal.timeout — cleaner timeout ─────────────────────
+const res = await fetch("/api/data", {
+  signal: AbortSignal.timeout(5000),  // no manual cleanup needed
+});
+
+// ── Cancel on component unmount (React pattern) ───────────────
+useEffect(() => {
+  const controller = new AbortController();
+  fetchUser(id, { signal: controller.signal })
+    .then(setUser)
+    .catch(err =&gt; {
+      if (err.name !== "AbortError") setError(err);
+    });
+  return () =&gt; controller.abort();   // cleanup cancels in-flight request
+}, [id]);
+
+// ── localStorage — persist across sessions ────────────────────
+// Write
+localStorage.setItem("theme", "dark");
+localStorage.setItem("user", JSON.stringify({ id: 1, name: "Alice" }));
+
+// Read (always string | null)
+const theme = localStorage.getItem("theme");          // "dark"
+const raw   = localStorage.getItem("user");
+const user  = raw ? JSON.parse(raw) : null;           // parse back
+
+// Delete
+localStorage.removeItem("theme");
+localStorage.clear();                                  // delete everything
+
+// Iterate
+for (let i = 0; i &lt; localStorage.length; i++) {
+  const key = localStorage.key(i);
+  console.log(key, localStorage.getItem(key));
+}
+
+// ── sessionStorage — tab-only, clears on close ───────────────
+sessionStorage.setItem("draft", JSON.stringify(formData));
+const draft = JSON.parse(sessionStorage.getItem("draft") ?? "null");
+
+// ── Storage event — sync across tabs ─────────────────────────
+window.addEventListener("storage", (e) => {
+  if (e.key === "theme") {
+    applyTheme(e.newValue);   // other tabs changed the theme
+  }
+});
+
+// ── TypeScript: typed storage helper ─────────────────────────
+function getStorageItem&lt;T&gt;(key: string): T | null {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  try { return JSON.parse(raw) as T; }
+  catch { return null; }
+}
+const savedUser = getStorageItem&lt;User&gt;("user");
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>AbortController.abort(reason)</code> — the reason is available as <code>signal.reason</code> and as the error thrown to awaiting code</div>
+						<div class="explain-item"><code>AbortSignal.timeout(ms)</code> (ES2022) — creates a signal that automatically fires after ms; no manual <code>clearTimeout</code> needed</div>
+						<div class="explain-item">localStorage stores strings only — always <code>JSON.stringify</code> before writing and <code>JSON.parse</code> after reading non-string values</div>
+						<div class="explain-item"><code>localStorage.getItem()</code> returns <code>null</code> (not <code>undefined</code>) for missing keys — always check with <code>?? null</code> or an existence check</div>
+						<div class="explain-item">The <code>storage</code> event fires in other tabs/windows of the same origin, not the one that made the change — useful for cross-tab sync</div>
+						<div class="explain-item">localStorage is synchronous — avoid large reads/writes on the main thread; for large data use IndexedDB (async)</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Not handling <code>AbortError</code> separately — it gets logged as an unexpected error in generic catch blocks</li>
+						<li class="note-item">Storing objects in localStorage without <code>JSON.stringify</code> — gets stored as <code>"[object Object]"</code></li>
+						<li class="note-item">Not wrapping <code>JSON.parse</code> on localStorage reads in try/catch — corrupt data throws and crashes</li>
+						<li class="note-item">Storing sensitive data (tokens, passwords) in localStorage — accessible to any JS on the page (XSS risk)</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>AbortSignal.timeout(ms)</code> instead of manual <code>setTimeout + clearTimeout</code> — less code, auto-cleaned up</li>
+						<li class="note-item">Create a typed storage helper that handles JSON serialisation and parse errors — use it everywhere instead of raw localStorage calls</li>
+						<li class="note-item">Store auth tokens in <code>httpOnly</code> cookies, not localStorage — cookies are inaccessible to JavaScript and safe from XSS</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>AbortController</code> — cancel fetch requests, timeouts, React unmounts · handle <code>AbortError</code> separately</li>
+						<li class="note-item"><code>AbortSignal.timeout(ms)</code> — auto-aborting signal; no cleanup needed</li>
+						<li class="note-item"><code>localStorage</code> — persists · <code>sessionStorage</code> — tab-only · both store strings only</li>
+						<li class="note-item">Always JSON.stringify/parse · never store secrets · use <code>storage</code> event for cross-tab sync</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-79-event-loop.html">Event Loop</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-81-databases-sql.html">Databases — SQL</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JSON — 07: JSON in APIs &amp; HTTP</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/json-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s07">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 07</div>
+			<h1>JSON in APIs &amp; HTTP</h1>
+			<div class="sheet-desc">REST conventions · headers · request/response · pagination · error patterns</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">JSON as the API Wire Format</h2>
+					<div class="description">
+						JSON is the <em>de-facto</em> wire format for REST and most HTTP APIs. The client signals it is sending
+						JSON with <code>Content-Type: application/json</code> and requests JSON back with
+						<code>Accept: application/json</code>. Well-designed APIs return consistent envelope shapes —
+						a data wrapper for success responses and a structured error object for failures — so clients can
+						handle both cases with the same parsing logic.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">HTTP Header Rules</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>Content-Type: application/json</code> — set on any request body you send</li>
+						<li class="note-item"><code>Accept: application/json</code> — tells the server what format you want back</li>
+						<li class="note-item"><code>Content-Type: application/json; charset=utf-8</code> — explicit encoding (usually redundant)</li>
+						<li class="note-item">GET requests never have a body — pass data in query params, not JSON</li>
+						<li class="note-item">201 Created should return the newly created resource in the body</li>
+						<li class="note-item">204 No Content returns an empty body — don't try to parse it</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Common API JSON Shapes</h2>
+					<pre><code class="language-json">// ── Success: single resource ──────────────────────────────────
+{
+  "data": { "id": 1, "name": "Alice", "email": "alice@example.com" }
+}
+
+// ── Success: collection with pagination ───────────────────────
+{
+  "data": [
+    { "id": 1, "name": "Alice" },
+    { "id": 2, "name": "Bob" }
+  ],
+  "meta": {
+    "total": 200,
+    "page": 1,
+    "per_page": 20,
+    "next": "/users?page=2"
+  }
+}
+
+// ── Error response (RFC 7807 Problem Details) ─────────────────
+{
+  "type":   "https://example.com/errors/validation",
+  "title":  "Validation Failed",
+  "status": 422,
+  "detail": "The 'email' field is not a valid address.",
+  "errors": [
+    { "field": "email", "message": "Invalid format" }
+  ]
+}
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>"data"</code> envelope — wrapping the payload lets you add metadata later without breaking clients</div>
+						<div class="explain-item"><code>"meta"</code> block — pagination, counts, and cursor values live here, not inside <code>data</code></div>
+						<div class="explain-item"><code>"next"</code> cursor — cursor-based pagination is safer than page numbers for live data</div>
+						<div class="explain-item">RFC 7807 error shape — <code>type</code>, <code>title</code>, <code>status</code>, <code>detail</code> are the standard fields</div>
+						<div class="explain-item"><code>"errors"</code> array — per-field validation errors alongside the top-level error message</div>
+						<div class="explain-item">Always return JSON error bodies even on 4xx/5xx — never let plain-text stack traces leak</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Two tables -->
+			<div class="row row-tables">
+				<section id="tbl-methods">
+					<h2 class="section-title">HTTP Methods &amp; JSON Body Rules</h2>
+					<table>
+						<thead>
+							<tr><th>Method</th><th>Has Body?</th><th>Typical JSON Use</th></tr>
+						</thead>
+						<tbody>
+							<tr><td>GET</td><td class="desc">No</td><td class="desc">Returns resource or collection in response</td></tr>
+							<tr><td>POST</td><td class="desc">Yes</td><td class="desc">Create; send new resource data in body</td></tr>
+							<tr><td>PUT</td><td class="desc">Yes</td><td class="desc">Full replace; send complete resource</td></tr>
+							<tr><td>PATCH</td><td class="desc">Yes</td><td class="desc">Partial update; send only changed fields</td></tr>
+							<tr><td>DELETE</td><td class="desc">Rarely</td><td class="desc">Usually no body; 204 or deleted resource back</td></tr>
+						</tbody>
+					</table>
+				</section>
+
+				<section id="tbl-status">
+					<h2 class="section-title">Common Status Codes &amp; JSON Body</h2>
+					<table>
+						<thead>
+							<tr><th>Code</th><th>Meaning</th><th>Body</th></tr>
+						</thead>
+						<tbody>
+							<tr><td>200</td><td class="desc">OK</td><td class="desc">Requested data</td></tr>
+							<tr><td>201</td><td class="desc">Created</td><td class="desc">New resource</td></tr>
+							<tr><td>204</td><td class="desc">No Content</td><td class="desc">Empty — do not parse</td></tr>
+							<tr><td>400</td><td class="desc">Bad Request</td><td class="desc">Error + validation details</td></tr>
+							<tr><td>401</td><td class="desc">Unauthorized</td><td class="desc">Auth error message</td></tr>
+							<tr><td>403</td><td class="desc">Forbidden</td><td class="desc">Permission error</td></tr>
+							<tr><td>404</td><td class="desc">Not Found</td><td class="desc">Error message</td></tr>
+							<tr><td>422</td><td class="desc">Unprocessable</td><td class="desc">Validation errors array</td></tr>
+							<tr><td>429</td><td class="desc">Rate Limited</td><td class="desc">Retry-After info</td></tr>
+							<tr><td>500</td><td class="desc">Server Error</td><td class="desc">Generic error — no internals</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 4: Footer trio -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Returning a 200 status with an error message in the body — use the correct 4xx/5xx code</li>
+						<li class="note-item">Forgetting <code>Content-Type: application/json</code> on POST/PUT — server may reject or misparse the body</li>
+						<li class="note-item">Trying to parse a 204 No Content response body — it is empty by definition</li>
+						<li class="note-item">Exposing stack traces or internal error messages in 500 responses</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Always check the HTTP status code before parsing the body — don't assume success</li>
+						<li class="note-item">Adopt RFC 7807 Problem Details for error responses — it's becoming the industry standard</li>
+						<li class="note-item">Use cursor-based pagination (<code>"next_cursor"</code>) instead of page numbers for stable, live data sets</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Set <code>Content-Type: application/json</code> on every request with a body</li>
+						<li class="note-item">Wrap responses in a <code>data</code> envelope to allow adding <code>meta</code> later</li>
+						<li class="note-item">Use RFC 7807 for consistent, machine-readable error responses</li>
+						<li class="note-item">Check HTTP status code first — never trust a 200 blindly</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="json-06-paths.html">JSONPath &amp; Querying</a>
+				<a class="nav-toc" href="index.html">JSON Reference · 8 Sheets</a>
+				<a class="nav-link next" href="json-08-advanced.html">Advanced &amp; Related Formats</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+
+	</body>
+</html>

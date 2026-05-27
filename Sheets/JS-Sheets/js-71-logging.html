@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 71: Logging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s71">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 71</div>
+			<h1>Logging</h1>
+			<div class="sheet-desc">Log levels · structured logging · pino · winston · child loggers · production patterns</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Log levels table | When to use -->
+			<div class="row row-tables">
+				<section id="tbl-levels">
+					<h2 class="section-title">Log Levels (low → high severity)</h2>
+					<table>
+						<thead><tr><th>Level</th><th>Numeric</th><th>Use For</th></tr></thead>
+						<tbody>
+							<tr><td>trace</td><td class="desc">10</td><td class="desc">Very detailed debug — function entry/exit, loop steps</td></tr>
+							<tr><td>debug</td><td class="desc">20</td><td class="desc">Debug info — variable values, logic branches</td></tr>
+							<tr><td>info</td><td class="desc">30</td><td class="desc">Normal operation — server started, request received</td></tr>
+							<tr><td>warn</td><td class="desc">40</td><td class="desc">Unexpected but recoverable — deprecated API, retrying</td></tr>
+							<tr><td>error</td><td class="desc">50</td><td class="desc">Operation failed — caught exception, 5xx response</td></tr>
+							<tr><td>fatal</td><td class="desc">60</td><td class="desc">Process is about to crash — unrecoverable error</td></tr>
+						</tbody>
+					</table>
+				</section>
+				<section id="tbl-pino-winston">
+					<h2 class="section-title">pino vs winston</h2>
+					<table>
+						<thead><tr><th>Feature</th><th>pino</th><th>winston</th></tr></thead>
+						<tbody>
+							<tr><td>Performance</td><td class="desc">Fastest Node logger</td><td class="desc">Slower (more features)</td></tr>
+							<tr><td>Output format</td><td class="desc">JSON by default</td><td class="desc">Configurable transports</td></tr>
+							<tr><td>Transports</td><td class="desc">pino-pretty, pino/file</td><td class="desc">Console, file, HTTP, DB…</td></tr>
+							<tr><td>Child loggers</td><td class="desc center">✔</td><td class="desc center">✔</td></tr>
+							<tr><td>Best for</td><td class="desc">High-throughput APIs</td><td class="desc">Flexible multi-transport</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Logging Examples</h2>
+					<pre><code class="language-javascript">// ── pino — fast structured logger ────────────────────────────
+// npm install pino pino-pretty
+import pino from "pino";
+
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  transport: process.env.NODE_ENV !== "production"
+    ? { target: "pino-pretty" }   // human-readable in dev
+    : undefined,                  // raw JSON in production
+});
+
+logger.info("Server started");
+// {"level":30,"time":1705312200000,"msg":"Server started"}
+
+logger.info({ userId: 42, action: "login" }, "User logged in");
+// {"level":30,"userId":42,"action":"login","msg":"User logged in"}
+
+logger.warn({ retries: 3 }, "DB connection slow, retrying");
+logger.error({ err, requestId }, "Failed to process request");
+
+// ── Child logger — add context to all subsequent logs ─────────
+const reqLogger = logger.child({ requestId: "abc-123", userId: 42 });
+reqLogger.info("Processing order");
+// {"requestId":"abc-123","userId":42,"msg":"Processing order"}
+reqLogger.error({ err }, "Order failed");
+// requestId and userId automatically included
+
+// ── winston ───────────────────────────────────────────────────
+// npm install winston
+import winston from "winston";
+
+const wlog = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.simple(),    // human-readable console
+    }),
+    new winston.transports.File({
+      filename: "logs/error.log",
+      level: "error",                     // only errors go here
+    }),
+    new winston.transports.File({
+      filename: "logs/combined.log",       // all levels here
+    }),
+  ],
+});
+
+wlog.info("Server started", { port: 3000 });
+wlog.error("Unhandled exception", { err: error.message });
+
+// ── Structured logging best practices ─────────────────────────
+// ✔ always include context as object fields
+logger.info({ userId, orderId, amount }, "Payment processed");
+
+// ✖ avoid string interpolation — can't be queried in log systems
+logger.info(`Payment ${orderId} processed for user ${userId}`);
+
+// ── Express/Fastify middleware ─────────────────────────────────
+app.use((req, res, next) => {
+  req.log = logger.child({ requestId: crypto.randomUUID() });
+  req.log.info({ method: req.method, url: req.url }, "Incoming request");
+  next();
+});
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Structured logging (JSON) — machine-readable; fields can be queried/filtered by log aggregators (Datadog, Splunk, Loki)</div>
+						<div class="explain-item">Child loggers — inherit the parent's config and add fixed context fields to every log line; use one per request for request-scoped context</div>
+						<div class="explain-item"><code>pino-pretty</code> — transforms JSON logs to human-readable coloured output; only use in development, never in production</div>
+						<div class="explain-item">Log level via environment variable — <code>LOG_LEVEL=debug</code> enables verbose logging in staging without code changes</div>
+						<div class="explain-item">Never log sensitive data — passwords, tokens, credit card numbers, PII; use allow-lists of safe fields rather than blocking specific ones</div>
+						<div class="explain-item">Always log errors with the full error object, not just <code>error.message</code> — stack traces are essential for debugging production issues</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using <code>console.log</code> in production — no log levels, no structured output, no transport control</li>
+						<li class="note-item">String-interpolating log messages — <code>"User ${id} failed"</code> can't be aggregated or queried; use object fields instead</li>
+						<li class="note-item">Using <code>pino-pretty</code> in production — adds significant overhead; use raw JSON and pretty-print in your terminal with <code>| pino-pretty</code></li>
+						<li class="note-item">Logging sensitive data — passwords, tokens, or PII in logs creates security and compliance issues</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Create a request-scoped child logger in middleware — every log line for a request automatically includes <code>requestId</code> for correlation</li>
+						<li class="note-item">Set <code>level: "warn"</code> in production — info-level logs are high-volume; only emit them in staging for debugging</li>
+						<li class="note-item">Use pino for high-throughput APIs — it is ~10× faster than winston by avoiding synchronous serialisation</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Levels: <code>trace → debug → info → warn → error → fatal</code></li>
+						<li class="note-item">pino — fastest, JSON-first, great for APIs · winston — flexible multi-transport</li>
+						<li class="note-item">Structured logging — pass context as an object, not a string · queryable in log aggregators</li>
+						<li class="note-item">Child loggers — add request/user context to all logs automatically</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-70-testing-advanced.html">Testing — Mocks &amp; TS</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-72-env-config.html">Environment &amp; Config</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

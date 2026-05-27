@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 72: Environment &amp; Config</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s72">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 72</div>
+			<h1>Environment &amp; Config</h1>
+			<div class="sheet-desc">dotenv · process.env · .env files · validation · TS typed config · secrets</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | .env conventions -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Environment Variables &amp; Config</h2>
+					<div class="description">
+						Environment variables are the standard way to configure applications across
+						environments without hardcoding values in source code. <code>dotenv</code> loads
+						a <code>.env</code> file into <code>process.env</code> at startup — ideal for
+						local development. In production, variables are injected by the hosting platform
+						(Heroku, Vercel, AWS, Kubernetes). <strong>Never commit <code>.env</code> files
+						to version control</strong> — use <code>.env.example</code> with placeholder
+						values as documentation. TypeScript users should validate and type-cast
+						<code>process.env</code> at startup using <code>zod</code> or a manual check,
+						since all env values are <code>string | undefined</code>.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">.env File Conventions</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>.env</code> — local dev values; <strong>never commit</strong></li>
+						<li class="note-item"><code>.env.example</code> — placeholder template; commit this</li>
+						<li class="note-item"><code>.env.local</code> — personal overrides; never commit</li>
+						<li class="note-item"><code>.env.production</code> — prod defaults (no secrets)</li>
+						<li class="note-item"><code>.env.test</code> — test environment values</li>
+						<li class="note-item">All values are strings — convert numbers/booleans explicitly</li>
+						<li class="note-item">Comments start with <code>#</code></li>
+						<li class="note-item">No spaces around <code>=</code>: <code>KEY=value</code></li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Config Examples</h2>
+					<pre><code class="language-javascript">// ── .env file ─────────────────────────────────────────────────
+// DATABASE_URL=postgres://user:pass@localhost:5432/mydb
+// PORT=3000
+// API_KEY=secret-key-here
+// DEBUG=true
+// NODE_ENV=development
+
+// ── dotenv — load .env into process.env ───────────────────────
+// npm install dotenv
+import "dotenv/config";              // auto-load .env (ESM)
+// OR: import dotenv from "dotenv"; dotenv.config();
+
+// Call before any other imports that need env vars
+const port = Number(process.env.PORT ?? 3000);
+const debug = process.env.DEBUG === "true"; // explicit boolean parse
+
+// ── Node 20.6+ built-in .env loading ─────────────────────────
+// node --env-file=.env src/index.js   (no dotenv needed!)
+
+// ── Manual typed config object ────────────────────────────────
+function getConfig() {
+  const required = ["DATABASE_URL", "API_KEY"];
+  for (const key of required) {
+    if (!process.env[key]) {
+      throw new Error(`Missing required env var: ${key}`);
+    }
+  }
+  return {
+    port:        Number(process.env.PORT ?? 3000),
+    databaseUrl: process.env.DATABASE_URL,
+    apiKey:      process.env.API_KEY,
+    debug:       process.env.DEBUG === "true",
+    nodeEnv:     process.env.NODE_ENV ?? "development",
+  };
+}
+export const config = getConfig(); // run at startup; fails fast
+
+// ── Zod-validated config (TypeScript) ────────────────────────
+// npm install zod dotenv
+import { z } from "zod";
+import "dotenv/config";
+
+const envSchema = z.object({
+  PORT:         z.coerce.number().default(3000),  // coerce string→number
+  DATABASE_URL: z.string().url(),
+  API_KEY:      z.string().min(1),
+  DEBUG:        z.coerce.boolean().default(false),
+  NODE_ENV:     z.enum(["development","test","production"])
+                 .default("development"),
+});
+
+const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+  console.error("Invalid env vars:", parsed.error.flatten().fieldErrors);
+  process.exit(1);
+}
+export const env = parsed.data;
+// env.PORT is number, env.DEBUG is boolean — fully typed!
+
+// ── Accessing config throughout the app ──────────────────────
+// Import the validated config object, never process.env directly
+import { env } from "./config.js";
+const server = app.listen(env.PORT);
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">All <code>process.env</code> values are <code>string | undefined</code> — always convert numbers with <code>Number()</code> and booleans with <code>=== "true"</code></div>
+						<div class="explain-item">Validate at startup with a fail-fast check — better to crash immediately with a clear error than to fail mysteriously at runtime when a config value is used</div>
+						<div class="explain-item">Zod <code>z.coerce.number()</code> — automatically converts the string <code>"3000"</code> to the number <code>3000</code>; avoids manual conversion</div>
+						<div class="explain-item">Import a typed config object in application code — never access <code>process.env.MY_VAR</code> directly throughout the codebase; centralise it</div>
+						<div class="explain-item"><code>dotenv/config</code> (auto-load) must be imported before anything that reads <code>process.env</code> — put it first in your entry point</div>
+						<div class="explain-item">Node 20.6+ has built-in <code>--env-file</code> flag — no dotenv dependency needed for simple cases</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Committing <code>.env</code> to version control — exposes secrets; add it to <code>.gitignore</code> immediately</li>
+						<li class="note-item">Treating env vars as booleans directly: <code>if (process.env.DEBUG)</code> — an unset var is <code>undefined</code> (falsy) but the string <code>"false"</code> is truthy</li>
+						<li class="note-item">Scattering <code>process.env</code> access throughout the codebase — centralise in one config file so validation happens once</li>
+						<li class="note-item">Putting secrets in <code>.env.example</code> — it's committed; use placeholder values like <code>API_KEY=your-key-here</code></li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use zod to validate and type <code>process.env</code> at startup — one schema, full type safety, clear error messages</li>
+						<li class="note-item">Add <code>.env</code> to <code>.gitignore</code> on day one — recovering from accidentally committed secrets is painful</li>
+						<li class="note-item">Use a secret manager (AWS Secrets Manager, Vault, Doppler) in production — environment variables are fine for non-sensitive config, not for rotating secrets</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>dotenv</code> loads <code>.env</code> into <code>process.env</code>; Node 20.6+ has <code>--env-file</code> built-in</li>
+						<li class="note-item">All env values are strings — convert numbers and booleans explicitly</li>
+						<li class="note-item">Validate at startup with zod or manual checks — fail fast on missing config</li>
+						<li class="note-item">Never commit <code>.env</code> · commit <code>.env.example</code> with placeholder values</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-71-logging.html">Logging</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-73-fetch-api.html">Fetch API</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

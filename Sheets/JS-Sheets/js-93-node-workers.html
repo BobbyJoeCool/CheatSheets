@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 93: Worker Threads</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s93">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 93</div>
+			<h1>Worker Threads</h1>
+			<div class="sheet-desc">Worker · parentPort · workerData · message passing · SharedArrayBuffer · CPU work</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Worker Threads</h2>
+					<div class="description">
+						Node.js is single-threaded — CPU-intensive work blocks the event loop and stalls
+						all concurrent requests. <strong>Worker threads</strong> run JavaScript in a
+						separate V8 instance with its own event loop, allowing true parallelism on
+						multi-core machines. Workers share memory address space (unlike child processes)
+						and can exchange data via message passing or <code>SharedArrayBuffer</code> for
+						zero-copy transfer. Use workers for: image processing, cryptography, data
+						transformation, compression, and any task that keeps the CPU busy for
+						more than a few milliseconds.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Key APIs</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>new Worker(filename, { workerData })</code> — spawn worker</li>
+						<li class="note-item"><code>worker.postMessage(data)</code> — send data to worker</li>
+						<li class="note-item"><code>worker.on("message", cb)</code> — receive from worker</li>
+						<li class="note-item"><code>worker.on("error", cb)</code> — worker threw an error</li>
+						<li class="note-item"><code>worker.terminate()</code> — stop worker immediately</li>
+						<li class="note-item"><code>parentPort.postMessage(data)</code> — worker → main</li>
+						<li class="note-item"><code>workerData</code> — initial data passed at spawn time</li>
+						<li class="note-item"><code>isMainThread</code> — true if not in a worker</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Worker Thread Examples</h2>
+					<pre><code class="language-javascript">// ── worker.js — runs in the worker thread ─────────────────────
+import { parentPort, workerData } from "worker_threads";
+
+function heavyComputation(n) {
+  let result = 0;
+  for (let i = 0; i < n; i++) result += Math.sqrt(i);
+  return result;
+}
+
+const result = heavyComputation(workerData.iterations);
+parentPort.postMessage({ result });
+
+// ── main.js — spawns the worker ───────────────────────────────
+import { Worker } from "worker_threads";
+import { fileURLToPath } from "url";
+import path from "path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function runWorker(workerData) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      path.join(__dirname, "worker.js"),
+      { workerData }
+    );
+    worker.on("message", resolve);
+    worker.on("error",   reject);
+    worker.on("exit", code =&gt; {
+      if (code !== 0) reject(new Error(`Worker exited: ${code}`));
+    });
+  });
+}
+
+const { result } = await runWorker({ iterations: 1_000_000 });
+console.log("Result:", result);
+
+// ── Two-way messaging ─────────────────────────────────────────
+// worker.js
+import { parentPort } from "worker_threads";
+parentPort.on("message", ({ task, data }) => {
+  if (task === "process") {
+    const output = data.map(n => n * 2);
+    parentPort.postMessage({ task, output });
+  }
+});
+
+// main.js
+const worker = new Worker("./worker.js");
+worker.postMessage({ task: "process", data: [1, 2, 3] });
+worker.on("message", ({ output }) => console.log(output)); // [2, 4, 6]
+
+// ── Worker pool — reuse workers ───────────────────────────────
+class WorkerPool {
+  #workers = [];
+  #queue   = [];
+
+  constructor(filename, size = 4) {
+    for (let i = 0; i < size; i++) {
+      const w = new Worker(filename);
+      w.on("message", (result) => {
+        const { resolve } = w._task;
+        w._task = null;
+        this.#idle(w);
+        resolve(result);
+      });
+      w.on("error", (err) => { w._task?.reject(err); });
+      this.#workers.push(w);
+    }
+  }
+
+  run(data) {
+    return new Promise((resolve, reject) => {
+      const free = this.#workers.find(w =&gt; !w._task);
+      if (free) { this.#dispatch(free, data, resolve, reject); }
+      else       { this.#queue.push({ data, resolve, reject }); }
+    });
+  }
+
+  #dispatch(w, data, resolve, reject) {
+    w._task = { resolve, reject };
+    w.postMessage(data);
+  }
+
+  #idle(w) {
+    const next = this.#queue.shift();
+    if (next) this.#dispatch(w, next.data, next.resolve, next.reject);
+  }
+}
+
+// ── SharedArrayBuffer — zero-copy shared memory ───────────────
+const shared  = new SharedArrayBuffer(4);
+const counter = new Int32Array(shared);
+
+const w = new Worker("./counter-worker.js", {
+  workerData: { shared }
+});
+// Both main and worker share the same memory buffer
+Atomics.add(counter, 0, 1);       // thread-safe increment
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Workers start their own V8 instance — startup cost (~10ms) means they're best for long-running tasks, not tiny computations</div>
+						<div class="explain-item">Message passing uses the <strong>structured clone algorithm</strong> — copies data (including Maps, Sets, Dates); use <code>transferList</code> for zero-copy transfer of ArrayBuffers</div>
+						<div class="explain-item">Worker pool — spawning a new worker per task is wasteful; a pool of N workers (N ≈ CPU count) processes tasks from a queue efficiently</div>
+						<div class="explain-item"><code>SharedArrayBuffer</code> — both threads access the same memory; always use <code>Atomics</code> for thread-safe reads/writes to avoid data races</div>
+						<div class="explain-item"><code>workerData</code> is passed at creation time and is immutable from the worker's perspective — use <code>postMessage</code> for dynamic data exchange</div>
+						<div class="explain-item">Use <code>os.cpus().length</code> to determine pool size — match workers to available CPU cores</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Spawning a new Worker for every request — the startup cost negates the benefit; use a pool</li>
+						<li class="note-item">Not handling <code>"error"</code> and <code>"exit"</code> events — failed workers leak resources silently</li>
+						<li class="note-item">Using <code>SharedArrayBuffer</code> without <code>Atomics</code> — race conditions produce unpredictable results</li>
+						<li class="note-item">Using workers for I/O-bound tasks — workers help CPU-bound work only; I/O is already async via the event loop</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>os.cpus().length</code> for pool size — one worker per logical CPU core is the standard starting point</li>
+						<li class="note-item">Transfer ArrayBuffers instead of copying: <code>worker.postMessage(buffer, [buffer])</code> — zero-copy, the main thread loses access</li>
+						<li class="note-item">Consider <code>piscina</code> (npm) — a battle-tested worker pool implementation with TypeScript support; saves writing your own pool</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Workers run JS in parallel threads — use for CPU-bound work that blocks the event loop</li>
+						<li class="note-item"><code>workerData</code> — initial data · <code>postMessage</code> — two-way messaging · structured clone copies data</li>
+						<li class="note-item">Worker pool — reuse N workers (N = CPU count) for a queue of tasks</li>
+						<li class="note-item"><code>SharedArrayBuffer</code> + <code>Atomics</code> — zero-copy shared memory with thread safety</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-92-node-events.html">EventEmitter</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-94-node-child-process.html">Child Processes</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

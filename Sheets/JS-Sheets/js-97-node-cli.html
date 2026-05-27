@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 97: Building CLIs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s97">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 97</div>
+			<h1>Building CLIs</h1>
+			<div class="sheet-desc">commander · argv · options · subcommands · chalk · ora · stdin · shebang</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | CLI toolkit -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Command-Line Tools in Node</h2>
+					<div class="description">
+						Node is an excellent platform for CLI tools — it has great file system access,
+						the npm ecosystem, and TypeScript support. A CLI entry point needs a
+						<strong>shebang</strong> line and executable permission. <strong>Commander.js</strong>
+						is the most popular argument parsing library, handling subcommands, options, help
+						text, and validation. <strong>Chalk</strong> adds ANSI colour to terminal output.
+						<strong>Ora</strong> provides elegant spinners for long-running operations.
+						<strong>Inquirer</strong> (covered in Sheet 20) handles interactive prompts.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">CLI Toolkit</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>commander</code> — argument parsing, subcommands, help</li>
+						<li class="note-item"><code>chalk</code> — terminal colour and styling</li>
+						<li class="note-item"><code>ora</code> — loading spinners</li>
+						<li class="note-item"><code>@inquirer/prompts</code> — interactive prompts (Sheet 20)</li>
+						<li class="note-item"><code>cli-table3</code> — formatted tables in terminal</li>
+						<li class="note-item"><code>boxen</code> — boxed messages</li>
+						<li class="note-item"><code>figures</code> — cross-platform Unicode symbols</li>
+						<li class="note-item"><code>tsup</code> / <code>esbuild</code> — bundle TS CLI to single JS file</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">CLI Examples</h2>
+					<pre><code class="language-javascript">#!/usr/bin/env node
+// ^ shebang — tells the OS to run this file with node
+
+// npm install commander chalk ora
+
+import { Command } from "commander";
+import chalk       from "chalk";
+import ora         from "ora";
+import { readFile, writeFile } from "fs/promises";
+
+const program = new Command();
+
+// ── Program metadata ──────────────────────────────────────────
+program
+  .name("mytool")
+  .description("A sample CLI tool")
+  .version("1.0.0");             // adds --version flag automatically
+
+// ── Simple command ────────────────────────────────────────────
+program
+  .command("greet &lt;name&gt;")       // &lt;&gt; = required arg
+  .description("Greet someone")
+  .option("-l, --loud",  "shout the greeting")
+  .option("-t, --times &lt;n&gt;", "how many times", "1")  // default "1"
+  .action((name, options) => {
+    const msg = `Hello, ${name}!`;
+    const out = options.loud ? msg.toUpperCase() : msg;
+    for (let i = 0; i &lt; Number(options.times); i++) {
+      console.log(chalk.green(out));
+    }
+  });
+
+// ── Command with async action ─────────────────────────────────
+program
+  .command("convert &lt;input&gt; [output]") // [] = optional arg
+  .description("Convert a JSON file")
+  .option("-p, --pretty", "pretty print output")
+  .action(async (input, output = "output.json", options) => {
+    const spinner = ora(`Reading ${input}`).start();
+    try {
+      const raw  = await readFile(input, "utf8");
+      const data = JSON.parse(raw);
+      spinner.text = "Writing output";
+      const str  = options.pretty
+        ? JSON.stringify(data, null, 2)
+        : JSON.stringify(data);
+      await writeFile(output, str);
+      spinner.succeed(chalk.green(`Done → ${output}`));
+    } catch (err) {
+      spinner.fail(chalk.red(`Error: ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+// ── Global options ────────────────────────────────────────────
+program
+  .option("-v, --verbose", "enable verbose output")
+  .hook("preAction", (cmd) => {
+    if (cmd.opts().verbose) console.log(chalk.dim("Verbose mode on"));
+  });
+
+// ── Subcommands from separate files ──────────────────────────
+program.addCommand((await import("./commands/deploy.js")).default);
+
+// ── Parse argv ───────────────────────────────────────────────
+program.parse(process.argv);      // must be last
+
+// ── Chalk colour examples ─────────────────────────────────────
+console.log(chalk.blue("Info message"));
+console.log(chalk.yellow.bold("Warning!"));
+console.log(chalk.red("Error: something failed"));
+console.log(chalk.green("✔ Success"));
+console.log(chalk.dim("# comment-style text"));
+console.log(chalk.bgBlue.white(" HEADER "));
+
+// ── Ora spinner ───────────────────────────────────────────────
+const spinner2 = ora("Fetching data...").start();
+await fetchData();
+spinner2.succeed("Data loaded");   // green ✔
+// or: spinner.fail("Failed")      // red ✖
+// or: spinner.warn("Slow")        // yellow ⚠
+
+// ── package.json: expose as a binary ─────────────────────────
+// "bin": { "mytool": "./dist/cli.js" }
+// npm link  → makes 'mytool' available globally in dev
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Shebang <code>#!/usr/bin/env node</code> — first line of the entry file; makes the script executable directly without <code>node</code> prefix; also run <code>chmod +x cli.js</code></div>
+						<div class="explain-item">Commander <code>&lt;arg&gt;</code> — required; <code>[arg]</code> — optional; <code>...args</code> — variadic (rest); arguments come before options in the action callback</div>
+						<div class="explain-item">Option values — <code>-t, --times &lt;n&gt;</code> accepts a value; the third argument is the default; option values are always strings — convert with <code>Number()</code></div>
+						<div class="explain-item">Spinner pattern — start before async work, call <code>.succeed()</code> or <code>.fail()</code> after; keeps the terminal responsive while work happens</div>
+						<div class="explain-item"><code>process.exit(1)</code> in error paths — signals failure to shell scripts and CI; exit 0 is success, non-zero is failure</div>
+						<div class="explain-item">The <code>"bin"</code> field in <code>package.json</code> — maps command names to entry files; <code>npm link</code> installs globally in dev; <code>npm publish</code> makes it available via <code>npx</code></div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Forgetting the shebang line — the script runs with <code>node file.js</code> but not as <code>./file.js</code> directly</li>
+						<li class="note-item">Not calling <code>process.exit(1)</code> on error — the script exits 0 even on failure; CI considers it a success</li>
+						<li class="note-item">Assuming chalk colours are always enabled — they're disabled when stdout is piped; use <code>chalk.level</code> check or <code>--no-color</code> support</li>
+						<li class="note-item">Leaving <code>ora</code> spinner running on error — always call <code>spinner.fail()</code> or <code>spinner.stop()</code> in catch blocks</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>tsup</code> to bundle your TypeScript CLI — produces a single <code>dist/cli.js</code> with no runtime dependencies needed for distribution</li>
+						<li class="note-item">Use <code>npm link</code> during development — makes your CLI available globally without publishing; <code>npm unlink</code> to remove</li>
+						<li class="note-item">Add a <code>--json</code> flag for machine-readable output — makes your CLI composable with other tools and scriptable in CI</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Shebang + <code>"bin"</code> in package.json + <code>chmod +x</code> — makes a Node script into a CLI command</li>
+						<li class="note-item">Commander — argument parsing, options, subcommands, auto-help</li>
+						<li class="note-item">Chalk — terminal colour · Ora — spinners · Inquirer — interactive prompts</li>
+						<li class="note-item"><code>process.exit(1)</code> on error · bundle with <code>tsup</code> · test with <code>npm link</code></li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-96-node-crypto.html">Crypto &amp; Security</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<span class="nav-link next" style="visibility:hidden">·</span>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 26: Custom Errors &amp; TS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Custom Errors &amp; TypeScript</h1>
+			<div class="sheet-desc">Custom error classes · error chaining · TS typed catch · cause · Result pattern</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Custom Error Classes</h2>
+					<div class="description">
+						Extending the built-in <code>Error</code> class lets you create domain-specific error
+						types that can be distinguished with <code>instanceof</code> and carry additional
+						context. Custom errors are invaluable in larger codebases — a <code>ValidationError</code>
+						tells you immediately what went wrong without reading the message. ES2022 introduced
+						<strong>error chaining</strong> via the <code>cause</code> option, allowing you to
+						wrap a low-level error with higher-level context while preserving the original. In
+						TypeScript, <code>catch</code> variables are typed <code>unknown</code> (with
+						<code>strict: true</code>) — you must narrow the type before accessing
+						<code>.message</code> or other properties.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Key Points</h2>
+					<ul class="note-list">
+						<li class="note-item">Extend <code>Error</code> to create domain-specific error types</li>
+						<li class="note-item">Set <code>this.name</code> in constructor for correct <code>err.name</code></li>
+						<li class="note-item"><code>Error({ cause })</code> — chains errors (ES2022+)</li>
+						<li class="note-item">TS strict: catch var is <code>unknown</code>, not <code>any</code></li>
+						<li class="note-item">Narrow with <code>instanceof Error</code> before accessing <code>.message</code></li>
+						<li class="note-item">Result pattern — return <code>{ ok, value, error }</code> instead of throwing</li>
+						<li class="note-item">Custom errors are distinguishable with <code>instanceof</code></li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Custom Error &amp; TS Examples</h2>
+					<pre><code class="language-typescript">// ── Custom error class ────────────────────────────────────────
+class ValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly field: string  // extra context
+  ) {
+    super(message);
+    this.name = "ValidationError"; // important: set name
+  }
+}
+
+class NotFoundError extends Error {
+  constructor(public readonly resource: string, id: string | number) {
+    super(`${resource} with id "${id}" not found`);
+    this.name = "NotFoundError";
+  }
+}
+
+class NetworkError extends Error {
+  constructor(message: string, public readonly statusCode: number) {
+    super(message);
+    this.name = "NetworkError";
+  }
+}
+
+// Using custom errors
+function validateAge(age: number) {
+  if (age < 0 || age > 150) {
+    throw new ValidationError("Age out of valid range", "age");
+  }
+}
+
+try {
+  validateAge(-5);
+} catch (err) {
+  if (err instanceof ValidationError) {
+    console.error(`Invalid field "${err.field}":`, err.message);
+  } else {
+    throw err;
+  }
+}
+
+// ── Error chaining with cause (ES2022) ────────────────────────
+async function fetchUser(id: string) {
+  try {
+    const res = await fetch(`/api/users/${id}`);
+    return await res.json();
+  } catch (err) {
+    throw new NetworkError("Failed to fetch user", 503, { cause: err });
+    // err.cause preserves the original error
+  }
+}
+
+// Access the cause:
+try {
+  await fetchUser("123");
+} catch (err) {
+  if (err instanceof NetworkError) {
+    console.error("Status:", err.statusCode);
+    console.error("Caused by:", (err as any).cause);
+  }
+}
+
+// ── TypeScript: typing catch blocks ──────────────────────────
+// With strict: true, caught errors are `unknown`, not `any`
+try {
+  riskyOp();
+} catch (err: unknown) {
+  if (err instanceof Error) {
+    console.error(err.message);    // ✔ safe
+  } else {
+    console.error("Unknown error:", String(err));
+  }
+}
+
+// ── Result pattern — avoid throwing for expected failures ─────
+type Result&lt;T&gt; =
+  | { ok: true;  value: T }
+  | { ok: false; error: string };
+
+function parseNumber(input: string): Result&lt;number&gt; {
+  const n = Number(input);
+  if (isNaN(n)) return { ok: false, error: `"${input}" is not a number` };
+  return { ok: true, value: n };
+}
+
+const result = parseNumber("abc");
+if (!result.ok) {
+  console.error(result.error);     // "abc" is not a number
+} else {
+  console.log(result.value * 2);
+}
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Always set <code>this.name = "ClassName"</code> in the constructor — otherwise <code>err.name</code> shows <code>"Error"</code> instead of your class name</div>
+						<div class="explain-item"><code>cause</code> option — pass <code>{ cause: originalError }</code> to preserve the full error chain for debugging</div>
+						<div class="explain-item">TS strict catch is <code>unknown</code> — you cannot call <code>err.message</code> without narrowing first; use <code>instanceof Error</code></div>
+						<div class="explain-item">Custom errors work with <code>instanceof</code> across the whole codebase — much better than matching on <code>err.message</code> strings</div>
+						<div class="explain-item">Result pattern — avoids exceptions for <em>expected</em> failures (validation, parsing); exceptions are for <em>unexpected</em> failures</div>
+						<div class="explain-item">In Node.js 16+, <code>error.cause</code> is part of the spec; polyfill needed for older environments</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Forgetting <code>this.name = "ClassName"</code> — custom error shows as <code>"Error"</code> in logs</li>
+						<li class="note-item">Accessing <code>err.message</code> in TS without narrowing — <code>unknown</code> type has no properties</li>
+						<li class="note-item">Throwing custom errors without extending <code>Error</code> — breaks <code>instanceof</code> checks and stack traces</li>
+						<li class="note-item">Using exceptions for expected validation failures — use the Result pattern instead to keep control flow explicit</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Create an error hierarchy: <code>AppError → ValidationError, NotFoundError, NetworkError</code> — catch <code>AppError</code> at the top level</li>
+						<li class="note-item">Use the Result pattern for functions that can predictably fail — <code>parseX()</code>, <code>validateX()</code>, <code>lookupX()</code></li>
+						<li class="note-item">Log <code>err.cause</code> in your top-level error handler to always see the full chain of what went wrong</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Extend <code>Error</code> for custom types · always set <code>this.name</code> · add extra fields as needed</li>
+						<li class="note-item"><code>new Error("msg", { cause: err })</code> — chains errors for full context (ES2022)</li>
+						<li class="note-item">TS strict catch: <code>unknown</code> — narrow with <code>instanceof Error</code> before accessing properties</li>
+						<li class="note-item">Result pattern — return <code>{ ok, value/error }</code> for predictable failures; throw for unexpected ones</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-25-error-handling.html">Error Handling</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-27-destructuring.html">Destructuring</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

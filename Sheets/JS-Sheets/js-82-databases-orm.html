@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 82: Databases — ORMs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s82">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 82</div>
+			<h1>Databases — ORMs</h1>
+			<div class="sheet-desc">Prisma · Drizzle · schema · CRUD · migrations · type safety</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Prisma vs Drizzle -->
+			<div class="row row-tables">
+				<section id="tbl-prisma">
+					<h2 class="section-title">Prisma at a Glance</h2>
+					<table>
+						<thead><tr><th>Feature</th><th>Notes</th></tr></thead>
+						<tbody>
+							<tr><td>Schema</td><td class="desc"><code>schema.prisma</code> — its own DSL</td></tr>
+							<tr><td>Client</td><td class="desc">Auto-generated from schema</td></tr>
+							<tr><td>Migrations</td><td class="desc"><code>prisma migrate dev</code></td></tr>
+							<tr><td>Type safety</td><td class="desc">Full TS types from schema</td></tr>
+							<tr><td>Databases</td><td class="desc">Postgres, MySQL, SQLite, MongoDB, CockroachDB</td></tr>
+							<tr><td>Best for</td><td class="desc">Apps needing great DX and auto-gen types</td></tr>
+						</tbody>
+					</table>
+				</section>
+				<section id="tbl-drizzle">
+					<h2 class="section-title">Drizzle at a Glance</h2>
+					<table>
+						<thead><tr><th>Feature</th><th>Notes</th></tr></thead>
+						<tbody>
+							<tr><td>Schema</td><td class="desc">TypeScript file — schema IS the types</td></tr>
+							<tr><td>Client</td><td class="desc">Thin SQL wrapper; no code generation</td></tr>
+							<tr><td>Migrations</td><td class="desc"><code>drizzle-kit generate</code> + <code>migrate</code></td></tr>
+							<tr><td>Type safety</td><td class="desc">Full TS — inferred from schema definitions</td></tr>
+							<tr><td>Databases</td><td class="desc">Postgres, MySQL, SQLite, LibSQL/Turso</td></tr>
+							<tr><td>Best for</td><td class="desc">Edge runtimes, SQL-close APIs, small bundle</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Prisma &amp; Drizzle Examples</h2>
+					<pre><code class="language-typescript">// ═══════════════════════════════════════════════
+// PRISMA
+// ═══════════════════════════════════════════════
+// schema.prisma:
+// model User {
+//   id    Int    @id @default(autoincrement())
+//   name  String
+//   email String @unique
+//   posts Post[]
+// }
+
+// npm install @prisma/client
+// npx prisma migrate dev --name init
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
+
+// CRUD
+const user  = await prisma.user.findUnique({ where: { id: 1 } });
+const users = await prisma.user.findMany({
+  where:   { email: { contains: "@example.com" } },
+  orderBy: { name: "asc" },
+  take:    10, skip: 0,
+});
+const created = await prisma.user.create({
+  data: { name: "Alice", email: "alice@example.com" },
+});
+const updated = await prisma.user.update({
+  where: { id: 1 },
+  data:  { name: "Alice Updated" },
+});
+await prisma.user.delete({ where: { id: 1 } });
+
+// Relations
+const withPosts = await prisma.user.findUnique({
+  where:   { id: 1 },
+  include: { posts: true },
+});
+
+// Transaction
+await prisma.$transaction([
+  prisma.user.update({ where: { id: 1 }, data: { name: "A" } }),
+  prisma.post.create({ data: { title: "Hi", authorId: 1 } }),
+]);
+
+// ═══════════════════════════════════════════════
+// DRIZZLE
+// ═══════════════════════════════════════════════
+// schema.ts:
+// export const users = pgTable("users", {
+//   id:    serial("id").primaryKey(),
+//   name:  text("name").notNull(),
+//   email: text("email").unique().notNull(),
+// });
+
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import { users } from "./schema.js";
+import { eq, like } from "drizzle-orm";
+
+const pool2 = new Pool({ connectionString: process.env.DATABASE_URL });
+const db2   = drizzle(pool2);
+
+// CRUD
+const all    = await db2.select().from(users);
+const found  = await db2.select().from(users).where(eq(users.id, 1));
+const ins    = await db2.insert(users)
+  .values({ name: "Bob", email: "bob@example.com" })
+  .returning();
+await db2.update(users)
+  .set({ name: "Bob Updated" })
+  .where(eq(users.id, ins[0].id));
+await db2.delete(users).where(eq(users.id, 1));
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Prisma generates a type-safe client from <code>schema.prisma</code> — run <code>prisma generate</code> after every schema change</div>
+						<div class="explain-item">Drizzle schema is TypeScript — no code generation step needed; types are inferred directly</div>
+						<div class="explain-item">Prisma <code>findUnique</code> returns <code>null</code> (not throws) when not found; always null-check</div>
+						<div class="explain-item">Drizzle is closer to raw SQL — <code>eq</code>, <code>like</code>, <code>and</code>, <code>or</code> are composable query builder functions</div>
+						<div class="explain-item">Both support transactions — Prisma's <code>$transaction</code> handles rollback automatically</div>
+						<div class="explain-item">Prisma adds a query engine binary (~50MB); Drizzle is a thin wrapper with a much smaller footprint — critical for edge deployments</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Forgetting <code>prisma generate</code> after schema changes — client is stale and queries fail or have wrong types</li>
+						<li class="note-item">Creating a new <code>PrismaClient</code> per request — creates too many DB connections; instantiate once and export</li>
+						<li class="note-item">Not running migrations before deploying — production DB schema out of sync with code</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Instantiate Prisma as a singleton: <code>export const prisma = global.prisma ??= new PrismaClient()</code> — prevents connection exhaustion in dev with hot reload</li>
+						<li class="note-item">Use Drizzle for edge runtimes (Cloudflare Workers, Vercel Edge) — Prisma's query engine binary doesn't run in edge environments</li>
+						<li class="note-item">Use <code>prisma.$transaction(async (tx) =&gt; { ... })</code> (interactive transactions) for complex multi-step operations that need conditional logic</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Prisma — DSL schema · generated client · great DX · heavier binary</li>
+						<li class="note-item">Drizzle — TS schema · thin wrapper · SQL-close · edge-friendly</li>
+						<li class="note-item">Both provide full type safety for CRUD and relations</li>
+						<li class="note-item">Singleton clients · always run migrations before deploy</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-81-databases-sql.html">Databases — SQL</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-83-rest-apis.html">REST APIs</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

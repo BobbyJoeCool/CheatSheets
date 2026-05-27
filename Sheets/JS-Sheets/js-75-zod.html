@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 75: Zod — Validation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s75">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 75</div>
+			<h1>Zod — Validation</h1>
+			<div class="sheet-desc">z.object · z.string · parse · safeParse · z.infer · transforms · error formatting</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Common schema types table -->
+			<div class="row">
+				<section id="tbl-types">
+					<h2 class="section-title">Common Zod Schema Types</h2>
+					<table>
+						<thead><tr><th>Schema</th><th>Validates</th><th>Modifiers</th></tr></thead>
+						<tbody>
+							<tr><td>z.string()</td><td class="desc">string</td><td class="desc"><code>.min(n) .max(n) .email() .url() .uuid() .regex(r) .trim() .toLowerCase()</code></td></tr>
+							<tr><td>z.number()</td><td class="desc">number</td><td class="desc"><code>.min(n) .max(n) .int() .positive() .finite()</code></td></tr>
+							<tr><td>z.boolean()</td><td class="desc">boolean</td><td class="desc">—</td></tr>
+							<tr><td>z.date()</td><td class="desc">Date object</td><td class="desc"><code>.min(d) .max(d)</code></td></tr>
+							<tr><td>z.literal(val)</td><td class="desc">exact value</td><td class="desc"><code>z.literal("admin")</code></td></tr>
+							<tr><td>z.enum([…])</td><td class="desc">one of the listed values</td><td class="desc"><code>z.enum(["a","b","c"])</code></td></tr>
+							<tr><td>z.array(schema)</td><td class="desc">array of schema</td><td class="desc"><code>.min(n) .max(n) .nonempty()</code></td></tr>
+							<tr><td>z.object({…})</td><td class="desc">object with typed keys</td><td class="desc"><code>.partial() .required() .pick() .omit()</code></td></tr>
+							<tr><td>z.union([…])</td><td class="desc">one of several schemas</td><td class="desc">—</td></tr>
+							<tr><td>z.optional(s)</td><td class="desc">s | undefined</td><td class="desc">Or: <code>schema.optional()</code></td></tr>
+							<tr><td>z.nullable(s)</td><td class="desc">s | null</td><td class="desc">Or: <code>schema.nullable()</code></td></tr>
+							<tr><td>z.coerce.number()</td><td class="desc">coerces to number first</td><td class="desc">Useful for query params / env vars</td></tr>
+							<tr><td>z.record(k, v)</td><td class="desc">object with dynamic keys</td><td class="desc"><code>z.record(z.string(), z.number())</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Zod Examples</h2>
+					<pre><code class="language-typescript">// npm install zod
+import { z } from "zod";
+
+// ── Define a schema ───────────────────────────────────────────
+const UserSchema = z.object({
+  id:       z.number().int().positive(),
+  name:     z.string().min(1).max(100),
+  email:    z.string().email(),
+  age:      z.number().min(0).max(150).optional(),
+  role:     z.enum(["admin", "user", "guest"]).default("user"),
+  tags:     z.array(z.string()).default([]),
+  address:  z.object({
+    city:    z.string(),
+    country: z.string().length(2), // ISO country code
+  }).optional(),
+});
+
+// ── Infer TypeScript type from schema ─────────────────────────
+type User = z.infer&lt;typeof UserSchema&gt;;
+// User = { id: number; name: string; email: string; age?: number;
+//          role: "admin"|"user"|"guest"; tags: string[]; address?: ... }
+
+// ── parse — throws ZodError on failure ───────────────────────
+const user: User = UserSchema.parse({
+  id: 1, name: "Alice", email: "alice@example.com"
+});
+// age defaults to undefined, role defaults to "user", tags to []
+
+// ── safeParse — returns { success, data } or { success, error } ──
+const result = UserSchema.safeParse(untrustedInput);
+if (!result.success) {
+  console.error(result.error.flatten().fieldErrors);
+  // { name: ["String must contain at least 1 character(s)"], ... }
+} else {
+  const user = result.data;  // fully typed
+}
+
+// ── Transform — validate then convert ─────────────────────────
+const DateSchema = z.string()
+  .datetime()
+  .transform(s =&gt; new Date(s));    // string → Date after validation
+
+const ISODate = DateSchema.parse("2024-01-15T10:00:00Z");
+// ISODate is a Date object
+
+// ── Coercion for env vars / query params ─────────────────────
+const QuerySchema = z.object({
+  page:  z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+QuerySchema.parse({ page: "2", limit: "10" });
+// { page: 2, limit: 10 } — strings coerced to numbers
+
+// ── Parse API response ────────────────────────────────────────
+const res = await fetch("/api/users");
+const raw = await res.json();
+const users = z.array(UserSchema).parse(raw); // typed User[]
+
+// ── Reuse schemas ─────────────────────────────────────────────
+const CreateUserSchema = UserSchema.omit({ id: true });
+const UpdateUserSchema = UserSchema.partial().required({ id: true });
+type CreateUserDto = z.infer&lt;typeof CreateUserSchema&gt;;
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>z.infer&lt;typeof Schema&gt;</code> — derives the TypeScript type from the schema; single source of truth for both runtime validation and compile-time types</div>
+						<div class="explain-item"><code>parse</code> throws a <code>ZodError</code> with detailed field errors; <code>safeParse</code> returns a result object — use safeParse in route handlers to send proper HTTP error responses</div>
+						<div class="explain-item"><code>.flatten().fieldErrors</code> — converts the ZodError into a plain object mapping field names to arrays of error message strings; easy to return as API error bodies</div>
+						<div class="explain-item"><code>z.coerce</code> — tries to convert the input before validating; essential for query params and env vars which are always strings</div>
+						<div class="explain-item"><code>.transform(fn)</code> — runs after validation; the output type changes (string → Date); combine with <code>.pipe()</code> for multi-step transformations</div>
+						<div class="explain-item">Derived schemas (<code>.omit/.partial/.pick</code>) — compose from a base schema rather than redefining; keeps create/update/read DTOs in sync</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using <code>parse</code> in a request handler — it throws; use <code>safeParse</code> so you can return a 400 response instead of crashing</li>
+						<li class="note-item">Defining a TypeScript type separately from the zod schema — they drift out of sync; always derive the type with <code>z.infer</code></li>
+						<li class="note-item">Not using <code>z.coerce</code> for numeric query params — <code>z.number().parse("42")</code> fails; use <code>z.coerce.number()</code></li>
+						<li class="note-item">Forgetting <code>.optional()</code> vs <code>.nullable()</code> — optional allows undefined; nullable allows null; they are different</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use zod for every external data boundary: API responses, form inputs, env vars, database query results</li>
+						<li class="note-item">Derive create/update schemas from the base entity schema with <code>.omit/.partial</code> — one schema to update, all DTOs stay consistent</li>
+						<li class="note-item">Use <code>result.error.flatten().fieldErrors</code> to format validation errors for API responses — gives field-by-field error messages</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>z.object/string/number/array/enum</code> — build schemas with chainable validators</li>
+						<li class="note-item"><code>z.infer&lt;typeof Schema&gt;</code> — derive TS type; single source of truth</li>
+						<li class="note-item"><code>parse</code> (throws) · <code>safeParse</code> (returns result object) — use safeParse in request handlers</li>
+						<li class="note-item"><code>z.coerce</code> for string→number/boolean · <code>.transform()</code> to reshape validated data</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-74-axios.html">Axios</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-76-lodash.html">Lodash</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 87: Serialization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s87">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 87</div>
+			<h1>Serialization</h1>
+			<div class="sheet-desc">structuredClone · JSON · MessageChannel · Buffer · Base64 · deep clone patterns</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Serialization methods comparison -->
+			<div class="row">
+				<section id="tbl-methods">
+					<h2 class="section-title">Cloning &amp; Serialization Methods Compared</h2>
+					<table>
+						<thead><tr><th>Method</th><th>Deep</th><th>Types Supported</th><th>Circular</th><th>Notes</th></tr></thead>
+						<tbody>
+							<tr><td>structuredClone()</td><td class="desc center">✔</td><td class="desc">Object, Array, Map, Set, Date, RegExp, TypedArray, Blob</td><td class="desc center">✔</td><td class="desc">Best general-purpose deep clone; built-in</td></tr>
+							<tr><td>JSON.parse(JSON.stringify())</td><td class="desc center">✔</td><td class="desc">Object, Array, string, number, boolean, null</td><td class="desc center">✖</td><td class="desc">Loses Date→string, undefined→omit, Map/Set→{}</td></tr>
+							<tr><td>Object.assign({}, obj)</td><td class="desc center">✖</td><td class="desc">Own enumerable props only</td><td class="desc center">N/A</td><td class="desc">Shallow copy; nested objects shared</td></tr>
+							<tr><td>{ ...obj }</td><td class="desc center">✖</td><td class="desc">Own enumerable props only</td><td class="desc center">N/A</td><td class="desc">Shallow spread; same as assign</td></tr>
+							<tr><td>_.cloneDeep()</td><td class="desc center">✔</td><td class="desc">Most types including class instances</td><td class="desc center">✔</td><td class="desc">Lodash — handles class instances; large bundle</td></tr>
+							<tr><td>MessageChannel postMessage</td><td class="desc center">✔</td><td class="desc">Structured clone algorithm</td><td class="desc center">✔</td><td class="desc">Async; transfers or copies; used for workers</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Serialization Examples</h2>
+					<pre><code class="language-javascript">// ── structuredClone — best general-purpose deep clone ─────────
+const original = {
+  name: "Alice",
+  scores: [1, 2, 3],
+  created: new Date(),
+  prefs: new Map([["theme", "dark"]]),
+  tags: new Set(["js", "ts"]),
+};
+
+const clone = structuredClone(original);
+clone.scores.push(4);
+original.scores;                   // [1, 2, 3] — unaffected
+clone.created instanceof Date;     // true  — Date preserved
+clone.prefs instanceof Map;        // true  — Map preserved
+
+// Circular references work
+const circular = { self: null };
+circular.self = circular;
+const cloned = structuredClone(circular); // ✔ no error
+
+// ── structuredClone does NOT support ─────────────────────────
+// Functions, DOM nodes, class instances (become plain objects),
+// getters/setters, prototype chain, WeakMap/WeakSet
+
+// ── JSON round-trip (fast but lossy) ─────────────────────────
+const data = { name: "Alice", created: new Date(), fn: () => {} };
+const str  = JSON.stringify(data);
+// '{"name":"Alice","created":"2024-01-15T10:00:00.000Z"}'
+// fn is omitted; Date became a string
+
+const back = JSON.parse(str);
+back.created instanceof Date;      // false — it's a string now
+
+// ── Serialise with custom toJSON ─────────────────────────────
+class Money {
+  constructor(public amount: number, public currency: string) {}
+  toJSON() { return { amount: this.amount, currency: this.currency }; }
+  static fromJSON(obj) { return new Money(obj.amount, obj.currency); }
+}
+const price = new Money(9.99, "USD");
+JSON.stringify(price);             // '{"amount":9.99,"currency":"USD"}'
+
+// ── Reviver to restore types on parse ────────────────────────
+const reviver = (key, value) => {
+  if (typeof value === "string" &amp;&amp; /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    return new Date(value);        // ISO strings → Date
+  }
+  return value;
+};
+const restored = JSON.parse(str, reviver);
+restored.created instanceof Date;  // true  — Date restored
+
+// ── Buffer encoding (Node) ────────────────────────────────────
+// Binary → Base64
+const bin  = Buffer.from([0xff, 0x0a, 0x3d]);
+const b64  = bin.toString("base64");          // "/wo="
+const hex  = bin.toString("hex");             // "ff0a3d"
+
+// Base64 → Buffer
+const back2 = Buffer.from(b64, "base64");
+back2.equals(bin);                // true
+
+// String → Buffer → Base64
+const encoded = Buffer.from("Hello, 世界", "utf8").toString("base64");
+const decoded  = Buffer.from(encoded, "base64").toString("utf8");
+// "Hello, 世界"  — handles Unicode correctly (unlike btoa/atob)
+
+// ── MessageChannel — structured clone for workers ────────────
+const { port1, port2 } = new MessageChannel();
+const bigData = { items: new Array(100000).fill(0) };
+
+port2.onmessage = ({ data }) =&gt; console.log("Received:", data.items.length);
+port1.postMessage(bigData);        // deep clones via structured clone
+
+// Transfer instead of copy (zero-copy for ArrayBuffer)
+const buf = new ArrayBuffer(1024 * 1024);    // 1MB
+port1.postMessage(buf, [buf]);               // transferred — buf is now empty
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>structuredClone</code> — use for most deep copy needs; handles Maps, Sets, Dates, and circular refs; available in Node 17+ and all modern browsers</div>
+						<div class="explain-item">JSON round-trip — fast but lossy; <code>undefined</code> and functions are silently dropped; <code>Date</code> becomes a string; <code>Map</code>/<code>Set</code> become <code>{}</code></div>
+						<div class="explain-item">The <code>toJSON</code> pattern — classes control their own serialisation; pair with a static <code>fromJSON</code> for symmetric serialisation/deserialisation</div>
+						<div class="explain-item">Reviver function — restore specific types (Dates, Money, etc.) during JSON parse; run bottom-up so nested objects are restored before parents</div>
+						<div class="explain-item">Buffer vs btoa/atob — <code>btoa/atob</code> only handle Latin-1; <code>Buffer</code> handles full UTF-8 correctly for Base64 encoding of Unicode strings</div>
+						<div class="explain-item">MessageChannel transfer — <code>ArrayBuffer</code> can be transferred (not copied) to a worker; the original becomes detached and unusable — zero-copy performance</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using <code>JSON.parse(JSON.stringify(obj))</code> for deep cloning — silently corrupts Dates, drops undefined/functions, throws on circular refs</li>
+						<li class="note-item">Expecting <code>structuredClone</code> to preserve class instances — prototype chain is lost; instances become plain objects</li>
+						<li class="note-item">Using <code>btoa</code> on a string containing non-Latin characters — throws in browsers; use <code>Buffer.from(str, "utf8").toString("base64")</code></li>
+						<li class="note-item">Transferring an <code>ArrayBuffer</code> and then trying to use the original — the buffer is detached after transfer; it's zero-length</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>structuredClone</code> as your default deep clone — it's built-in, fast, and handles far more types than JSON</li>
+						<li class="note-item">Implement <code>toJSON</code> + <code>fromJSON</code> on domain objects that need to survive serialisation — keeps the logic in the class</li>
+						<li class="note-item">Use a JSON reviver registered globally in your app startup to automatically restore ISO date strings to <code>Date</code> objects</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>structuredClone()</code> — best deep clone; handles Map, Set, Date, circular; no class instances</li>
+						<li class="note-item">JSON round-trip — fast, universal, lossy; restore types with a reviver</li>
+						<li class="note-item"><code>toJSON</code> / <code>fromJSON</code> — classes control their own serialisation</li>
+						<li class="note-item">Buffer (Node) — UTF-8 safe Base64 · MessageChannel — structured clone / zero-copy transfer</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-86-ts-advanced.html">TS Advanced Types</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<span class="nav-link next" style="visibility:hidden">·</span>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

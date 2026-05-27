@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 65: CommonJS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s65">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 65</div>
+			<h1>CommonJS</h1>
+			<div class="sheet-desc">require · module.exports · exports · CJS vs ESM · interop · conditional exports</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: CJS vs ESM table -->
+			<div class="row">
+				<section id="tbl-cjs-esm">
+					<h2 class="section-title">CJS vs ESM — Side by Side</h2>
+					<table>
+						<thead><tr><th>Feature</th><th>CommonJS</th><th>ES Modules</th></tr></thead>
+						<tbody>
+							<tr><td>Import syntax</td><td class="desc"><code>const x = require("mod")</code></td><td class="desc"><code>import x from "mod"</code></td></tr>
+							<tr><td>Export syntax</td><td class="desc"><code>module.exports = x</code></td><td class="desc"><code>export default x</code></td></tr>
+							<tr><td>Loading</td><td class="desc">Synchronous</td><td class="desc">Async / static analysis</td></tr>
+							<tr><td>Top-level await</td><td class="desc center">✖</td><td class="desc center">✔</td></tr>
+							<tr><td>Tree-shaking</td><td class="desc center">✖ (runtime)</td><td class="desc center">✔ (static)</td></tr>
+							<tr><td>Live bindings</td><td class="desc center">✖ (copies)</td><td class="desc center">✔</td></tr>
+							<tr><td>Circular deps</td><td class="desc">Partial — may get incomplete exports</td><td class="desc">Handled via live bindings</td></tr>
+							<tr><td>Default in Node</td><td class="desc center">✔ (legacy)</td><td class="desc">With <code>"type":"module"</code> or <code>.mjs</code></td></tr>
+							<tr><td>Dynamic require</td><td class="desc center">✔ (in any expression)</td><td class="desc"><code>import()</code> — async only</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">CommonJS Examples</h2>
+					<pre><code class="language-javascript">// ── Exporting (math.js) ───────────────────────────────────────
+// Option 1: export an object
+module.exports = {
+  PI: 3.14159,
+  add: (a, b) =&gt; a + b,
+  sub: (a, b) =&gt; a - b,
+};
+
+// Option 2: shorthand — exports is a reference to module.exports
+exports.PI  = 3.14159;
+exports.add = (a, b) =&gt; a + b;
+// ✖ exports = { PI, add }  — reassigning exports breaks the link
+
+// Option 3: export a single value (class, function, etc.)
+module.exports = class Logger {
+  log(msg) { console.log(msg); }
+};
+
+// ── Importing ─────────────────────────────────────────────────
+const math   = require("./math");           // import whole module
+const { add } = require("./math");          // destructure named exports
+const Logger  = require("./logger");        // import default class
+
+// Built-in modules
+const path = require("path");
+const fs   = require("fs");
+const http = require("http");
+
+// ── Dynamic require — can be inside functions/conditions ──────
+function loadPlugin(name) {
+  try {
+    return require(`./plugins/${name}`);    // runtime path
+  } catch {
+    return null;
+  }
+}
+
+if (process.env.DEBUG) {
+  const devTools = require("./dev-tools"); // conditional load
+}
+
+// ── require.resolve — find module path without loading ────────
+const p = require.resolve("./config.json");
+// "/absolute/path/to/config.json"
+
+// ── CJS interop with ESM ──────────────────────────────────────
+// From ESM: import a CJS module
+import logger from "./logger.cjs";          // ✔ default import
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const legacy  = require("./legacy-cjs.js"); // require in ESM file
+
+// ── package.json "exports" — conditional exports ──────────────
+// In package.json: serve ESM to bundlers, CJS to old Node:
+// "exports": {
+//   ".": {
+//     "import": "./dist/index.mjs",   // for ESM consumers
+//     "require": "./dist/index.cjs",  // for CJS consumers
+//     "types": "./dist/index.d.ts"    // for TypeScript
+//   }
+// }
+
+// ── Module caching ────────────────────────────────────────────
+// CJS modules are cached after first require
+const a = require("./singleton");
+const b = require("./singleton");
+a === b;  // true — same cached object
+
+// Clear cache (rarely needed)
+delete require.cache[require.resolve("./config")];
+const fresh = require("./config");
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>exports</code> is a reference to <code>module.exports</code> — adding properties to <code>exports</code> works; reassigning <code>exports = ...</code> breaks the link</div>
+						<div class="explain-item"><code>require()</code> is synchronous — it blocks while reading/executing the module; never use it inside a hot code path in a server</div>
+						<div class="explain-item">Module caching — <code>require</code> caches modules on first load; subsequent calls return the same object, making CJS modules effectively singletons</div>
+						<div class="explain-item">Dynamic <code>require</code> — can be used anywhere in code (inside functions, conditions, loops); ESM's <code>import()</code> is the async equivalent</div>
+						<div class="explain-item"><code>createRequire(import.meta.url)</code> — lets you call <code>require()</code> from inside an ESM file when you need to load a CJS module</div>
+						<div class="explain-item">Conditional <code>exports</code> in <code>package.json</code> — modern packages ship both ESM and CJS builds; Node/bundlers pick the right one automatically</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Reassigning <code>exports = { ... }</code> — breaks the reference to <code>module.exports</code>; use <code>module.exports = { ... }</code> instead</li>
+						<li class="note-item">Using <code>require</code> in an ESM file without <code>createRequire</code> — throws <code>ReferenceError: require is not defined</code></li>
+						<li class="note-item">Relying on module caching for state sharing — works but is implicit; use an explicit singleton pattern for clarity</li>
+						<li class="note-item">Mixing CJS and ESM in the same file — you cannot use both <code>import</code> and <code>require</code> in a standard file</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">New projects should default to ESM — CJS is legacy; use it only when a dependency or toolchain requires it</li>
+						<li class="note-item">When publishing a library, use conditional <code>exports</code> in <code>package.json</code> to ship both ESM and CJS builds</li>
+						<li class="note-item">Use <code>createRequire(import.meta.url)</code> as a bridge when you need a CJS module from an ESM codebase</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>require()</code> — sync import · <code>module.exports</code> / <code>exports.x</code> — export</li>
+						<li class="note-item">Modules are cached after first load — same object on every <code>require</code></li>
+						<li class="note-item">Dynamic require works anywhere; ESM's <code>import()</code> is the async async equivalent</li>
+						<li class="note-item">New code → use ESM · Legacy/libs → CJS · Publishing → ship both with conditional exports</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-64-es-modules.html">ES Modules</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-66-npm.html">Package Management</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

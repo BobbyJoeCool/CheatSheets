@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 70: Testing — Mocks &amp; TS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s70">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 70</div>
+			<h1>Testing — Mocks &amp; TS</h1>
+			<div class="sheet-desc">vi.fn · vi.mock · spies · mock return values · TS typed mocks · coverage</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Mock API -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Mocking &amp; Spying</h2>
+					<div class="description">
+						A <strong>mock</strong> replaces a real function or module with a controlled
+						substitute that records calls and returns preset values. A <strong>spy</strong>
+						wraps a real function to observe calls without replacing its behaviour. Use mocks
+						to isolate the unit under test from external dependencies (APIs, databases,
+						file system). In Vitest, the mock API is on the <code>vi</code> object; in Jest
+						it is on <code>jest</code>. TypeScript adds the challenge of keeping mock return
+						types compatible — the <code>vi.mocked()</code> helper and explicit type
+						annotations solve this cleanly.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Mock API (vi / jest)</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>vi.fn()</code> — create a mock function</li>
+						<li class="note-item"><code>.mockReturnValue(val)</code> — always return val</li>
+						<li class="note-item"><code>.mockResolvedValue(val)</code> — return Promise.resolve(val)</li>
+						<li class="note-item"><code>.mockRejectedValue(err)</code> — return Promise.reject(err)</li>
+						<li class="note-item"><code>.mockReturnValueOnce(val)</code> — return val once only</li>
+						<li class="note-item"><code>.mockImplementation(fn)</code> — replace with function</li>
+						<li class="note-item"><code>vi.mock("module")</code> — mock entire module</li>
+						<li class="note-item"><code>vi.spyOn(obj, "method")</code> — spy on a method</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Mock &amp; Spy Examples</h2>
+					<pre><code class="language-typescript">import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// ── Mock function ─────────────────────────────────────────────
+const mockFn = vi.fn();
+mockFn.mockReturnValue(42);
+mockFn();                          // 42
+mockFn.mock.calls;                 // [[]]  — array of call args
+mockFn.mock.calls.length;          // 1
+expect(mockFn).toHaveBeenCalled();
+expect(mockFn).toHaveBeenCalledTimes(1);
+expect(mockFn).toHaveBeenCalledWith(/* args */);
+
+// Return different values
+mockFn.mockReturnValueOnce("first").mockReturnValueOnce("second");
+mockFn();  // "first"
+mockFn();  // "second"
+mockFn();  // 42  — back to default
+
+// Async mock
+const fetchUser = vi.fn().mockResolvedValue({ id: 1, name: "Alice" });
+const user = await fetchUser(1);    // { id: 1, name: "Alice" }
+
+// ── Mocking a module ──────────────────────────────────────────
+vi.mock("./emailService.js", () => ({
+  sendEmail: vi.fn().mockResolvedValue({ sent: true }),
+}));
+
+import { sendEmail } from "./emailService.js";
+// sendEmail is now a vi.fn() — calls are recorded, nothing sent
+
+// ── Spy on a method ───────────────────────────────────────────
+const console_spy = vi.spyOn(console, "log").mockImplementation(() => {});
+doSomethingThatLogs();
+expect(console_spy).toHaveBeenCalledWith("Expected log message");
+console_spy.mockRestore();          // restore original console.log
+
+// ── TypeScript: typed mocks ───────────────────────────────────
+import type { UserService } from "./userService.js";
+
+// Create a typed mock of an interface
+const mockUserService: UserService = {
+  findById: vi.fn().mockResolvedValue({ id: 1, name: "Alice" }),
+  create:   vi.fn().mockResolvedValue({ id: 2, name: "Bob" }),
+  delete:   vi.fn().mockResolvedValue(true),
+};
+
+// vi.mocked() — assert a function is a mock for type-safe assertions
+import { readFile } from "fs/promises";
+vi.mock("fs/promises");
+const mockedReadFile = vi.mocked(readFile);
+mockedReadFile.mockResolvedValue("file contents" as never);
+
+// ── Reset between tests ────────────────────────────────────────
+beforeEach(() => {
+  vi.clearAllMocks();              // clear call counts and instances
+  // vi.resetAllMocks();           // also remove return values
+  // vi.restoreAllMocks();         // restore all spies
+});
+
+// ── Partial module mock ───────────────────────────────────────
+vi.mock("./config.js", async (importOriginal) => {
+  const actual = await importOriginal();  // keep real implementation
+  return { ...actual, API_URL: "http://localhost:3000" }; // override one
+});
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>vi.mock()</code> is hoisted to the top of the file by Vitest — it runs before imports, allowing module substitution; same behaviour as <code>jest.mock()</code></div>
+						<div class="explain-item"><code>mockReturnValue</code> vs <code>mockImplementation</code> — use <code>returnValue</code> for simple values; <code>implementation</code> when the mock needs logic</div>
+						<div class="explain-item"><code>vi.spyOn</code> — wraps the real method; <code>.mockRestore()</code> is required to put it back; use in <code>afterEach</code></div>
+						<div class="explain-item"><code>vi.clearAllMocks()</code> — clears call history but keeps implementation · <code>resetAllMocks()</code> also removes return values · <code>restoreAllMocks()</code> undoes spies</div>
+						<div class="explain-item">Typed mock interfaces — create a plain object matching the interface shape with <code>vi.fn()</code> for each method; TS enforces the shape</div>
+						<div class="explain-item">Partial module mocks with <code>importOriginal</code> — keep most of a module real and only override specific exports; cleaner than mocking everything</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Not calling <code>vi.clearAllMocks()</code> in <code>beforeEach</code> — mock call counts accumulate across tests, causing false failures</li>
+						<li class="note-item">Forgetting <code>mockRestore()</code> on spies — the original method stays patched for subsequent tests</li>
+						<li class="note-item">Mocking too much — if you mock all dependencies, you're testing the mock, not the code; only mock boundaries (I/O, external services)</li>
+						<li class="note-item">Using <code>vi.mock()</code> with a relative path that doesn't match the import exactly — path must match the import string precisely</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>vi.clearAllMocks()</code> in a global <code>beforeEach</code> in your test setup file — avoids repeating it in every describe block</li>
+						<li class="note-item">Create typed mock objects matching your interfaces rather than using <code>as any</code> casts — maintains type safety in tests</li>
+						<li class="note-item">Use partial module mocks (<code>importOriginal</code>) to keep real utility functions while mocking side-effectful ones</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>vi.fn()</code> — mock function · <code>.mockReturnValue/ResolvedValue/Implementation()</code></li>
+						<li class="note-item"><code>vi.mock("module")</code> — replace module · <code>vi.spyOn(obj, "method")</code> — observe real method</li>
+						<li class="note-item"><code>clearAllMocks</code> → history · <code>resetAllMocks</code> → values too · <code>restoreAllMocks</code> → undo spies</li>
+						<li class="note-item">Typed mocks — match interface shape with <code>vi.fn()</code> per method · <code>vi.mocked()</code> for type-safe assertions</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-69-testing-basics.html">Testing Basics</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-71-logging.html">Logging</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

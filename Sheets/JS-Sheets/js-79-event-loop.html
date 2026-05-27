@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JS/TS — 79: Event Loop</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s79">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 79</div>
+			<h1>Event Loop</h1>
+			<div class="sheet-desc">Call stack · task queue · microtask queue · setTimeout · queueMicrotask · execution order</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Queue types table -->
+			<div class="row">
+				<section id="tbl-queues">
+					<h2 class="section-title">Execution Contexts &amp; Queues</h2>
+					<table>
+						<thead><tr><th>Context</th><th>What Goes Here</th><th>Priority</th></tr></thead>
+						<tbody>
+							<tr><td>Call Stack</td><td class="desc">Synchronous code currently executing</td><td class="desc">Runs first — always clears before anything else</td></tr>
+							<tr><td>Microtask Queue</td><td class="desc">Promise callbacks (<code>.then/.catch</code>), <code>queueMicrotask()</code>, <code>MutationObserver</code></td><td class="desc">Runs after each task, before next task — drains completely</td></tr>
+							<tr><td>Macrotask Queue</td><td class="desc"><code>setTimeout</code>, <code>setInterval</code>, I/O callbacks, UI events</td><td class="desc">One task per event loop iteration</td></tr>
+							<tr><td>Animation Queue</td><td class="desc"><code>requestAnimationFrame</code></td><td class="desc">Before each paint (browser only)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 2: Code | Explanation -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Event Loop Examples</h2>
+					<pre><code class="language-javascript">// ── Execution order demonstration ─────────────────────────────
+console.log("1: sync start");
+
+setTimeout(() => console.log("5: macrotask (setTimeout 0)"), 0);
+
+Promise.resolve()
+  .then(() => console.log("3: microtask (Promise)"))
+  .then(() => console.log("4: microtask (chained Promise)"));
+
+queueMicrotask(() => console.log("3b: microtask (queueMicrotask)"));
+
+console.log("2: sync end");
+
+// Output order:
+// 1: sync start
+// 2: sync end
+// 3: microtask (Promise)       ← microtasks run before macrotasks
+// 3b: microtask (queueMicrotask)
+// 4: microtask (chained Promise)
+// 5: macrotask (setTimeout 0)  ← setTimeout fires AFTER microtasks
+
+// ── setTimeout / setInterval ──────────────────────────────────
+const id = setTimeout(() => {
+  console.log("Runs once after ~1000ms");
+}, 1000);
+
+clearTimeout(id);                // cancel before it fires
+
+const interval = setInterval(() => {
+  console.log("Runs every 500ms");
+}, 500);
+
+setTimeout(() => clearInterval(interval), 2500); // stop after ~2.5s
+
+// ── Minimum delay caveat ──────────────────────────────────────
+// setTimeout(fn, 0) does NOT run immediately
+// It queues a macrotask — runs after the current task + all microtasks
+setTimeout(() => console.log("Not immediate!"), 0);
+Promise.resolve().then(() => console.log("I run first"));
+
+// ── Blocking the event loop ───────────────────────────────────
+// ✖ This blocks all I/O, timers, and user events for 5 seconds:
+const start = Date.now();
+while (Date.now() - start < 5000) {} // NEVER do this in Node
+
+// ✔ Use async operations instead:
+await new Promise(r => setTimeout(r, 5000)); // yields to event loop
+
+// ── queueMicrotask ────────────────────────────────────────────
+// Schedule a callback as a microtask (before setTimeout, after sync)
+queueMicrotask(() => {
+  console.log("Runs after current sync, before next macrotask");
+});
+
+// ── Node.js: process.nextTick ────────────────────────────────
+// Runs BEFORE Promise microtasks (even higher priority)
+process.nextTick(() => console.log("nextTick — before Promise.then"));
+Promise.resolve().then(() => console.log("Promise.then"));
+// nextTick runs first
+
+// ── setImmediate (Node only) ──────────────────────────────────
+setImmediate(() => {
+  console.log("Runs after I/O events in Node event loop");
+});
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Event loop order: <strong>call stack</strong> → <strong>microtasks</strong> (drain completely) → <strong>one macrotask</strong> → repeat</div>
+						<div class="explain-item">Microtask queue drains completely between macrotasks — if a microtask queues another microtask, it runs in the same drain cycle</div>
+						<div class="explain-item"><code>setTimeout(fn, 0)</code> — minimum ~4ms delay in browsers; actual delay depends on system load and timer resolution</div>
+						<div class="explain-item">Blocking the call stack (CPU-bound loops) freezes the entire event loop — no timers, no I/O, no user input can be processed</div>
+						<div class="explain-item">Node's <code>process.nextTick</code> runs <em>before</em> Promise microtasks — it was added before the microtask queue was standardised; prefer <code>queueMicrotask</code></div>
+						<div class="explain-item">Understanding the event loop is essential for debugging unexpected ordering in async code and performance issues in Node servers</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Assuming <code>setTimeout(fn, 0)</code> runs immediately — it queues a macrotask; Promises run before it</li>
+						<li class="note-item">Running CPU-intensive work synchronously in Node — blocks all other connections for the duration</li>
+						<li class="note-item">Using <code>process.nextTick</code> recursively — can starve the microtask and macrotask queues</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Move CPU-heavy work to a Worker Thread (Node) or Web Worker (browser) — keeps the event loop free</li>
+						<li class="note-item">Use <code>setImmediate</code> (Node) to yield to I/O between chunks of CPU work: <code>await new Promise(r =&gt; setImmediate(r))</code></li>
+						<li class="note-item">Use <code>queueMicrotask(fn)</code> to schedule work after current sync but before timers — preferred over <code>Promise.resolve().then(fn)</code></li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Order: sync code → microtasks (drain) → one macrotask → repeat</li>
+						<li class="note-item">Microtasks: Promise <code>.then</code> · <code>queueMicrotask</code> — run before any <code>setTimeout</code></li>
+						<li class="note-item">Macrotasks: <code>setTimeout · setInterval · I/O callbacks</code> — one per loop iteration</li>
+						<li class="note-item">Never block the call stack — use async operations to yield to the event loop</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="js-78-async-await.html">Async / Await</a>
+				<a class="nav-toc" href="index.html">JS / TS Reference · 97 Sheets</a>
+				<a class="nav-link next" href="js-80-abort-storage.html">AbortController &amp; Storage</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>

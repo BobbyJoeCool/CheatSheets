@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Bitwise — 05: Packing &amp; Fields</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/bitwise-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s05">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 05</div>
+			<h1>Packing &amp; Fields</h1>
+			<div class="sheet-desc">bit fields · encode · decode · ARGB color · protocol headers · field replacement</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Storing Multiple Values in One Integer</h2>
+					<div class="description">
+						When memory or bandwidth is constrained, multiple small integers can be <strong>packed</strong> into a single larger integer by assigning each value a specific range of bits — called a <strong>bit field</strong>. Packing uses left-shift and OR to place values; <strong>unpacking</strong> uses right-shift and AND-mask to extract them. This technique is ubiquitous: ARGB color values (4 × 8-bit channels in one 32-bit int), IP and TCP headers, UTF-8 byte structure, audio sample formats, and game entity data all rely on bit packing. The discipline is to define field <em>offset</em> (which bit position a field starts at) and <em>width</em> (how many bits it occupies), then derive the mask automatically as <code>((1 &lt;&lt; width) - 1) &lt;&lt; offset</code>.
+					</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Field Vocabulary</h2>
+					<ul class="note-list">
+						<li class="note-item"><strong>offset</strong> — bit position where the field starts (bit 0 = rightmost)</li>
+						<li class="note-item"><strong>width</strong> — number of bits in the field</li>
+						<li class="note-item"><strong>mask</strong> — <code>(1 &lt;&lt; width) - 1</code> — a run of <em>width</em> 1-bits</li>
+						<li class="note-item">Pack: <code>(value &amp; mask) &lt;&lt; offset</code> then OR into target</li>
+						<li class="note-item">Unpack: <code>(packed &gt;&gt; offset) &amp; mask</code></li>
+						<li class="note-item">Replace: clear field first with <code>&amp; ~(mask &lt;&lt; offset)</code>, then OR in new value</li>
+						<li class="note-item">Always mask input before packing to prevent dirty high bits corrupting adjacent fields</li>
+					</ul>
+				</section>
+			</div>
+
+			<!-- Row 2: ARGB layout + pack/unpack formulas -->
+			<div class="row row-tables">
+				<section id="tbl-argb">
+					<h2 class="section-title">ARGB 32-bit Color Layout</h2>
+					<table>
+						<thead>
+							<tr><th>Channel</th><th>Bits</th><th>Offset</th><th>Mask</th></tr>
+						</thead>
+						<tbody>
+							<tr><td>Alpha</td><td class="desc">31 – 24</td><td class="desc">24</td><td class="desc">0xFF000000</td></tr>
+							<tr><td>Red</td><td class="desc">23 – 16</td><td class="desc">16</td><td class="desc">0x00FF0000</td></tr>
+							<tr><td>Green</td><td class="desc">15 – 8</td><td class="desc">8</td><td class="desc">0x0000FF00</td></tr>
+							<tr><td>Blue</td><td class="desc">7 – 0</td><td class="desc">0</td><td class="desc">0x000000FF</td></tr>
+						</tbody>
+					</table>
+				</section>
+
+				<section id="tbl-formulas">
+					<h2 class="section-title">Generic Pack / Unpack / Replace</h2>
+					<table>
+						<thead>
+							<tr><th>Operation</th><th>Formula</th></tr>
+						</thead>
+						<tbody>
+							<tr><td>Build mask</td><td class="desc">((1 &lt;&lt; width) - 1)</td></tr>
+							<tr><td>Pack one field</td><td class="desc">(value &amp; mask) &lt;&lt; offset</td></tr>
+							<tr><td>Pack two fields</td><td class="desc">(a &lt;&lt; offA) | (b &lt;&lt; offB)</td></tr>
+							<tr><td>Unpack a field</td><td class="desc">(packed &gt;&gt; offset) &amp; mask</td></tr>
+							<tr><td>Clear a field</td><td class="desc">packed &amp; ~(mask &lt;&lt; offset)</td></tr>
+							<tr><td>Replace a field</td><td class="desc">(packed &amp; ~(mask &lt;&lt; off)) | ((newVal &amp; mask) &lt;&lt; off)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+
+			<!-- Row 3: Code | Explain -->
+			<div class="row row-code-explain">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Encode &amp; Decode an ARGB Color</h2>
+					<pre><code class="language-javascript">// ── Channel constants ─────────────────────────────────────────
+const ALPHA_OFFSET = 24, RED_OFFSET = 16,
+      GREEN_OFFSET = 8,  BLUE_OFFSET = 0;
+const CH_MASK = 0xFF;   // 8-bit mask for any single channel
+
+// ── Encode: pack four 8-bit values into one 32-bit int ────────
+function encodeARGB(a, r, g, b) {
+  return ((a & CH_MASK) << ALPHA_OFFSET) |
+         ((r & CH_MASK) << RED_OFFSET)   |
+         ((g & CH_MASK) << GREEN_OFFSET) |
+         ((b & CH_MASK) << BLUE_OFFSET);
+}
+
+let color = encodeARGB(255, 100, 149, 237);
+// color = 0xFF6495ED  (cornflower blue, fully opaque)
+
+// ── Decode: unpack each channel ───────────────────────────────
+let alpha = (color >> ALPHA_OFFSET) & CH_MASK;  // 255
+let red   = (color >> RED_OFFSET)   & CH_MASK;  // 100
+let green = (color >> GREEN_OFFSET) & CH_MASK;  // 149
+let blue  = (color >> BLUE_OFFSET)  & CH_MASK;  // 237
+
+// ── Replace: update alpha without touching RGB ────────────────
+function setAlpha(color, newAlpha) {
+  return (color & ~(CH_MASK << ALPHA_OFFSET)) |
+         ((newAlpha & CH_MASK) << ALPHA_OFFSET);
+}
+let semitransparent = setAlpha(color, 128);
+// red/green/blue unchanged; alpha is now 128
+</code></pre>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>&amp; CH_MASK</code> before shift — clamps input to 8 bits; prevents dirty high bits from bleeding into adjacent fields</div>
+						<div class="explain-item">Encode uses <code>|</code> to merge all four shifted channels — OR is safe because no two fields overlap</div>
+						<div class="explain-item">Decode: shift the field down to bit 0, then AND with the channel mask to discard anything above it</div>
+						<div class="explain-item">Replace = clear field with <code>&amp; ~(mask &lt;&lt; offset)</code> to zero that region, then OR in the new shifted value</div>
+						<div class="explain-item">Result <code>0xFF6495ED</code> — read as: FF=alpha, 64=red (hex 100), 95=green (hex 149), ED=blue (hex 237)</div>
+						<div class="explain-item">This same pattern applies to any packed format: IP headers, audio samples, UTF-8 continuation bytes, etc.</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- Footer Trio -->
+			<div class="row row-footer-trio">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Forgetting to mask input before packing — if red = 300 (0x12C), the high bits spill into the alpha field silently</li>
+						<li class="note-item">Endianness confusion — packed ints serialize to bytes differently on big-endian vs little-endian machines; specify byte order explicitly in network/file formats</li>
+						<li class="note-item">Assuming 32-bit int — JavaScript bitwise ops are 32-bit signed; packing more than 31 bits of magnitude requires BigInt or two separate ints</li>
+					</ul>
+				</section>
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">Tips</h2>
+					<ul class="note-list">
+						<li class="note-item">Define OFFSET and WIDTH constants together — never one without the other; derive MASK from WIDTH so they stay in sync</li>
+						<li class="note-item">Draw a bit-field diagram in a comment above any packing struct: <code>// [31..24]=A [23..16]=R [15..8]=G [7..0]=B</code></li>
+						<li class="note-item">Validate inputs fit their field before packing: <code>assert(value &gt;= 0 &amp;&amp; value &lt;= 255)</code> — silent overflow is hard to debug</li>
+					</ul>
+				</section>
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Pack with: <code>(value &amp; mask) &lt;&lt; offset | ...</code></li>
+						<li class="note-item">Unpack with: <code>(packed &gt;&gt; offset) &amp; mask</code></li>
+						<li class="note-item">Replace: clear field (<code>&amp; ~(mask &lt;&lt; off)</code>), then OR in new value</li>
+						<li class="note-item">Always mask inputs before packing; always AND after unpacking</li>
+					</ul>
+				</section>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="bitwise-04-bit-tricks.html">Bit Tricks</a>
+				<a class="nav-toc" href="index.html">Bitwise Reference · 8 Sheets</a>
+				<a class="nav-link next" href="bitwise-06-subset-enumeration.html">Subset Enumeration</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+
+	</body>
+</html>
