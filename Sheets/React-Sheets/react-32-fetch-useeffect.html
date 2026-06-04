@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>React — 32: Fetching Data with useEffect</title>
+  <link rel="stylesheet" href="../CSS/cheatsheet.css" />
+  <link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+</head>
+<body id="s32">
+  <header class="page-header">
+    <div class="sheet-number">Sheet 32</div>
+    <h1>Fetching Data with useEffect</h1>
+    <div class="sheet-desc">fetch · async/await in useEffect · loading state · error state · cleanup · AbortController</div>
+  </header>
+  <main>
+    <div class="row row-desc-notes" id="row-1">
+      <div class="col" id="col-1-1">
+        <section class="section-desc" id="desc">
+          <h2 class="section-title">The Manual Data Fetching Pattern</h2>
+          <div class="description">
+            Fetching data inside <code>useEffect</code> is the baseline pattern every React developer should know, even if libraries like TanStack Query or SWR (Sheets 33–34) are preferred for production. The pattern requires three pieces of state — <strong>data, loading, and error</strong> — and a cleanup function using <code>AbortController</code> to cancel the in-flight request when the component unmounts or the dependency changes.
+            <br><br>
+            The critical rule: <code>useEffect</code> cannot be <code>async</code> directly. Declare the async function inside the effect and call it immediately. Use an <code>AbortController</code> signal to prevent "state update on unmounted component" errors when navigation happens before a slow request completes.
+          </div>
+        </section>
+      </div>
+      <div class="col" id="col-1-2">
+        <section class="section-notes" id="notes">
+          <h2 class="section-title">Fetch Pattern Checklist</h2>
+          <ul class="note-list">
+            <li class="note-item">Three state vars: <code>data</code> (null), <code>loading</code> (true), <code>error</code> (null)</li>
+            <li class="note-item">Declare async fn <em>inside</em> effect — never make the effect callback itself async</li>
+            <li class="note-item">Always check <code>res.ok</code> — a 404 does not throw; it resolves with <code>ok: false</code></li>
+            <li class="note-item">Use <code>AbortController</code> + cleanup <code>return () =&gt; controller.abort()</code></li>
+            <li class="note-item">Catch <code>AbortError</code> separately — it's not a real error, just a cancelled request</li>
+            <li class="note-item">Set <code>loading: false</code> in <code>finally</code> — runs whether fetch succeeded or failed</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-tables" id="row-2">
+      <div class="col" id="col-2-1">
+        <section id="tbl-states">
+          <h2 class="section-title">Fetch State Machine</h2>
+          <table>
+            <thead><tr><th>State</th><th>loading</th><th>data</th><th>error</th></tr></thead>
+            <tbody>
+              <tr><td>Initial</td><td class="kw">true</td><td class="kw">null</td><td class="kw">null</td></tr>
+              <tr><td>Success</td><td class="kw">false</td><td class="kw">[…]</td><td class="kw">null</td></tr>
+              <tr><td>Error</td><td class="kw">false</td><td class="kw">null</td><td class="kw">'msg'</td></tr>
+              <tr><td>Re-fetching</td><td class="kw">true</td><td class="kw">prev data</td><td class="kw">null</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+      <div class="col" id="col-2-2">
+        <section id="tbl-vs">
+          <h2 class="section-title">Manual Fetch vs Query Library</h2>
+          <table>
+            <thead><tr><th>Feature</th><th>useEffect</th><th>TanStack Query</th></tr></thead>
+            <tbody>
+              <tr><td>Caching</td><td class="center">✖</td><td class="center">✔</td></tr>
+              <tr><td>Deduplication</td><td class="center">✖</td><td class="center">✔</td></tr>
+              <tr><td>Re-fetch on focus</td><td class="center">✖</td><td class="center">✔</td></tr>
+              <tr><td>Pagination helpers</td><td class="center">✖</td><td class="center">✔</td></tr>
+              <tr><td>Zero deps</td><td class="center">✔</td><td class="center">✖</td></tr>
+              <tr><td>Learning curve</td><td class="desc">Low</td><td class="desc">Medium</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-code-explain" id="row-3">
+      <div class="col" id="col-3-1">
+        <section class="section-code" id="code">
+          <h2 class="section-title">Complete Fetch Pattern</h2>
+          <pre><code class="language-jsx">import { useState, useEffect } from 'react';
+
+function useFetch(url) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
+
+  useEffect(() => {
+    // ❶ Reset state for new URL
+    setLoading(true);
+    setError(null);
+
+    // ❷ AbortController for cleanup
+    const controller = new AbortController();
+
+    // ❸ Async fn declared inside — effect itself stays sync
+    async function fetchData() {
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const json = await res.json();
+        setData(json);
+      } catch (err) {
+        if (err.name !== 'AbortError') setError(err.message); // ❹ ignore abort
+      } finally {
+        setLoading(false);                   // ❺ always clear spinner
+      }
+    }
+
+    fetchData();
+
+    return () => controller.abort();        // ❻ cleanup on unmount / url change
+  }, [url]);
+
+  return { data, loading, error };
+}
+
+// Usage
+function PostList() {
+  const { data: posts, loading, error } = useFetch('/api/posts');
+
+  if (loading) return <p>Loading…</p>;
+  if (error)   return <p>Error: {error}</p>;
+  return (
+    <ul>
+      {posts.map(p => <li key={p.id}>{p.title}</li>)}
+    </ul>
+  );
+}</code></pre>
+        </section>
+      </div>
+      <div class="col" id="col-3-2">
+        <section class="section-explain" id="explain">
+          <h2 class="section-title">Notes</h2>
+          <div class="section-body">
+            <div class="explain-item">❶ Reset state — when <code>url</code> changes, clear stale data and show spinner again before the new response arrives</div>
+            <div class="explain-item">❷ <code>AbortController</code> — one per effect run; tied to this specific fetch; does not affect other in-flight requests</div>
+            <div class="explain-item">❸ <code>async function fetchData()</code> inside effect — the only valid way to use <code>await</code> inside <code>useEffect</code></div>
+            <div class="explain-item">❹ <code>err.name !== 'AbortError'</code> — an abort is intentional cleanup, not a real error; swallow it silently</div>
+            <div class="explain-item">❺ <code>finally</code> — guarantees <code>loading</code> is cleared whether the fetch succeeded, errored, or threw unexpectedly</div>
+            <div class="explain-item">❻ Cleanup — <code>controller.abort()</code> fires when component unmounts or <code>url</code> dep changes; prevents stale state updates</div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-footer-trio" id="row-4">
+      <div class="col" id="col-4-1">
+        <section class="section-mistakes" id="mistakes">
+          <h2 class="section-title">Common Mistakes</h2>
+          <ul class="note-list">
+            <li class="note-item">Making the effect callback <code>async</code> directly — React expects the effect to return a cleanup function or nothing; an async function returns a Promise, which React ignores as a cleanup</li>
+            <li class="note-item">Not checking <code>res.ok</code> — a 404 or 500 response resolves (doesn't throw); without the check you silently try to parse an error body as JSON</li>
+            <li class="note-item">Missing the AbortController cleanup — navigating away while a slow fetch is in-flight causes a state-update-on-unmounted-component warning and potential bugs</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col" id="col-4-2">
+        <section class="section-tips" id="tips">
+          <h2 class="section-title">Tips</h2>
+          <ul class="note-list">
+            <li class="note-item">Extract this pattern into a <code>useFetch</code> custom hook immediately — you'll need it in multiple components and it's one of the cleanest hook extractions</li>
+            <li class="note-item">For production apps with many data requirements, switch to TanStack Query (Sheet 33) — it handles caching, background refresh, and pagination that <code>useEffect</code> fetch cannot</li>
+            <li class="note-item">Show stale data while re-fetching (keep previous <code>data</code> during <code>loading: true</code>) for a better UX than blanking the page on every refetch</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col" id="col-4-3">
+        <section class="section-summary" id="summary">
+          <h2 class="section-title">Summary</h2>
+          <ul class="note-list">
+            <li class="note-item"><code>data / loading / error</code> — three state vars cover the full fetch lifecycle</li>
+            <li class="note-item">Async fn inside effect — never make the effect callback itself async</li>
+            <li class="note-item"><code>AbortController</code> — cancel in-flight fetch in the cleanup return</li>
+            <li class="note-item"><code>res.ok</code> check — 4xx/5xx responses resolve; you must throw manually</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </main>
+  <footer class="page-footer">
+    <nav aria-label="Sheet navigation">
+      <a class="nav-link prev" href="react-31-react-router-advanced.html">React Router — Advanced</a>
+      <a class="nav-toc" href="index.html">React Reference · 45 Sheets</a>
+      <a class="nav-link next" href="react-33-react-query.html">TanStack Query</a>
+    </nav>
+  </footer>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+</body>
+</html>

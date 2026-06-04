@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>React — 34: SWR</title>
+  <link rel="stylesheet" href="../CSS/cheatsheet.css" />
+  <link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+</head>
+<body id="s34">
+  <header class="page-header">
+    <div class="sheet-number">Sheet 34</div>
+    <h1>SWR</h1>
+    <div class="sheet-desc">useSWR · fetcher · revalidation · mutate · conditional fetching · SWRConfig</div>
+  </header>
+  <main>
+    <div class="row row-desc-notes" id="row-1">
+      <div class="col" id="col-1-1">
+        <section class="section-desc" id="desc">
+          <h2 class="section-title">Stale-While-Revalidate Data Fetching</h2>
+          <div class="description">
+            <strong>SWR</strong> (by Vercel) is a lightweight React hook library for data fetching. Its name comes from the HTTP cache strategy: return <em>stale</em> data immediately (fast), then re-fetch (<em>revalidate</em>) in the background and update the UI. This gives the perception of instant responses while keeping data fresh.
+            <br><br>
+            SWR is simpler than TanStack Query — it has a single <code>useSWR</code> hook with a key, a fetcher, and options. The global <code>SWRConfig</code> provider sets defaults. For mutations, call the local or global <code>mutate</code> to manually update the cache or trigger a re-fetch. SWR integrates especially well with Next.js (same team).
+          </div>
+        </section>
+      </div>
+      <div class="col" id="col-1-2">
+        <section class="section-notes" id="notes">
+          <h2 class="section-title">SWR Key Behaviours</h2>
+          <ul class="note-list">
+            <li class="note-item"><strong>Stale-while-revalidate</strong> — returns cached data immediately, then fetches fresh data in the background</li>
+            <li class="note-item"><strong>Deduplication</strong> — multiple <code>useSWR</code> calls with the same key share one request</li>
+            <li class="note-item"><strong>Revalidate on focus</strong> — re-fetches when the tab regains focus (configurable)</li>
+            <li class="note-item"><strong>Revalidate on reconnect</strong> — re-fetches when network comes back online</li>
+            <li class="note-item"><code>key = null | false</code> — disables the fetch; use for conditional/dependent queries</li>
+            <li class="note-item"><code>mutate(key, data, options)</code> — global mutate; updates or invalidates any cached key</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-tables" id="row-2">
+      <div class="col" id="col-2-1">
+        <section id="tbl-return">
+          <h2 class="section-title">useSWR Return Values</h2>
+          <table>
+            <thead><tr><th>Property</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>data</td><td class="desc">Cached or fetched data (undefined until first response)</td></tr>
+              <tr><td>error</td><td class="desc">Error thrown by fetcher</td></tr>
+              <tr><td>isLoading</td><td class="desc">No cached data + fetch in progress</td></tr>
+              <tr><td>isValidating</td><td class="desc">Any fetch in progress (incl. background refresh)</td></tr>
+              <tr><td>mutate(data?)</td><td class="desc">Update local cache and/or trigger re-fetch</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+      <div class="col" id="col-2-2">
+        <section id="tbl-options">
+          <h2 class="section-title">Common SWR Options</h2>
+          <table>
+            <thead><tr><th>Option</th><th>Default</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td>revalidateOnFocus</td><td class="kw">true</td><td class="desc">Re-fetch on tab focus</td></tr>
+              <tr><td>revalidateOnReconnect</td><td class="kw">true</td><td class="desc">Re-fetch on network reconnect</td></tr>
+              <tr><td>refreshInterval</td><td class="kw">0</td><td class="desc">Polling interval in ms (0 = off)</td></tr>
+              <tr><td>dedupingInterval</td><td class="kw">2000</td><td class="desc">Suppress duplicate requests within ms</td></tr>
+              <tr><td>fallbackData</td><td class="kw">undefined</td><td class="desc">Initial data before first fetch</td></tr>
+              <tr><td>onSuccess(data)</td><td class="kw">—</td><td class="desc">Callback after successful fetch</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-code-explain" id="row-3">
+      <div class="col" id="col-3-1">
+        <section class="section-code" id="code">
+          <h2 class="section-title">SWR Patterns</h2>
+          <pre><code class="language-jsx">// npm install swr
+import useSWR, { mutate as globalMutate, SWRConfig } from 'swr';
+
+// ── Global fetcher (set once in SWRConfig) ────────────────
+const fetcher = (url) => fetch(url).then(r => {
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+});
+
+// main.jsx — wrap app
+<SWRConfig value={{ fetcher, revalidateOnFocus: false }}>
+  <App />
+</SWRConfig>
+
+// ── Basic usage ───────────────────────────────────────────
+function Profile({ userId }) {
+  const { data, error, isLoading } = useSWR(`/api/users/${userId}`);
+
+  if (isLoading) return <p>Loading…</p>;
+  if (error)     return <p>Error: {error.message}</p>;
+  return <p>{data.name}</p>;
+}
+
+// ── Conditional fetch (wait for userId) ───────────────────
+const { data } = useSWR(userId ? `/api/users/${userId}` : null);
+
+// ── Optimistic update + mutate ────────────────────────────
+function LikeButton({ postId, likes }) {
+  const { mutate } = useSWR(`/api/posts/${postId}`);
+
+  async function handleLike() {
+    // Optimistic: update cache immediately
+    mutate({ likes: likes + 1 }, { revalidate: false });
+    try {
+      await fetch(`/api/posts/${postId}/like`, { method: 'POST' });
+    } catch {
+      mutate(); // revert: trigger re-fetch on error
+    }
+  }
+  return <button onClick={handleLike}>♥ {likes}</button>;
+}
+
+// ── Global mutate: invalidate from outside the component ──
+await fetch('/api/posts', { method: 'POST', body: … });
+globalMutate('/api/posts');  // re-fetch the posts list anywhere</code></pre>
+        </section>
+      </div>
+      <div class="col" id="col-3-2">
+        <section class="section-explain" id="explain">
+          <h2 class="section-title">Notes</h2>
+          <div class="section-body">
+            <div class="explain-item"><code>SWRConfig</code> — sets the global fetcher once; all <code>useSWR</code> calls inherit it; override per-call by passing a second fetcher arg</div>
+            <div class="explain-item"><code>key = null</code> — SWR skips the fetch; use for conditional/dependent queries (like TanStack Query's <code>enabled</code>)</div>
+            <div class="explain-item"><code>mutate({ likes: likes + 1 }, { revalidate: false })</code> — optimistic update: set cache data immediately without re-fetching; revert by calling <code>mutate()</code> with no args</div>
+            <div class="explain-item"><code>globalMutate('/api/posts')</code> — invalidates the cache entry for that key from anywhere (outside a component, after a form submit)</div>
+            <div class="explain-item"><code>isLoading</code> vs <code>isValidating</code> — <code>isLoading</code> true only when no cache exists; <code>isValidating</code> true during any background refresh</div>
+            <div class="explain-item"><code>refreshInterval: 5000</code> — poll every 5 s; useful for live dashboards, chat, or stock prices</div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-footer-trio" id="row-4">
+      <div class="col" id="col-4-1">
+        <section class="section-mistakes" id="mistakes">
+          <h2 class="section-title">Common Mistakes</h2>
+          <ul class="note-list">
+            <li class="note-item">Creating the fetcher function inside a component — new reference on every render causes SWR to think the fetcher changed and re-fetch; define it outside the component</li>
+            <li class="note-item">Using an object or array as the SWR key without stability — SWR compares keys with JSON.stringify, so objects work, but large/nested objects slow down the comparison; prefer string keys</li>
+            <li class="note-item">Forgetting to revert on optimistic update failure — update the cache immediately but catch errors and call <code>mutate()</code> (no args) to re-fetch the real data</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col" id="col-4-2">
+        <section class="section-tips" id="tips">
+          <h2 class="section-title">Tips</h2>
+          <ul class="note-list">
+            <li class="note-item">Use an array key when the fetch depends on multiple values: <code>useSWR(['/api/data', userId, page])</code> — SWR serialises it for the cache</li>
+            <li class="note-item">Set <code>revalidateOnFocus: false</code> globally for dashboards where background polling is preferred over focus-triggered re-fetches</li>
+            <li class="note-item">SWR and TanStack Query are interchangeable for most use cases; SWR is simpler; TanStack Query has more built-in features (infinite queries, paginated helpers, devtools)</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col" id="col-4-3">
+        <section class="section-summary" id="summary">
+          <h2 class="section-title">Summary</h2>
+          <ul class="note-list">
+            <li class="note-item"><code>useSWR(key, fetcher)</code> — stale-while-revalidate; returns data/error/isLoading</li>
+            <li class="note-item"><code>key = null</code> — disables fetch; use for conditional queries</li>
+            <li class="note-item"><code>mutate(data, opts)</code> — optimistic update; no-arg call triggers re-fetch</li>
+            <li class="note-item"><code>SWRConfig</code> — set global fetcher and defaults once at app root</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </main>
+  <footer class="page-footer">
+    <nav aria-label="Sheet navigation">
+      <a class="nav-link prev" href="react-33-react-query.html">TanStack Query</a>
+      <a class="nav-toc" href="index.html">React Reference · 45 Sheets</a>
+      <a class="nav-link next" href="react-35-memo.html">React.memo &amp; Memoization</a>
+    </nav>
+  </footer>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+</body>
+</html>

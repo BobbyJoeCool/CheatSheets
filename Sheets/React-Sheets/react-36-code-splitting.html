@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>React — 36: Code Splitting &amp; Lazy Loading</title>
+  <link rel="stylesheet" href="../CSS/cheatsheet.css" />
+  <link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+</head>
+<body id="s36">
+  <header class="page-header">
+    <div class="sheet-number">Sheet 36</div>
+    <h1>Code Splitting &amp; Lazy Loading</h1>
+    <div class="sheet-desc">React.lazy · Suspense · dynamic import() · fallback · route-level splitting</div>
+  </header>
+  <main>
+    <div class="row row-desc-notes" id="row-1">
+      <div class="col" id="col-1-1">
+        <section class="section-desc" id="desc">
+          <h2 class="section-title">Splitting the Bundle at Boundaries</h2>
+          <div class="description">
+            By default, bundlers (Vite, Webpack) combine all JS into a single file. <strong>Code splitting</strong> divides the bundle into smaller chunks loaded on demand. <code>React.lazy()</code> + a dynamic <code>import()</code> tells the bundler to create a separate chunk for that component, loaded only when the component first renders.
+            <br><br>
+            A <code>&lt;Suspense&gt;</code> boundary must wrap any lazy component. It renders the <code>fallback</code> prop (a spinner, skeleton, or loading message) while the chunk is downloading, then swaps in the real component. The most impactful place to split is at <strong>route level</strong> — each page becomes its own chunk and the initial bundle only contains the landing page code.
+          </div>
+        </section>
+      </div>
+      <div class="col" id="col-1-2">
+        <section class="section-notes" id="notes">
+          <h2 class="section-title">Code Splitting Rules</h2>
+          <ul class="note-list">
+            <li class="note-item"><code>React.lazy(() =&gt; import('./Comp'))</code> — the import must resolve to a module with a <code>default</code> export</li>
+            <li class="note-item"><code>&lt;Suspense fallback={…}&gt;</code> — required ancestor of the lazy component; no ancestor = thrown error</li>
+            <li class="note-item">The fallback renders while the chunk <em>downloads</em>, not while the component renders</li>
+            <li class="note-item">Multiple lazy components under one <code>&lt;Suspense&gt;</code> — all share the same fallback; show a single spinner</li>
+            <li class="note-item">Named exports — <code>lazy(() =&gt; import('./Comp').then(m =&gt; ({ default: m.MyComp })))</code></li>
+            <li class="note-item">Preload a chunk before it's needed — call <code>import('./Page')</code> on hover/mousedown</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-tables" id="row-2">
+      <div class="col" id="col-2-1">
+        <section id="tbl-split">
+          <h2 class="section-title">Good Code Split Boundaries</h2>
+          <table>
+            <thead><tr><th>Boundary</th><th>Benefit</th></tr></thead>
+            <tbody>
+              <tr><td>Route / page components</td><td class="desc">Largest impact; each page = one chunk</td></tr>
+              <tr><td>Heavy modal / drawer</td><td class="desc">Loaded only when user opens it</td></tr>
+              <tr><td>Rich text / chart library</td><td class="desc">Large library loaded only on the page that needs it</td></tr>
+              <tr><td>Admin panel</td><td class="desc">Only users who visit admin pay the download cost</td></tr>
+              <tr><td>Small utility component</td><td class="desc">Too small — chunk overhead not worth it</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+      <div class="col" id="col-2-2">
+        <section id="tbl-suspense">
+          <h2 class="section-title">Suspense Boundary Placement</h2>
+          <table>
+            <thead><tr><th>Where</th><th>Effect</th></tr></thead>
+            <tbody>
+              <tr><td>App root</td><td class="desc">One global fallback for all lazy components</td></tr>
+              <tr><td>Layout (around &lt;Outlet&gt;)</td><td class="desc">Page-level spinner; nav stays visible</td></tr>
+              <tr><td>Per-component</td><td class="desc">Granular; different fallbacks for different parts</td></tr>
+              <tr><td>Missing</td><td class="desc">React throws — lazy component crashes the app</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-code-explain" id="row-3">
+      <div class="col" id="col-3-1">
+        <section class="section-code" id="code">
+          <h2 class="section-title">Lazy Loading Patterns</h2>
+          <pre><code class="language-jsx">import { lazy, Suspense, useState } from 'react';
+
+// ── Route-level code splitting ─────────────────────────────
+const HomePage    = lazy(() => import('./pages/HomePage'));
+const Dashboard   = lazy(() => import('./pages/Dashboard'));
+const AdminPanel  = lazy(() => import('./pages/AdminPanel'));
+
+function App() {
+  return (
+    <Suspense fallback={<div className="page-spinner">Loading…</div>}>
+      <Routes>
+        <Route path="/"         element={<HomePage />} />
+        <Route path="/dash"     element={<Dashboard />} />
+        <Route path="/admin/*"  element={<AdminPanel />} />
+      </Routes>
+    </Suspense>
+  );
+}
+
+// ── Lazy modal (loaded only when opened) ──────────────────
+const HeavyModal = lazy(() => import('./HeavyModal'));
+
+function Page() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Open</button>
+      {open && (
+        <Suspense fallback={<p>Loading modal…</p>}>
+          <HeavyModal onClose={() => setOpen(false)} />
+        </Suspense>
+      )}
+    </>
+  );
+}
+
+// ── Named export workaround ───────────────────────────────
+const MyChart = lazy(() =>
+  import('./charts').then(m => ({ default: m.BarChart }))
+);
+
+// ── Preload on hover (before click) ──────────────────────
+const preload = () => import('./pages/Dashboard');
+<Link to="/dash" onMouseEnter={preload}>Dashboard</Link></code></pre>
+        </section>
+      </div>
+      <div class="col" id="col-3-2">
+        <section class="section-explain" id="explain">
+          <h2 class="section-title">Notes</h2>
+          <div class="section-body">
+            <div class="explain-item"><code>lazy(() =&gt; import('./Page'))</code> — bundler creates a separate chunk; the Promise is tracked by Suspense</div>
+            <div class="explain-item"><code>&lt;Suspense fallback&gt;</code> at the route level — wraps all pages; the nav bar stays mounted while the page chunk loads</div>
+            <div class="explain-item"><code>{open &amp;&amp; &lt;Suspense&gt;…}</code> — Suspense inside a condition; the chunk isn't even requested until <code>open</code> is true</div>
+            <div class="explain-item"><code>.then(m =&gt; ({ default: m.BarChart }))</code> — normalises a named export to a default export shape that <code>React.lazy</code> requires</div>
+            <div class="explain-item"><code>onMouseEnter={preload}</code> — calling <code>import()</code> on hover kicks off the network request 100–200 ms before the click; the chunk arrives faster</div>
+            <div class="explain-item">Check bundle sizes with <code>vite build --report</code> or the Rollup Bundle Visualiser plugin to identify the best split points</div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="row row-footer-trio" id="row-4">
+      <div class="col" id="col-4-1">
+        <section class="section-mistakes" id="mistakes">
+          <h2 class="section-title">Common Mistakes</h2>
+          <ul class="note-list">
+            <li class="note-item">Defining the lazy component inside a render function — a new lazy import is created on every render; always define at the module level outside the component</li>
+            <li class="note-item">Forgetting a <code>&lt;Suspense&gt;</code> ancestor — React throws immediately when the lazy chunk starts loading; wrap early</li>
+            <li class="note-item">Lazy-loading tiny components — the chunk round-trip overhead (~20ms) can exceed the parse time saved; only split components that are genuinely large</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col" id="col-4-2">
+        <section class="section-tips" id="tips">
+          <h2 class="section-title">Tips</h2>
+          <ul class="note-list">
+            <li class="note-item">Start with route-level splitting only — it usually cuts the initial bundle by 40–60% and requires the least effort</li>
+            <li class="note-item">Place a <code>&lt;Suspense&gt;</code> inside the layout component (around <code>&lt;Outlet&gt;</code>) so the nav and header remain visible during page transitions</li>
+            <li class="note-item">Pair with an <code>errorElement</code> (React Router) or an Error Boundary component to handle chunk load failures (network error, CDN timeout)</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col" id="col-4-3">
+        <section class="section-summary" id="summary">
+          <h2 class="section-title">Summary</h2>
+          <ul class="note-list">
+            <li class="note-item"><code>React.lazy(() =&gt; import('./Page'))</code> — creates a separate JS chunk</li>
+            <li class="note-item"><code>&lt;Suspense fallback&gt;</code> — required ancestor; shows fallback during download</li>
+            <li class="note-item">Route-level splitting — highest impact; one chunk per page</li>
+            <li class="note-item">Preload on hover — call <code>import()</code> early to reduce perceived latency</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </main>
+  <footer class="page-footer">
+    <nav aria-label="Sheet navigation">
+      <a class="nav-link prev" href="react-35-memo.html">React.memo &amp; Memoization</a>
+      <a class="nav-toc" href="index.html">React Reference · 45 Sheets</a>
+      <a class="nav-link next" href="react-37-render-optimization.html">Render Optimization</a>
+    </nav>
+  </footer>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+</body>
+</html>
