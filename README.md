@@ -6,6 +6,7 @@ Programming Languages Cheat Sheets
 
 ### Non-Programming Languages
 
+- [X] Concepts
 - [X] SQL
 - [X] HTML
 - [X] CSS
@@ -19,6 +20,7 @@ Programming Languages Cheat Sheets
 
 ### Programming Languages
 
-- [] JavaScript/TypeScript
+- [] JavaScript/TypeScript/Node
 - [] Java
 - [] Python
+- [] React
