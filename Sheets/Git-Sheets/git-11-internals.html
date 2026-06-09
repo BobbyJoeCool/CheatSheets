@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Git — 11: Git Internals</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/git-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Git Internals</h1>
+			<div class="sheet-desc">objects · blobs · trees · commits · refs · packfiles · reflog · gc · plumbing</div>
+		</header>
+
+		<main>
+
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Object Database</h2>
+						<div class="description">
+							Git's storage model is a <strong>content-addressed object database</strong> in <code>.git/objects/</code>. Everything is stored as one of four object types, identified by a SHA-1 hash of their contents. A <strong>blob</strong> stores raw file contents. A <strong>tree</strong> stores a directory listing (names, modes, and blob/tree hashes). A <strong>commit</strong> stores a tree hash, parent commit hashes, metadata, and a message. A <strong>tag object</strong> stores a pointer to any object plus tagger info. <strong>Refs</strong> (<code>.git/refs/</code>) are human-readable names for hashes — branches, tags, and HEAD are all refs.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Object Types</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>blob</code> — file contents (no filename, no metadata)</li>
+							<li class="note-item"><code>tree</code> — directory: list of (mode, name, hash) entries</li>
+							<li class="note-item"><code>commit</code> — tree + parent(s) + author + committer + message</li>
+							<li class="note-item"><code>tag</code> — annotated tag object pointing to any object</li>
+							<li class="note-item">Identical files across commits share one blob — no duplication</li>
+							<li class="note-item">Packfiles compress and delta-encode objects for efficiency</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-tables" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-plumbing">
+						<h2 class="section-title">Plumbing Commands</h2>
+						<table>
+							<thead>
+								<tr><th>Command</th><th>Description</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>git cat-file -t abc1234</td><td class="desc">Print the object type (blob, tree, commit, tag)</td></tr>
+								<tr><td>git cat-file -p abc1234</td><td class="desc">Pretty-print the object contents</td></tr>
+								<tr><td>git ls-tree HEAD</td><td class="desc">List the tree object at HEAD (directory snapshot)</td></tr>
+								<tr><td>git ls-tree -r HEAD</td><td class="desc">Recursively list all blobs in the current commit</td></tr>
+								<tr><td>git hash-object file.txt</td><td class="desc">Compute and print the SHA-1 hash of a file</td></tr>
+								<tr><td>git rev-parse HEAD</td><td class="desc">Resolve any ref or expression to a full 40-char hash</td></tr>
+								<tr><td>git rev-parse --short HEAD</td><td class="desc">Short (7-char) hash of HEAD</td></tr>
+								<tr><td>git count-objects -v</td><td class="desc">Count loose objects and packfile sizes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-refs">
+						<h2 class="section-title">Refs & Maintenance</h2>
+						<table>
+							<thead>
+								<tr><th>Command / Path</th><th>Description</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>.git/HEAD</td><td class="desc">Points to current branch ref (or a commit in detached mode)</td></tr>
+								<tr><td>.git/refs/heads/</td><td class="desc">One file per local branch containing its commit hash</td></tr>
+								<tr><td>.git/refs/tags/</td><td class="desc">One file per tag</td></tr>
+								<tr><td>.git/refs/remotes/</td><td class="desc">Remote-tracking branch refs</td></tr>
+								<tr><td>git reflog</td><td class="desc">All HEAD movements — safety net for lost commits</td></tr>
+								<tr><td>git reflog expire --all</td><td class="desc">Expire old reflog entries (before gc)</td></tr>
+								<tr><td>git gc</td><td class="desc">Pack loose objects, prune dangling refs, compress</td></tr>
+								<tr><td>git fsck</td><td class="desc">Verify object database integrity; list dangling objects</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-code-explain" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Exploring the Object Store</h2>
+						<pre><code class="language-bash"># ── Inspect the latest commit object ─────────────────────────
+git cat-file -p HEAD
+# tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+# parent 9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0
+# author Ada Lovelace <ada@example.com> 1704067200 +0000
+# committer Ada Lovelace <ada@example.com> 1704067200 +0000
+# Add OAuth login
+
+# ── Inspect the tree that commit points to ────────────────────
+git ls-tree HEAD
+# 100644 blob a8c3f1d  README.md
+# 100644 blob e7b2f4c  auth.js
+# 040000 tree d9a1b3e  src/
+
+# ── Read a blob directly ──────────────────────────────────────
+git cat-file -p a8c3f1d   # prints contents of README.md at HEAD
+
+# ── Resolve expressions to hashes ────────────────────────────
+git rev-parse HEAD          # → full 40-char hash
+git rev-parse HEAD~2        # → hash 2 commits ago
+git rev-parse main          # → hash branch main points to
+git rev-parse v1.0.0        # → hash of tag (lightweight: commit hash)
+
+# ── Find dangling commits (orphans after reset) ───────────────
+git fsck --lost-found       # writes dangling objects to .git/lost-found/
+git cat-file -p dangling_hash   # inspect to decide if worth recovering
+
+# ── Maintenance ───────────────────────────────────────────────
+git gc --aggressive         # repack and compress (takes longer)
+git gc --prune=now          # also remove all loose objects immediately</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>cat-file -p HEAD</code> — "porcelain" pretty-print; the commit object contains the tree hash, not file contents directly</div>
+							<div class="explain-item"><code>ls-tree</code> modes — <code>100644</code> = regular file, <code>100755</code> = executable, <code>040000</code> = directory (tree), <code>120000</code> = symlink</div>
+							<div class="explain-item">Content-addressing — two identical files in different locations store only one blob; Git detects this automatically</div>
+							<div class="explain-item"><code>git fsck --lost-found</code> — writes dangling blobs/commits to <code>.git/lost-found/</code>; useful after an accidental hard reset</div>
+							<div class="explain-item"><code>git gc</code> — runs automatically by Git periodically; safe to run manually; packs loose objects into packfiles</div>
+							<div class="explain-item">Packfiles (<code>.git/objects/pack/</code>) store delta-compressed chains of objects — a repository that is 1 GB of files may have a 50 MB packfile</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Running <code>git gc --prune=now</code> immediately after an accidental reset — this permanently removes the dangling commit before you can recover it via <code>git reflog</code></li>
+							<li class="note-item">Assuming <code>git branch -d</code> frees disk space — deleted branches leave dangling objects until the next <code>git gc</code> prune cycle</li>
+							<li class="note-item">Treating short hashes as stable identifiers — a 7-char abbreviation can become ambiguous as the repo grows; always store full 40-char hashes in scripts</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>git cat-file -p</code> and <code>git ls-tree</code> when debugging unexpected behavior — seeing the raw objects demystifies what merge, rebase, and reset actually change</li>
+							<li class="note-item">Run <code>git fsck</code> if a repo seems corrupt after a crash — it identifies missing or broken objects before <code>gc</code> removes them</li>
+							<li class="note-item">For large repos with binary assets, consider <strong>Git LFS</strong> (Large File Storage) — it replaces blobs with small pointer files and stores the actual data on a separate server</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Four object types: <code>blob</code> · <code>tree</code> · <code>commit</code> · <code>tag</code></li>
+							<li class="note-item"><code>git cat-file -p</code> — inspect any object by hash</li>
+							<li class="note-item">Refs in <code>.git/refs/</code> — human-readable pointers to hashes</li>
+							<li class="note-item"><code>git fsck</code> — verify integrity; find dangling objects</li>
+							<li class="note-item"><code>git gc</code> — pack loose objects, reclaim space, prune unreachable</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="git-10-hooks.html">Hooks & Automation</a>
+				<a class="nav-toc" href="index.html">Git Reference · 12 Sheets</a>
+				<a class="nav-link next" href="git-12-advanced.html">Power Commands & Tips</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

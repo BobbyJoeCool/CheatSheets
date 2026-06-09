@@ -99,7 +99,8 @@ CheatSheets/
 │   ├── SQL-Sheets/
 │   └── ...
 └── DevNotes/
-    └── TEMPLATE-cheatsheet.css # Base template used when scaffolding new collections
+    └── Templates               # Not uploaded to Git
+    new collections
 ```
 
 ---
@@ -122,16 +123,16 @@ CheatSheets/
 ### Concepts & Tools
 
 | Status | Collection | Sheets | Notes |
-|---|---|---|---|
+| :---: | :--- | :---: | :--- |
 | ✅ | Concepts | 14 | Algorithms, data structures, design patterns |
 | ✅ | RegEx | 9 | |
 | ⬜ | Bitwise | — | In progress |
-| ⬜ | Bash | — | In progress |
+| ✅ | Bash | 12 | |
 
 ### Web Technologies
 
 | Status | Collection | Sheets | Notes |
-|---|---|---|---|
+| :---: | :--- | :---: | :--- |
 | ✅ | HTML | 15 | |
 | ✅ | CSS | 25 | |
 | ⬜ | JavaScript / TypeScript | — | In progress |
@@ -140,7 +141,7 @@ CheatSheets/
 ### Languages
 
 | Status | Collection | Sheets | Notes |
-|---|---|---|---|
+| :---: | :--- | :---: | :--- |
 | ✅ | SQL | 22 | |
 | ⬜ | Python | — | Planned |
 | ⬜ | Java | — | Planned |
@@ -148,7 +149,7 @@ CheatSheets/
 ### Markup & Notation
 
 | Status | Collection | Sheets | Notes |
-|---|---|---|---|
+| :---: | :--- | :---: | :--- |
 | ✅ | Markdown | 3 | |
 | ✅ | Mermaid | 12 | |
 | ⬜ | JSON | — | In progress |
