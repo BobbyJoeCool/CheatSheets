@@ -126,7 +126,7 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | Concepts | 14 | Algorithms, data structures, design patterns |
 | ✅ | RegEx | 9 | |
-| ⬜ | Bitwise | — | In progress |
+| ✅ | Bitwise | 8 | operators, masks & flags, bit tricks, packing & fields, subset enumeration, bit counting, real-world patterns; CSS warnings — see bitwise-verify.log |
 | ✅ | Bash | 12 | |
 
 ### Web Technologies
