@@ -125,9 +125,9 @@ CheatSheets/
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
 | ✅ | Concepts | 14 | Algorithms, data structures, design patterns |
-| ✅ | RegEx | 9 | |
+| ✅ | RegEx | 9 | Character Classes, Anchors & Boundaries, Quantifiers, Groups & References, Lookarounds, Substitution & Flags, Practical Patterns, Language Syntax |
 | ✅ | Bitwise | 8 | operators, masks & flags, bit tricks, packing & fields, subset enumeration, bit counting, real-world patterns; CSS warnings — see bitwise-verify.log |
-| ✅ | Bash | 12 | |
+| ✅ | Bash | 12 | files & dirs, wildcards & patterns, redirection & piping, permissions, environment, script basics, operators & control flow, functions & arrays, processes & jobs, text processing, macOS tools |
 
 ### Web Technologies
 
@@ -142,7 +142,7 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ✅ | SQL | 22 | |
+| ✅ | SQL | 22 | SELECT, WHERE Operators, JOIN Types, Aggregate Functions, CASE Statement, String Functions, Date Functions, UNION / INTERSECT / EXCEPT, Subqueries, CTEs, Window Functions, NULL Handling, INSERT, UPDATE & DELETE, CREATE TABLE & Data Types, Constraints, Views, Transactions, Stored Procedures, Triggers, Indexes |
 | ⬜ | Python | — | Planned |
 | ⬜ | Java | — | Planned |
 
