@@ -133,8 +133,8 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ✅ | HTML | 15 | |
-| ✅ | CSS | 25 | |
+| ✅ | HTML | 15 | head, landmark & structural tags, semantic containers, generic containers, classes & IDs, typography, lists, tables, inline & misc, media, links, forms, accessibility, DOM & script basics |
+| ✅ | CSS | 25 | naming, selectors: basic & combinators, pseudo-classes, pseudo-elements & attribute, box model, borders & outlines, typography: fonts & text, colors, backgrounds, gradients, flexbox, grid, positioning, display & overflow, transitions, animations, transform, responsive: media queries, fluid units & functions, variables, modern CSS |
 | ⬜ | JavaScript / TypeScript | — | In progress |
 | ⬜ | React | — | In progress |
 
@@ -150,7 +150,7 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ✅ | Markdown | 3 | |
-| ✅ | Mermaid | 12 | |
+| ✅ | Markdown | 3 | code blocks & math, LaTeX reference |
+| ✅ | Mermaid | 12 | flowcharts, sequence diagrams, class diagrams, entity relationship diagrams, Gantt charts, mind maps, state diagrams, pie & quadrant charts, timeline & git graph, themes & styling, config & integration |
 | ⬜ | JSON | — | In progress |
 | ⬜ | XML | — | Planned |
