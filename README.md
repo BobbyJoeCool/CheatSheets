@@ -128,6 +128,7 @@ CheatSheets/
 | ✅ | RegEx | 9 | Character Classes, Anchors & Boundaries, Quantifiers, Groups & References, Lookarounds, Substitution & Flags, Practical Patterns, Language Syntax |
 | ✅ | Bitwise | 8 | operators, masks & flags, bit tricks, packing & fields, subset enumeration, bit counting, real-world patterns; CSS warnings — see bitwise-verify.log |
 | ✅ | Bash | 12 | files & dirs, wildcards & patterns, redirection & piping, permissions, environment, script basics, operators & control flow, functions & arrays, processes & jobs, text processing, macOS tools |
+| ✅ | Git | 12 | core workflow, branching, remotes & syncing, history, undoing changes, stash & tags, rebase & merging, workflows, hooks, internals, power commands |
 
 ### Web Technologies
 
@@ -136,7 +137,9 @@ CheatSheets/
 | ✅ | HTML | 15 | head, landmark & structural tags, semantic containers, generic containers, classes & IDs, typography, lists, tables, inline & misc, media, links, forms, accessibility, DOM & script basics |
 | ✅ | CSS | 25 | naming, selectors: basic & combinators, pseudo-classes, pseudo-elements & attribute, box model, borders & outlines, typography: fonts & text, colors, backgrounds, gradients, flexbox, grid, positioning, display & overflow, transitions, animations, transform, responsive: media queries, fluid units & functions, variables, modern CSS |
 | ⬜ | JavaScript / TypeScript | — | In progress |
+| ⬜ | JSP | — | In Progress |
 | ⬜ | React | — | In progress |
+| ⬜ | PHP | — | Planned |
 
 ### Languages
 
@@ -145,6 +148,10 @@ CheatSheets/
 | ✅ | SQL | 22 | SELECT, WHERE Operators, JOIN Types, Aggregate Functions, CASE Statement, String Functions, Date Functions, UNION / INTERSECT / EXCEPT, Subqueries, CTEs, Window Functions, NULL Handling, INSERT, UPDATE & DELETE, CREATE TABLE & Data Types, Constraints, Views, Transactions, Stored Procedures, Triggers, Indexes |
 | ⬜ | Python | — | Planned |
 | ⬜ | Java | — | Planned |
+| ⬜ | C++ | — | Planned |
+| ⬜ | C | — | Planned |
+| ⬜ | Ruby | — | Planned |
+| ⬜ | Go | — | Planned |
 
 ### Markup & Notation
 
@@ -153,4 +160,4 @@ CheatSheets/
 | ✅ | Markdown | 3 | code blocks & math, LaTeX reference |
 | ✅ | Mermaid | 12 | flowcharts, sequence diagrams, class diagrams, entity relationship diagrams, Gantt charts, mind maps, state diagrams, pie & quadrant charts, timeline & git graph, themes & styling, config & integration |
 | ⬜ | JSON | — | In progress |
-| ⬜ | XML | — | Planned |
+| ⬜ | XML | — | In Progress |

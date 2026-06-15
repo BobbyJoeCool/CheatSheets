@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JSP — Sheet 11: Session &amp; Application Scope</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jsp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Session &amp; Application Scope</h1>
+			<div class="sheet-desc">sessionScope · applicationScope · cross-request state · invalidate · concurrent access · context attributes</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Longer-Lived Scopes</h2>
+						<div class="description">
+							<strong>Session scope</strong> persists across multiple requests from the same browser until the session times out or is invalidated — it is the right place for per-user state like login identity, shopping carts, and preferences. <strong>Application scope</strong> persists for the entire lifetime of the web application and is shared by every user simultaneously — use it only for truly global, read-mostly data like configuration values, lookup tables, or shared caches.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Session scope is per-user; application scope is per-application (all users share it)</li>
+							<li class="note-item">Application-scope writes from multiple threads require synchronization — the container does not lock for you</li>
+							<li class="note-item">Objects stored in session must be <code>Serializable</code> if the container persists or replicates sessions</li>
+							<li class="note-item">EL accesses via <code>${sessionScope.key}</code> and <code>${applicationScope.key}</code></li>
+							<li class="note-item">Session is identified by a <code>JSESSIONID</code> cookie (or URL param); never expose this value in pages</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Session &amp; Application Scope Patterns</h2>
+						<pre><code class="language-jsp"><%-- ── Session scope: per-user state ────────────────────── --%>
+
+<%-- Write (done in servlet after successful login) --%>
+<%
+    session.setAttribute("currentUser", user);
+    session.setAttribute("role", "ADMIN");
+    session.setMaxInactiveInterval(1800); // 30 min
+%>
+
+<%-- Read in JSP --%>
+<p>Logged in as: ${sessionScope.currentUser.fullName}</p>
+<c:if test="${sessionScope.role == 'ADMIN'}">
+    <a href="admin">Admin Panel</a>
+</c:if>
+
+<%-- Logout: destroy session --%>
+<%
+    session.invalidate();
+    response.sendRedirect(request.getContextPath() + "/login");
+    return;
+%>
+
+<%-- ── Application scope: app-wide shared data ───────────── --%>
+
+<%-- Write once at startup (in a ServletContextListener, not JSP) --%>
+<%
+    // Reading is fine in JSP; writing should be done in a listener
+    String version = (String) application.getAttribute("appVersion");
+    Integer visits  = (Integer) application.getAttribute("visitCount");
+%>
+
+<%-- EL read --%>
+<footer>Version: ${applicationScope.appVersion}</footer>
+
+<%-- Read init param from web.xml <context-param> --%>
+<%= application.getInitParameter("supportEmail") %></code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>session.setAttribute(k,v)</code> — stores for this user across requests</div>
+							<div class="explain-item"><code>session.invalidate()</code> — destroys all session data; use on logout</div>
+							<div class="explain-item"><code>setMaxInactiveInterval(sec)</code> — override idle timeout per session</div>
+							<div class="explain-item"><code>application.getAttribute(k)</code> — shared across ALL users; read is safe</div>
+							<div class="explain-item"><code>application.getInitParameter(k)</code> — reads <code>&lt;context-param&gt;</code> from web.xml; read-only after startup</div>
+							<div class="explain-item">Write to application scope only from <code>ServletContextListener.contextInitialized()</code> to avoid threading issues</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-session-vs-app">
+						<h2 class="section-title">Session vs Application Scope</h2>
+						<table>
+							<thead><tr><th>Feature</th><th>Session</th><th>Application</th></tr></thead>
+							<tbody>
+								<tr><td>Shared by</td><td class="desc">One user</td><td class="desc">All users</td></tr>
+								<tr><td>Lifetime</td><td class="desc">Until timeout/invalidate</td><td class="desc">Until undeploy/shutdown</td></tr>
+								<tr><td>Object via</td><td class="desc">session implicit</td><td class="desc">application implicit</td></tr>
+								<tr><td>EL prefix</td><td class="desc">sessionScope</td><td class="desc">applicationScope</td></tr>
+								<tr><td>Thread safety</td><td class="desc">Per-user; mostly safe</td><td class="desc">Shared; sync writes</td></tr>
+								<tr><td>Serializable?</td><td class="desc">Required for clustering</td><td class="desc">Not required</td></tr>
+								<tr><td>Best for</td><td class="desc">Login state, cart, prefs</td><td class="desc">Config, lookup tables</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-session-api">
+						<h2 class="section-title">HttpSession API Quick Reference</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Description</th></tr></thead>
+							<tbody>
+								<tr><td>setAttribute(k, v)</td><td class="desc">Store object</td></tr>
+								<tr><td>getAttribute(k)</td><td class="desc">Retrieve; null if absent</td></tr>
+								<tr><td>removeAttribute(k)</td><td class="desc">Delete one key</td></tr>
+								<tr><td>invalidate()</td><td class="desc">Destroy entire session</td></tr>
+								<tr><td>getId()</td><td class="desc">JSESSIONID value</td></tr>
+								<tr><td>isNew()</td><td class="desc">Created this request?</td></tr>
+								<tr><td>getMaxInactiveInterval()</td><td class="desc">Timeout in seconds</td></tr>
+								<tr><td>setMaxInactiveInterval(s)</td><td class="desc">Override idle timeout</td></tr>
+								<tr><td>getAttributeNames()</td><td class="desc">Enumeration of all keys</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Writing mutable counters to <code>application</code> scope from JSP scriptlets — concurrent requests produce race conditions; use a <code>ServletContextListener</code> or synchronized block</li>
+							<li class="note-item">Storing large objects (full result sets, byte arrays) in session — each user's session holds this in memory; it degrades performance under load</li>
+							<li class="note-item">Not invalidating the session on logout — the old session token remains valid until timeout, leaving the account accessible</li>
+							<li class="note-item">Storing non-serializable objects in session — works until the container tries to persist or replicate sessions, then throws <code>NotSerializableException</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Initialize application-scope data in a <code>ServletContextListener</code> (<code>contextInitialized</code>) — runs once at startup, thread-safe, no JSP scriptlet required</li>
+							<li class="note-item">After login, call <code>request.getSession(false)</code> and then <code>invalidate()</code> and <code>request.getSession(true)</code> to rotate the session ID and prevent session fixation</li>
+							<li class="note-item">Keep session payloads small — store only a user ID in session and re-fetch user data from the database per-request</li>
+							<li class="note-item">Set <code>&lt;session-config&gt;&lt;session-timeout&gt;30&lt;/session-timeout&gt;&lt;/session-config&gt;</code> in web.xml rather than hardcoding it in JSPs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>session scope</code> — per-user; persists across requests; use for login state</li>
+							<li class="note-item"><code>application scope</code> — all users; app lifetime; use for config/caches</li>
+							<li class="note-item"><code>session.invalidate()</code> — required on logout for security</li>
+							<li class="note-item"><code>${sessionScope.key}</code> / <code>${applicationScope.key}</code> — EL access</li>
+							<li class="note-item">Application scope writes — synchronize or use a listener</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="jsp-10-page-request-scope.html" class="nav-link prev">Page &amp; Request Scope</a>
+				<a href="index.html" class="nav-toc">JSP Reference · 32 Sheets</a>
+				<a href="jsp-12-pagecontext-api.html" class="nav-link next">PageContext API</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsp.min.js"></script>
+	</body>
+</html>
