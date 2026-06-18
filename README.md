@@ -136,6 +136,7 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | HTML | 15 | head, landmark & structural tags, semantic containers, generic containers, classes & IDs, typography, lists, tables, inline & misc, media, links, forms, accessibility, DOM & script basics |
 | ✅ | CSS | 25 | naming, selectors: basic & combinators, pseudo-classes, pseudo-elements & attribute, box model, borders & outlines, typography: fonts & text, colors, backgrounds, gradients, flexbox, grid, positioning, display & overflow, transitions, animations, transform, responsive: media queries, fluid units & functions, variables, modern CSS |
+| ⬜ | CSS Systems | — | In progress |
 | ⬜ | JavaScript / TypeScript | — | In progress |
 | ⬜ | JSP | — | In Progress |
 | ⬜ | React | — | In progress |
@@ -149,7 +150,7 @@ CheatSheets/
 | ⬜ | Python | — | Planned |
 | ⬜ | Java | — | Planned |
 | ⬜ | C++ | — | Planned |
-| ⬜ | C | — | Planned |
+| ⬜ | C# | — | Planned |
 | ⬜ | Ruby | — | Planned |
 | ⬜ | Go | — | Planned |
 
@@ -161,3 +162,4 @@ CheatSheets/
 | ✅ | Mermaid | 12 | flowcharts, sequence diagrams, class diagrams, entity relationship diagrams, Gantt charts, mind maps, state diagrams, pie & quadrant charts, timeline & git graph, themes & styling, config & integration |
 | ⬜ | JSON | — | In progress |
 | ⬜ | XML | — | In Progress |
+| ⬜ | YAML | — | In Progress |
