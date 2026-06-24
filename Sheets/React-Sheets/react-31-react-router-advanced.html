@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>React — 31: React Router — Advanced</title>
+<link href="../CSS/cheatsheet.css" rel="stylesheet"/>
+<link href="../CSS/react-cheatsheet.css" rel="stylesheet"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet"/></head>
+<body id="s31">
+<header class="page-header">
+<div class="sheet-number">Sheet 31</div>
+<h1>React Router — Advanced</h1>
+<div class="sheet-desc">Outlet · nested routes · loader · action · errorElement · lazy loading routes</div>
+</header>
+<main>
+<!-- Row 1: Description + Notes + Explain + Loader Table + Lazy Table | Code -->
+<div class="row row-code-explain" id="row-1"><div class="col" id="col-1-1">
+<section class="section-desc" id="desc">
+<h2 class="section-title">Data Router &amp; Lazy Routes</h2>
+<div class="description">
+            React Router v6.4+ introduced the <strong>data router API</strong> (<code>createBrowserRouter</code> + <code>RouterProvider) which adds <code>loader</code> and <code>action</code> functions directly to route definitions. A <code>loader</code> fetches data before the route renders — no more <code>useEffect</code> data fetching in page components. An <code>action</code> handles form mutations server-side style.
+            <br/><br/>
+<code>React.lazy</code> + <code>React.Suspense</code> enable <strong>route-level code splitting</strong>: each page component is a separate JS chunk loaded only when first visited. This keeps the initial bundle small. The <code>errorElement</code> prop replaces a whole route subtree with an error UI when a loader, action, or render throws.
+          </code></div>
+</section>
+<section class="section-notes" id="notes">
+<h2 class="section-title">Data Router Hooks</h2>
+<ul class="note-list">
+<li class="note-item"><code>useLoaderData()</code> — reads the value returned by the route's <code>loader</code> function</li>
+<li class="note-item"><code>useActionData()</code> — reads the value returned by the route's <code>action</code> function after a form submit</li>
+<li class="note-item"><code>useNavigation()</code> — <code>{ state: 'idle' | 'loading' | 'submitting' }</code> — global navigation state</li>
+<li class="note-item"><code>useRouteError()</code> — reads the thrown error inside an <code>errorElement</code></li>
+<li class="note-item"><code>&lt;Form method="post"&gt;</code> — RR form; submits to the route's <code>action</code> function instead of the server</li>
+<li class="note-item"><code>defer()</code> + <code>&lt;Await&gt;</code> — stream slow data while fast data renders immediately</li>
+</ul>
+</section>
+<section class="section-explain" id="explain">
+<h2 class="section-title">Notes</h2>
+<div class="section-body">
+<div class="explain-item"><code>createBrowserRouter(routes)</code> — replaces <code>&lt;BrowserRouter&gt;</code>; takes an array of route objects instead of JSX</div>
+<div class="explain-item"><code>loader({ params, request })</code> — receives route params and the full Request; throw a Response to trigger errorElement</div>
+<div class="explain-item"><code>useLoaderData()</code> — reads whatever the loader returned; TypeScript-infer the type with a generic</div>
+<div class="explain-item"><code>&lt;Form method="delete"&gt;</code> — React Router intercepts the submit and calls the route's <code>action</code> function; no <code>e.preventDefault()</code> needed</div>
+<div class="explain-item"><code>lazy(() =&gt; import('./Page'))</code> — the chunk is fetched only when the route is first visited; pair with <code>&lt;Suspense&gt;</code> for the fallback</div>
+<div class="explain-item"><code>errorElement</code> — replaces the route's element when its loader, action, or render throws; access the error with <code>useRouteError()</code></div>
+</div>
+</section>
+<section id="tbl-loader">
+<h2 class="section-title">loader vs useEffect fetch</h2>
+<table>
+<thead><tr><th>Feature</th><th>loader</th><th>useEffect fetch</th></tr></thead>
+<tbody>
+<tr><td>When it runs</td><td class="desc">Before component renders</td><td class="desc">After component renders</td></tr>
+<tr><td>Loading flash</td><td class="center">✖ (data ready on mount)</td><td class="center">✔ (empty → populated)</td></tr>
+<tr><td>Error boundary</td><td class="desc">errorElement on route</td><td class="desc">Manual try/catch + state</td></tr>
+<tr><td>Parallel loads</td><td class="center">✔ automatic</td><td class="center">✖ manual Promise.all</td></tr>
+<tr><td>Works without JS</td><td class="center">✔ (with SSR)</td><td class="center">✖</td></tr>
+</tbody>
+</table>
+</section>
+<section id="tbl-lazy">
+<h2 class="section-title">Route Code Splitting</h2>
+<table>
+<thead><tr><th>Approach</th><th>API</th></tr></thead>
+<tbody>
+<tr><td>Lazy import</td><td class="kw">React.lazy(() =&gt; import('./Page'))</td></tr>
+<tr><td>Suspense fallback</td><td class="kw">&lt;Suspense fallback={&lt;Spinner /&gt;}&gt;</td></tr>
+<tr><td>RR lazy prop</td><td class="kw">lazy: () =&gt; import('./Page')</td></tr>
+<tr><td>Preload on hover</td><td class="desc">Call import() on mouseenter of Link</td></tr>
+</tbody>
+</table>
+</section>
+</div><div class="col" id="col-1-2">
+<section class="section-code" id="code">
+<h2 class="section-title">Data Router &amp; Lazy Routes</h2>
+<pre><code class="language-jsx">import { createBrowserRouter, RouterProvider, Outlet,
+         useLoaderData, useRouteError, Form } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+
+// ── Lazy page components ──────────────────────────────────
+const Dashboard = lazy(() =&gt; import('./pages/Dashboard'));
+const UserDetail = lazy(() =&gt; import('./pages/UserDetail'));
+
+// ── Loader function (runs before render) ──────────────────
+async function userLoader({ params }) {
+  const res = await fetch(`/api/users/${params.id}`);
+  if (!res.ok) throw new Response('Not Found', { status: 404 });
+  return res.json();                    // available via useLoaderData()
+}
+
+// ── Action function (handles Form submit) ─────────────────
+async function deleteAction({ params }) {
+  await fetch(`/api/users/${params.id}`, { method: 'DELETE' });
+  return { success: true };             // available via useActionData()
+}
+
+// ── Router definition ─────────────────────────────────────
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: &lt;Layout /&gt;,
+    errorElement: &lt;ErrorPage /&gt;,
+    children: [
+      { index: true, element: &lt;Suspense fallback={&lt;p&gt;…&lt;/p&gt;}&gt;&lt;Dashboard /&gt;&lt;/Suspense&gt; },
+      {
+        path: 'users/:id',
+        loader: userLoader,
+        action: deleteAction,
+        errorElement: &lt;ErrorPage /&gt;,
+        element: &lt;Suspense fallback={&lt;p&gt;…&lt;/p&gt;}&gt;&lt;UserDetail /&gt;&lt;/Suspense&gt;,
+      },
+    ],
+  },
+]);
+
+// ── Page component reads loader data ──────────────────────
+function UserDetail() {
+  const user = useLoaderData();         // no useEffect needed
+  return (
+    &lt;&gt;
+      &lt;h1&gt;{user.name}&lt;/h1&gt;
+      &lt;Form method="delete"&gt;
+        &lt;button type="submit"&gt;Delete&lt;/button&gt;
+      &lt;/Form&gt;
+    &lt;/&gt;
+  );
+}
+
+// ── Error boundary component ──────────────────────────────
+function ErrorPage() {
+  const error = useRouteError();
+  return &lt;p&gt;Error: {error.statusText ?? error.message}&lt;/p&gt;;
+}
+
+// ── App entry ─────────────────────────────────────────────
+&lt;RouterProvider router={router} /&gt;</code></pre>
+</section>
+</div></div>
+<!-- Row 2: Mistakes | Tips | Summary -->
+<div class="row row-footer-trio" id="row-2"><div class="col" id="col-2-1">
+<section class="section-mistakes" id="mistakes">
+<h2 class="section-title">Common Mistakes</h2>
+<ul class="note-list">
+<li class="note-item">Mixing <code>&lt;BrowserRouter&gt;</code> with data-router hooks (<code>useLoaderData</code>) — data hooks only work inside a <code>createBrowserRouter</code> tree; they throw otherwise</li>
+<li class="note-item">Forgetting <code>&lt;Suspense&gt;</code> around lazy routes — React throws an error; always wrap lazy components in a Suspense boundary with a fallback</li>
+<li class="note-item">Returning non-serialisable values from a loader — loaders that use <code>defer()</code> must return serialisable data; class instances and functions are silently dropped</li>
+</ul>
+</section>
+</div><div class="col" id="col-2-2">
+<section class="section-tips" id="tips">
+<h2 class="section-title">Tips</h2>
+<ul class="note-list">
+<li class="note-item">Move all data fetching into loaders — page components become pure display components with zero loading state management</li>
+<li class="note-item">Place <code>errorElement</code> on the root route as a catch-all, then add specific ones on routes with loaders that might 404</li>
+<li class="note-item">Use <code>useNavigation().state === 'loading'</code> in the layout to show a global progress bar during route transitions</li>
+</ul>
+</section>
+</div><div class="col" id="col-2-3">
+<section class="section-summary" id="summary">
+<h2 class="section-title">Summary</h2>
+<ul class="note-list">
+<li class="note-item"><code>loader</code> — fetches data before the route renders; no useEffect needed</li>
+<li class="note-item"><code>useLoaderData()</code> — reads loader return value in the component</li>
+<li class="note-item"><code>errorElement</code> — error boundary per route; read error with <code>useRouteError()</code></li>
+<li class="note-item"><code>React.lazy + Suspense</code> — split each route into its own JS chunk</li>
+</ul>
+</section>
+</div></div>
+</main>
+<footer class="page-footer">
+<nav aria-label="Sheet navigation">
+<a class="nav-link prev" href="react-30-react-router-navigation.html">React Router — Navigation</a>
+<a class="nav-toc" href="index.html">React Reference · 45 Sheets</a>
+<a class="nav-link next" href="react-32-fetch-useeffect.html">Fetching Data with useEffect</a>
+</nav>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+</body>
+</html>

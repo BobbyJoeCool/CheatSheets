@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React Reference — Print All</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+		<script
+			src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"
+			defer
+		></script>
+		<script
+			src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"
+			defer
+		></script>
+		<script
+			src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"
+			defer
+		></script>
+		<link rel="stylesheet" href="../CSS/cover.css" />
+		<link rel="stylesheet" href="../CSS/print-all.css" />
+	</head>
+	<body>
+		<div id="print-bar">
+			<a href="index.html" id="back-link">← Index</a>
+			<span id="bar-title">REACT REFERENCE · PRINT ALL</span>
+			<span id="status"></span>
+			<button id="print-btn" type="button">Print All</button>
+		</div>
+
+		<div id="sheets-container"></div>
+
+		<script>
+			const btn = document.getElementById("print-btn");
+			const status = document.getElementById("status");
+			const container = document.getElementById("sheets-container");
+			const parser = new DOMParser();
+			const injectedStyles = new Set();
+
+			async function injectPage(url) {
+				const html = await fetch(url).then((r) => r.text());
+				const doc = parser.parseFromString(html, "text/html");
+				doc.querySelectorAll("head style").forEach((style) => {
+					const key = style.textContent.trim().slice(0, 60);
+					if (!injectedStyles.has(key)) {
+						injectedStyles.add(key);
+						const s = document.createElement("style");
+						s.textContent = style.textContent;
+						document.head.appendChild(s);
+					}
+				});
+				const wrapper = document.createElement("div");
+				wrapper.className = "sheet-page";
+				const bodyId = doc.body.getAttribute("id");
+				if (bodyId) wrapper.id = bodyId;
+				wrapper.innerHTML = doc.body.innerHTML;
+				return wrapper;
+			}
+
+			btn.addEventListener("click", async () => {
+				btn.disabled = true;
+				status.textContent = "Loading…";
+				container.innerHTML = "";
+
+				try {
+					const { title, lang, count, pages, groups } = await fetch(
+						"manifest.json",
+					).then((r) => r.json());
+					const totalSheets = count ?? pages.length;
+
+					// 0. Cover page — full-bleed layout: strip sheet-page padding
+					const coverWrapper = await injectPage("cover.html");
+					coverWrapper.classList.add("cover-page");
+					container.appendChild(coverWrapper);
+
+					// 1. Blank page after cover
+					const blankPage = document.createElement("div");
+					blankPage.className = "sheet-page blank-page";
+					container.appendChild(blankPage);
+
+					// 2. TOC — inject index.html shell, then populate from manifest data
+					const tocWrapper = await injectPage("index.html");
+
+					// Populate header
+					const hdrLang = tocWrapper.querySelector("#hdr-lang");
+					if (hdrLang)
+						hdrLang.textContent = (lang || "").toUpperCase() || title;
+					const hdrDesc = tocWrapper.querySelector("#hdr-desc");
+					if (hdrDesc)
+						hdrDesc.textContent = `${totalSheets} sheets · syntax · examples · notes`;
+					const printAllBtn = tocWrapper.querySelector("#print-all-btn");
+					if (printAllBtn) printAllBtn.remove();
+
+					// Populate footer
+					const ftrToc = tocWrapper.querySelector("#ftr-toc");
+					if (ftrToc) ftrToc.textContent = `${title} · ${totalSheets} Sheets`;
+					const ftrFirst = tocWrapper.querySelector("#ftr-first");
+					if (ftrFirst && pages.length) {
+						ftrFirst.href = pages[0].file;
+						ftrFirst.textContent = pages[0].title;
+					}
+
+					// Build TOC content (index.html is script-driven and won't re-execute)
+					const tocColumns = tocWrapper.querySelector("#toc-columns");
+					if (tocColumns)
+						buildTocContent(tocColumns, groups, pages, totalSheets);
+
+					container.appendChild(tocWrapper);
+
+					// 3. Manifest pages
+					for (let i = 0; i < pages.length; i++) {
+						container.appendChild(await injectPage(pages[i].file));
+						status.textContent = `${i + 1} / ${pages.length}`;
+					}
+
+					if (window.Prism) Prism.highlightAll();
+					// Total = cover (1) + blank (1) + toc (1) + sheets
+					status.textContent = `${pages.length + 3} pages ready`;
+					btn.disabled = false;
+					window.print();
+				} catch (err) {
+					status.textContent = "Error: " + err.message;
+					btn.disabled = false;
+				}
+			});
+
+			function buildTocContent(container, groups, pages, totalSheets) {
+				const byNum = {};
+				pages.forEach((p, i) => {
+					byNum[i + 1] = p;
+				});
+
+				if (groups && groups.length) {
+					const half = Math.ceil(totalSheets / 2);
+					let running = 0,
+						col1Done = false;
+					const col1Groups = [],
+						col2Groups = [];
+					for (const g of groups) {
+						const sheetCount = g.sheets.length;
+						if (!col1Done && running + sheetCount <= half + 2) {
+							col1Groups.push(g);
+							running += sheetCount;
+						} else {
+							col1Done = true;
+							col2Groups.push(g);
+						}
+					}
+					if (!col2Groups.length) {
+						col1Groups.splice(0);
+						for (const g of groups) col1Groups.push(g);
+					}
+					container.appendChild(buildTocColumn(col1Groups, byNum));
+					container.appendChild(buildTocColumn(col2Groups, byNum));
+				} else {
+					container.style.gridTemplateColumns = "1fr";
+					const col = buildTocColumn(
+						[{ title: "All Sheets", sheets: pages.map((_, i) => i + 1) }],
+						byNum,
+					);
+					const entries = col.querySelector(".toc-entries");
+					if (entries)
+						entries.style.gridTemplateColumns =
+							"repeat(auto-fill, minmax(160px,1fr))";
+					container.appendChild(col);
+				}
+			}
+
+			function buildTocColumn(groupList, byNum) {
+				const col = document.createElement("div");
+				col.style.cssText =
+					"display:flex;flex-direction:column;gap:0;min-width:0;overflow:hidden;";
+
+				for (const g of groupList) {
+					const groupPages = g.sheets
+						.map((n) => (byNum[n] ? { num: n, ...byNum[n] } : null))
+						.filter(Boolean);
+					if (!groupPages.length) continue;
+
+					const firstNum = g.sheets[0];
+					const lastNum = g.sheets[g.sheets.length - 1];
+					const rangeStr =
+						firstNum === lastNum
+							? String(firstNum).padStart(2, "0")
+							: `${String(firstNum).padStart(2, "0")} – ${String(lastNum).padStart(2, "0")}`;
+
+					const group = document.createElement("div");
+					group.className = "toc-group";
+
+					const head = document.createElement("div");
+					head.className = "toc-group-head";
+					head.innerHTML = `<span class="g-name">${escHtml(g.title)}</span><span class="g-range">${rangeStr}</span>`;
+					group.appendChild(head);
+
+					const entries = document.createElement("div");
+					entries.className = "toc-entries";
+
+					for (const p of groupPages) {
+						const a = document.createElement("a");
+						a.className = "toc-entry";
+						a.href = p.file;
+						a.title = p.desc || p.title;
+						a.innerHTML = `<span class="toc-num">${String(p.num).padStart(2, "0")}</span><span class="toc-title">${escHtml(p.title)}</span>`;
+						entries.appendChild(a);
+					}
+
+					group.appendChild(entries);
+					col.appendChild(group);
+				}
+				return col;
+			}
+
+			function escHtml(str) {
+				return String(str)
+					.replace(/&/g, "&amp;")
+					.replace(/</g, "&lt;")
+					.replace(/>/g, "&gt;")
+					.replace(/"/g, "&quot;");
+			}
+		</script>
+	</body>
+</html>

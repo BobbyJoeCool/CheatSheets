@@ -1,0 +1,330 @@
+<!doctype html>
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta content="width=device-width, initial-scale=1.0" name="viewport" />
+		<title>React — 19: use() &amp; React 19 Hooks</title>
+		<link href="../CSS/cheatsheet.css" rel="stylesheet" />
+		<link href="../CSS/react-cheatsheet.css" rel="stylesheet" />
+		<link
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+			rel="stylesheet"
+		/>	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>use() &amp; React 19 Hooks</h1>
+			<div class="sheet-desc">
+				use() · useOptimistic · useFormStatus · useActionState · React 19
+				additions
+			</div>
+		</header>
+		<main>
+			<!-- Row 1: Description  [full width, single col] -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">React 19 New Primitives</h2>
+						<div class="description">
+							React 19 (stable 2024) introduced several new APIs.
+							<code>use()</code> is a special function — not a traditional hook
+							— that can be called
+							<strong>conditionally and inside loops</strong>. It unwraps a
+							<code>Promise</code> (suspending until resolved) or reads a
+							<code>Context</code> value. It must still be called inside a
+							component or hook. <br /><br />
+							<code>useOptimistic</code> applies a UI update immediately while
+							an async action is in-flight, then reverts to the server-confirmed
+							value when the action settles. <code>useFormStatus</code> reads
+							the submission state of the nearest parent
+							<code>&lt;form&gt;</code>. <code>useActionState</code> manages the
+							state cycle of a form action function.
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Notes + Explain + Use Table + Form Table -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">React 19 Hooks in Practice</h2>
+						<pre><code class="language-jsx">import { use, useOptimistic, useFormStatus, useActionState, Suspense } from 'react';
+
+// ── use(Promise): data fetching with Suspense ─────────────
+function UserCard({ userPromise }) {
+  const user = use(userPromise);      // suspends until resolved
+  return &lt;p&gt;{user.name}&lt;/p&gt;;
+}
+// Wrap in Suspense:
+&lt;Suspense fallback={&lt;p&gt;Loading…&lt;/p&gt;}&gt;
+  &lt;UserCard userPromise={fetchUser(1)} /&gt;
+&lt;/Suspense&gt;
+
+// ── useOptimistic: instant list update ────────────────────
+function TodoList({ todos, addTodo }) {
+  const [optimisticTodos, addOptimistic] = useOptimistic(
+    todos,
+    (state, newTodo) =&gt; [...state, { ...newTodo, pending: true }]
+  );
+  async function handleAdd(text) {
+    addOptimistic({ id: Date.now(), text }); // instant UI update
+    await addTodo(text);              // server action — may revert on error
+  }
+  return &lt;ul&gt;{optimisticTodos.map(t =&gt; 
+    &lt;li key={t.id}&gt;{t.text}{t.pending ? ' …' : ''}&lt;/li&gt;)}&lt;/ul&gt;;
+}
+
+// ── useFormStatus: pending-aware submit button ─────────────
+function SubmitButton() {
+  const { pending } = useFormStatus();  // must be inside a &lt;form&gt; descendant
+  return &lt;button type="submit" disabled={pending}&gt;
+  {pending ? 'Saving…' : 'Save'}&lt;/button&gt;;
+}
+
+// ── useActionState: manage form action result ─────────────
+async function saveAction(prevState, formData) {
+  const name = formData.get('name');
+  if (!name) return { error: 'Name required' };
+  await api.save(name);
+  return { success: true };
+}
+function NameForm() {
+  const [state, formAction, isPending] = useActionState(saveAction, null);
+  return (
+    &lt;form action={formAction}&gt;
+      &lt;input name="name" /&gt;
+      {state?.error &amp;&amp; &lt;p&gt;{state.error}&lt;/p&gt;}
+      &lt;SubmitButton /&gt;
+    &lt;/form&gt;
+  );
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">React 19 API Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">
+								<code>use(promise)</code> — suspends until the promise resolves;
+								must be wrapped in <code>&lt;Suspense&gt;</code>
+							</li>
+							<li class="note-item">
+								<code>use(Context)</code> — reads context; can be called
+								conditionally unlike <code>useContext</code>
+							</li>
+							<li class="note-item">
+								<code>useOptimistic(state, reducer)</code> — returns
+								<code>[optimisticState, addOptimistic]</code>; optimistic state
+								reverts after action
+							</li>
+							<li class="note-item">
+								<code>useFormStatus()</code> — returns
+								<code>{ pending, data, method, action }</code>; must be inside a
+								<code>&lt;form&gt;</code> descendant
+							</li>
+							<li class="note-item">
+								<code>useActionState(action, initialState)</code> — returns
+								<code>[state, formAction, isPending]</code>
+							</li>
+							<li class="note-item">
+								Server Actions — async functions marked
+								<code>'use server'</code>; can be passed as
+								<code>form action</code>
+							</li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item">
+								<code>use(userPromise)</code> — the component suspends (throws
+								the promise) until it resolves; the nearest
+								<code>&lt;Suspense&gt;</code> shows the fallback
+							</div>
+							<div class="explain-item">
+								<code>addOptimistic</code> — immediately applies the optimistic
+								update; React reverts to <code>todos</code> (the real state)
+								after the async action completes
+							</div>
+							<div class="explain-item">
+								<code>pending: true</code> — a flag on the optimistic item so
+								you can show a spinner or dim colour while the server is
+								confirming
+							</div>
+							<div class="explain-item">
+								<code>useFormStatus</code> must be in a <em>child</em> of the
+								form — it cannot be in the same component as the
+								<code>&lt;form&gt;</code> element
+							</div>
+							<div class="explain-item">
+								<code>formAction</code> from <code>useActionState</code> — pass
+								to <code>&lt;form action={formAction}&gt;</code>; React calls
+								your action with <code>(prevState, formData)</code>
+							</div>
+							<div class="explain-item">
+								Server Actions (<code>'use server'</code>) — can be passed
+								directly to <code>form action</code> prop; works with both
+								<code>useActionState</code> and progressive enhancement
+							</div>
+						</div>
+					</section>
+					<section id="tbl-use">
+						<h2 class="section-title">use() vs useContext / Suspense</h2>
+						<table>
+							<thead>
+								<tr>
+									<th>Feature</th>
+									<th>use()</th>
+									<th>useContext / useEffect</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td>Conditionally callable</td>
+									<td class="center">✔</td>
+									<td class="center">✖</td>
+								</tr>
+								<tr>
+									<td>Inside loops</td>
+									<td class="center">✔</td>
+									<td class="center">✖</td>
+								</tr>
+								<tr>
+									<td>Unwrap Promise</td>
+									<td class="center">✔</td>
+									<td class="center">✖</td>
+								</tr>
+								<tr>
+									<td>Read Context</td>
+									<td class="center">✔</td>
+									<td class="center">✔</td>
+								</tr>
+								<tr>
+									<td>Requires Suspense boundary</td>
+									<td class="center">✔ (Promise)</td>
+									<td class="center">✖</td>
+								</tr>
+							</tbody>
+						</table>
+					</section>
+					<section id="tbl-form">
+						<h2 class="section-title">Form Hooks at a Glance</h2>
+						<table>
+							<thead>
+								<tr>
+									<th>Hook</th>
+									<th>Returns</th>
+									<th>Use for</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td>useFormStatus</td>
+									<td class="kw">{ pending, data }</td>
+									<td class="desc">Disable submit button while pending</td>
+								</tr>
+								<tr>
+									<td>useActionState</td>
+									<td class="kw">[state, action, isPending]</td>
+									<td class="desc">Handle form action result &amp; errors</td>
+								</tr>
+								<tr>
+									<td>useOptimistic</td>
+									<td class="kw">[optimistic, addOptimistic]</td>
+									<td class="desc">
+										Instant UI feedback before server confirms
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">
+								Calling <code>use(promise)</code> without a
+								<code>&lt;Suspense&gt;</code> boundary — the component throws
+								and React has no fallback to show; the app crashes
+							</li>
+							<li class="note-item">
+								Placing <code>useFormStatus</code> in the same component as the
+								<code>&lt;form&gt;</code> — it only reads status from a
+								<em>parent</em> form; put it in a child component
+							</li>
+							<li class="note-item">
+								Creating the promise inside the component body without memoizing
+								— a new promise on every render suspends on every render; create
+								promises outside or memoize with <code>useMemo</code>
+							</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">
+								Use <code>useOptimistic</code> for any mutation that should feel
+								instant — likes, todo adds, cart updates — and let the server
+								confirm or revert
+							</li>
+							<li class="note-item">
+								Extract the submit button into its own component to use
+								<code>useFormStatus</code> cleanly — it's a natural split anyway
+								for reuse
+							</li>
+							<li class="note-item">
+								These React 19 APIs shine with Next.js 14+ Server Actions — they
+								were designed together; check Next.js docs for the full
+								integration pattern
+							</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">
+								<code>use(promise)</code> — suspends until resolved; needs
+								<code>&lt;Suspense&gt;</code>
+							</li>
+							<li class="note-item">
+								<code>useOptimistic</code> — instant UI update; reverts when
+								async action settles
+							</li>
+							<li class="note-item">
+								<code>useFormStatus</code> — reads parent form's pending state;
+								use in a child component
+							</li>
+							<li class="note-item">
+								<code>useActionState</code> — manages form action state cycle
+								and errors
+							</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-18-usetransition-useid.html"
+					>useTransition &amp; useId</a
+				>
+				<a class="nav-toc" href="index.html">React Reference · 45 Sheets</a>
+				<a class="nav-link next" href="react-20-event-handling.html"
+					>Event Handling</a
+				>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+	</body>
+</html>

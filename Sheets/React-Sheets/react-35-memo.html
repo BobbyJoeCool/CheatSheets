@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>React — 35: React.memo &amp; Memoization</title>
+<link href="../CSS/cheatsheet.css" rel="stylesheet"/>
+<link href="../CSS/react-cheatsheet.css" rel="stylesheet"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet"/></head>
+<body id="s35">
+<header class="page-header">
+<div class="sheet-number">Sheet 35</div>
+<h1>React.memo &amp; Memoization</h1>
+<div class="sheet-desc">React.memo · shallow comparison · when to memo · custom comparison · memo with useCallback</div>
+</header>
+<main>
+<!-- Row 1: Description | Notes -->
+<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1">
+<section class="section-desc" id="desc">
+<h2 class="section-title">Skipping Unnecessary Re-renders</h2>
+<div class="description">
+<code>React.memo</code> is a higher-order component that wraps a function component and <strong>skips re-rendering if props are shallowly equal</strong> to the previous render. By default, React re-renders a child whenever its parent renders, even if none of the child's props changed. <code>React.memo</code> prevents this by doing a <code>Object.is</code> comparison on each prop.
+            <br/><br/>
+<code>React.memo</code> only helps when the wrapped component's render is genuinely expensive, or when it renders a long list and even one skipped render makes a difference. For it to work, every prop passed to the memo'd component must be <strong>referentially stable</strong> — use <code>useCallback</code> for function props and <code>useMemo</code> for object/array props.
+          </div>
+</section>
+</div><div class="col" id="col-1-2">
+<section class="section-notes" id="notes">
+<h2 class="section-title">React.memo Rules</h2>
+<ul class="note-list">
+<li class="note-item">Shallow comparison — primitive props (string, number, bool) are compared by value; objects and functions by reference</li>
+<li class="note-item">A new object/function reference as a prop <strong>breaks memo</strong> even if the content is identical</li>
+<li class="note-item">Pair with <code>useCallback</code> for callback props and <code>useMemo</code> for object/array props</li>
+<li class="note-item">Second arg: custom comparison — <code>React.memo(Comp, (prev, next) =&gt; equal)</code>; return <code>true</code> to skip render</li>
+<li class="note-item"><code>React.memo</code> does not help if the component's own state or context changes — it only gates on props</li>
+<li class="note-item">Profile first — adding memo unnecessarily increases code complexity and adds the comparison overhead</li>
+</ul>
+</section>
+</div></div>
+<!-- Row 2: Code | Explain + When Table + Tools Table -->
+<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1">
+<section class="section-code" id="code">
+<h2 class="section-title">React.memo in Practice</h2>
+<pre><code class="language-jsx">import { memo, useState, useCallback, useMemo } from 'react';
+
+// ── Wrap component with memo ───────────────────────────────
+const ProductCard = memo(function ProductCard({ product, onBuy }) {
+  console.log('ProductCard rendered:', product.id);
+  return (
+    &lt;div&gt;
+      &lt;p&gt;{product.name} — ${product.price}&lt;/p&gt;
+      &lt;button onClick={() =&gt; onBuy(product.id)}&gt;Buy&lt;/button&gt;
+    &lt;/div&gt;
+  );
+});
+
+// ── Parent must stabilise every prop ──────────────────────
+function Shop({ products }) {
+  const [cart, setCart] = useState([]);
+
+  // ✔ useCallback stabilises the function reference
+  const handleBuy = useCallback(
+    (id) =&gt; setCart(prev =&gt; [...prev, id]),
+    []   // setCart is stable; empty deps OK
+  );
+
+  // ✔ useMemo stabilises an object prop (if you need one)
+  const options = useMemo(() =&gt; ({ currency: 'USD', tax: 0.1 }), []);
+
+  return (
+    &lt;ul&gt;
+      {products.map(p =&gt; (
+        &lt;ProductCard key={p.id} product={p} onBuy={handleBuy} /&gt;
+      ))}
+    &lt;/ul&gt;
+  );
+}
+
+// ── Custom comparison (skip re-render unless id changes) ──
+const UserBadge = memo(
+  function UserBadge({ user }) { return &lt;span&gt;{user.name}&lt;/span&gt;; },
+  (prev, next) =&gt; prev.user.id === next.user.id  // true = skip render
+);
+
+// ── What NOT to do ────────────────────────────────────────
+// ✖ inline object — new reference every render, memo never skips
+&lt;ProductCard product={products[0]} options={{ tax: 0.1 }} onBuy={id =&gt; buy(id)} /&gt;</code></pre>
+</section>
+</div><div class="col" id="col-2-2"><section class="section-explain" id="explain">
+<h2 class="section-title">Notes</h2>
+<div class="section-body">
+<div class="explain-item"><code>memo(Component)</code> — wraps the component; React compares old and new props shallowly before calling the function</div>
+<div class="explain-item"><code>useCallback(fn, [])</code> — same function reference across renders; without it, <code>onBuy</code> is a new function on every parent render and memo always re-renders</div>
+<div class="explain-item"><code>prev.user.id === next.user.id</code> — custom comparator; return <code>true</code> to skip render (props are "equal"), <code>false</code> to re-render</div>
+<div class="explain-item"><code>{ tax: 0.1 }</code> inline — creates a new object on every render; <code>Object.is</code> returns false; memo is bypassed every time</div>
+<div class="explain-item">Memo is not free — the comparison itself takes time; only worthwhile when the render cost exceeds the comparison cost</div>
+<div class="explain-item">React DevTools Profiler — use it to measure render counts and durations before and after applying memo</div>
+</div>
+</section><section id="tbl-when">
+<h2 class="section-title">When React.memo Helps</h2>
+<table>
+<thead><tr><th>Scenario</th><th>Helpful?</th></tr></thead>
+<tbody>
+<tr><td>Expensive render (chart, table)</td><td class="center">✔</td></tr>
+<tr><td>Long list item component</td><td class="center">✔</td></tr>
+<tr><td>Parent re-renders frequently</td><td class="center">✔</td></tr>
+<tr><td>All props are primitives</td><td class="center">✔ easy to stabilise</td></tr>
+<tr><td>Component renders in &lt;1ms</td><td class="center">✖ overhead not worth it</td></tr>
+<tr><td>Props include unstable objects/fns</td><td class="center">✖ memo never skips</td></tr>
+</tbody>
+</table>
+</section><section id="tbl-tools">
+<h2 class="section-title">Memoization Toolkit</h2>
+<table>
+<thead><tr><th>Tool</th><th>Stabilises</th></tr></thead>
+<tbody>
+<tr><td>React.memo</td><td class="desc">The component render itself</td></tr>
+<tr><td>useCallback</td><td class="desc">Function prop references</td></tr>
+<tr><td>useMemo</td><td class="desc">Object / array prop references</td></tr>
+<tr><td>useState setter</td><td class="desc">Always stable — no memo needed</td></tr>
+<tr><td>useReducer dispatch</td><td class="desc">Always stable — no memo needed</td></tr>
+<tr><td>Context value</td><td class="desc">Wrap with useMemo to stabilise</td></tr>
+</tbody>
+</table>
+</section></div></div>
+<!-- Row 3: Mistakes | Tips | Summary -->
+<div class="row row-footer-trio" id="row-3"><div class="col" id="col-3-1">
+<section class="section-mistakes" id="mistakes">
+<h2 class="section-title">Common Mistakes</h2>
+<ul class="note-list">
+<li class="note-item">Wrapping a component in <code>memo</code> but passing an inline function or object prop — the unstable prop defeats memo on every render; stabilise props first</li>
+<li class="note-item">Using a custom comparator that returns <code>true</code> too aggressively — the component will never update even when it should; be precise about what "equal" means</li>
+<li class="note-item">Applying memo to every component by default — adds complexity and comparison cost without benefit when renders are already cheap</li>
+</ul>
+</section>
+</div><div class="col" id="col-3-2">
+<section class="section-tips" id="tips">
+<h2 class="section-title">Tips</h2>
+<ul class="note-list">
+<li class="note-item">Apply memo bottom-up — start with the most frequently rendered leaf components (list items, cards) before wrapping parent components</li>
+<li class="note-item">Use React DevTools Profiler's "Highlight updates" mode to visually identify which components re-render on each interaction</li>
+<li class="note-item">If a component has no props at all (pure display), wrap it in memo — it will never re-render from parent renders, with zero cost</li>
+</ul>
+</section>
+</div><div class="col" id="col-3-3">
+<section class="section-summary" id="summary">
+<h2 class="section-title">Summary</h2>
+<ul class="note-list">
+<li class="note-item"><code>memo(Comp)</code> — skips re-render when props are shallowly equal</li>
+<li class="note-item">Requires stable props — use <code>useCallback</code> for fns, <code>useMemo</code> for objects</li>
+<li class="note-item">Custom comparator: second arg — return <code>true</code> to skip, <code>false</code> to re-render</li>
+<li class="note-item">Profile before applying — memo adds overhead; only worthwhile for expensive renders</li>
+</ul>
+</section>
+</div></div>
+</main>
+<footer class="page-footer">
+<nav aria-label="Sheet navigation">
+<a class="nav-link prev" href="react-34-swr.html">SWR</a>
+<a class="nav-toc" href="index.html">React Reference · 45 Sheets</a>
+<a class="nav-link next" href="react-36-code-splitting.html">Code Splitting &amp; Lazy Loading</a>
+</nav>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+</body>
+</html>

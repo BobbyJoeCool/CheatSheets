@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>React — 33: TanStack Query (React Query)</title>
+<link href="../CSS/cheatsheet.css" rel="stylesheet"/>
+<link href="../CSS/react-cheatsheet.css" rel="stylesheet"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet"/></head>
+<body id="s33">
+<header class="page-header">
+<div class="sheet-number">Sheet 33</div>
+<h1>TanStack Query (React Query)</h1>
+<div class="sheet-desc">useQuery · useMutation · QueryClient · staleTime · refetch · invalidateQueries</div>
+</header>
+<main>
+<!-- Row 1: Description  [full width, single col] -->
+<div class="row row-desc" id="row-1"><div class="col" id="col-1-1">
+<section class="section-desc" id="desc">
+<h2 class="section-title">Async State Management for Server Data</h2>
+<div class="description">
+<strong>TanStack Query</strong> (formerly React Query) manages <em>server state</em> — data that lives on the server and must be fetched, cached, and synchronised. It tracks loading, error, and success states automatically, deduplicates concurrent requests for the same key, and re-fetches in the background to keep data fresh.
+            <br/><br/>
+            The two core hooks are <code>useQuery</code> (read data) and <code>useMutation</code> (write data). Both are configured with a <code>QueryClient</code> provided at the app root. After a mutation, call <code>queryClient.invalidateQueries</code> to tell TanStack Query to re-fetch any cached queries that depend on the changed data.
+          </div>
+</section>
+</div></div>
+<!-- Row 2: Code | Notes + Explain + Usequery Table + Mutation Table -->
+<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1">
+<section class="section-code" id="code">
+<h2 class="section-title">TanStack Query Setup &amp; Usage</h2>
+<pre><code class="language-jsx">// npm install @tanstack/react-query
+
+// ── main.jsx: provide QueryClient ─────────────────────────
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 1000 * 60 } }, // 1 min stale time
+});
+
+&lt;QueryClientProvider client={queryClient}&gt;
+  &lt;App /&gt;
+&lt;/QueryClientProvider&gt;
+
+// ── useQuery: fetch and cache data ────────────────────────
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+function Posts() {
+  const { data: posts, isLoading, error } = useQuery({
+    queryKey: ['posts'],                     // cache key
+    queryFn:  () =&gt; fetch('/api/posts').then(r =&gt; r.json()),
+  });
+
+  if (isLoading) return &lt;p&gt;Loading…&lt;/p&gt;;
+  if (error)     return &lt;p&gt;Error: {error.message}&lt;/p&gt;;
+  return &lt;ul&gt;{posts.map(p =&gt; &lt;li key={p.id}&gt;{p.title}&lt;/li&gt;)}&lt;/ul&gt;;
+}
+
+// ── Dependent query (wait for userId) ─────────────────────
+const { data: profile } = useQuery({
+  queryKey: ['profile', userId],
+  queryFn:  () =&gt; fetch(`/api/users/${userId}`).then(r =&gt; r.json()),
+  enabled:  !!userId,                        // skip until userId is truthy
+});
+
+// ── useMutation: write + invalidate ──────────────────────
+function AddPost() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (newPost) =&gt; fetch('/api/posts', {
+      method: 'POST', body: JSON.stringify(newPost),
+      headers: { 'Content-Type': 'application/json' },
+    }).then(r =&gt; r.json()),
+    onSuccess: () =&gt; qc.invalidateQueries({ queryKey: ['posts'] }),
+  });
+
+  return (
+    &lt;button
+      onClick={() =&gt; mutation.mutate({ title: 'New Post' })}
+      disabled={mutation.isPending}&gt;
+      {mutation.isPending ? 'Saving…' : 'Add Post'}
+    &lt;/button&gt;
+  );
+}</code></pre>
+</section>
+</div><div class="col" id="col-2-2"><section class="section-notes" id="notes">
+<h2 class="section-title">Key Concepts</h2>
+<ul class="note-list">
+<li class="note-item"><code>queryKey</code> — array identifying a query; same key = same cache entry; include all variables the fetcher depends on</li>
+<li class="note-item"><code>queryFn</code> — async function returning data (or throwing); TanStack Query tracks the Promise</li>
+<li class="note-item"><code>staleTime</code> — ms before data is considered stale and eligible for background re-fetch (default: 0)</li>
+<li class="note-item"><code>gcTime</code> — ms after last subscriber before cache entry is garbage collected (default: 5 min)</li>
+<li class="note-item"><code>enabled</code> — boolean; set to <code>false</code> to skip the query until a condition is met</li>
+<li class="note-item"><code>invalidateQueries</code> — marks cache entries as stale and re-fetches active ones</li>
+</ul>
+</section><section class="section-explain" id="explain">
+<h2 class="section-title">Notes</h2>
+<div class="section-body">
+<div class="explain-item"><code>queryKey: ['posts']</code> — array; adding a variable (<code>['posts', id]</code>) creates a separate cache entry per value</div>
+<div class="explain-item"><code>staleTime: 60_000</code> — data stays fresh for 1 min; TanStack Query won't re-fetch on component mount within that window</div>
+<div class="explain-item"><code>enabled: !!userId</code> — conditional query; skips the fetch until <code>userId</code> is defined; useful for chained requests</div>
+<div class="explain-item"><code>invalidateQueries({ queryKey: ['posts'] })</code> — marks all cache entries matching the key as stale and re-fetches any that have active subscribers</div>
+<div class="explain-item"><code>isFetching</code> vs <code>isLoading</code> — <code>isLoading</code> is true only on the very first fetch with no cache; <code>isFetching</code> is true on any fetch including background refreshes</div>
+<div class="explain-item"><code>mutateAsync</code> — returns a Promise; use when you need to <code>await</code> the result inside a form submit handler</div>
+</div>
+</section><section id="tbl-usequery">
+<h2 class="section-title">useQuery Return Values</h2>
+<table>
+<thead><tr><th>Property</th><th>Type</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>data</td><td class="kw">T | undefined</td><td class="desc">Resolved query data</td></tr>
+<tr><td>isLoading</td><td class="kw">boolean</td><td class="desc">First fetch, no cached data yet</td></tr>
+<tr><td>isFetching</td><td class="kw">boolean</td><td class="desc">Any fetch in progress (incl. background)</td></tr>
+<tr><td>isError</td><td class="kw">boolean</td><td class="desc">Last fetch threw an error</td></tr>
+<tr><td>error</td><td class="kw">Error</td><td class="desc">The thrown error object</td></tr>
+<tr><td>refetch</td><td class="kw">fn</td><td class="desc">Manually trigger a re-fetch</td></tr>
+</tbody>
+</table>
+</section><section id="tbl-mutation">
+<h2 class="section-title">useMutation Return Values</h2>
+<table>
+<thead><tr><th>Property</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>mutate(vars)</td><td class="desc">Trigger the mutation (fire and forget)</td></tr>
+<tr><td>mutateAsync(vars)</td><td class="desc">Returns a Promise — await the result</td></tr>
+<tr><td>isPending</td><td class="desc">Mutation is in flight</td></tr>
+<tr><td>isSuccess / isError</td><td class="desc">Terminal states after settle</td></tr>
+<tr><td>onSuccess callback</td><td class="desc">Called with data after success</td></tr>
+<tr><td>onError callback</td><td class="desc">Called with error after failure</td></tr>
+</tbody>
+</table>
+</section></div></div>
+<!-- Row 3: Mistakes | Tips | Summary -->
+<div class="row row-footer-trio" id="row-3"><div class="col" id="col-3-1">
+<section class="section-mistakes" id="mistakes">
+<h2 class="section-title">Common Mistakes</h2>
+<ul class="note-list">
+<li class="note-item">Using an unstable query key — <code>queryKey: [{ id }]</code> with an object literal creates a new reference every render and re-fetches constantly; use primitives in the key array</li>
+<li class="note-item">Not including all fetcher dependencies in the queryKey — if the fetcher uses <code>userId</code>, the key must include it; otherwise stale data is served when the user changes</li>
+<li class="note-item">Calling <code>mutate</code> and expecting immediate data in the same function — <code>mutate</code> is async; read the updated data from the re-fetched query, not from the mutation return</li>
+</ul>
+</section>
+</div><div class="col" id="col-3-2">
+<section class="section-tips" id="tips">
+<h2 class="section-title">Tips</h2>
+<ul class="note-list">
+<li class="note-item">Install the <code>@tanstack/react-query-devtools</code> package and render <code>&lt;ReactQueryDevtools /&gt;</code> in development — shows all cache entries and their status in a panel</li>
+<li class="note-item">Co-locate query key factories in one file: <code>postKeys = { all: ['posts'], detail: (id) =&gt; ['posts', id] }</code> — prevents key typos and makes invalidation precise</li>
+<li class="note-item">Use <code>placeholderData: keepPreviousData</code> on paginated queries — shows the previous page while the next page loads instead of a loading spinner</li>
+</ul>
+</section>
+</div><div class="col" id="col-3-3">
+<section class="section-summary" id="summary">
+<h2 class="section-title">Summary</h2>
+<ul class="note-list">
+<li class="note-item"><code>useQuery({ queryKey, queryFn })</code> — fetch, cache, and subscribe to server data</li>
+<li class="note-item"><code>useMutation({ mutationFn, onSuccess })</code> — write data; invalidate on success</li>
+<li class="note-item"><code>invalidateQueries</code> — marks cache stale and triggers re-fetch</li>
+<li class="note-item"><code>enabled</code> — skip query until condition is met; essential for chained requests</li>
+</ul>
+</section>
+</div></div>
+</main>
+<footer class="page-footer">
+<nav aria-label="Sheet navigation">
+<a class="nav-link prev" href="react-32-fetch-useeffect.html">Fetching Data with useEffect</a>
+<a class="nav-toc" href="index.html">React Reference · 45 Sheets</a>
+<a class="nav-link next" href="react-34-swr.html">SWR</a>
+</nav>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+</body>
+</html>

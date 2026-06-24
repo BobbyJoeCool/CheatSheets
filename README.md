@@ -139,7 +139,7 @@ CheatSheets/
 | ⬜ | CSS Systems | — | In progress |
 | ⬜ | JavaScript / TypeScript | — | In progress |
 | ⬜ | JSP | — | In Progress |
-| ⬜ | React | — | In progress |
+| ✅ | React | 45 | JSX, components, hooks, state management, routing, data fetching, styling, testing, deployment |
 | ⬜ | PHP | — | Planned |
 
 ### Languages
