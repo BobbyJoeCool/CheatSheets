@@ -129,6 +129,7 @@ CheatSheets/
 | ✅ | Bitwise | 8 | operators, masks & flags, bit tricks, packing & fields, subset enumeration, bit counting, real-world patterns; CSS warnings — see bitwise-verify.log |
 | ✅ | Bash | 12 | files & dirs, wildcards & patterns, redirection & piping, permissions, environment, script basics, operators & control flow, functions & arrays, processes & jobs, text processing, macOS tools |
 | ✅ | Git | 12 | core workflow, branching, remotes & syncing, history, undoing changes, stash & tags, rebase & merging, workflows, hooks, internals, power commands |
+| ⬜ | Playwright |
 
 ### Web Technologies
 
@@ -160,6 +161,6 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | Markdown | 3 | code blocks & math, LaTeX reference |
 | ✅ | Mermaid | 12 | flowcharts, sequence diagrams, class diagrams, entity relationship diagrams, Gantt charts, mind maps, state diagrams, pie & quadrant charts, timeline & git graph, themes & styling, config & integration |
-| ⬜ | JSON | — | In progress |
+| ✅ | JSON | 8 | Values & Data Types, Objects & Arrays, JSON Schema, Parsing & Serialization, JSONPath & Querying, JSON in APIs & HTTP, Advanced & Related Formats |
 | ⬜ | XML | — | In Progress |
 | ⬜ | YAML | — | In Progress |
