@@ -162,5 +162,5 @@ CheatSheets/
 | ✅ | Markdown | 3 | code blocks & math, LaTeX reference |
 | ✅ | Mermaid | 12 | flowcharts, sequence diagrams, class diagrams, entity relationship diagrams, Gantt charts, mind maps, state diagrams, pie & quadrant charts, timeline & git graph, themes & styling, config & integration |
 | ✅ | JSON | 8 | Values & Data Types, Objects & Arrays, JSON Schema, Parsing & Serialization, JSONPath & Querying, JSON in APIs & HTTP, Advanced & Related Formats |
-| ⬜ | XML | — | In Progress |
+| ✅ | XML | 10 | Elements & Attributes, Text, Data & Special Characters, Namespaces, DTD, XML Schema (XSD), XPath, XSLT, Parsing XML, Practical XML |
 | ⬜ | YAML | — | In Progress |
