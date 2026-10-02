@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSS Systems — Sheet 34: PostCSS — Writing Plugins</title>
+  <link rel="stylesheet" href="../CSS/cheatsheet.css" />
+  <link rel="stylesheet" href="../CSS/csys-cheatsheet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+</head>
+<body id="s34">
+  <header class="page-header">
+    <div class="sheet-number">Sheet 34</div>
+    <h1>PostCSS — Writing Plugins</h1>
+    <div class="sheet-desc">postcss() · Declaration · Rule · AtRule · walk · replaceWith · plugin API</div>
+  </header>
+  <main>
+
+    <!-- Row 1: Code | Explain + Node Types Table + Node Methods Table + Walk Methods Table -->
+    <div class="row" id="row-1">
+      <div class="col" id="col-1-1">
+        <section class="section-code" id="code">
+          <h2 class="section-title">Writing a PostCSS Plugin</h2>
+          <pre><code class="language-javascript">// my-plugin.js
+const postcss = require('postcss')
+
+// Plugin factory — returns an object with postcssPlugin + Once/Declaration/Rule
+const myPlugin = postcss.plugin('my-plugin', (opts = {}) => {
+  const { prefix = '' } = opts
+
+  return (root, result) => {
+    // Walk all declarations
+    root.walkDecls('color', decl => {
+      // decl.prop === 'color'
+      // decl.value === '#fff'
+      if (decl.value === 'red') {
+        decl.value = 'var(--color-danger, #ef4444)'
+      }
+    })
+
+    // Walk rules (selectors)
+    root.walkRules(rule => {
+      rule.selector = rule.selector.replace(
+        /\.btn/g,
+        `.${prefix}btn`
+      )
+    })
+
+    // Walk @at-rules
+    root.walkAtRules('custom-mixin', atRule => {
+      const mixinName = atRule.params  // @custom-mixin flex-center → 'flex-center'
+      atRule.replaceWith(
+        postcss.decl({ prop: 'display', value: 'flex' }),
+        postcss.decl({ prop: 'align-items', value: 'center' }),
+        postcss.decl({ prop: 'justify-content', value: 'center' }),
+      )
+    })
+
+    // Append a new rule to the stylesheet
+    root.append(postcss.rule({
+      selector: ':root',
+      nodes: [postcss.decl({ prop: '--plugin-loaded', value: '1' })]
+    }))
+  }
+})
+
+// Modern API (PostCSS 8+)
+module.exports = {
+  postcssPlugin: 'my-plugin',
+  Declaration: { color: decl => { /* handle color decls */ } },
+  AtRule: { 'custom-mixin': atRule => { /* handle mixin */ } },
+}</code></pre>
+        </section>
+      </div>
+      <div class="col" id="col-1-2">
+        <section class="section-explain" id="explain">
+          <h2 class="section-title">Plugin API Explained</h2>
+          <div class="section-body">
+            <div class="explain-item"><code>root</code> — the root CSS AST node (entire stylesheet)</div>
+            <div class="explain-item"><code>result</code> — PostCSS Result; use <code>result.warn()</code> for warnings</div>
+            <div class="explain-item"><code>root.walkDecls(prop, fn)</code> — visit every declaration; filter by property name</div>
+            <div class="explain-item"><code>root.walkRules(fn)</code> — visit every rule (selector block)</div>
+            <div class="explain-item"><code>root.walkAtRules(name, fn)</code> — visit specific @-rules</div>
+            <div class="explain-item"><code>decl.prop</code> — CSS property name string</div>
+            <div class="explain-item"><code>decl.value</code> — CSS value string; modify to transform</div>
+            <div class="explain-item"><code>atRule.replaceWith(...nodes)</code> — replace @-rule with new nodes</div>
+            <div class="explain-item"><code>postcss.decl()</code> — factory to create a Declaration node</div>
+            <div class="explain-item"><code>postcss.rule()</code> — factory to create a Rule node</div>
+          </div>
+        </section>
+        <section id="tbl-node-types">
+          <h2 class="section-title">CSS AST Node Types</h2>
+          <table>
+            <thead><tr><th>Type</th><th>Example</th></tr></thead>
+            <tbody>
+              <tr><td>Root</td><td class="desc">The whole stylesheet</td></tr>
+              <tr><td>Rule</td><td class="desc">.btn { } selector block</td></tr>
+              <tr><td>Declaration</td><td class="desc">color: red;</td></tr>
+              <tr><td>AtRule</td><td class="desc">@media, @keyframes, @custom</td></tr>
+              <tr><td>Comment</td><td class="desc">/* comment */</td></tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="tbl-node-methods">
+          <h2 class="section-title">Node Methods</h2>
+          <table>
+            <thead><tr><th>Method</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td>node.remove()</td><td class="desc">Remove from AST</td></tr>
+              <tr><td>node.replaceWith(…)</td><td class="desc">Replace with new nodes</td></tr>
+              <tr><td>node.cloneAfter()</td><td class="desc">Clone and insert after</td></tr>
+              <tr><td>node.cloneBefore()</td><td class="desc">Clone and insert before</td></tr>
+              <tr><td>parent.append(node)</td><td class="desc">Add node at end</td></tr>
+              <tr><td>parent.prepend(node)</td><td class="desc">Add node at start</td></tr>
+              <tr><td>result.warn('msg')</td><td class="desc">Emit a warning</td></tr>
+              <tr><td>node.error('msg')</td><td class="desc">Throw with source position</td></tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="tbl-walk-methods">
+          <h2 class="section-title">Walk Methods</h2>
+          <table>
+            <thead><tr><th>Method</th><th>Visits</th></tr></thead>
+            <tbody>
+              <tr><td>root.walk(fn)</td><td class="desc">All nodes</td></tr>
+              <tr><td>root.walkDecls(fn)</td><td class="desc">All declarations</td></tr>
+              <tr><td>root.walkDecls(prop, fn)</td><td class="desc">Decls by property</td></tr>
+              <tr><td>root.walkRules(fn)</td><td class="desc">All selector rules</td></tr>
+              <tr><td>root.walkAtRules(fn)</td><td class="desc">All @-rules</td></tr>
+              <tr><td>root.walkAtRules(name, fn)</td><td class="desc">@-rule by name</td></tr>
+              <tr><td>root.walkComments(fn)</td><td class="desc">All comments</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+
+    <!-- Row 2: Mistakes | Tips | Summary -->
+    <div class="row row-footer-trio" id="row-2">
+      <div class="col" id="col-2-1">
+        <section class="section-mistakes" id="mistakes">
+          <h2 class="section-title">&#9888; Common Mistakes</h2>
+          <ul class="note-list">
+            <li class="note-item">Mutating <code>decl.prop</code> while walking — some walkers use the original prop for filtering; modify after the condition check</li>
+            <li class="note-item">Not returning from plugin factory — the factory must return a function (or for PostCSS 8, the object with handlers)</li>
+            <li class="note-item">Forgetting async support — if your plugin does async work, return a Promise or use async/await in the handler</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col" id="col-2-2">
+        <section class="section-tips" id="tips">
+          <h2 class="section-title">&#10003; Tips</h2>
+          <ul class="note-list">
+            <li class="note-item">Use <code>postcss-plugin-boilerplate</code> or the official PostCSS plugin template to get testing set up</li>
+            <li class="note-item">Use <code>node.source.start.line</code> and <code>.column</code> for error messages with accurate source positions</li>
+            <li class="note-item">Test plugins with <code>postcss([myPlugin]).process(css).css</code> — simple unit testing without a bundler</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col" id="col-2-3">
+        <section class="section-summary" id="summary">
+          <h2 class="section-title">Summary</h2>
+          <ul class="note-list">
+            <li class="note-item"><code>root.walkDecls(prop, fn)</code> — visit and transform CSS declarations</li>
+            <li class="note-item"><code>root.walkAtRules(name, fn)</code> — intercept and replace custom @-rules</li>
+            <li class="note-item"><code>decl.replaceWith() / atRule.replaceWith()</code> — swap nodes in the AST</li>
+            <li class="note-item"><code>postcss.decl() / postcss.rule()</code> — factory methods to create new nodes</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+
+  </main>
+  <footer class="page-footer">
+    <nav aria-label="Sheet navigation">
+      <a class="nav-link prev" href="csys-33-postcss-plugins.html">PostCSS Plugins</a>
+      <a class="nav-toc" href="index.html">CSS Systems · 46 Sheets</a>
+      <a class="nav-link next" href="csys-35-openprops-setup.html">Open Props Setup</a>
+    </nav>
+  </footer>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+</body>
+</html>

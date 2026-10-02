@@ -137,11 +137,14 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | HTML | 15 | head, landmark & structural tags, semantic containers, generic containers, classes & IDs, typography, lists, tables, inline & misc, media, links, forms, accessibility, DOM & script basics |
 | ✅ | CSS | 25 | naming, selectors: basic & combinators, pseudo-classes, pseudo-elements & attribute, box model, borders & outlines, typography: fonts & text, colors, backgrounds, gradients, flexbox, grid, positioning, display & overflow, transitions, animations, transform, responsive: media queries, fluid units & functions, variables, modern CSS |
-| ⬜ | CSS Systems | — | In progress |
+| ✅ | CSS Systems | 46 | utility-first (Tailwind, UnoCSS), component frameworks (Bootstrap, Bulma, Foundation), CSS-in-JS (Styled Components, CSS Modules), preprocessors (Sass/SCSS, PostCSS), design tokens & architecture (Open Props, ITCSS), comparisons & migration |
 | ⬜ | JavaScript / TypeScript | — | In progress |
-| ⬜ | JSP | — | In Progress |
+| ✅ | JSP | 32 | directives, implicit objects & scope, Expression Language, standard actions, JSTL (core, fmt, fn), custom tags & TLDs, integration & security |
 | ✅ | React | 45 | JSX, components, hooks, state management, routing, data fetching, styling, testing, deployment |
 | ⬜ | PHP | — | Planned |
+| ⬜ | Django | — | Planned |
+| ⬜ | Spring | — | Planned |
+| ⬜ | Prisma | — | Planned |
 
 ### Languages
 
