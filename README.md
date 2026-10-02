@@ -163,4 +163,4 @@ CheatSheets/
 | ✅ | Mermaid | 12 | flowcharts, sequence diagrams, class diagrams, entity relationship diagrams, Gantt charts, mind maps, state diagrams, pie & quadrant charts, timeline & git graph, themes & styling, config & integration |
 | ✅ | JSON | 8 | Values & Data Types, Objects & Arrays, JSON Schema, Parsing & Serialization, JSONPath & Querying, JSON in APIs & HTTP, Advanced & Related Formats |
 | ✅ | XML | 10 | Elements & Attributes, Text, Data & Special Characters, Namespaces, DTD, XML Schema (XSD), XPath, XSLT, Parsing XML, Practical XML |
-| ⬜ | YAML | — | In Progress |
+| ✅ | YAML | 8 | Scalars & Data Types, Collections — Sequences & Mappings, String Styles & Multiline, Anchors, Aliases & Merges, Schema, Tags & Directives, Real-World YAML Patterns, Tooling, Validation & Language Integration |
