@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Java — Sheet 114: CompletableFuture</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/java-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s114">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 114</div>
+			<h1>CompletableFuture</h1>
+			<div class="sheet-desc">supplyAsync · thenApply · thenCompose · thenCombine · allOf · exceptionally · handle · join · async pipelines</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Composable Async Pipelines</h2><div class="description"><code>CompletableFuture&lt;T&gt;</code> represents a result that will be available later and lets you <strong>chain</strong> what happens next without blocking: transform it, run another async step, combine several, or recover from errors. Tasks run on the common <code>ForkJoinPool</code> unless you pass your own executor.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>thenApply</code> — sync transform; <code>thenCompose</code> — async next step</li><li class="note-item"><code>join()</code> throws unchecked <code>CompletionException</code>; <code>get()</code> throws checked</li><li class="note-item">Pass an executor for blocking I/O work</li><li class="note-item">Non-<code>Async</code> callbacks run on whichever thread completed the stage</li></ul></section></div></div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Building a Pipeline</h2><pre class="language-java"><code class="language-java">ExecutorService io = Executors.newFixedThreadPool(8);
+
+var userF = CompletableFuture.supplyAsync(() -&gt; loadUser(id), io);
+var ordersF = CompletableFuture.supplyAsync(() -&gt; loadOrders(id), io);
+
+CompletableFuture&lt;String&gt; summary = userF
+    .thenCombine(ordersF, (u, os) -&gt; u.name() + ": " + os.size() + " orders")
+    .thenApply(String::toUpperCase)
+    .exceptionally(ex -&gt; "unavailable (" + ex.getMessage() + ")");
+
+summary.thenAccept(System.out::println);         // non-blocking callback
+String s = summary.join();                       // block only at the edge
+
+CompletableFuture&lt;Profile&gt; p = userF.thenCompose(u -&gt; fetchProfileAsync(u));
+
+List&lt;CompletableFuture&lt;Price&gt;&gt; quotes = shops.stream()
+    .map(sh -&gt; CompletableFuture.supplyAsync(() -&gt; sh.quote(item), io))
+    .toList();
+CompletableFuture.allOf(quotes.toArray(CompletableFuture[]::new)).join();
+Price best = quotes.stream().map(CompletableFuture::join)
+                   .min(Comparator.comparing(Price::amount)).orElseThrow();</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Notes</h2><div class="section-body"><div class="explain-item"><code>thenCombine</code> merges two independent futures</div><div class="explain-item"><code>exceptionally</code> provides a fallback value</div><div class="explain-item"><code>thenCompose</code> flattens a future-returning function</div><div class="explain-item"><code>allOf</code> waits for many; then <code>join</code> each result</div></div></section></div></div>
+			<!-- Row 3: Chaining Methods Table | Starting Combining Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-chaining-methods"><h2 class="section-title">Chaining Methods</h2><table><thead><tr><th>Method</th><th>Input → Output</th></tr></thead><tbody><tr><td>thenApply(fn)</td><td class="desc">T → U</td></tr><tr><td>thenAccept(fn)</td><td class="desc">T → void</td></tr><tr><td>thenCompose(fn)</td><td class="desc">T → CompletableFuture&lt;U&gt;</td></tr><tr><td>thenCombine(other, fn)</td><td class="desc">(T, U) → V</td></tr><tr><td>exceptionally(fn)</td><td class="desc">Throwable → T</td></tr><tr><td>handle(fn)</td><td class="desc">(T, Throwable) → U</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-starting-combining"><h2 class="section-title">Starting &amp; Combining</h2><table><thead><tr><th>Method</th><th>Purpose</th></tr></thead><tbody><tr><td>supplyAsync(supplier, ex)</td><td class="desc">Async with result</td></tr><tr><td>runAsync(runnable)</td><td class="desc">Async, no result</td></tr><tr><td>allOf(fs…)</td><td class="desc">All complete</td></tr><tr><td>anyOf(fs…)</td><td class="desc">First completes</td></tr><tr><td>orTimeout(n, unit)</td><td class="desc">Fail after timeout</td></tr></tbody></table></section></div></div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling <code>join()</code> right after <code>supplyAsync</code>, which makes it synchronous</li><li class="note-item">Running blocking I/O on the common pool, starving other tasks</li><li class="note-item">Using <code>thenApply</code> with a function that returns a future, producing <code>CF&lt;CF&lt;T&gt;&gt;</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Block (<code>join</code>) only at the outermost layer</li><li class="note-item">Add <code>orTimeout</code> to remote calls</li><li class="note-item">With virtual threads (Sheet 116), plain blocking code is often simpler</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>supplyAsync</code> — start</li><li class="note-item"><code>thenApply</code> / <code>thenCompose</code> — chain</li><li class="note-item"><code>thenCombine</code> / <code>allOf</code> — combine</li><li class="note-item"><code>exceptionally</code> — recover</li></ul></section></div></div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="java-113-executorservice.html">ExecutorService</a>
+				<a class="nav-toc" href="index.html">Java Reference · 134 Sheets</a>
+				<a class="nav-link next" href="java-115-synchronized.html">Synchronization &amp; Locks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

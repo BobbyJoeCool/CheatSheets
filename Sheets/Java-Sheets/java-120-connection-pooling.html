@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Java — Sheet 120: Connection Pooling (HikariCP)</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/java-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s120">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 120</div>
+			<h1>Connection Pooling (HikariCP)</h1>
+			<div class="sheet-desc">HikariCP · DataSource · HikariConfig · maximumPoolSize · connectionTimeout · leak detection · pool sizing</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Reusing Database Connections</h2><div class="description">Opening a database connection is slow (network handshake, authentication). A <strong>connection pool</strong> keeps a set of open connections and lends them out; calling <code>close()</code> returns the connection to the pool instead of closing it. <strong>HikariCP</strong> is the fastest, most common pool and the default in Spring Boot.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Artifact: <code>com.zaxxer:HikariCP</code></li><li class="note-item">Code depends on <code>javax.sql.DataSource</code>, not on Hikari directly</li><li class="note-item">Create <strong>one</strong> pool per database for the whole application</li><li class="note-item">Close the pool on application shutdown</li></ul></section></div></div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Configuring HikariCP</h2><pre class="language-java"><code class="language-java">HikariConfig cfg = new HikariConfig();
+cfg.setJdbcUrl("jdbc:postgresql://localhost:5432/shop");
+cfg.setUsername(System.getenv("DB_USER"));
+cfg.setPassword(System.getenv("DB_PASS"));
+cfg.setMaximumPoolSize(10);
+cfg.setMinimumIdle(2);
+cfg.setConnectionTimeout(5_000);          // ms to wait for a free connection
+cfg.setLeakDetectionThreshold(30_000);    // warn if held &gt; 30 s
+cfg.setPoolName("shop-pool");
+
+HikariDataSource ds = new HikariDataSource(cfg);   // app-wide singleton
+
+try (Connection conn = ds.getConnection();          // borrow
+     var ps = conn.prepareStatement("SELECT count(*) FROM product");
+     var rs = ps.executeQuery()) {
+    rs.next();
+    System.out.println(rs.getLong(1));
+}                                                    // close() = return to pool
+
+Runtime.getRuntime().addShutdownHook(new Thread(ds::close));</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Notes</h2><div class="section-body"><div class="explain-item"><code>getConnection()</code> blocks until a connection is free or the timeout passes</div><div class="explain-item">Leak detection logs a stack trace for unreturned connections</div><div class="explain-item"><code>ds.close()</code> shuts down the whole pool</div></div></section></div></div>
+			<!-- Row 3: Key Settings Table | Sizing Guidance Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-key-settings"><h2 class="section-title">Key Settings</h2><table><thead><tr><th>Property</th><th>Default</th><th>Meaning</th></tr></thead><tbody><tr><td>maximumPoolSize</td><td class="desc">10</td><td class="desc">Max connections</td></tr><tr><td>minimumIdle</td><td class="desc">= max</td><td class="desc">Idle connections kept</td></tr><tr><td>connectionTimeout</td><td class="desc">30 s</td><td class="desc">Wait for a connection</td></tr><tr><td>idleTimeout</td><td class="desc">10 min</td><td class="desc">Retire idle connections</td></tr><tr><td>maxLifetime</td><td class="desc">30 min</td><td class="desc">Recycle connections</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-sizing-guidance"><h2 class="section-title">Sizing Guidance</h2><table><thead><tr><th>Situation</th><th>Guidance</th></tr></thead><tbody><tr><td>Typical web app</td><td class="desc">Start small (~10)</td></tr><tr><td>Rule of thumb</td><td class="desc">cores × 2 + effective disks</td></tr><tr><td>Many app instances</td><td class="desc">Total across instances ≤ DB limit</td></tr><tr><td>Virtual threads</td><td class="desc">Pool size still limits DB concurrency</td></tr></tbody></table></section></div></div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Creating a new <code>HikariDataSource</code> per request</li><li class="note-item">Forgetting to close borrowed connections — the pool runs dry and requests time out</li><li class="note-item">Setting the pool huge "for performance"; databases slow down with too many connections</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Load settings from a properties file or environment</li><li class="note-item">Enable leak detection in development</li><li class="note-item">Expose pool metrics (Micrometer) to see waits and usage</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Pool = reuse open connections</li><li class="note-item">HikariCP — fast default</li><li class="note-item"><code>ds.getConnection()</code> / <code>close()</code> returns it</li><li class="note-item">One pool per database</li></ul></section></div></div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="java-119-prepared-statement.html">PreparedStatement</a>
+				<a class="nav-toc" href="index.html">Java Reference · 134 Sheets</a>
+				<a class="nav-link next" href="java-121-hibernate-basics.html">Hibernate &amp; JPA Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

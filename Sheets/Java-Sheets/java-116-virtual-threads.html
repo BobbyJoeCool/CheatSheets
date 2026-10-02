@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Java — Sheet 116: Virtual Threads (Java 21)</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/java-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s116">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 116</div>
+			<h1>Virtual Threads (Java 21)</h1>
+			<div class="sheet-desc">virtual threads · Thread.ofVirtual · newVirtualThreadPerTaskExecutor · carrier thread · pinning · blocking I/O · structured concurrency</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Millions of Cheap Threads</h2><div class="description"><strong>Virtual threads</strong> (final in Java 21) are lightweight threads managed by the JVM rather than the OS. When one blocks on I/O, the JVM parks it and frees the underlying <strong>carrier</strong> thread for other work. This lets plain, blocking, one-thread-per-request code scale to hundreds of thousands of concurrent tasks without async callbacks.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Best for <strong>I/O-bound</strong> work: HTTP calls, database queries, files</li><li class="note-item">No benefit for CPU-bound work; use a fixed platform pool there</li><li class="note-item">Don't pool virtual threads; create one per task</li><li class="note-item">Java 24+ removes most <code>synchronized</code> pinning</li></ul></section></div></div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Using Virtual Threads</h2><pre class="language-java"><code class="language-java">Thread vt = Thread.ofVirtual().name("vt-1").start(() -&gt; handle(request));
+vt.join();
+
+Thread.startVirtualThread(() -&gt; System.out.println("hello"));
+
+try (ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()) {
+    List&lt;Future&lt;String&gt;&gt; pages = urls.stream()
+        .map(u -&gt; exec.submit(() -&gt; fetch(u)))   // 10,000 tasks is fine
+        .toList();
+    for (Future&lt;String&gt; p : pages) process(p.get());
+}                                                 // waits for all
+
+Thread.currentThread().isVirtual();              // true inside a virtual thread
+
+Semaphore dbLimit = new Semaphore(20);           // limit scarce resources
+Callable&lt;Row&gt; job = () -&gt; {
+    dbLimit.acquire();
+    try { return queryDb(); } finally { dbLimit.release(); }
+};</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Notes</h2><div class="section-body"><div class="explain-item">Each task gets its own virtual thread</div><div class="explain-item">Blocking <code>fetch</code> doesn't tie up an OS thread</div><div class="explain-item">Use a <code>Semaphore</code> to cap access to limited resources like DB connections</div><div class="explain-item">Thread-locals work but get costly with millions of threads</div></div></section></div></div>
+			<!-- Row 3: Platform Vs Virtual Table | Pinning Blocks The Carri Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-platform-vs-virtual"><h2 class="section-title">Platform vs Virtual</h2><table><thead><tr><th>Aspect</th><th>Platform thread</th><th>Virtual thread</th></tr></thead><tbody><tr><td>Backed by</td><td class="desc">OS thread</td><td class="desc">JVM-scheduled</td></tr><tr><td>Memory</td><td class="desc">~1 MB stack</td><td class="desc">~KB, grows as needed</td></tr><tr><td>Creation cost</td><td class="desc">High</td><td class="desc">Very low</td></tr><tr><td>Pooling</td><td class="desc">Yes</td><td class="desc">No</td></tr><tr><td>Good for</td><td class="desc">CPU-bound</td><td class="desc">Blocking I/O</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-pinning-blocks-the-carri"><h2 class="section-title">Pinning (Blocks the Carrier)</h2><table><thead><tr><th>Cause</th><th>Status</th></tr></thead><tbody><tr><td>synchronized + blocking (≤ Java 23)</td><td class="desc">Pins; use ReentrantLock</td></tr><tr><td>synchronized (Java 24+)</td><td class="desc">Fixed (JEP 491)</td></tr><tr><td>Native method / JNI</td><td class="desc">Pins</td></tr><tr><td>Object.wait()</td><td class="desc">Fixed in 24+</td></tr></tbody></table></section></div></div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Putting virtual threads in a fixed-size pool, which removes the benefit</li><li class="note-item">Expecting CPU-heavy code to run faster</li><li class="note-item">Unbounded fan-out hammering a database — limit with a <code>Semaphore</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Switch servers (Tomcat, Jetty, Spring Boot 3.2+) to virtual threads with a config flag</li><li class="note-item">Keep code blocking and simple; skip reactive complexity for I/O workloads</li><li class="note-item">Watch for pinning with <code>-Djdk.tracePinnedThreads</code> (older JDKs) or JFR</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Lightweight JVM threads</li><li class="note-item">One per task, never pooled</li><li class="note-item">Ideal for blocking I/O</li><li class="note-item"><code>newVirtualThreadPerTaskExecutor()</code></li></ul></section></div></div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="java-115-synchronized.html">Synchronization &amp; Locks</a>
+				<a class="nav-toc" href="index.html">Java Reference · 134 Sheets</a>
+				<a class="nav-link next" href="java-117-jdbc-basics.html">JDBC Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

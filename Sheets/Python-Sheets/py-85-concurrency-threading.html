@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Python — Sheet 85: Threading &amp; Concurrency</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/py-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s85">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 85</div>
+			<h1>Threading &amp; Concurrency</h1>
+			<div class="sheet-desc">threading.Thread · start() · join() · Lock · ThreadPoolExecutor · GIL</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Running Code in Threads</h2>
+						<div class="description">A <strong>thread</strong> runs a function concurrently inside the same process and shares its memory. In standard CPython, the <strong>Global Interpreter Lock (GIL)</strong> lets only one thread execute Python bytecode at a time, so threads help with <strong>I/O-bound</strong> waits (network, disk) but not CPU-heavy work. Protect shared data with a <code>Lock</code>, and prefer <code>ThreadPoolExecutor</code> for simple parallel jobs.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">The GIL is released while threads wait on I/O</li>
+						<li class="note-item"><code>counter += 1</code> is not atomic across threads</li>
+						<li class="note-item"><code>join()</code> waits for a thread to finish</li>
+						<li class="note-item">Free-threaded builds (3.13+) can run without the GIL</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Threads, Locks, Executors</h2>
+						<pre><code class="language-python">import threading, time
+from concurrent.futures import ThreadPoolExecutor
+def download(url):
+    time.sleep(1)                      # stands in for network I/O
+    return f"got {url}"
+counter, lock = 0, threading.Lock()
+def bump():
+    global counter
+    for _ in range(100_000):
+        with lock:                     # one thread at a time
+            counter += 1
+threads = [threading.Thread(target=bump) for _ in range(4)]
+for th in threads: th.start()
+for th in threads: th.join()
+counter                                # 400000, exact
+with ThreadPoolExecutor(max_workers=5) as pool:
+    results = list(pool.map(download, ["a", "b", "c"]))  # ~1 s</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Thread(target=bump)</code> — function to run in the thread</div>
+							<div class="explain-item"><code>with lock:</code> — acquire and always release</div>
+							<div class="explain-item"><code>pool.map()</code> — parallel map that returns results in order</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Api Table | Exec Table | Choose Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-api">
+						<h2 class="section-title">threading API</h2>
+						<table>
+							<thead><tr><th>Object</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Thread(target, args)</td><td class="desc">New thread</td></tr>
+								<tr><td>t.start() / t.join()</td><td class="desc">Run / wait</td></tr>
+								<tr><td>Lock()</td><td class="desc">Mutual exclusion</td></tr>
+								<tr><td>RLock()</td><td class="desc">Re-entrant lock</td></tr>
+								<tr><td>Event()</td><td class="desc">Signal between threads</td></tr>
+								<tr><td>queue.Queue()</td><td class="desc">Thread-safe hand-off</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-exec">
+						<h2 class="section-title">Executor API</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>pool.submit(f, x)</td><td class="desc">Returns a Future</td></tr>
+								<tr><td>fut.result()</td><td class="desc">Wait for value</td></tr>
+								<tr><td>pool.map(f, xs)</td><td class="desc">Ordered results</td></tr>
+								<tr><td>as_completed(futs)</td><td class="desc">Results as they finish</td></tr>
+								<tr><td>max_workers=n</td><td class="desc">Thread count</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-choose">
+						<h2 class="section-title">Pick a Tool</h2>
+						<table>
+							<thead><tr><th>Job</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Waiting on network/disk</td><td class="desc">Threads or asyncio</td></tr>
+								<tr><td>CPU-heavy math</td><td class="desc">Processes (Sheet 86)</td></tr>
+								<tr><td>Producer/consumer</td><td class="desc">Thread + Queue</td></tr>
+								<tr><td>Background timer</td><td class="desc">threading.Timer</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Updating shared data without a lock — lost updates</li>
+						<li class="note-item">Forgetting <code>join()</code> — the program moves on before results exist</li>
+						<li class="note-item">Expecting threads to speed up CPU-bound code under the GIL</li>
+						<li class="note-item">Calling <code>t.run()</code> instead of <code>t.start()</code> — runs in the current thread</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use <code>ThreadPoolExecutor</code> instead of managing threads by hand</li>
+						<li class="note-item">Pass data with <code>queue.Queue</code> rather than shared variables</li>
+						<li class="note-item">Keep locked sections short</li>
+						<li class="note-item">Give threads names for clearer logs: <code>Thread(name="worker-1")</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>Thread</code> — concurrent function</li>
+						<li class="note-item"><code>Lock</code> — protect shared state</li>
+						<li class="note-item"><code>ThreadPoolExecutor</code> — easy pools</li>
+						<li class="note-item">GIL — threads help I/O, not CPU</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="py-84-async-await.html" class="nav-link prev">Async/await &amp; Coroutines</a>
+				<a href="index.html" class="nav-toc">Python Reference · 96 Sheets</a>
+				<a href="py-86-multiprocessing.html" class="nav-link next">Multiprocessing</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

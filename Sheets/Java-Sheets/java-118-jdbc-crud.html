@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Java — Sheet 118: JDBC CRUD Operations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/java-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s118">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 118</div>
+			<h1>JDBC CRUD Operations</h1>
+			<div class="sheet-desc">INSERT · SELECT · UPDATE · DELETE · executeUpdate · generated keys · transactions · commit · rollback · batch</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Create, Read, Update, Delete</h2><div class="description">CRUD maps directly to SQL <code>INSERT</code>, <code>SELECT</code>, <code>UPDATE</code>, and <code>DELETE</code>. In JDBC, writes use <code>executeUpdate</code>, which returns the number of affected rows. Group related writes in a <strong>transaction</strong> by turning off auto-commit, then <code>commit()</code> on success or <code>rollback()</code> on failure. Batching sends many statements in one round trip.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Auto-commit is <strong>on</strong> by default: each statement commits immediately</li><li class="note-item">Request generated IDs with <code>RETURN_GENERATED_KEYS</code></li></ul></section></div></div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">CRUD + Transaction</h2><pre class="language-java"><code class="language-java">String ins = "INSERT INTO product(name, price) VALUES (?, ?)";
+try (var ps = conn.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
+    ps.setString(1, "Lamp");
+    ps.setBigDecimal(2, new BigDecimal("29.99"));
+    ps.executeUpdate();                               // 1 row
+    try (ResultSet keys = ps.getGeneratedKeys()) {
+        long id = keys.next() ? keys.getLong(1) : -1;
+    }
+}
+
+String upd = "UPDATE product SET price = ? WHERE id = ?";
+try (var ps = conn.prepareStatement(upd)) {
+    ps.setBigDecimal(1, new BigDecimal("24.99"));
+    ps.setLong(2, 7);
+    int rows = ps.executeUpdate();                    // 0 → not found
+}
+
+conn.setAutoCommit(false);                            // transaction
+String sub = "UPDATE acct SET bal = bal - ? WHERE id = ?";
+String add = "UPDATE acct SET bal = bal + ? WHERE id = ?";
+try (var debit = conn.prepareStatement(sub);
+     var credit = conn.prepareStatement(add)) {
+    debit.setInt(1, 100);  debit.setLong(2, 1);  debit.executeUpdate();
+    credit.setInt(1, 100); credit.setLong(2, 2); credit.executeUpdate();
+    conn.commit();                                    // both or neither
+} catch (SQLException e) { conn.rollback(); throw e; }
+finally { conn.setAutoCommit(true); }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Notes</h2><div class="section-body"><div class="explain-item">Generated keys come back as a small <code>ResultSet</code></div><div class="explain-item"><code>commit</code> makes both updates permanent together</div><div class="explain-item"><code>rollback</code> undoes everything since the last commit</div></div></section></div></div>
+			<!-- Row 3: Code | Crud Jdbc Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section class="section-code" id="code-schema"><h2 class="section-title">Schema</h2><pre class="language-sql"><code class="language-sql">CREATE TABLE product (
+  id    BIGSERIAL PRIMARY KEY,
+  name  VARCHAR(100) NOT NULL,
+  price NUMERIC(10,2) NOT NULL,
+  stock INT DEFAULT 0
+);</code></pre></section></div><div class="col" id="col-3-2"><section id="tbl-crud-jdbc"><h2 class="section-title">CRUD → JDBC</h2><table><thead><tr><th>Operation</th><th>SQL</th><th>JDBC call</th></tr></thead><tbody><tr><td>Create</td><td class="desc">INSERT</td><td class="desc">executeUpdate + getGeneratedKeys</td></tr><tr><td>Read</td><td class="desc">SELECT</td><td class="desc">executeQuery</td></tr><tr><td>Update</td><td class="desc">UPDATE</td><td class="desc">executeUpdate</td></tr><tr><td>Delete</td><td class="desc">DELETE</td><td class="desc">executeUpdate</td></tr></tbody></table></section></div></div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting <code>commit()</code> with auto-commit off — changes vanish when the connection closes</li><li class="note-item">Not rolling back after a failed statement in a transaction</li><li class="note-item">Inserting thousands of rows one round trip at a time instead of batching</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Wrap transactions in a helper that commits or rolls back automatically</li><li class="note-item">Batch large inserts: <code>ps.addBatch()</code> in a loop, then <code>executeBatch()</code></li><li class="note-item">Use <code>UPDATE … RETURNING</code> (PostgreSQL) to get updated values in one call</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>executeUpdate</code> — writes, returns row count</li><li class="note-item"><code>executeQuery</code> — reads</li><li class="note-item"><code>setAutoCommit(false)</code> + <code>commit</code>/<code>rollback</code></li><li class="note-item">Batch for bulk writes</li></ul></section></div></div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="java-117-jdbc-basics.html">JDBC Basics</a>
+				<a class="nav-toc" href="index.html">Java Reference · 134 Sheets</a>
+				<a class="nav-link next" href="java-119-prepared-statement.html">PreparedStatement</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

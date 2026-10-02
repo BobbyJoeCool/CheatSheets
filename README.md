@@ -148,8 +148,8 @@ CheatSheets/
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
 | ✅ | SQL | 22 | SELECT, WHERE Operators, JOIN Types, Aggregate Functions, CASE Statement, String Functions, Date Functions, UNION / INTERSECT / EXCEPT, Subqueries, CTEs, Window Functions, NULL Handling, INSERT, UPDATE & DELETE, CREATE TABLE & Data Types, Constraints, Views, Transactions, Stored Procedures, Triggers, Indexes |
-| ⬜ | Python | — | Planned |
-| ⬜ | Java | — | Planned |
+| ✅ | Python | 96 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & standard library, testing & logging, advanced topics, Tkinter GUI |
+| ✅ | Java | 134 | control flow, methods & functions, data structures, OOP, files & I/O, modules & packages, standard library, external libraries, concurrency, database, Swing, JavaFX |
 | ⬜ | C++ | — | Planned |
 | ⬜ | C# | — | Planned |
 | ⬜ | Ruby | — | Planned |

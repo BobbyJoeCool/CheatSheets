@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Java — Sheet 119: PreparedStatement</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/java-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s119">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 119</div>
+			<h1>PreparedStatement</h1>
+			<div class="sheet-desc">PreparedStatement · ? placeholders · setString · setInt · SQL injection · batching · setNull · IN clause</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Safe, Parameterized SQL</h2><div class="description">A <code>PreparedStatement</code> is SQL with <code>?</code> <strong>placeholders</strong> whose values are sent separately from the query text. The database never interprets those values as SQL, which <strong>prevents SQL injection</strong>. Statements are also precompiled, so re-executing with new values is faster. Use one for every query that includes variable data.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Parameter indexes start at <strong>1</strong></li><li class="note-item">Placeholders replace <strong>values only</strong>, not table or column names</li><li class="note-item"><code>setNull(i, Types.X)</code> for SQL NULL</li></ul></section></div></div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Injection vs Parameters</h2><pre class="language-java"><code class="language-java">String user = request.getParameter("user");          // e.g. "x' OR '1'='1"
+
+// ✖ Vulnerable: input becomes part of the SQL
+String bad = "SELECT * FROM users WHERE name = '" + user + "'";
+
+// ✔ Safe: input is only ever a value
+String sql = "SELECT id, email FROM users WHERE name = ? AND active = ?";
+try (PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, user);
+    ps.setBoolean(2, true);
+    try (ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) System.out.println(rs.getString("email"));
+    }
+}
+
+try (var ps = conn.prepareStatement("INSERT INTO log(msg, at) VALUES (?,?)")) {
+    for (String m : messages) {
+        ps.setString(1, m);
+        ps.setTimestamp(2, Timestamp.from(Instant.now()));
+        ps.addBatch();                               // queue
+    }
+    int[] counts = ps.executeBatch();                // one round trip
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Notes</h2><div class="section-body"><div class="explain-item">The malicious string is treated as a plain name</div><div class="explain-item">Each <code>?</code> is filled by position</div><div class="explain-item"><code>addBatch</code> + <code>executeBatch</code> inserts many rows efficiently</div></div></section></div></div>
+			<!-- Row 3: Setter Methods Table | Code -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-setter-methods"><h2 class="section-title">Setter Methods</h2><table><thead><tr><th>Java type</th><th>Setter</th><th>SQL type</th></tr></thead><tbody><tr><td>String</td><td class="desc">setString</td><td class="desc">VARCHAR / TEXT</td></tr><tr><td>int / long</td><td class="desc">setInt / setLong</td><td class="desc">INTEGER / BIGINT</td></tr><tr><td>BigDecimal</td><td class="desc">setBigDecimal</td><td class="desc">NUMERIC</td></tr><tr><td>LocalDate</td><td class="desc">setObject(i, date)</td><td class="desc">DATE</td></tr><tr><td>null</td><td class="desc">setNull(i, Types.VARCHAR)</td><td class="desc">NULL</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section class="section-code" id="code-in-clause-with-n-val"><h2 class="section-title">IN Clause With N Values</h2><pre class="language-java"><code class="language-java">List&lt;Long&gt; ids = List.of(3L, 7L, 9L);
+String qs = String.join(",",
+    Collections.nCopies(ids.size(), "?"));
+var ps = conn.prepareStatement(
+    "SELECT * FROM product WHERE id IN (" + qs + ")");
+for (int i = 0; i &lt; ids.size(); i++)
+    ps.setLong(i + 1, ids.get(i));</code></pre></section></div></div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Concatenating user input into SQL, even "just for a quick test"</li><li class="note-item">Trying to bind a table or column name with <code>?</code> — validate against an allow-list instead</li><li class="note-item">Using <code>setInt(i, value)</code> with a null <code>Integer</code> → NPE; use <code>setObject</code> or <code>setNull</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>setObject</code> for <code>java.time</code> types (JDBC 4.2+)</li><li class="note-item">Build <code>IN (?, ?, ?)</code> dynamically, never by concatenating values</li><li class="note-item">Libraries like JDBI or jOOQ reduce boilerplate while staying safe</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>?</code> placeholders + <code>setX(i, v)</code></li><li class="note-item">Stops SQL injection</li><li class="note-item">Values only, not identifiers</li><li class="note-item"><code>addBatch</code> / <code>executeBatch</code></li></ul></section></div></div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="java-118-jdbc-crud.html">JDBC CRUD Operations</a>
+				<a class="nav-toc" href="index.html">Java Reference · 134 Sheets</a>
+				<a class="nav-link next" href="java-120-connection-pooling.html">Connection Pooling (HikariCP)</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

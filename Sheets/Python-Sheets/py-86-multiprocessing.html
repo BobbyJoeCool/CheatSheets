@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Python — Sheet 86: Multiprocessing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/py-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s86">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 86</div>
+			<h1>Multiprocessing</h1>
+			<div class="sheet-desc">Process · Pool · Queue · ProcessPoolExecutor · __main__ guard</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">True Parallelism with Processes</h2>
+						<div class="description"><code>multiprocessing</code> runs code in separate <strong>processes</strong>, each with its own interpreter and memory, so CPU-heavy work can use every core despite the GIL. Data moves between processes by <strong>pickling</strong>, which adds overhead. Use <code>Pool</code> or <code>concurrent.futures.ProcessPoolExecutor</code> for parallel maps, and always put startup code under <code>if __name__ == "__main__":</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Each process has separate globals; nothing is shared by default</li>
+						<li class="note-item">Functions and arguments must be picklable (top-level defs)</li>
+						<li class="note-item">Windows and macOS use the "spawn" start method</li>
+						<li class="note-item">A <code>Process</code> discards its target's return value</li>
+						<li class="note-item">Best for large CPU-bound tasks, not tiny ones</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Process, Pool, Queue, Executor</h2>
+						<pre><code class="language-python">from multiprocessing import Process, Pool, Queue, cpu_count
+from concurrent.futures import ProcessPoolExecutor
+def square(n):
+    return n * n                       # runs in a worker process
+def worker(q):
+    q.put("hello from child")
+if __name__ == "__main__":             # required with spawn
+    p = Process(target=square, args=(5,))
+    p.start(); p.join()                # return value is discarded
+    with Pool(processes=cpu_count()) as pool:
+        pool.map(square, range(5))     # [0, 1, 4, 9, 16]
+    q = Queue()
+    Process(target=worker, args=(q,)).start()
+    q.get()                            # 'hello from child'
+    with ProcessPoolExecutor() as ex:
+        list(ex.map(square, [10, 20])) # [100, 400]
+        ex.submit(square, 7).result()  # 49</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>__main__</code> guard — child processes re-import the module</div>
+							<div class="explain-item"><code>Pool.map()</code> — splits work across cores</div>
+							<div class="explain-item"><code>Queue</code> — pass results back from a <code>Process</code></div>
+							<div class="explain-item"><code>ProcessPoolExecutor</code> — same API as the thread version</div>
+							<div class="explain-item"><code>submit().result()</code> — one task, then wait for its value</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Api Table | Vs Table | Rules Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-api">
+						<h2 class="section-title">API</h2>
+						<table>
+							<thead><tr><th>Object</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Process(target, args)</td><td class="desc">One child process</td></tr>
+								<tr><td>Pool(n).map(f, xs)</td><td class="desc">Parallel map</td></tr>
+								<tr><td>pool.starmap(f, pairs)</td><td class="desc">Multi-arg map</td></tr>
+								<tr><td>Queue() / Pipe()</td><td class="desc">Pass data</td></tr>
+								<tr><td>Value / Array</td><td class="desc">Shared memory values</td></tr>
+								<tr><td>ProcessPoolExecutor</td><td class="desc">Futures-based pool</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-vs">
+						<h2 class="section-title">Threads vs Processes</h2>
+						<table>
+							<thead><tr><th>Threads</th><th>Processes</th></tr></thead>
+							<tbody>
+								<tr><td>Shared memory</td><td class="desc">Separate memory</td></tr>
+								<tr><td>Limited by GIL</td><td class="desc">Use all cores</td></tr>
+								<tr><td>Cheap to start</td><td class="desc">Costly to start</td></tr>
+								<tr><td>Pass objects directly</td><td class="desc">Data is pickled</td></tr>
+								<tr><td>Best for I/O</td><td class="desc">Best for CPU</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-rules">
+						<h2 class="section-title">Rules of Thumb</h2>
+						<table>
+							<thead><tr><th>Rule</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>Guard with __main__</td><td class="desc">Prevents runaway spawning</td></tr>
+								<tr><td>Top-level functions</td><td class="desc">Lambdas can't pickle</td></tr>
+								<tr><td>Use chunksize=</td><td class="desc">Fewer, bigger hand-offs</td></tr>
+								<tr><td>Send small data</td><td class="desc">Pickling is slow</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">No <code>__main__</code> guard — <code>RuntimeError</code> or endless child processes</li>
+						<li class="note-item">Passing a lambda or nested function — <code>PicklingError</code></li>
+						<li class="note-item">Parallelizing tiny tasks — overhead outweighs the gain</li>
+						<li class="note-item">Expecting a child to change the parent's globals</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Start with <code>ProcessPoolExecutor().map()</code></li>
+						<li class="note-item">Set <code>chunksize</code> for long input lists</li>
+						<li class="note-item">Return results instead of sharing state</li>
+						<li class="note-item">Measure first; sometimes NumPy vectorization beats processes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">processes — bypass the GIL</li>
+						<li class="note-item"><code>Pool</code> / <code>ProcessPoolExecutor</code> — parallel map</li>
+						<li class="note-item"><code>Queue</code> — communicate</li>
+						<li class="note-item"><code>__main__</code> guard — always</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="py-85-concurrency-threading.html" class="nav-link prev">Threading &amp; Concurrency</a>
+				<a href="index.html" class="nav-toc">Python Reference · 96 Sheets</a>
+				<a href="py-87-sqlite-database.html" class="nav-link next">SQLite Database</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>
