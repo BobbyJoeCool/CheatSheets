@@ -90,7 +90,8 @@ CheatSheets/
 │   ├── CSS/                    # All stylesheets
 │   │   ├── cheatsheet.css      # Shared base (839 lines)
 │   │   └── [name]-cheatsheet.css
-│   ├── Concepts-Sheets/        # One folder per collection (same structure)
+│   ├── Agentic-Sheets/         # One folder per collection (same structure)
+│   ├── Concepts-Sheets/
 │   ├── CSS-Sheets/
 │   ├── HTML-Sheets/
 │   ├── Markdown-Sheets/
@@ -129,6 +130,7 @@ CheatSheets/
 | ✅ | Bitwise | 8 | operators, masks & flags, bit tricks, packing & fields, subset enumeration, bit counting, real-world patterns; CSS warnings — see bitwise-verify.log |
 | ✅ | Bash | 12 | files & dirs, wildcards & patterns, redirection & piping, permissions, environment, script basics, operators & control flow, functions & arrays, processes & jobs, text processing, macOS tools |
 | ✅ | Git | 12 | core workflow, branching, remotes & syncing, history, undoing changes, stash & tags, rebase & merging, workflows, hooks, internals, power commands |
+| ⬜ | Agentic Coding | 73 | introduction & concepts, prompting for code, Claude Code (setup, memory & context, permissions & safety, skills & subagents, hooks, MCP & plugins, automation & headless), instruction files across tools, MCP fundamentals, OpenAI Codex, GitHub Copilot, other agentic tools, quality, security & team practice, quick reference |
 | ⬜ | Playwright |
 
 ### Web Technologies
@@ -141,10 +143,12 @@ CheatSheets/
 | ✅ | JavaScript / TypeScript | 131 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & packages, tooling, advanced topics, async, DOM, browser APIs, Node.js, TypeScript fundamentals & type system |
 | ✅ | JSP | 32 | directives, implicit objects & scope, Expression Language, standard actions, JSTL (core, fmt, fn), custom tags & TLDs, integration & security |
 | ✅ | React | 45 | JSX, components, hooks, state management, routing, data fetching, styling, testing, deployment |
+| ⬜ | Node.js | 68 | introduction & setup, modules & packages, event loop & async, process & environment, CLI tools, file system, buffers & streams, networking & HTTP, errors & debugging, testing, concurrency & performance, security, built-in utilities, web frameworks & libraries, deployment |
+| ⬜ | Next.js | 58 | introduction & setup, routing, server & client components, data fetching, caching & rendering, mutations & server actions, route handlers & proxy, styling, optimizations, authentication & security, data, environment & i18n, testing & debugging, deployment & operations, Pages Router (legacy) |
+| ⬜ | Prisma | 69 | intro & setup, schema definition, client basics, CRUD, filtering & querying, relations & nested writes, aggregations, transactions, migrations, error handling, advanced patterns, performance, testing |
 | ⬜ | PHP | — | Planned |
 | ⬜ | Django | — | Planned |
 | ⬜ | Spring | — | Planned |
-| ⬜ | Prisma | — | Planned |
 
 ### Languages
 
