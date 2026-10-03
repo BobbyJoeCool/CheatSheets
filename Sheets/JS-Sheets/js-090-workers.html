@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JavaScript — Sheet 090: Workers &amp; Parallelism</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/js-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s090">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 090</div>
+			<h1>Workers &amp; Parallelism</h1>
+			<div class="sheet-desc">Web Workers · postMessage · worker_threads · transferables · SharedArrayBuffer · Atomics</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Overview</h2><div class="description">JavaScript runs your code on one thread, so heavy CPU work blocks everything else. <strong>Web Workers</strong> (browser) and <strong>worker_threads</strong> (Node) run scripts on separate threads. They don't share variables; they communicate by <strong>message passing</strong> with <code>postMessage</code>. Large buffers can be <strong>transferred</strong> instead of copied, and <code>SharedArrayBuffer</code> with <code>Atomics</code> allows true shared memory.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Workers have no DOM access</li><li class="note-item">Messages are copied with the structured clone algorithm</li><li class="note-item">Transferring a buffer makes it unusable in the sender</li><li class="note-item">SharedArrayBuffer in browsers needs cross-origin isolation headers</li></ul></section></div></div>
+			<!-- Row 2: Code | Explain + Ts -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Offloading work to a worker</h2><pre><code class="language-javascript">// main.js (browser)
+const worker = new Worker(new URL("./prime.worker.js", import.meta.url),
+                          { type: "module" });
+worker.postMessage({ limit: 5_000_000 });
+worker.onmessage = e =&gt; console.log("primes:", e.data.count);
+worker.onerror = e =&gt; console.error(e.message);
+
+// prime.worker.js
+self.onmessage = ({ data }) =&gt; {
+  let count = 0;
+  for (let n = 2; n &lt; data.limit; n++) if (isPrime(n)) count++;
+  self.postMessage({ count });
+};
+
+// Node
+import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
+if (isMainThread) {
+  new Worker(new URL(import.meta.url), { workerData: 42 })
+    .on("message", m =&gt; console.log(m));       // 84
+} else {
+  parentPort.postMessage(workerData * 2);
+}
+
+worker.postMessage(bigBuffer, [bigBuffer]);    // transfer, no copy</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>new URL(…, import.meta.url)</code> — lets bundlers find the worker file</div><div class="explain-item"><code>postMessage</code> / <code>onmessage</code> — the whole communication channel</div><div class="explain-item">Node: same file can act as main or worker</div><div class="explain-item">Transfer list — moves ownership of buffers</div></div></section><section class="section-ts" id="ts"><h2 class="section-title">TypeScript</h2><ul class="note-list"><li class="note-item">Messages are untyped; wrap them in a typed helper or use a library like Comlink</li><li class="note-item">Add <code>"lib": ["WebWorker"]</code> for worker files so <code>self</code> is typed correctly</li></ul></section></div></div>
+			<!-- Row 3: Compare Table | When Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-compare"><h2 class="section-title">Browser vs Node</h2><table><thead><tr><th></th><th>Web Worker</th><th>worker_threads</th></tr></thead><tbody><tr><td>create</td><td>new Worker(url)</td><td>new Worker(file)</td></tr><tr><td>send</td><td>postMessage</td><td>postMessage</td></tr><tr><td>receive</td><td>onmessage</td><td>on("message")</td></tr><tr><td>input data</td><td>first message</td><td>workerData</td></tr><tr><td>stop</td><td>terminate()</td><td>terminate()</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-when"><h2 class="section-title">When to Use a Worker</h2><table><thead><tr><th>Task</th><th>Worker?</th></tr></thead><tbody><tr><td>image/video processing</td><td class="desc">yes</td></tr><tr><td>parsing huge files</td><td class="desc">yes</td></tr><tr><td>crypto, compression</td><td class="desc">yes</td></tr><tr><td>waiting on network</td><td class="desc">no (async is enough)</td></tr><tr><td>DOM updates</td><td class="desc">no (impossible)</td></tr></tbody></table></section></div></div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using workers for I/O-bound work that async already handles</li><li class="note-item">Sending huge objects repeatedly; copying costs more than the work saved</li><li class="note-item">Forgetting to <code>terminate()</code> workers you no longer need</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use a worker pool (e.g., <code>piscina</code> in Node) for many small jobs</li><li class="note-item">Measure first: worker startup has overhead</li><li class="note-item">Use Comlink to call worker functions like normal async functions</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">workers — real parallel threads</li><li class="note-item"><code>postMessage</code> — communicate</li><li class="note-item">transfer — move buffers, no copy</li><li class="note-item">no DOM — compute only</li></ul></section></div></div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="js-089-typed-arrays.html" class="nav-link prev">Typed Arrays &amp; Binary Data</a>
+				<a href="index.html" class="nav-toc">JavaScript & TypeScript Reference · 131 Sheets</a>
+				<a href="js-091-memory-resources.html" class="nav-link next">Memory &amp; Resource Management</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+	</body>
+</html>
