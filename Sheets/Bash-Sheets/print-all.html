@@ -49,59 +49,80 @@
 				return wrapper;
 			}
 
-			btn.addEventListener('click', async () => {
-				btn.disabled = true;
+			let loaded = false;
+			let pageCount = 0;
+
+			// Fetch the cover, blank page, TOC and every sheet into the container
+			async function loadAll() {
 				status.textContent = 'Loading…';
 				container.innerHTML = '';
 
+				const { pages } = await fetch('manifest.json').then(r => r.json());
+
+				// 1. Cover page
+				container.appendChild(await injectPage('cover.html'));
+
+				// 2. Blank page
+				const blank = document.createElement('div');
+				blank.className = 'sheet-page';
+				container.appendChild(blank);
+
+				// 3. TOC — inject index.html and populate nav from manifest
+				const tocWrapper = await injectPage('index.html');
+				const tocNav = tocWrapper.querySelector('#toc-nav');
+				if (tocNav) {
+					pages.forEach((page, i) => {
+						const a = document.createElement('a');
+						a.id = `toc_entry_${i + 1}`;
+						a.className = 'toc_entry';
+						a.append(
+							Object.assign(document.createElement('h2'), { textContent: `Sheet ${String(i + 1).padStart(2, '0')}` }),
+							Object.assign(document.createElement('h3'), { textContent: page.title }),
+							Object.assign(document.createElement('p'), { textContent: page.desc })
+						);
+						tocNav.appendChild(a);
+					});
+				}
+				const tocCount = tocWrapper.querySelector('#toc-count');
+				if (tocCount) tocCount.textContent = `${pages.length} reference sheets · syntax · examples · notes`;
+				const tocFooter = tocWrapper.querySelector('#toc-footer-label');
+				if (tocFooter) tocFooter.textContent = `Bash Reference · ${pages.length} sheets`;
+				container.appendChild(tocWrapper);
+
+				// 4. Manifest pages
+				for (let i = 0; i < pages.length; i++) {
+					container.appendChild(await injectPage(pages[i].file));
+					status.textContent = `${i + 1} / ${pages.length}`;
+				}
+
+				if (window.Prism) Prism.highlightAll();
+				return pages.length + 3;
+			}
+
+			// Load once, wait for web fonts, then open the print dialog.
+			// Runs automatically on page open; the button re-prints without reloading.
+			async function printAll() {
+				btn.disabled = true;
 				try {
-					const { pages } = await fetch('manifest.json').then(r => r.json());
-
-					// 1. Cover page
-					container.appendChild(await injectPage('cover.html'));
-
-					// 2. Blank page
-					const blank = document.createElement('div');
-					blank.className = 'sheet-page';
-					container.appendChild(blank);
-
-					// 3. TOC — inject index.html and populate nav from manifest
-					const tocWrapper = await injectPage('index.html');
-					const tocNav = tocWrapper.querySelector('#toc-nav');
-					if (tocNav) {
-						pages.forEach((page, i) => {
-							const a = document.createElement('a');
-							a.id = `toc_entry_${i + 1}`;
-							a.className = 'toc_entry';
-							a.append(
-								Object.assign(document.createElement('h2'), { textContent: `Sheet ${String(i + 1).padStart(2, '0')}` }),
-								Object.assign(document.createElement('h3'), { textContent: page.title }),
-								Object.assign(document.createElement('p'), { textContent: page.desc })
-							);
-							tocNav.appendChild(a);
-						});
+					if (!loaded) {
+						pageCount = await loadAll();
+						loaded = true;
 					}
-					const tocCount = tocWrapper.querySelector('#toc-count');
-					if (tocCount) tocCount.textContent = `${pages.length} reference sheets · syntax · examples · notes`;
-					const tocFooter = tocWrapper.querySelector('#toc-footer-label');
-					if (tocFooter) tocFooter.textContent = `Bash Reference · ${pages.length} sheets`;
-					container.appendChild(tocWrapper);
-
-					// 4. Manifest pages
-					for (let i = 0; i < pages.length; i++) {
-						container.appendChild(await injectPage(pages[i].file));
-						status.textContent = `${i + 1} / ${pages.length}`;
-					}
-
-					if (window.Prism) Prism.highlightAll();
-					status.textContent = `${pages.length + 3} pages ready`;
+					// Force layout so the injected text requests its fonts, then wait for them
+					void container.offsetHeight;
+					await document.fonts.ready;
+					status.textContent = `${pageCount} pages ready`;
 					btn.disabled = false;
 					window.print();
 				} catch (err) {
 					status.textContent = 'Error: ' + err.message;
 					btn.disabled = false;
 				}
-			});
+			}
+
+			btn.addEventListener('click', printAll);
+			// DOMContentLoaded fires after the deferred Prism scripts have run
+			document.addEventListener('DOMContentLoaded', printAll);
 		</script>
 	</body>
 </html>
