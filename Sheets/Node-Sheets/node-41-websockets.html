@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 41: WebSockets</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s41">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 41</div>
+			<h1>WebSockets</h1>
+			<div class="sheet-desc">global WebSocket client · open / message / close · ws library server · upgrade event · heartbeats</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Real-Time Connections</h2>
+						<div class="description">
+							A <strong>WebSocket</strong> is a long-lived, two-way connection over one TCP socket, upgraded from an HTTP request. Node has a built-in WebSocket <strong>client</strong> with the browser API. For a <strong>server</strong>, use the <code>ws</code> package (or a framework plugin built on it). Plan for dropped connections: send periodic pings and terminate sockets that stop answering.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>wss://</code> is WebSocket over TLS</li>
+							<li class="note-item">Messages are strings or binary; JSON is common</li>
+							<li class="note-item">Load balancers must allow the HTTP <code>Upgrade</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Client (Built In) &amp; Server (ws)</h2>
+						<pre><code class="language-javascript">import { WebSocketServer } from 'ws';               // npm i ws
+
+const ws = new WebSocket('wss://echo.example.com');  // client, global
+ws.addEventListener('open', () =&gt; ws.send(JSON.stringify({ type: 'hi' })));
+ws.addEventListener('message', (e) =&gt; console.log(JSON.parse(e.data)));
+ws.addEventListener('close', (e) =&gt; console.log('closed', e.code));
+
+const wss = new WebSocketServer({ port: 8080 });    // server
+wss.on('connection', (socket, req) =&gt; {
+  socket.isAlive = true;
+  socket.on('pong', () =&gt; { socket.isAlive = true; });
+  socket.on('message', (data) =&gt; {                   // broadcast
+    for (const c of wss.clients)
+      if (c.readyState === WebSocket.OPEN) c.send(data);
+  });
+});
+
+setInterval(() =&gt; {                                  // heartbeat
+  for (const s of wss.clients) {
+    if (!s.isAlive) { s.terminate(); continue; }
+    s.isAlive = false; s.ping();
+  }
+}, 30_000);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>addEventListener</code> — same API as browsers</div>
+							<div class="explain-item"><code>req</code> — the upgrade request: read cookies, auth here</div>
+							<div class="explain-item"><code>wss.clients</code> — Set of open sockets</div>
+							<div class="explain-item"><code>ping / pong</code> — detects dead peers</div>
+							<div class="explain-item"><code>terminate</code> — hard close, no handshake</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: State Table | Codes Table | Attach Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-state">
+						<h2 class="section-title">readyState</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>0 CONNECTING</td><td class="desc">Handshake in progress</td></tr>
+								<tr><td>1 OPEN</td><td class="desc">Can send</td></tr>
+								<tr><td>2 CLOSING</td><td class="desc">Closing handshake</td></tr>
+								<tr><td>3 CLOSED</td><td class="desc">Done</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-codes">
+						<h2 class="section-title">Close Codes</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>1000</td><td class="desc">Normal close</td></tr>
+								<tr><td>1001</td><td class="desc">Going away (shutdown)</td></tr>
+								<tr><td>1006</td><td class="desc">Dropped, no close frame</td></tr>
+								<tr><td>1008</td><td class="desc">Policy violation</td></tr>
+								<tr><td>1011</td><td class="desc">Server error</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-attach">
+						<h2 class="section-title">Share an HTTP Port</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>{ server }</td><td class="desc">Attach to http.Server</td></tr>
+								<tr><td>{ noServer: true }</td><td class="desc">Handle 'upgrade' yourself</td></tr>
+								<tr><td>{ path: '/ws' }</td><td class="desc">Only this path</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Skipping heartbeats; half-open connections pile up until memory runs out</li>
+							<li class="note-item">Authenticating after connect; check the token during the upgrade request</li>
+							<li class="note-item">Broadcasting without checking <code>readyState</code>; sends to closing sockets throw</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Reconnect clients with exponential backoff</li>
+							<li class="note-item">Use Redis pub/sub or similar to broadcast across multiple server instances</li>
+							<li class="note-item">Consider Server-Sent Events for one-way server → client updates</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>WebSocket</code> — built-in client</li>
+							<li class="note-item"><code>ws</code> — the standard server package</li>
+							<li class="note-item"><code>ping / pong</code> — keep connections honest</li>
+							<li class="note-item"><code>wss://</code> — always in production</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-40-https-tls.html">HTTPS &amp; TLS</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-42-tcp-udp-dns.html">TCP, UDP &amp; DNS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

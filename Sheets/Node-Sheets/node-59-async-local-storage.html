@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 59: AsyncLocalStorage</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s59">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 59</div>
+			<h1>AsyncLocalStorage</h1>
+			<div class="sheet-desc">AsyncLocalStorage · run() · getStore() · request context · logging correlation IDs · enterWith()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Request Context Without Parameters</h2>
+						<div class="description">
+							<code>AsyncLocalStorage</code> stores a value that follows <strong>one logical operation</strong> through every <code>await</code>, callback, and timer it triggers, like thread-local storage for async code. Start a context with <code>run(store, fn)</code>; anything that runs inside, however deep, reads it with <code>getStore()</code>. The classic use is a <strong>request ID</strong> in every log line without passing it through every function.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Each concurrent request gets its own store</li>
+							<li class="note-item"><code>getStore()</code> returns <code>undefined</code> outside a <code>run()</code></li>
+							<li class="note-item">Many tracing and logging libraries use it internally</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Request ID in Every Log</h2>
+						<pre><code class="language-javascript">import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
+
+const ctx = new AsyncLocalStorage();
+
+function log(msg) {
+  const id = ctx.getStore()?.requestId ?? '-';
+  console.log(`[${id}] ${msg}`);
+}
+
+async function loadUser(id) {
+  log(`loading user ${id}`);                    // no requestId parameter
+  await new Promise((r) =&gt; setTimeout(r, 10));
+  log('loaded');                                // still the same request
+}
+
+createServer((req, res) =&gt; {
+  const requestId = req.headers['x-request-id'] ?? randomUUID();
+  ctx.run({ requestId }, async () =&gt; {
+    await loadUser(7);                          // [3f2c…] loading user 7
+    res.end('ok');
+  });
+}).listen(3000);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">One instance — create at module level, share it</div>
+							<div class="explain-item"><code>run(store, fn)</code> — store is visible inside <code>fn</code> and its async work</div>
+							<div class="explain-item"><code>?.</code> — handles code that runs outside a request</div>
+							<div class="explain-item"><code>x-request-id</code> — reuse the ID from a proxy if present</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Api Table | Uses Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-api">
+						<h2 class="section-title">API</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>run(store, fn)</td><td class="desc">Start a context</td></tr>
+								<tr><td>getStore()</td><td class="desc">Current store</td></tr>
+								<tr><td>exit(fn)</td><td class="desc">Run without context</td></tr>
+								<tr><td>enterWith(store)</td><td class="desc">Set for the rest of sync code</td></tr>
+								<tr><td>AsyncLocalStorage.bind(fn)</td><td class="desc">Capture current context</td></tr>
+								<tr><td>AsyncLocalStorage.snapshot()</td><td class="desc">Capture for later</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-uses">
+						<h2 class="section-title">Common Uses</h2>
+						<table>
+							<thead><tr><th>Use</th><th>Store</th></tr></thead>
+							<tbody>
+								<tr><td>Log correlation</td><td class="desc">requestId</td></tr>
+								<tr><td>Auth</td><td class="desc">current user</td></tr>
+								<tr><td>Transactions</td><td class="desc">DB client</td></tr>
+								<tr><td>Tracing</td><td class="desc">span</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Creating a new <code>AsyncLocalStorage</code> per request; nothing else can see it</li>
+							<li class="note-item">Storing a primitive and expecting to update it; store an object and mutate its fields</li>
+							<li class="note-item">Using <code>enterWith</code> in shared code; context leaks into unrelated work</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Wrap it in a tiny module: <code>getRequestId()</code>, <code>withContext()</code></li>
+							<li class="note-item">Add the store to logger child bindings automatically (Sheet 65)</li>
+							<li class="note-item">Keep stores small; they live as long as the async work</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>AsyncLocalStorage</code> — async-safe context</li>
+							<li class="note-item"><code>run(store, fn)</code> — begin</li>
+							<li class="note-item"><code>getStore()</code> — read anywhere inside</li>
+							<li class="note-item"><code>requestId</code> — the classic use</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-58-util-module.html">The util Module</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-60-sqlite.html">node:sqlite</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

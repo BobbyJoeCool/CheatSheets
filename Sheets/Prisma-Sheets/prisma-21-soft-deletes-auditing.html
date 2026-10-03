@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 21: Advanced: Soft Deletes &amp; Auditing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Advanced: Soft Deletes &amp; Auditing</h1>
+			<div class="sheet-desc">deletedAt · $extends query · restore · AuditLog · createdAt · @updatedAt</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Recoverable Deletes & Change History</h2>
+						<div class="description">
+							A <strong>soft delete</strong> marks a row with a <code>deletedAt</code> timestamp instead of removing it, so it can be restored and audited. An <strong>audit log</strong> records who changed what and when. A query extension (<code>$extends</code>) can apply both automatically so individual queries don't have to remember.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Unique columns still collide with soft-deleted rows</li>
+							<li class="note-item">Cascades don't run on soft delete</li>
+							<li class="note-item">Extensions don't cover <code>$queryRaw</code></li>
+							<li class="note-item">Audit inside the same transaction</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Soft-Delete Extension + Audit Write</h2>
+						<pre class="language-typescript"><code class="language-typescript">export const db = prisma.$extends({
+  query: {
+    user: {
+      async findMany({ args, query }) {
+        args.where = { deletedAt: null, ...args.where };   // hide deleted
+        return query(args);
+      },
+      async delete({ args }) {                             // delete → update
+        return prisma.user.update({ where: args.where, data: { deletedAt: new Date() } });
+      },
+    },
+  },
+});
+await db.user.delete({ where: { id: 5 } });                // soft delete
+await prisma.user.update({ where: { id: 5 }, data: { deletedAt: null } }); // restore
+await prisma.$transaction(async (tx) =&gt; {                  // change + audit
+  const after = await tx.post.update({ where: { id: 9 }, data: { title: "New" } });
+  await tx.auditLog.create({
+    data: { model: "Post", recordId: 9, action: "UPDATE", actorId: me.id, after } });
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>$extends({ query })</code> — intercept queries</div>
+							<div class="explain-item">spread <code>args.where</code> — caller can override</div>
+							<div class="explain-item"><code>delete</code> → <code>update</code> — sets <code>deletedAt</code></div>
+							<div class="explain-item"><code>deletedAt: null</code> — restore the row</div>
+							<div class="explain-item"><code>$transaction</code> — change + log together</div>
+							<div class="explain-item"><code>after</code> (and <code>before</code>) — <code>Json</code> snapshots</div>
+							<div class="explain-item"><code>actorId</code> — who made the change</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-schema">
+						<h2 class="section-title">Schema</h2>
+						<pre class="language-graphql"><code class="language-graphql">model User {
+  id        Int       @id @default(autoincrement())
+  deletedAt DateTime?           // null = active
+  updatedAt DateTime  @updatedAt
+  @@index([deletedAt])
+}
+model AuditLog {
+  id       Int      @id @default(autoincrement())
+  model    String   // "Post"
+  recordId Int
+  action   String          // CREATE | UPDATE | DELETE
+  actorId  Int?                 // who
+  before   Json?
+  after    Json?
+  at       DateTime @default(now())
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-ops">
+						<h2 class="section-title">Soft-Delete Coverage</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Rewrite to</th></tr></thead>
+							<tbody>
+								<tr><td>findMany / findFirst</td><td class="desc">add <code>deletedAt: null</code></td></tr>
+								<tr><td>count / aggregate</td><td class="desc">add <code>deletedAt: null</code></td></tr>
+								<tr><td>findUnique</td><td class="desc">filter after or use findFirst</td></tr>
+								<tr><td>delete</td><td class="desc"><code>update</code> set <code>deletedAt</code></td></tr>
+								<tr><td>deleteMany</td><td class="desc"><code>updateMany</code> set <code>deletedAt</code></td></tr>
+								<tr><td>purge (GDPR)</td><td class="desc">real <code>delete</code> on base client</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@unique</code> email blocks re-signup after soft delete</li>
+							<li class="note-item">Filtering only <code>findMany</code> — <code>count</code> still sees deleted rows</li>
+							<li class="note-item">Writing audit rows outside the transaction — logs can lie</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use a partial unique index (raw SQL migration) for active rows</li>
+							<li class="note-item">Keep a base client for admin/purge paths</li>
+							<li class="note-item">Index <code>deletedAt</code> or put it first in composite indexes</li>
+							<li class="note-item">Strip secrets before saving audit snapshots</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>deletedAt</code> — soft delete marker</li>
+							<li class="note-item"><code>$extends</code> query — automatic filtering</li>
+							<li class="note-item">restore — set <code>deletedAt: null</code></li>
+							<li class="note-item"><code>AuditLog</code> — model, recordId, action, before/after</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-20-connection-pooling-optimization.html" class="nav-link prev">Connection Pooling &amp; Optimization</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-22-extends-custom-methods.html" class="nav-link next">Advanced: $extends &amp; Custom Methods</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-graphql.min.js"></script>
+	</body>
+</html>

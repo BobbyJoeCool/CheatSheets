@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 23: cacheLife &amp; cacheTag</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<h1>cacheLife &amp; cacheTag</h1>
+			<div class="sheet-desc">cacheLife('hours') · built-in profiles · custom profiles · cacheTag() · stale · revalidate · expire</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Lifetimes and Labels</h2>
+					<div class="description"><code>cacheLife()</code> sets how long a <code>'use cache'</code> entry stays fresh, using a <strong>profile</strong> name or an inline object with three timings: <code>stale</code> (client may reuse without asking), <code>revalidate</code> (server refreshes in the background after this), and <code>expire</code> (after this with no traffic, the next request waits). <code>cacheTag()</code> labels entries so they can be invalidated on demand.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Rules</h2>
+					<ul class="note-list">
+						<li class="note-item">Call both inside a cache scope, never at module top level</li>
+						<li class="note-item">No <code>cacheLife</code> → the <code>default</code> profile</li>
+						<li class="note-item">Client enforces a <strong>30 s minimum</strong> stale time</li>
+						<li class="note-item"><code>expire</code> must be longer than <code>revalidate</code></li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Profiles, Inline, and Tags</h2>
+					<pre><code class="language-typescript">// next.config.ts
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  cacheLife: {
+    editorial: { stale: 600, revalidate: 3600, expire: 86400 },
+  },
+}
+
+// lib/posts.ts
+import { cacheLife, cacheTag } from 'next/cache'
+export async function getPost(slug: string) {
+  'use cache'
+  cacheTag('posts', `post-${slug}`)        // multiple tags allowed
+  const post = await cms.post(slug)
+  if (!post) { cacheLife('minutes'); return null }  // retry soon
+  cacheLife('editorial')                   // custom profile
+  return post
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">Custom profiles inherit missing fields from <code>default</code></div>
+						<div class="explain-item">Conditional <code>cacheLife</code> is fine; only one call may run</div>
+						<div class="explain-item"><code>cacheLife({ revalidate: 60 })</code> — inline one-off profile</div>
+						<div class="explain-item">Tag both the list (<code>posts</code>) and the item (<code>post-x</code>)</div>
+						<div class="explain-item">Profile names are type-checked after <code>next typegen</code></div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Profiles Table | Prerender Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-profiles">
+					<h2 class="section-title">Built-In Profiles</h2>
+					<table>
+						<thead><tr><th>Profile</th><th>stale</th><th>revalidate</th><th>expire</th></tr></thead>
+						<tbody>
+							<tr><td>default</td><td class="desc">5 min</td><td class="desc">15 min</td><td class="desc">never</td></tr>
+							<tr><td>seconds</td><td class="desc">30 s</td><td class="desc">1 s</td><td class="desc">1 min</td></tr>
+							<tr><td>minutes</td><td class="desc">5 min</td><td class="desc">1 min</td><td class="desc">1 h</td></tr>
+							<tr><td>hours</td><td class="desc">5 min</td><td class="desc">1 h</td><td class="desc">1 day</td></tr>
+							<tr><td>days</td><td class="desc">5 min</td><td class="desc">1 day</td><td class="desc">1 week</td></tr>
+							<tr><td>weeks</td><td class="desc">5 min</td><td class="desc">1 week</td><td class="desc">30 days</td></tr>
+							<tr><td>max</td><td class="desc">5 min</td><td class="desc">30 days</td><td class="desc">1 year</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-prerender">
+					<h2 class="section-title">Prerender Thresholds</h2>
+					<table>
+						<thead><tr><th>Lifetime</th><th>Result</th></tr></thead>
+						<tbody>
+							<tr><td>revalidate 0 or expire &lt; 5 min</td><td class="desc">Dynamic hole (request time)</td></tr>
+							<tr><td>stale &lt; 30 s</td><td class="desc">Excluded from prerender</td></tr>
+							<tr><td>30 s ≤ stale &lt; 5 min</td><td class="desc">Prerendered, not in App Shell</td></tr>
+							<tr><td>Nested short cache, no outer cacheLife</td><td class="desc">Build error</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Nesting a <code>cacheLife('seconds')</code> component inside a cached parent without its own <code>cacheLife</code>; the build errors</li>
+						<li class="note-item">Wrapping <code>cacheLife</code> in a shared helper; keep it at the call site so behavior is readable</li>
+						<li class="note-item">Tagging with unbounded values like timestamps; tags should map to data you can name later</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>max</code> plus tags for content that only changes on edits</li>
+						<li class="note-item">Use <code>hours</code> or <code>days</code> for content that should refresh on its own</li>
+						<li class="note-item">Wrap short-lived cached components in <code>&lt;Suspense&gt;</code> since they become dynamic holes</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>cacheLife(profile)</code> — stale / revalidate / expire</li>
+						<li class="note-item">Custom profiles — <code>cacheLife</code> key in config</li>
+						<li class="note-item"><code>cacheTag(...tags)</code> — label for invalidation</li>
+						<li class="note-item">30 s — minimum client stale time</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-22-use-cache.html" class="nav-link prev">Cache Components &amp; 'use cache'</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-24-revalidation.html" class="nav-link next">Revalidation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma Reference — Print All</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-graphql.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js" defer></script>
+		<link rel="stylesheet" href="../CSS/print-all.css" />
+		<link rel="stylesheet" href="../CSS/cover.css" />
+		<style>
+			/* Print-all TOC page (grouped, scoped to #toc-print) */
+			#toc-print .toc-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.2in; align-content: start; }
+			#toc-print .toc-group { margin-bottom: 8px; }
+			#toc-print .toc-group-head { display: flex; padding: 3px 7px; background: rgba(92, 107, 192, 0.12);
+				border-left: 3px solid var(--accent-primary); margin-bottom: 3px; }
+			#toc-print .g-name { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-purple); }
+			#toc-print .g-range { font-family: var(--font-code); font-size: 8px; color: var(--text-muted); margin-left: auto; }
+			#toc-print .toc-entry { display: flex; gap: 6px; padding: 3px 6px; border-bottom: 1px solid var(--border-table); }
+			#toc-print .toc-num { font-family: var(--font-code); font-size: 8px; font-weight: 700; color: var(--accent-purple); padding-top: 1px; }
+			#toc-print .toc-title { font-size: 10px; font-weight: 600; color: var(--text-primary); }
+			#toc-print .toc-desc { font-size: 8px; color: var(--text-muted); line-height: 1.35; }
+		</style>
+	</head>
+	<body>
+		<div id="print-bar">
+			<a href="index.html" id="back-link">← Index</a>
+			<span id="bar-title">PRISMA REFERENCE · PRINT ALL</span>
+			<span id="status"></span>
+			<button id="print-btn" type="button">Print All</button>
+		</div>
+
+		<div id="sheets-container"></div>
+
+		<script>
+			const btn = document.getElementById('print-btn');
+			const status = document.getElementById('status');
+			const container = document.getElementById('sheets-container');
+			const parser = new DOMParser();
+			const injectedStyles = new Set();
+
+			async function injectPage(url) {
+				const html = await fetch(url).then(r => r.text());
+				const doc = parser.parseFromString(html, 'text/html');
+				doc.querySelectorAll('head style').forEach(style => {
+					const key = style.textContent.trim().slice(0, 60);
+					if (!injectedStyles.has(key)) {
+						injectedStyles.add(key);
+						const s = document.createElement('style');
+						s.textContent = style.textContent;
+						document.head.appendChild(s);
+					}
+				});
+				const wrapper = document.createElement('div');
+				wrapper.className = 'sheet-page';
+				const bodyId = doc.body.getAttribute('id');
+				if (bodyId) wrapper.id = bodyId;
+				wrapper.innerHTML = doc.body.innerHTML;
+				return wrapper;
+			}
+
+
+			function buildToc({ title, count, groups, pages }) {
+				const pad = n => String(n).padStart(2, '0');
+				const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+				const page = document.createElement('div');
+				page.className = 'sheet-page';
+				page.id = 'toc-print';
+				const half = Math.ceil(count / 2);
+				let run = 0, done = false;
+				const cols = [[], []];
+				for (const g of groups) {
+					if (!done && run + g.sheets.length <= half + 2) { cols[0].push(g); run += g.sheets.length; }
+					else { done = true; cols[1].push(g); }
+				}
+				const colHtml = cols.map(list => '<div class="toc-col">' + list.map(g =>
+					`<div class="toc-group"><div class="toc-group-head"><span class="g-name">${esc(g.title)}</span>` +
+					`<span class="g-range">${pad(g.sheets[0])} – ${pad(g.sheets.at(-1))}</span></div>` +
+					g.sheets.map(n => `<div class="toc-entry"><span class="toc-num">${pad(n)}</span>` +
+						`<div><div class="toc-title">${esc(pages[n - 1].title)}</div>` +
+						`<div class="toc-desc">${esc(pages[n - 1].desc)}</div></div></div>`).join('') +
+					'</div>').join('') + '</div>').join('');
+				page.innerHTML =
+					`<header class="page-header"><div class="sheet-number">PRISMA</div>` +
+					`<h1>Table of Contents</h1><div class="sheet-desc">${count} sheets · syntax · examples · notes</div></header>` +
+					`<main class="toc-columns">${colHtml}</main>` +
+					`<footer class="page-footer"><nav aria-label="Sheet navigation"><span></span>` +
+					`<span class="nav-toc">${esc(title)} · ${count} Sheets</span><span></span></nav></footer>`;
+				return page;
+			}
+
+			btn.addEventListener('click', async () => {
+				btn.disabled = true;
+				status.textContent = 'Loading…';
+				container.innerHTML = '';
+
+				try {
+					const manifest = await fetch('manifest.json').then(r => r.json());
+					const { pages } = manifest;
+
+					// 1. Cover page
+					const cover = await injectPage('cover.html');
+					cover.classList.add('cover-page');
+					container.appendChild(cover);
+
+					// 2. Blank page
+					const blank = document.createElement('div');
+					blank.className = 'sheet-page';
+					container.appendChild(blank);
+
+					// 3. TOC — grouped, built here (index.html's own <style> would
+					//    restyle <body>, so it is not injected)
+					container.appendChild(buildToc(manifest));
+
+					// 4. Manifest pages
+					for (let i = 0; i < pages.length; i++) {
+						container.appendChild(await injectPage(pages[i].file));
+						status.textContent = `${i + 1} / ${pages.length}`;
+					}
+
+					if (window.Prism) Prism.highlightAll();
+					// Total = cover (1) + blank (1) + toc (1) + sheets
+					status.textContent = `${pages.length + 3} pages ready`;
+					btn.disabled = false;
+					window.print();
+				} catch (err) {
+					status.textContent = 'Error: ' + err.message;
+					btn.disabled = false;
+				}
+			});
+		</script>
+	</body>
+</html>

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 25: Debugging &amp; Studio</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Debugging &amp; Studio</h1>
+			<div class="sheet-desc">prisma studio · log · $on('query') · DEBUG · prisma validate · prisma debug</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Seeing What Prisma Does</h2>
+						<div class="description">
+							<strong>Prisma Studio</strong> is a local GUI for browsing and editing data (<code>npx prisma studio</code>, port 5555). For code, enable <strong>query logging</strong> to see the SQL, parameters, and duration of each query, and use the <code>DEBUG</code> environment variable for internal client/CLI logs. CLI commands like <code>validate</code> and <code>debug</code> catch configuration problems before runtime.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Studio edits real data — careful on prod</li>
+							<li class="note-item"><code>log: ['query']</code> prints to stdout</li>
+							<li class="note-item"><code>emit: 'event'</code> → handle with <code>$on</code></li>
+							<li class="note-item">Params are logged separately from SQL</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Logging & Inspection</h2>
+						<pre class="language-typescript"><code class="language-typescript">const prisma = new PrismaClient({
+  adapter,
+  log: [
+    { emit: "event", level: "query" },
+    { emit: "stdout", level: "warn" },
+    { emit: "stdout", level: "error" },
+  ],
+});
+
+prisma.$on("query", (e) =&gt; {
+  console.log(`${e.duration}ms ${e.query}`);   // SELECT … WHERE "id" = $1
+  console.log("params:", e.params);             // ["42"]
+});
+
+// time + label every operation (extension)
+const traced = prisma.$extends({ query: {
+  async $allOperations({ model, operation, args, query }) {
+    console.time(`${model}.${operation}`);
+    try { return await query(args); }
+    finally { console.timeEnd(`${model}.${operation}`); }
+  },
+} });</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>emit: 'event'</code> — route logs to <code>$on</code></div>
+							<div class="explain-item"><code>emit: 'stdout'</code> — print directly</div>
+							<div class="explain-item"><code>e.query</code> — generated SQL</div>
+							<div class="explain-item"><code>e.params</code> — bound values</div>
+							<div class="explain-item"><code>e.duration</code> — milliseconds</div>
+							<div class="explain-item"><code>$allOperations</code> — per-op timing</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-cli">
+						<h2 class="section-title">Debug CLI</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>npx prisma studio</td><td class="desc">GUI at localhost:5555</td></tr>
+								<tr><td>prisma studio --port 5556</td><td class="desc">Custom port</td></tr>
+								<tr><td>npx prisma validate</td><td class="desc">Check schema</td></tr>
+								<tr><td>npx prisma format</td><td class="desc">Format + fix relations</td></tr>
+								<tr><td>npx prisma debug</td><td class="desc">Print config/env info</td></tr>
+								<tr><td>npx prisma -v</td><td class="desc">Versions</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-env">
+						<h2 class="section-title">Environment & Tools</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>DEBUG="prisma:*"</td><td class="desc">All internal debug logs</td></tr>
+								<tr><td>DEBUG="prisma:client"</td><td class="desc">Client logs only</td></tr>
+								<tr><td>errorFormat: 'pretty'</td><td class="desc">Readable error output</td></tr>
+								<tr><td>@prisma/instrumentation</td><td class="desc">OpenTelemetry spans</td></tr>
+								<tr><td>EXPLAIN ANALYZE</td><td class="desc">Plan via <code>$queryRaw</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Logging <code>query</code> events in production — noisy, may leak data</li>
+							<li class="note-item">Reading <code>e.query</code> without <code>e.params</code> — values look missing</li>
+							<li class="note-item">Running Studio against production casually</li>
+							<li class="note-item">Debugging stale types — rerun <code>prisma generate</code> first</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Log only queries slower than a threshold in production</li>
+							<li class="note-item">Add tracing with <code>@prisma/instrumentation</code> + OpenTelemetry</li>
+							<li class="note-item">Use Studio to verify seeds and migrations locally</li>
+							<li class="note-item">Paste slow SQL into <code>EXPLAIN ANALYZE</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>prisma studio</code> — data GUI</li>
+							<li class="note-item"><code>log</code> + <code>$on('query')</code> — SQL + timing</li>
+							<li class="note-item"><code>DEBUG=prisma:*</code> — internal logs</li>
+							<li class="note-item"><code>validate</code> · <code>format</code> · <code>debug</code> — CLI checks</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-24-testing-mocking.html" class="nav-link prev">Testing &amp; Mocking</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-26-raw-sql-queries.html" class="nav-link next">Raw SQL Queries</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

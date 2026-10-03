@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 24: Testing &amp; Mocking</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s24">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 24</div>
+			<h1>Testing &amp; Mocking</h1>
+			<div class="sheet-desc">mockDeep · __mocks__ · vi.mock · .env.test · migrate reset · deleteMany · factories</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Unit vs Integration Tests</h2>
+						<div class="description">
+							<strong>Unit tests</strong> replace the Prisma client with a deep mock (<code>vitest-mock-extended</code> or <code>jest-mock-extended</code>) so business logic runs without a database. <strong>Integration tests</strong> use a real, separate test database, apply migrations before the run, and clean tables between tests to stay isolated.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Never point tests at your dev DB</li>
+							<li class="note-item">Mocks can't catch SQL or constraint bugs</li>
+							<li class="note-item">Run test files serially against one DB</li>
+							<li class="note-item">Or one DB/schema per worker</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Mocked Unit Test (Vitest)</h2>
+						<pre class="language-typescript"><code class="language-typescript">// src/lib/__mocks__/prisma.ts — used automatically by vi.mock()
+import { beforeEach } from "vitest";
+import { mockDeep, mockReset } from "vitest-mock-extended";
+import type { PrismaClient } from "../../../generated/prisma/client";
+export const prisma = mockDeep&lt;PrismaClient&gt;();
+beforeEach(() =&gt; mockReset(prisma));
+
+// src/user.service.test.ts
+import { vi, it, expect } from "vitest";
+import { prisma } from "./lib/__mocks__/prisma";       // typed mock
+import { createUser } from "./user.service";
+vi.mock("./lib/prisma");                               // swap the singleton
+it("creates a user", async () =&gt; {
+  prisma.user.create.mockResolvedValue({ id: 1, email: "a@b.c", name: null });
+  await expect(createUser("a@b.c")).resolves.toMatchObject({ id: 1 });
+  expect(prisma.user.create).toHaveBeenCalledWith({ data: { email: "a@b.c" } });
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>mockDeep</code> — every delegate/method mocked</div>
+							<div class="explain-item"><code>__mocks__/</code> — auto-used by <code>vi.mock</code></div>
+							<div class="explain-item">import the mock file — typed mock API</div>
+							<div class="explain-item"><code>mockReset</code> — clean state per test</div>
+							<div class="explain-item"><code>mockResolvedValue</code> — fake DB result</div>
+							<div class="explain-item"><code>toHaveBeenCalledWith</code> — assert the query</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-integration">
+						<h2 class="section-title">Integration Setup</h2>
+						<pre class="language-typescript"><code class="language-typescript">// .env.test → DATABASE_URL=".../app_test"
+// globalSetup.ts
+import { execSync } from "node:child_process";
+export default () =&gt;
+  execSync("npx prisma migrate reset --force", { stdio: "inherit" });
+
+// per test: children before parents
+afterEach(async () =&gt; {
+  await prisma.$transaction([
+    prisma.post.deleteMany(),
+    prisma.user.deleteMany(),
+  ]);
+});
+
+// factory
+const makeUser = (o: Partial&lt;Prisma.UserCreateInput&gt; = {}) =&gt;
+  prisma.user.create({ data: { email: `u${Date.now()}@t.io`, ...o } });</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-strategy">
+						<h2 class="section-title">Isolation Strategies</h2>
+						<table>
+							<thead><tr><th>Strategy</th><th>Trade-off</th></tr></thead>
+							<tbody>
+								<tr><td>deleteMany per table</td><td class="desc">simple; mind FK order</td></tr>
+								<tr><td>TRUNCATE … CASCADE</td><td class="desc">fast; via <code>$executeRawUnsafe</code></td></tr>
+								<tr><td>migrate reset</td><td class="desc">clean; slow per test</td></tr>
+								<tr><td>DB/schema per worker</td><td class="desc">parallel; more setup</td></tr>
+								<tr><td>Testcontainers</td><td class="desc">real DB in Docker</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Mock tests only — constraint and SQL bugs reach prod</li>
+							<li class="note-item">Deleting parents before children — FK error <code>P2003</code></li>
+							<li class="note-item">Parallel test files sharing one DB — flaky results</li>
+							<li class="note-item"><code>migrate reset</code> without <code>--force</code> in CI — prompts and hangs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Load <code>.env.test</code> with <code>dotenv</code> before Prisma is imported</li>
+							<li class="note-item">Use factories with unique emails to avoid <code>P2002</code></li>
+							<li class="note-item">Keep the mock module path identical to the real import</li>
+							<li class="note-item">Run integration tests in CI against a disposable DB</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>mockDeep&lt;PrismaClient&gt;()</code> — unit tests</li>
+							<li class="note-item">test DB + <code>migrate reset --force</code> — integration</li>
+							<li class="note-item"><code>deleteMany</code> / TRUNCATE — isolation</li>
+							<li class="note-item">factories — quick valid records</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-23-typescript-type-safety.html" class="nav-link prev">TypeScript &amp; Type Safety</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-25-debugging-studio.html" class="nav-link next">Debugging &amp; Studio</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

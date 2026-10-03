@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 19: Performance: N+1 &amp; Indexing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Performance: N+1 &amp; Indexing</h1>
+			<div class="sheet-desc">N+1 · include · in · fluent API batching · relationLoadStrategy · @@index</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The N+1 Problem</h2>
+						<div class="description">
+							N+1 happens when you run <strong>1 query</strong> for a list and then <strong>1 more per item</strong> to load related data — 101 queries for 100 users. Fix it by loading relations in the same call (<code>include</code>/<code>select</code>), by batching IDs with <code>in</code>, or by relying on Prisma's dataloader, which batches <code>findUnique</code> calls made in the same tick.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Spot N+1 with <code>log: ['query']</code></li>
+							<li class="note-item"><code>findUnique</code> in the same tick → 1 query</li>
+							<li class="note-item"><code>join</code> strategy: preview <code>relationJoins</code></li>
+							<li class="note-item">Indexes fix slow queries, not query count</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">N+1 and Fixes</h2>
+						<pre class="language-typescript"><code class="language-typescript">// ✖ N+1: 1 + N queries
+const users = await prisma.user.findMany();
+for (const u of users) {
+  u.posts = await prisma.post.findMany({ where: { authorId: u.id } });
+}
+
+// ✔ include: relations loaded with the list
+await prisma.user.findMany({ include: { posts: true } });
+
+// ✔ manual batch: 2 queries total
+const ids = users.map((u) =&gt; u.id);
+const posts = await prisma.post.findMany({ where: { authorId: { in: ids } } });
+
+// ✔ dataloader: same-tick findUnique calls are batched (GraphQL resolvers)
+await Promise.all(ids.map((id) =&gt; prisma.user.findUnique({ where: { id } }).posts()));
+
+// ✔ single SQL query with LATERAL JOINs (Postgres/MySQL)
+await prisma.user.findMany({ relationLoadStrategy: "join", include: { posts: true } });</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">loop query — one round-trip per user</div>
+							<div class="explain-item"><code>include</code> — Prisma loads posts in bulk</div>
+							<div class="explain-item"><code>in: ids</code> — one query for all children</div>
+							<div class="explain-item">fluent <code>.posts()</code> — batched by dataloader</div>
+							<div class="explain-item"><code>relationLoadStrategy: 'join'</code> — 1 query</div>
+							<div class="explain-item">default <code>query</code> strategy — 1 query/level</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-symptoms">
+						<h2 class="section-title">Symptom → Fix</h2>
+						<table>
+							<thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>Query count grows with rows</td><td class="desc"><code>include</code> / <code>in</code> batch</td></tr>
+								<tr><td>Slow single query</td><td class="desc"><code>@@index</code> on where/orderBy</td></tr>
+								<tr><td>Huge payloads</td><td class="desc"><code>select</code> fewer fields</td></tr>
+								<tr><td>Slow deep pages</td><td class="desc">cursor pagination</td></tr>
+								<tr><td>Slow counts on big tables</td><td class="desc">cache or approximate</td></tr>
+								<tr><td>Sum in JS</td><td class="desc"><code>aggregate</code> / <code>groupBy</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-index">
+						<h2 class="section-title">Index Trade-offs</h2>
+						<table>
+							<thead><tr><th>Factor</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>Reads (WHERE/ORDER/JOIN)</td><td class="desc">faster</td></tr>
+								<tr><td>Writes (INSERT/UPDATE)</td><td class="desc">slower per index</td></tr>
+								<tr><td>Storage</td><td class="desc">grows per index</td></tr>
+								<tr><td>Low-cardinality column</td><td class="desc">little benefit</td></tr>
+								<tr><td>Composite order</td><td class="desc">leftmost prefix</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>await</code> inside <code>for…of</code> over query results — classic N+1</li>
+							<li class="note-item"><code>include</code> everything "just in case" — slow, heavy</li>
+							<li class="note-item">Adding indexes without checking the query plan</li>
+							<li class="note-item">Fixing N+1 with caching instead of batching</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Log query counts per request in development</li>
+							<li class="note-item">Use <code>EXPLAIN ANALYZE</code> via <code>$queryRaw</code> on slow queries</li>
+							<li class="note-item">Benchmark <code>join</code> vs <code>query</code> strategy on your data</li>
+							<li class="note-item">Index FK columns used by <code>include</code> and filters</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">N+1 — 1 list query + N child queries</li>
+							<li class="note-item"><code>include</code>/<code>select</code> — load relations together</li>
+							<li class="note-item"><code>in: ids</code> — manual batch</li>
+							<li class="note-item"><code>@@index</code> — faster filters and sorts</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-18-error-handling.html" class="nav-link prev">Error Handling</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-20-connection-pooling-optimization.html" class="nav-link next">Connection Pooling &amp; Optimization</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

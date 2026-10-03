@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 29: Server Action Security</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>Server Action Security</h1>
+			<div class="sheet-desc">auth in every action · public endpoints · closure encryption · bodySizeLimit · allowedOrigins · validation</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Treat Every Action Like an API Route</h2>
+					<div class="description">Each Server Action is reachable by a <strong>public POST request</strong> with a hard-to-guess ID. Hiding a button or protecting a page does <strong>not</strong> protect the action. Inside every action: <strong>authenticate</strong>, <strong>authorize</strong> the specific resource, <strong>validate</strong> input, and return only what the client needs.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Built-In Protections</h2>
+					<ul class="note-list">
+						<li class="note-item">Origin check: <code>Origin</code> must match <code>Host</code></li>
+						<li class="note-item">Unused actions are removed from the bundle</li>
+						<li class="note-item">Action IDs are non-deterministic per build</li>
+						<li class="note-item">Closed-over values are encrypted</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">A Hardened Action</h2>
+					<pre><code class="language-tsx">'use server'
+import 'server-only'
+import { z } from 'zod'
+import { verifySession } from '@/lib/dal'
+import { forbidden } from 'next/navigation'
+
+const Input = z.object({ projectId: z.uuid(), name: z.string().max(80) })
+
+export async function renameProject(input: unknown) {
+  const session = await verifySession()                // 1. authenticate
+  const { projectId, name } = Input.parse(input)       // 2. validate
+  const project = await db.project.findUnique({ where: { id: projectId } })
+  if (project?.ownerId !== session.userId) forbidden() // 3. authorize
+  await db.project.update({ where: { id: projectId }, data: { name } })
+  updateTag(`project-${projectId}`)
+  return { ok: true }                                   // 4. minimal result
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Checklist</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>input: unknown</code> — never trust the declared TS type</div>
+						<div class="explain-item">Check ownership of the specific row, not just login</div>
+						<div class="explain-item"><code>forbidden()</code> needs <code>experimental.authInterrupts</code></div>
+						<div class="explain-item">Return IDs and flags, not whole DB records</div>
+						<div class="explain-item">Rate-limit expensive or sensitive actions</div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Config Table | Risks Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-config">
+					<h2 class="section-title">serverActions Config</h2>
+					<table>
+						<thead><tr><th>Option</th><th>Purpose</th></tr></thead>
+						<tbody>
+							<tr><td>bodySizeLimit</td><td class="desc">Max request body (default <code>1mb</code>)</td></tr>
+							<tr><td>allowedOrigins</td><td class="desc">Extra origins behind proxies</td></tr>
+							<tr><td>NEXT_SERVER_ACTIONS_ENCRYPTION_KEY</td><td class="desc">Shared key across instances</td></tr>
+							<tr><td>Location</td><td class="desc"><code>experimental.serverActions</code> in config</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-risks">
+					<h2 class="section-title">Common Risks</h2>
+					<table>
+						<thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+						<tbody>
+							<tr><td>Missing auth check</td><td class="desc">Call <code>verifySession()</code> first</td></tr>
+							<tr><td>IDOR (other users' data)</td><td class="desc">Check ownership per record</td></tr>
+							<tr><td>Mass assignment</td><td class="desc">Whitelist fields with Zod</td></tr>
+							<tr><td>Leaking data in return</td><td class="desc">Return DTOs only</td></tr>
+							<tr><td>Proxy matcher skips path</td><td class="desc">Never rely on proxy alone</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Relying on <code>proxy.ts</code> for action auth; actions POST to the page URL and matcher changes can skip them</li>
+						<li class="note-item">Accepting a <code>userId</code> argument from the client instead of reading it from the session</li>
+						<li class="note-item">Spreading <code>formData</code> straight into an ORM <code>update</code> call; attackers can set any column</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Set <code>NEXT_SERVER_ACTIONS_ENCRYPTION_KEY</code> when running multiple instances so encrypted closures decrypt everywhere</li>
+						<li class="note-item">Put all data access in a Data Access Layer that checks auth itself</li>
+						<li class="note-item">Log action failures with the user ID for audit trails</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Actions are public endpoints</li>
+						<li class="note-item">Authenticate, authorize, validate — every time</li>
+						<li class="note-item"><code>bodySizeLimit</code> / <code>allowedOrigins</code> — tune limits</li>
+						<li class="note-item">Return DTOs, never raw records</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-28-forms-pending-states.html" class="nav-link prev">Forms &amp; Pending States</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-30-route-handlers.html" class="nav-link next">Route Handlers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

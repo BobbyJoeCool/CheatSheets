@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 16: Transactions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>Transactions</h1>
+			<div class="sheet-desc">$transaction([...]) · interactive tx · isolationLevel · timeout · maxWait · P2034</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">All-or-Nothing Work</h2>
+						<div class="description">
+							A transaction makes several queries <strong>atomic</strong>: if any one fails, all are rolled back. Prisma offers the <strong>array API</strong> — a list of queries run sequentially in one transaction — and the <strong>interactive API</strong>, a callback that receives a transaction client <code>tx</code> so later queries can depend on earlier results. Throwing inside the callback rolls everything back.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Nested writes are already transactional</li>
+							<li class="note-item"><code>Promise.all</code> is <strong>not</strong> a transaction</li>
+							<li class="note-item">Inside the callback use <code>tx</code>, never <code>prisma</code></li>
+							<li class="note-item">Defaults: <code>maxWait</code> 2s · <code>timeout</code> 5s</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Array & Interactive Transactions</h2>
+						<pre class="language-typescript"><code class="language-typescript">// array API — independent queries, one transaction
+const [post, count] = await prisma.$transaction([
+  prisma.post.create({ data: { title: "Hi", authorId: 1 } }),
+  prisma.post.count({ where: { authorId: 1 } }),
+]);
+
+// interactive API — money transfer
+async function transfer(from: number, to: number, amount: number) {
+  return prisma.$transaction(async (tx) =&gt; {
+    const sender = await tx.account.update({
+      where: { id: from },
+      data: { balance: { decrement: amount } },
+    });
+    if (sender.balance.lt(0)) throw new Error("Insufficient funds"); // rollback
+    return tx.account.update({
+      where: { id: to },
+      data: { balance: { increment: amount } },
+    });
+  }, { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 });
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">array — results returned in order</div>
+							<div class="explain-item"><code>tx</code> — client bound to the transaction</div>
+							<div class="explain-item"><code>decrement</code> first — row is locked</div>
+							<div class="explain-item"><code>.lt(0)</code> — Decimal comparison</div>
+							<div class="explain-item"><code>throw</code> — rolls back both updates</div>
+							<div class="explain-item"><code>isolationLevel</code> — e.g. <code>Serializable</code></div>
+							<div class="explain-item"><code>maxWait</code> — wait for a connection</div>
+							<div class="explain-item"><code>timeout</code> — max time the tx may run</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-api">
+						<h2 class="section-title">Which API?</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Parent + children</td><td class="desc">nested write</td></tr>
+								<tr><td>Independent writes together</td><td class="desc"><code>$transaction([...])</code></td></tr>
+								<tr><td>Read → decide → write</td><td class="desc"><code>$transaction(async tx =&gt; …)</code></td></tr>
+								<tr><td>Bulk same change</td><td class="desc"><code>updateMany</code></td></tr>
+								<tr><td>Long-running job</td><td class="desc">split into batches</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-iso">
+						<h2 class="section-title">Isolation Levels</h2>
+						<table>
+							<thead><tr><th>Level</th><th>Prevents</th></tr></thead>
+							<tbody>
+								<tr><td>ReadUncommitted</td><td class="desc">nothing (dirty reads possible)</td></tr>
+								<tr><td>ReadCommitted</td><td class="desc">dirty reads (PG default)</td></tr>
+								<tr><td>RepeatableRead</td><td class="desc">+ non-repeatable reads (MySQL default)</td></tr>
+								<tr><td>Serializable</td><td class="desc">+ phantoms; may throw P2034</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>prisma.</code> inside the callback — runs outside the transaction</li>
+							<li class="note-item">Calling HTTP APIs inside an interactive tx — holds locks and connections</li>
+							<li class="note-item">Exceeding the 5s default <code>timeout</code> — tx is rolled back with an error</li>
+							<li class="note-item">Thinking <code>Promise.all([...])</code> is atomic — it isn't</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep transactions short: prepare data before, side effects after</li>
+							<li class="note-item">Retry on <code>P2034</code> (write conflict/deadlock) with backoff</li>
+							<li class="note-item">Use atomic <code>increment</code>/<code>decrement</code> to avoid read-then-write races</li>
+							<li class="note-item">Set defaults via <code>transactionOptions</code> on the client</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>$transaction([...])</code> — atomic batch</li>
+							<li class="note-item"><code>$transaction(async tx =&gt; …)</code> — interactive</li>
+							<li class="note-item"><code>throw</code> — rollback</li>
+							<li class="note-item"><code>isolationLevel</code> · <code>maxWait</code> · <code>timeout</code> — options</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-15-aggregations-grouping.html" class="nav-link prev">Aggregations &amp; Grouping</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-17-migrations.html" class="nav-link next">Migrations</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

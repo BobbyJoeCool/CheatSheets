@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 44: Security Headers &amp; CSP</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s44">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 44</div>
+			<h1>Security Headers &amp; CSP</h1>
+			<div class="sheet-desc">headers() in config · CSP nonce via proxy · NEXT_PUBLIC_ exposure · X-Frame-Options · HSTS</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Hardening Responses</h2>
+					<div class="description">Add static security headers for every route through <code>headers()</code> in <code>next.config.ts</code>. A strict <strong>Content Security Policy</strong> with a per-request <strong>nonce</strong> has to be generated in <code>proxy.ts</code>; Next.js reads the nonce from the request's CSP header and applies it to its own scripts. Using nonces forces pages to render dynamically.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Exposure Rules</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>NEXT_PUBLIC_*</code> env vars are inlined into client JS</li>
+						<li class="note-item">Everything else stays server-side</li>
+						<li class="note-item">Error messages from Server Components are hidden in production</li>
+						<li class="note-item">Source maps are off for the browser by default</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Code -->
+			<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code-headers">
+					<h2 class="section-title">Static Headers (next.config.ts)</h2>
+					<pre><code class="language-typescript">const security = [
+  { key: 'Strict-Transport-Security',
+    value: 'max-age=63072000; includeSubDomains' },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'Referrer-Policy',
+    value: 'strict-origin-when-cross-origin' },
+  { key: 'Permissions-Policy',
+    value: 'camera=(), microphone=()' },
+]
+const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: '/(.*)', headers: security }]
+  },
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-code" id="code-csp">
+					<h2 class="section-title">Nonce CSP (proxy.ts)</h2>
+					<pre><code class="language-typescript">export function proxy(req: NextRequest) {
+  const nonce = btoa(crypto.randomUUID())
+  const csp = [
+    `default-src 'self'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `style-src 'self' 'nonce-${nonce}'`,
+    `img-src 'self' blob: data:`,
+    `frame-ancestors 'none'`,
+  ].join('; ')
+  const headers = new Headers(req.headers)
+  headers.set('x-nonce', nonce)
+  headers.set('Content-Security-Policy', csp)
+  const res = NextResponse.next({ request: { headers } })
+  res.headers.set('Content-Security-Policy', csp)
+  return res
+}
+// read it: (await headers()).get('x-nonce')</code></pre>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Headers Table | Env Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-headers">
+					<h2 class="section-title">Header Cheat Sheet</h2>
+					<table>
+						<thead><tr><th>Header</th><th>Protects Against</th></tr></thead>
+						<tbody>
+							<tr><td>Content-Security-Policy</td><td class="desc">XSS, injected scripts</td></tr>
+							<tr><td>Strict-Transport-Security</td><td class="desc">Protocol downgrade</td></tr>
+							<tr><td>X-Frame-Options / frame-ancestors</td><td class="desc">Clickjacking</td></tr>
+							<tr><td>X-Content-Type-Options</td><td class="desc">MIME sniffing</td></tr>
+							<tr><td>Referrer-Policy</td><td class="desc">URL leakage</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-env">
+					<h2 class="section-title">Env Var Exposure</h2>
+					<table>
+						<thead><tr><th>Variable</th><th>Visible In Browser?</th></tr></thead>
+						<tbody>
+							<tr><td>DATABASE_URL</td><td class="center">✖</td></tr>
+							<tr><td>NEXT_PUBLIC_API_URL</td><td class="center">✔ (inlined at build)</td></tr>
+							<tr><td>Server Action closure</td><td class="center">✖ (encrypted)</td></tr>
+							<tr><td>Props to Client Components</td><td class="center">✔</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Adding a nonce CSP and keeping pages static; nonces require dynamic rendering per request</li>
+						<li class="note-item">Prefixing secrets with <code>NEXT_PUBLIC_</code> to 'make them work' in the client; they're now public</li>
+						<li class="note-item">Forgetting to apply the CSP to the response as well as the forwarded request</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Exclude <code>_next/static</code>, <code>_next/image</code>, and prefetches from the CSP proxy matcher</li>
+						<li class="note-item">Start with <code>Content-Security-Policy-Report-Only</code> to find violations safely</li>
+						<li class="note-item">Set <code>poweredByHeader: false</code> to drop the <code>X-Powered-By</code> header</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>headers()</code> — static security headers</li>
+						<li class="note-item">proxy nonce — strict per-request CSP</li>
+						<li class="note-item"><code>NEXT_PUBLIC_</code> — public by design</li>
+						<li class="note-item"><code>poweredByHeader: false</code> — hide the stack</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-43-protecting-routes.html" class="nav-link prev">Protecting Routes &amp; Data</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-45-environment-variables.html" class="nav-link next">Environment Variables</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 27: Writing &amp; Appending</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>Writing &amp; Appending</h1>
+			<div class="sheet-desc">writeFile() · appendFile() · flags 'w' / 'a' / 'wx' · createWriteStream() · atomic write via rename · mode</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Writing Files Safely</h2>
+						<div class="description">
+							<code>writeFile</code> creates or <strong>overwrites</strong> a file; <code>appendFile</code> adds to the end. The <code>flag</code> option changes that behavior (for example <code>'wx'</code> fails if the file exists), and <code>mode</code> sets permissions on new files. For files other processes read, write to a temp file and <code>rename</code> it: the rename is <strong>atomic</strong>, so readers never see half a file.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Parent folders must exist; <code>mkdir({ recursive: true })</code> first</li>
+							<li class="note-item">Strings are written as UTF-8 by default</li>
+							<li class="note-item"><code>rename</code> is atomic only within the same filesystem</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Write, Append &amp; Atomic Replace</h2>
+						<pre><code class="language-javascript">import { writeFile, appendFile, rename } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { once } from 'node:events';
+
+await writeFile('out.txt', 'hello\n');                // create or overwrite
+await writeFile('data.json', JSON.stringify(obj, null, 2));
+await appendFile('app.log', `${new Date().toISOString()} start\n`);
+await writeFile('new.txt', 'x', { flag: 'wx' });      // EEXIST if present
+await writeFile('secret.key', key, { mode: 0o600 });  // owner-only access
+
+await writeFile('config.json.tmp', json);             // atomic replace:
+await rename('config.json.tmp', 'config.json');      // all or nothing
+
+const out = createWriteStream('report.csv');          // many small writes
+for (const r of rows) {
+  if (!out.write(`${r.id},${r.total}\n`)) await once(out, 'drain');
+}
+out.end();
+await once(out, 'finish');                            // all data flushed</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>null, 2</code> — pretty-print JSON with 2-space indent</div>
+							<div class="explain-item"><code>'wx'</code> — create-only; safe for lock files</div>
+							<div class="explain-item"><code>0o600</code> — octal permissions (read/write for owner)</div>
+							<div class="explain-item"><code>write()</code> returns <code>false</code> — buffer full, wait for <code>'drain'</code></div>
+							<div class="explain-item"><code>'finish'</code> — fired after <code>end()</code> flushes everything</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Flags Table | Modes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-flags">
+						<h2 class="section-title">Flags</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>w</td><td class="desc">Write, create/truncate (default)</td></tr>
+								<tr><td>wx</td><td class="desc">Write, fail if exists</td></tr>
+								<tr><td>a</td><td class="desc">Append, create if missing</td></tr>
+								<tr><td>ax</td><td class="desc">Append, fail if exists</td></tr>
+								<tr><td>r+</td><td class="desc">Read/write, must exist</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-modes">
+						<h2 class="section-title">Modes</h2>
+						<table>
+							<thead><tr><th>Mode</th><th>Permissions</th></tr></thead>
+							<tbody>
+								<tr><td>0o644</td><td class="desc">Owner rw, others r</td></tr>
+								<tr><td>0o600</td><td class="desc">Owner rw only</td></tr>
+								<tr><td>0o755</td><td class="desc">Executable script</td></tr>
+								<tr><td>0o700</td><td class="desc">Private folder</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Overwriting a config in place; a crash mid-write leaves it corrupted</li>
+							<li class="note-item">Calling <code>appendFile</code> thousands of times in a loop; each call opens and closes the file</li>
+							<li class="note-item">Ignoring <code>write()</code>'s return value; memory grows without limit</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use a stream for logs and CSV exports</li>
+							<li class="note-item">Add a trailing newline to text files so tools like <code>cat</code> and <code>diff</code> behave</li>
+							<li class="note-item">Write JSON with <code>JSON.stringify(data, null, 2) + '\n'</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>writeFile</code> — create or replace</li>
+							<li class="note-item"><code>appendFile</code> — add to the end</li>
+							<li class="note-item"><code>flag: 'wx'</code> — create only</li>
+							<li class="note-item"><code>tmp + rename</code> — atomic update</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-26-reading-files.html">Reading Files</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-28-directories.html">Directories &amp; Globbing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

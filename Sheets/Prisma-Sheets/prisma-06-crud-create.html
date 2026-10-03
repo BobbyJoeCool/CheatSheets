@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 06: CRUD: Create Operations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s06">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 06</div>
+			<h1>CRUD: Create Operations</h1>
+			<div class="sheet-desc">create · createMany · createManyAndReturn · skipDuplicates · nested create</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Inserting Data</h2>
+						<div class="description">
+							<code>create()</code> inserts one record and returns it; <code>select</code>/<code>include</code> shape the result. Nested <code>create</code> inside <code>data</code> writes related rows in the <strong>same transaction</strong>. <code>createMany()</code> sends one multi-row INSERT and returns <code>{ count }</code>; <code>createManyAndReturn()</code> returns the rows (Postgres, CockroachDB, SQLite).
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Required fields without defaults must be set</li>
+							<li class="note-item"><code>createMany</code> can't nest relations</li>
+							<li class="note-item"><code>skipDuplicates</code> → <code>ON CONFLICT DO NOTHING</code></li>
+							<li class="note-item">Duplicate unique value → <code>P2002</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Create Examples</h2>
+						<pre class="language-typescript"><code class="language-typescript">const user = await prisma.user.create({
+  data: { email: "ada@example.com", name: "Ada" },
+});                                     // { id: 1, email: "ada@…", … }
+
+await prisma.user.create({              // nested create, one transaction
+  data: {
+    email: "cy@example.com",
+    profile: { create: { bio: "Hi" } },
+    posts: { create: [{ title: "First" }, { title: "Second" }] },
+  },
+  include: { posts: true },
+});
+
+await prisma.post.createMany({
+  data: [{ title: "A", authorId: 1 }, { title: "B", authorId: 1 }],
+  skipDuplicates: true,
+});                                     // { count: 2 }
+
+await prisma.tag.createManyAndReturn({
+  data: [{ name: "orm" }, { name: "sql" }],
+});                                     // [{ id: 1, name: "orm" }, …]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>data</code> — typed <code>UserCreateInput</code></div>
+							<div class="explain-item"><code>profile: { create }</code> — 1-1 nested insert</div>
+							<div class="explain-item"><code>posts: { create: [] }</code> — 1-n nested</div>
+							<div class="explain-item"><code>include</code> — return relations too</div>
+							<div class="explain-item"><code>createMany</code> — one INSERT, <code>{ count }</code></div>
+							<div class="explain-item"><code>skipDuplicates</code> — ignore conflicts</div>
+							<div class="explain-item"><code>createManyAndReturn</code> — rows back</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-methods">
+						<h2 class="section-title">Create Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Returns</th><th>Nested</th></tr></thead>
+							<tbody>
+								<tr><td>create</td><td class="desc">record</td><td class="center">✔</td></tr>
+								<tr><td>createMany</td><td class="desc"><code>{ count }</code></td><td class="center">✖</td></tr>
+								<tr><td>createManyAndReturn</td><td class="desc">record[]</td><td class="center">✖</td></tr>
+								<tr><td>upsert</td><td class="desc">record</td><td class="center">✔</td></tr>
+								<tr><td>connectOrCreate</td><td class="desc">(nested only)</td><td class="center">✔</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-perf">
+						<h2 class="section-title">1,000 Rows</h2>
+						<table>
+							<thead><tr><th>Approach</th><th>Cost</th></tr></thead>
+							<tbody>
+								<tr><td>for … await create()</td><td class="desc">1,000 sequential queries</td></tr>
+								<tr><td>Promise.all(creates)</td><td class="desc">1,000 queries, pool-bound</td></tr>
+								<tr><td>$transaction([...])</td><td class="desc">1,000 queries, 1 tx</td></tr>
+								<tr><td>createMany({ data })</td><td class="desc">1 INSERT — fastest</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Looping <code>await create()</code> for bulk data — use <code>createMany</code></li>
+							<li class="note-item">Expecting IDs from <code>createMany</code> — use <code>createManyAndReturn</code></li>
+							<li class="note-item">Setting <code>authorId</code> and <code>author: { connect }</code> together</li>
+							<li class="note-item">Date strings without a timezone — use <code>Date</code> or ISO <code>Z</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Nested <code>create</code> keeps parent + children atomic</li>
+							<li class="note-item">Chunk huge batches (~5,000 rows) to stay under param limits</li>
+							<li class="note-item">Map <code>P2002</code> to HTTP 409 Conflict</li>
+							<li class="note-item"><code>select</code> only the fields the caller needs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>create</code> — insert one</li>
+							<li class="note-item"><code>createMany</code> — bulk, <code>{ count }</code></li>
+							<li class="note-item"><code>createManyAndReturn</code> — bulk + rows</li>
+							<li class="note-item">nested <code>create</code> — atomic graph insert</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-05-schema-indexes-constraints.html" class="nav-link prev">Schema: Indexes, Constraints &amp; Attributes</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-07-crud-read.html" class="nav-link next">CRUD: Read Operations</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

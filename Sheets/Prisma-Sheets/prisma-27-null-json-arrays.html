@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 27: Special Cases: Null, JSON, Arrays</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>Special Cases: Null, JSON, Arrays</h1>
+			<div class="sheet-desc">null · Prisma.JsonNull · DbNull · path · String[] · BigInt · Bytes · Decimal</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Edge-Case Types</h2>
+						<div class="description">
+							Optional fields hold <code>null</code>, but <code>Json</code> fields have <strong>two</strong> nulls: a database <code>NULL</code> (<code>Prisma.DbNull</code>) and a JSON <code>null</code> value (<code>Prisma.JsonNull</code>). JSON fields can be filtered by <code>path</code>. Scalar lists (<code>String[]</code>) are native on Postgres/CockroachDB. <code>BigInt</code> maps to JS <code>bigint</code>, <code>Bytes</code> to <code>Uint8Array</code>, and <code>Decimal</code> to a <code>Decimal</code> object.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Prisma.AnyNull</code> filters both nulls</li>
+							<li class="note-item">Postgres <code>path</code> = array; MySQL = <code>'$.a.b'</code></li>
+							<li class="note-item"><code>JSON.stringify</code> throws on <code>bigint</code></li>
+							<li class="note-item">Lists: no MySQL/SQLite — use Json</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Null, JSON & Lists</h2>
+						<pre class="language-typescript"><code class="language-typescript">import { Prisma } from "../generated/prisma/client";
+
+await prisma.user.findMany({ where: { phone: null } });          // IS NULL
+await prisma.user.findMany({ where: { phone: { not: null } } }); // IS NOT NULL
+
+await prisma.user.create({ data: { email: "a@b.c", settings: { theme: "dark", beta: true } } });
+await prisma.user.update({ where: { id: 1 }, data: { settings: Prisma.DbNull } });   // SQL NULL
+await prisma.user.update({ where: { id: 2 }, data: { settings: Prisma.JsonNull } }); // JSON null
+
+await prisma.user.findMany({
+  where: { settings: { path: ["theme"], equals: "dark" } },      // Postgres
+});
+await prisma.product.findMany({
+  where: { meta: { path: ["tags"], array_contains: ["sale"] } },
+});
+
+await prisma.post.update({ where: { id: 1 }, data: { tags: { push: "orm" } } });
+await prisma.post.findMany({ where: { tags: { hasEvery: ["orm", "ts"] } } });
+
+const u = await prisma.user.findUnique({ where: { id: 1 } });
+JSON.stringify(u, (_, v) =&gt; (typeof v === "bigint" ? v.toString() : v));</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>null</code> — IS NULL; <code>not: null</code> — IS NOT NULL</div>
+							<div class="explain-item">plain object — stored as JSON</div>
+							<div class="explain-item"><code>DbNull</code> — column NULL</div>
+							<div class="explain-item"><code>JsonNull</code> — JSON literal <code>null</code></div>
+							<div class="explain-item"><code>path</code> + <code>equals</code> — nested key match</div>
+							<div class="explain-item"><code>array_contains</code> — JSON array check</div>
+							<div class="explain-item"><code>push</code> / <code>hasEvery</code> — scalar lists</div>
+							<div class="explain-item">replacer — serialize <code>BigInt</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-json">
+						<h2 class="section-title">JSON Filters</h2>
+						<table>
+							<thead><tr><th>Filter</th><th>Matches</th></tr></thead>
+							<tbody>
+								<tr><td>equals</td><td class="desc">exact value at path</td></tr>
+								<tr><td>string_contains</td><td class="desc">substring at path</td></tr>
+								<tr><td>string_starts_with</td><td class="desc">prefix at path</td></tr>
+								<tr><td>array_contains</td><td class="desc">array includes values</td></tr>
+								<tr><td>gt / lt (at path)</td><td class="desc">numeric compare</td></tr>
+								<tr><td>equals: Prisma.AnyNull</td><td class="desc">DB or JSON null</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-types">
+						<h2 class="section-title">Special Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>JS value / gotcha</th></tr></thead>
+							<tbody>
+								<tr><td>BigInt</td><td class="desc"><code>10n</code> — not JSON-serializable</td></tr>
+								<tr><td>Bytes</td><td class="desc"><code>Uint8Array</code> (v6+, was Buffer)</td></tr>
+								<tr><td>Decimal</td><td class="desc"><code>new Prisma.Decimal('9.99')</code></td></tr>
+								<tr><td>DateTime</td><td class="desc"><code>Date</code>, stored UTC</td></tr>
+								<tr><td>String[]</td><td class="desc"><code>set</code> · <code>push</code> · <code>has</code> · <code>isEmpty</code></td></tr>
+								<tr><td>Unsupported</td><td class="desc">raw SQL only</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Setting a Json field to <code>null</code> — use <code>DbNull</code> or <code>JsonNull</code></li>
+							<li class="note-item">Using MySQL path syntax on Postgres (or vice versa)</li>
+							<li class="note-item">Returning <code>BigInt</code> from an API — <code>JSON.stringify</code> throws</li>
+							<li class="note-item">Comparing <code>Decimal</code>s with <code>===</code> — use <code>.equals()</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Validate JSON shape with Zod on write (Sheet 29)</li>
+							<li class="note-item">Add a GIN index for frequent JSON path filters</li>
+							<li class="note-item">Prefer <code>Json</code> columns for flexible data, columns for queried data</li>
+							<li class="note-item">Convert <code>Decimal</code> with <code>.toFixed(2)</code> for display</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>null</code> / <code>not: null</code> — nullable fields</li>
+							<li class="note-item"><code>DbNull</code> vs <code>JsonNull</code> — two Json nulls</li>
+							<li class="note-item"><code>path</code> filters — query inside JSON</li>
+							<li class="note-item"><code>String[]</code> — <code>push</code> · <code>has</code> · <code>hasSome</code></li>
+							<li class="note-item"><code>BigInt</code> · <code>Bytes</code> · <code>Decimal</code> — special JS types</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-26-raw-sql-queries.html" class="nav-link prev">Raw SQL Queries</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-28-self-referential-relations.html" class="nav-link next">Self-Referential &amp; Complex Relations</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

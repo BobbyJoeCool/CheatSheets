@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 52: Cluster &amp; Scaling</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s52">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 52</div>
+			<h1>Cluster &amp; Scaling</h1>
+			<div class="sheet-desc">cluster.fork() · isPrimary · load balancing · sticky sessions · PM2 cluster mode · when to use workers instead</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Using Every Core</h2>
+						<div class="description">
+							A Node process runs your JavaScript on one core. The <code>node:cluster</code> module <strong>forks one process per core</strong>, all listening on the <strong>same port</strong>; the primary process hands incoming connections to workers in turn. Today the same result usually comes from a process manager (PM2) or from running several containers behind a load balancer.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Workers are separate processes; they share no memory</li>
+							<li class="note-item">In-memory sessions or caches differ per worker</li>
+							<li class="note-item">Default scheduling is round-robin (except on Windows)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Cluster with Auto-Restart</h2>
+						<pre><code class="language-javascript">import cluster from 'node:cluster';
+import { availableParallelism } from 'node:os';
+import { createServer } from 'node:http';
+
+if (cluster.isPrimary) {
+  const n = availableParallelism();
+  for (let i = 0; i &lt; n; i++) cluster.fork();     // one per core
+  cluster.on('exit', (worker, code) =&gt; {
+    console.log(`worker ${worker.process.pid} exited (${code})`);
+    if (code !== 0) cluster.fork();               // replace crashed workers
+  });
+} else {
+  createServer((req, res) =&gt; res.end(`pid ${process.pid}\n`))
+    .listen(3000);                                // all share port 3000
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>isPrimary</code> — the same file runs in every process</div>
+							<div class="explain-item"><code>fork()</code> — starts a worker running this file</div>
+							<div class="explain-item"><code>'exit'</code> — restart only on failure, not on shutdown</div>
+							<div class="explain-item"><code>listen(3000)</code> — the primary owns the socket</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Options Table | Api Table | Code -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-options">
+						<h2 class="section-title">Scaling Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Best for</th></tr></thead>
+							<tbody>
+								<tr><td>cluster</td><td class="desc">Single VM, no extra tools</td></tr>
+								<tr><td>PM2 -i max</td><td class="desc">Single VM, ops features</td></tr>
+								<tr><td>Containers + LB</td><td class="desc">Kubernetes, cloud</td></tr>
+								<tr><td>Serverless</td><td class="desc">Spiky traffic</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-api">
+						<h2 class="section-title">Cluster API</h2>
+						<table>
+							<thead><tr><th>API</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>isPrimary / isWorker</td><td class="desc">Which role</td></tr>
+								<tr><td>fork(env?)</td><td class="desc">Start a worker</td></tr>
+								<tr><td>worker.send(msg)</td><td class="desc">Message a worker</td></tr>
+								<tr><td>worker.disconnect()</td><td class="desc">Graceful stop</td></tr>
+								<tr><td>cluster.workers</td><td class="desc">Active workers</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-code" id="code-pm2">
+						<h2 class="section-title">PM2 Equivalent</h2>
+						<pre><code class="language-bash">pm2 start app.js -i max
+pm2 reload app
+pm2 logs
+pm2 save &amp;&amp; pm2 startup</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Storing sessions or rate-limit counters in memory; each worker sees a different subset of users</li>
+							<li class="note-item">Running cluster inside Kubernetes pods that already scale horizontally; it fights CPU limits</li>
+							<li class="note-item">Restarting workers in a tight loop when they crash at startup</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Put shared state in Redis or a database</li>
+							<li class="note-item">Prefer one process per container and scale containers</li>
+							<li class="note-item">Back off restarts if workers die within seconds of starting</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>cluster.fork()</code> — process per core</li>
+							<li class="note-item"><code>shared port</code> — primary balances connections</li>
+							<li class="note-item"><code>PM2</code> — cluster plus ops tools</li>
+							<li class="note-item"><code>external state</code> — required for scaling</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-51-worker-threads.html">Worker Threads</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-53-performance.html">Measuring Performance</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 55: Instrumentation &amp; Observability</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s55">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 55</div>
+			<h1>Instrumentation &amp; Observability</h1>
+			<div class="sheet-desc">instrumentation.ts · register() · onRequestError · OpenTelemetry · @vercel/otel · logging</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Hooks for Monitoring</h2>
+					<div class="description"><code>instrumentation.ts</code> at the project root (or <code>src/</code>) exports <code>register()</code>, which runs <strong>once</strong> when each server instance starts: the place to initialize tracing and APM SDKs. <code>onRequestError()</code> is called for every server error with route and request context, which makes it easy to send errors to Sentry or your logger. <code>instrumentation-client.ts</code> runs in the browser before hydration.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Files</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>instrumentation.ts</code> — server startup + errors</li>
+						<li class="note-item"><code>instrumentation-client.ts</code> — client analytics, error tracking</li>
+						<li class="note-item">Next.js emits OpenTelemetry spans for routing and fetch</li>
+						<li class="note-item"><code>NEXT_OTEL_VERBOSE=1</code> — more spans</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">OpenTelemetry + Error Reporting</h2>
+					<pre><code class="language-typescript">// instrumentation.ts
+import { registerOTel } from '@vercel/otel'
+import type { Instrumentation } from 'next'
+
+export function register() {
+  registerOTel({ serviceName: 'acme-web' })
+}
+
+export const onRequestError: Instrumentation.onRequestError = async (
+  err, request, context) =&gt; {
+  await fetch('https://logs.acme.com/errors', {
+    method: 'POST',
+    body: JSON.stringify({
+      message: err instanceof Error ? err.message : String(err),
+      path: request.path,                         // '/blog/hello'
+      routeType: context.routeType,                // 'render' | 'action' | …
+      routePath: context.routePath,                // '/app/blog/[slug]'
+    }),
+  })
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>register()</code> — runs once per server process</div>
+						<div class="explain-item"><code>@vercel/otel</code> works on any host, not only Vercel</div>
+						<div class="explain-item"><code>context.routerKind</code> — <code>'App Router'</code> or <code>'Pages Router'</code></div>
+						<div class="explain-item">Import Node-only SDKs inside <code>if (process.env.NEXT_RUNTIME === 'nodejs')</code></div>
+						<div class="explain-item">Errors from <code>error.tsx</code> digests match these reports</div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Ctx Table | Logs Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-ctx">
+					<h2 class="section-title">onRequestError Context</h2>
+					<table>
+						<thead><tr><th>Field</th><th>Values</th></tr></thead>
+						<tbody>
+							<tr><td>routerKind</td><td class="desc"><code>'App Router'</code> · <code>'Pages Router'</code></td></tr>
+							<tr><td>routePath</td><td class="desc"><code>'/app/blog/[slug]'</code></td></tr>
+							<tr><td>routeType</td><td class="desc"><code>render</code> · <code>route</code> · <code>action</code> · <code>proxy</code></td></tr>
+							<tr><td>renderType</td><td class="desc"><code>dynamic</code> · <code>dynamic-resume</code> (PPR)</td></tr>
+							<tr><td>revalidateReason</td><td class="desc"><code>on-demand</code> · <code>stale</code> · undefined</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-logs">
+					<h2 class="section-title">Logging Config</h2>
+					<table>
+						<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+						<tbody>
+							<tr><td>logging.fetches.fullUrl</td><td class="desc">Log full fetch URLs in dev</td></tr>
+							<tr><td>logging.incomingRequests</td><td class="desc">Toggle request logs</td></tr>
+							<tr><td>NEXT_PRIVATE_DEBUG_CACHE</td><td class="desc">Cache debug output</td></tr>
+							<tr><td>instrumentation-client</td><td class="desc">Client-side tracking</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Initializing SDKs at the top of <code>instrumentation.ts</code> instead of inside <code>register()</code></li>
+						<li class="note-item">Importing Node-only packages unconditionally; guard with <code>NEXT_RUNTIME</code> checks</li>
+						<li class="note-item">Throwing inside <code>onRequestError</code>; reporting must never crash the request path</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Use the Sentry or Datadog Next.js SDKs; they wire up both instrumentation files</li>
+						<li class="note-item">Attach <code>error.digest</code> to user-facing messages so support can find the log</li>
+						<li class="note-item">Export traces to any OTLP collector (Grafana, Honeycomb, Jaeger)</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>register()</code> — startup hook</li>
+						<li class="note-item"><code>onRequestError</code> — central server error reporting</li>
+						<li class="note-item"><code>@vercel/otel</code> — OpenTelemetry setup</li>
+						<li class="note-item"><code>instrumentation-client.ts</code> — browser hooks</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-54-platforms-adapters.html" class="nav-link prev">Platforms &amp; Deployment Adapters</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-56-pages-routing.html" class="nav-link next">Pages Router Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

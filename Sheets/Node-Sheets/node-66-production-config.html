@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 66: Running in Production</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s66">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 66</div>
+			<h1>Running in Production</h1>
+			<div class="sheet-desc">NODE_ENV=production · PM2 · systemd unit · health checks · graceful shutdown · reverse proxy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Keeping a Server Running</h2>
+						<div class="description">
+							In production, something must <strong>start</strong> Node on boot, <strong>restart</strong> it when it crashes, pass <strong>configuration</strong>, collect <strong>logs</strong>, and stop it <strong>gracefully</strong>. On a Linux VM that's usually <strong>systemd</strong> (or PM2), with a reverse proxy like nginx or Caddy in front for TLS and static files. Containers and platforms (Sheet 67) do the same jobs for you.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Run as a dedicated, unprivileged user</li>
+							<li class="note-item">Logs from stdout go to <code>journalctl -u notes</code></li>
+							<li class="note-item">Bind to <code>127.0.0.1</code> when a proxy sits in front</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">systemd Service Unit</h2>
+						<pre><code class="language-ini"># /etc/systemd/system/notes.service
+[Unit]
+Description=Notes API
+After=network.target
+
+[Service]
+User=notes
+WorkingDirectory=/srv/notes
+EnvironmentFile=/srv/notes/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --enable-source-maps server.js
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>EnvironmentFile</code> — secrets outside the repo</div>
+							<div class="explain-item">Absolute path to <code>node</code> — systemd has no nvm PATH</div>
+							<div class="explain-item"><code>Restart=on-failure</code> — restarts crashes, not clean stops</div>
+							<div class="explain-item"><code>TimeoutStopSec</code> — SIGTERM, then SIGKILL after 15 s</div>
+							<div class="explain-item"><code>LimitNOFILE</code> — room for many sockets</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Cmds Table | Check Table | Health Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-cmds">
+						<h2 class="section-title">systemctl</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>daemon-reload</td><td class="desc">Load unit changes</td></tr>
+								<tr><td>enable --now notes</td><td class="desc">Start + on boot</td></tr>
+								<tr><td>restart notes</td><td class="desc">Restart</td></tr>
+								<tr><td>status notes</td><td class="desc">State + recent logs</td></tr>
+								<tr><td>journalctl -u notes -f</td><td class="desc">Follow logs</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-check">
+						<h2 class="section-title">Production Checklist</h2>
+						<table>
+							<thead><tr><th>Item</th></tr></thead>
+							<tbody>
+								<tr><td>NODE_ENV=production</td></tr>
+								<tr><td>Graceful shutdown (19)</td></tr>
+								<tr><td>Health endpoints</td></tr>
+								<tr><td>Structured logs (65)</td></tr>
+								<tr><td>Error tracking</td></tr>
+								<tr><td>Non-root user</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-health">
+						<h2 class="section-title">Health Endpoints</h2>
+						<table>
+							<thead><tr><th>Path</th><th>Answers</th></tr></thead>
+							<tbody>
+								<tr><td>/healthz</td><td class="desc">Process alive?</td></tr>
+								<tr><td>/readyz</td><td class="desc">Ready for traffic (DB ok)?</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ExecStart=node server.js</code> with nvm-installed Node; systemd can't find it</li>
+							<li class="note-item">Running as root "to bind port 80"; use a proxy or <code>setcap</code> instead</li>
+							<li class="note-item">No restart policy; one crash means downtime until someone notices</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep <code>/healthz</code> cheap; put dependency checks in <code>/readyz</code></li>
+							<li class="note-item">Use <code>Environment=NODE_OPTIONS=--max-old-space-size=…</code> for heap limits</li>
+							<li class="note-item">Reload with zero downtime by running two instances behind the proxy</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>systemd / PM2</code> — supervise the process</li>
+							<li class="note-item"><code>Restart=on-failure</code> — auto-recover</li>
+							<li class="note-item"><code>reverse proxy</code> — TLS and static files</li>
+							<li class="note-item"><code>health endpoints</code> — for monitors and LBs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-65-logging.html">Logging</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-67-docker.html">Docker for Node</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+	</body>
+</html>

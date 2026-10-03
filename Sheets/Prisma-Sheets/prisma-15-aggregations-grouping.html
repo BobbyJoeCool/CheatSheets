@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 15: Aggregations &amp; Grouping</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>Aggregations &amp; Grouping</h1>
+			<div class="sheet-desc">aggregate · _count · _sum · _avg · _min · _max · groupBy · having</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Statistics in the Database</h2>
+						<div class="description">
+							<code>aggregate()</code> computes <code>_count</code>, <code>_sum</code>, <code>_avg</code>, <code>_min</code>, and <code>_max</code> over the rows matching <code>where</code> and returns one object. <code>groupBy()</code> returns one result per distinct combination of <code>by</code> fields; <code>having</code> filters groups after aggregation. Both run as a single SQL query — no rows are loaded into Node.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>_sum</code>/<code>_avg</code> of no rows → <code>null</code></li>
+							<li class="note-item">Decimal fields return <code>Decimal</code> objects</li>
+							<li class="note-item"><code>groupBy</code> + <code>skip</code>/<code>take</code> requires <code>orderBy</code></li>
+							<li class="note-item"><code>count({ select })</code> counts non-null fields</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Aggregate & Group</h2>
+						<pre class="language-typescript"><code class="language-typescript">const stats = await prisma.order.aggregate({
+  where: { status: "PAID", createdAt: { gte: new Date("2026-01-01") } },
+  _count: { _all: true },
+  _sum: { total: true },
+  _avg: { total: true },
+  _min: { total: true },
+  _max: { createdAt: true },
+});  // { _count: { _all: 120 }, _sum: { total: 9840.5 }, … }
+
+const byCustomer = await prisma.order.groupBy({
+  by: ["customerId", "status"],
+  where: { createdAt: { gte: new Date("2026-01-01") } },
+  _sum: { total: true },
+  _count: { _all: true },
+  having: { total: { _sum: { gt: 1000 } } },   // big spenders only
+  orderBy: { _sum: { total: "desc" } },
+  take: 10,
+});  // [{ customerId: 4, status: "PAID", _sum: { total: 5210 }, … }]
+
+await prisma.user.count({ select: { _all: true, phone: true } });
+                                         // { _all: 50, phone: 32 }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>where</code> — filter before aggregating</div>
+							<div class="explain-item"><code>_count: { _all: true }</code> — row count</div>
+							<div class="explain-item"><code>_sum</code>/<code>_avg</code>/<code>_min</code>/<code>_max</code> — per field</div>
+							<div class="explain-item"><code>by</code> — group key(s)</div>
+							<div class="explain-item"><code>having</code> — filter on aggregates</div>
+							<div class="explain-item"><code>orderBy: { _sum }</code> — rank groups</div>
+							<div class="explain-item"><code>count({ select })</code> — non-null counts</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-fns">
+						<h2 class="section-title">Aggregate Functions</h2>
+						<table>
+							<thead><tr><th>Key</th><th>Types</th><th>Null rows</th></tr></thead>
+							<tbody>
+								<tr><td>_count</td><td class="desc">any field / _all</td><td class="desc">excluded</td></tr>
+								<tr><td>_sum</td><td class="desc">numeric</td><td class="desc">ignored</td></tr>
+								<tr><td>_avg</td><td class="desc">numeric</td><td class="desc">ignored</td></tr>
+								<tr><td>_min / _max</td><td class="desc">numeric, string, date</td><td class="desc">ignored</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sql">
+						<h2 class="section-title">Prisma → SQL</h2>
+						<table>
+							<thead><tr><th>Prisma</th><th>SQL</th></tr></thead>
+							<tbody>
+								<tr><td>aggregate({ _sum })</td><td class="desc"><code>SELECT SUM(x)</code></td></tr>
+								<tr><td>groupBy({ by })</td><td class="desc"><code>GROUP BY a, b</code></td></tr>
+								<tr><td>having</td><td class="desc"><code>HAVING SUM(x) &gt; n</code></td></tr>
+								<tr><td>distinct: ['a']</td><td class="desc">deduped by Prisma*</td></tr>
+								<tr><td>count({ where })</td><td class="desc"><code>SELECT COUNT(*)</code></td></tr>
+								<tr><td>* nativeDistinct</td><td class="desc"><code>DISTINCT ON</code> (PG preview)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Loading rows with <code>findMany</code> to sum in JS — use <code>aggregate</code></li>
+							<li class="note-item">Treating <code>_sum</code> as <code>0</code> when empty — it's <code>null</code>; use <code>?? 0</code></li>
+							<li class="note-item">Putting aggregate filters in <code>where</code> — they belong in <code>having</code></li>
+							<li class="note-item"><code>groupBy</code> with <code>take</code> but no <code>orderBy</code> — validation error</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Convert <code>Decimal</code> with <code>.toNumber()</code> only for display</li>
+							<li class="note-item">Count relations with <code>include: { _count }</code> instead</li>
+							<li class="note-item">For date buckets (per day/month) use <code>$queryRaw</code> + <code>date_trunc</code></li>
+							<li class="note-item">Index the <code>by</code> and <code>where</code> columns of hot reports</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>aggregate</code> — one stats object</li>
+							<li class="note-item"><code>groupBy</code> — stats per group</li>
+							<li class="note-item"><code>having</code> — filter groups</li>
+							<li class="note-item"><code>_count</code> · <code>_sum</code> · <code>_avg</code> · <code>_min</code> · <code>_max</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-14-relations-many-to-many.html" class="nav-link prev">Relations: Many-to-Many &amp; Advanced</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-16-transactions.html" class="nav-link next">Transactions</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

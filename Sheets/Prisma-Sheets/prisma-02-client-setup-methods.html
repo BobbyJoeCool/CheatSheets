@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 02: Prisma Client Setup &amp; Methods</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s02">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 02</div>
+			<h1>Prisma Client Setup &amp; Methods</h1>
+			<div class="sheet-desc">new PrismaClient · adapter · singleton · $transaction · $queryRaw · $disconnect</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Creating the Client</h2>
+						<div class="description">
+							<code>PrismaClient</code> is the generated query builder. Each instance owns a <strong>connection pool</strong>, so create <strong>one instance per process</strong> and import it everywhere. Model delegates (<code>prisma.user</code>) expose CRUD methods; <code>$</code>-prefixed methods act on the client itself: transactions, raw SQL, extensions, and lifecycle.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Queries run only when awaited</li>
+							<li class="note-item">Pool connects lazily — <code>$connect()</code> optional</li>
+							<li class="note-item"><code>model BlogPost</code> → <code>prisma.blogPost</code></li>
+							<li class="note-item">Dev hot-reload → cache on <code>globalThis</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">src/lib/prisma.ts — Singleton</h2>
+						<pre class="language-typescript"><code class="language-typescript">import "dotenv/config";
+import { PrismaClient } from "../../generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const create = () =&gt; new PrismaClient({ adapter, log: ["warn", "error"] });
+
+const g = globalThis as unknown as { prisma?: ReturnType&lt;typeof create&gt; };
+export const prisma = g.prisma ?? create();
+if (process.env.NODE_ENV !== "production") g.prisma = prisma;
+// elsewhere
+import { prisma } from "./lib/prisma";
+const user = await prisma.user.findUnique({ where: { id: 1 } }); // User | null
+
+// graceful shutdown
+process.on("SIGTERM", async () =&gt; {
+  await prisma.$disconnect();
+  process.exit(0);
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>PrismaPg</code> — wraps the <code>pg</code> driver + pool</div>
+							<div class="explain-item"><code>log</code> — <code>query</code> · <code>info</code> · <code>warn</code> · <code>error</code></div>
+							<div class="explain-item"><code>globalThis</code> — one pool across hot reloads</div>
+							<div class="explain-item"><code>findUnique</code> — result type inferred</div>
+							<div class="explain-item"><code>$disconnect()</code> — close pool on shutdown</div>
+							<div class="explain-item">Serverless: create outside the handler</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-client">
+						<h2 class="section-title">Client ($) Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>$transaction([q1, q2])</td><td class="desc">Atomic batch</td></tr>
+								<tr><td>$transaction(async tx =&gt; …)</td><td class="desc">Interactive tx</td></tr>
+								<tr><td>$queryRaw`…`</td><td class="desc">Raw SELECT → rows</td></tr>
+								<tr><td>$executeRaw`…`</td><td class="desc">Raw write → count</td></tr>
+								<tr><td>$queryRawUnsafe(sql)</td><td class="desc">String SQL (risky)</td></tr>
+								<tr><td>$extends({...})</td><td class="desc">Client extensions</td></tr>
+								<tr><td>$on('query', fn)</td><td class="desc">Log events</td></tr>
+								<tr><td>$connect / $disconnect</td><td class="desc">Open / close pool</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-options">
+						<h2 class="section-title">Constructor Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>adapter</td><td class="desc"><code>new PrismaPg({...})</code> — required</td></tr>
+								<tr><td>log</td><td class="desc"><code>['query', 'error']</code></td></tr>
+								<tr><td>errorFormat</td><td class="desc"><code>'pretty'</code> · <code>'minimal'</code></td></tr>
+								<tr><td>omit</td><td class="desc"><code>{ user: { password: true } }</code></td></tr>
+								<tr><td>transactionOptions</td><td class="desc"><code>{ timeout: 10000 }</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>new PrismaClient()</code> per request — exhausts connections</li>
+							<li class="note-item">Missing <code>await</code> — the query never runs</li>
+							<li class="note-item"><code>$disconnect()</code> after each request — slow reconnects</li>
+							<li class="note-item">No <code>dotenv/config</code> — <code>DATABASE_URL</code> is undefined</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Export one <code>prisma</code> from <code>lib/prisma.ts</code></li>
+							<li class="note-item">Global <code>omit</code> hides <code>password</code> everywhere</li>
+							<li class="note-item">Use <code>…OrThrow</code> when a missing row is a bug</li>
+							<li class="note-item">Set <code>transactionOptions</code> once, not per call</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>PrismaClient({ adapter })</code> — one per process</li>
+							<li class="note-item"><code>prisma.model.method()</code> — typed CRUD</li>
+							<li class="note-item"><code>$transaction</code> — batch or callback</li>
+							<li class="note-item"><code>$disconnect()</code> — close on shutdown</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-01-introduction-installation.html" class="nav-link prev">Introduction &amp; Installation</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-03-schema-models-fields.html" class="nav-link next">Schema: Models &amp; Fields</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

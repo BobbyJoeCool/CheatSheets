@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 17: Fetching in Server Components</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Fetching in Server Components</h1>
+			<div class="sheet-desc">async/await fetch() · ORM queries · Promise.all · preload pattern · React cache()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Data Where You Render</h2>
+					<div class="description">In the App Router you fetch data by <strong>awaiting it inside an async Server Component</strong>: <code>fetch()</code>, an ORM, or any Node.js library. No special API is required. The main performance concern is avoiding <strong>waterfalls</strong>: start independent requests together, and deduplicate repeated calls in one request with <code>React.cache()</code>.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Defaults (16.x)</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>fetch</code> is <strong>not cached</strong> by default</li>
+						<li class="note-item">Identical <code>fetch</code> GETs in one render are memoized</li>
+						<li class="note-item">With Cache Components, uncached data needs <code>&lt;Suspense&gt;</code> or <code>'use cache'</code></li>
+						<li class="note-item">Errors thrown here go to the nearest <code>error.tsx</code></li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Parallel Requests + Deduped Helper</h2>
+					<pre><code class="language-tsx">// lib/data.ts
+import 'server-only'
+import { cache } from 'react'
+export const getUser = cache(async (id: string) =&gt;
+  db.user.findUnique({ where: { id } }))      // once per request
+
+// app/users/[id]/page.tsx
+export default async function Profile(props: PageProps&lt;'/users/[id]'&gt;) {
+  const { id } = await props.params
+  const [user, posts] = await Promise.all([      // start together
+    getUser(id),
+    fetch(`https://api.example.com/users/${id}/posts`)
+      .then((r) =&gt; r.json()),
+  ])
+  return &lt;UserView user={user} posts={posts} /&gt;
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>cache()</code> — memoizes per server request, not across users</div>
+						<div class="explain-item"><code>Promise.all</code> — total time = slowest request, not the sum</div>
+						<div class="explain-item">Use <code>Promise.allSettled</code> when one failure shouldn't fail the page</div>
+						<div class="explain-item">Any component calling <code>getUser(id)</code> reuses the same result</div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Patterns Table | Fetch Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-patterns">
+					<h2 class="section-title">Fetch Patterns</h2>
+					<table>
+						<thead><tr><th>Pattern</th><th>Code</th><th>When</th></tr></thead>
+						<tbody>
+							<tr><td>Sequential</td><td class="kw">await a(); await b(a)</td><td class="desc">b needs a's result</td></tr>
+							<tr><td>Parallel</td><td class="kw">Promise.all([a(), b()])</td><td class="desc">Independent data</td></tr>
+							<tr><td>Preload</td><td class="kw">void getUser(id)</td><td class="desc">Start early, await later</td></tr>
+							<tr><td>Streamed</td><td class="kw">&lt;Suspense&gt;&lt;Slow/&gt;&lt;/Suspense&gt;</td><td class="desc">Don't block the page</td></tr>
+							<tr><td>Deduped</td><td class="kw">cache(fn)</td><td class="desc">Same data, many components</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-fetch">
+					<h2 class="section-title">fetch() Options</h2>
+					<table>
+						<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+						<tbody>
+							<tr><td>cache: 'no-store'</td><td class="desc">Always fresh (default behavior)</td></tr>
+							<tr><td>cache: 'force-cache'</td><td class="desc">Data Cache (previous model)</td></tr>
+							<tr><td>next: { revalidate: 60 }</td><td class="desc">Time-based (previous model)</td></tr>
+							<tr><td>next: { tags: ['posts'] }</td><td class="desc">Tag for <code>revalidateTag</code></td></tr>
+							<tr><td>signal</td><td class="desc">Abort / timeout</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Chaining <code>await</code> calls that don't depend on each other; each one waits for the last</li>
+						<li class="note-item">Calling your own Route Handler from a Server Component; call the data function directly instead</li>
+						<li class="note-item">Expecting <code>React.cache()</code> to persist between requests; use <code>'use cache'</code> for that</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Wrap every data-access function in <code>cache()</code> once, in <code>lib/</code>, and reuse it everywhere</li>
+						<li class="note-item">Kick off slow requests with a preload call before awaiting faster ones</li>
+						<li class="note-item">Use <code>AbortSignal.timeout(5000)</code> so a slow API can't hang the render</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>await</code> in async Server Components</li>
+						<li class="note-item"><code>Promise.all</code> — avoid waterfalls</li>
+						<li class="note-item"><code>cache()</code> — per-request dedupe</li>
+						<li class="note-item"><code>fetch</code> — uncached by default in 16</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-16-react-features.html" class="nav-link prev">React 19 Features Used in Next</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-18-streaming-suspense.html" class="nav-link next">Streaming &amp; Suspense</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

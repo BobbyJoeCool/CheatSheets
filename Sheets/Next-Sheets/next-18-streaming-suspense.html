@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 18: Streaming &amp; Suspense</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Streaming &amp; Suspense</h1>
+			<div class="sheet-desc">loading.tsx vs &lt;Suspense&gt; · streaming promises · use() · fallback UI · waterfalls</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Send What's Ready First</h2>
+					<div class="description"><strong>Streaming</strong> sends the page in chunks: the shell renders immediately, and each <code>&lt;Suspense&gt;</code> boundary is filled in as its data resolves. <code>loading.tsx</code> wraps a whole page in one boundary; explicit <code>&lt;Suspense&gt;</code> lets you stream individual sections so a slow widget never blocks the rest of the page.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Behavior</h2>
+					<ul class="note-list">
+						<li class="note-item">Boundaries resolve independently, in any order</li>
+						<li class="note-item">HTML streams on first load; RSC payload on navigation</li>
+						<li class="note-item">Status code is sent before streaming (always 200)</li>
+						<li class="note-item">Search engines receive the fully streamed HTML</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Independent Sections</h2>
+					<pre><code class="language-tsx">import { Suspense } from 'react'
+
+export default function Dashboard() {
+  return (
+    &lt;&gt;
+      &lt;h1&gt;Dashboard&lt;/h1&gt;                       {/* in the shell */}
+      &lt;Suspense fallback={&lt;CardSkeleton /&gt;}&gt;
+        &lt;Revenue /&gt;                            {/* 300 ms */}
+      &lt;/Suspense&gt;
+      &lt;Suspense fallback={&lt;TableSkeleton /&gt;}&gt;
+        &lt;LatestOrders /&gt;                       {/* 2 s */}
+      &lt;/Suspense&gt;
+    &lt;/&gt;
+  )
+}
+
+async function Revenue() {
+  const data = await getRevenue()             // awaited inside boundary
+  return &lt;Chart data={data} /&gt;
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Reading It</h2>
+					<div class="section-body">
+						<div class="explain-item">The heading and both skeletons render instantly</div>
+						<div class="explain-item"><code>Revenue</code> replaces its skeleton at ~300 ms</div>
+						<div class="explain-item"><code>LatestOrders</code> streams in at ~2 s without blocking Revenue</div>
+						<div class="explain-item">Awaiting in the page itself would block everything</div>
+						<div class="explain-item">Size skeletons to match content to avoid layout shift</div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Compare Table | Waterfall Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-compare">
+					<h2 class="section-title">loading.tsx vs &lt;Suspense&gt;</h2>
+					<table>
+						<thead><tr><th>Aspect</th><th>loading.tsx</th><th>&lt;Suspense&gt;</th></tr></thead>
+						<tbody>
+							<tr><td>Scope</td><td class="desc">Whole segment</td><td class="desc">Any subtree</td></tr>
+							<tr><td>Setup</td><td class="desc">Drop in a file</td><td class="desc">Wrap components</td></tr>
+							<tr><td>Granularity</td><td class="desc">One fallback</td><td class="desc">Many fallbacks</td></tr>
+							<tr><td>Shows on nav</td><td class="center">✔ (prefetched)</td><td class="center">✔</td></tr>
+							<tr><td>Best for</td><td class="desc">Simple pages</td><td class="desc">Dashboards, feeds</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-waterfall">
+					<h2 class="section-title">Avoiding Waterfalls</h2>
+					<table>
+						<thead><tr><th>Problem</th><th>Fix</th></tr></thead>
+						<tbody>
+							<tr><td>Parent awaits, then child fetches</td><td class="desc">Fetch in parallel or pass promise</td></tr>
+							<tr><td>Nested Suspense each fetch in turn</td><td class="desc">Start all requests at the top</td></tr>
+							<tr><td>One slow query blocks page</td><td class="desc">Isolate it in its own boundary</td></tr>
+							<tr><td>Boundary too high</td><td class="desc">Move <code>&lt;Suspense&gt;</code> closer to the data</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Awaiting slow data in the page component above the boundary; the Suspense fallback never shows</li>
+						<li class="note-item">Putting <code>&lt;Suspense&gt;</code> inside the async component it should wrap; it must be a parent</li>
+						<li class="note-item">Trying to set a 404 after streaming starts; check existence before the first boundary</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Use the React DevTools Suspense panel to toggle boundaries and inspect fallbacks</li>
+						<li class="note-item">Pass a <code>key</code> to <code>&lt;Suspense&gt;</code> to re-show the fallback when params change</li>
+						<li class="note-item">Group related widgets in one boundary to avoid a 'popcorn' layout</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Streaming — shell first, holes fill in later</li>
+						<li class="note-item"><code>loading.tsx</code> — page-level fallback</li>
+						<li class="note-item"><code>&lt;Suspense&gt;</code> — section-level fallback</li>
+						<li class="note-item">Await inside the boundary, not above it</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-17-server-data-fetching.html" class="nav-link prev">Fetching in Server Components</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-19-client-data-fetching.html" class="nav-link next">Client-Side Fetching</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

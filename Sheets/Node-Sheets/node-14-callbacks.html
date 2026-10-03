@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 14: Callbacks &amp; Error-First Style</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>Callbacks &amp; Error-First Style</h1>
+			<div class="sheet-desc">(err, data) =&gt; {} · util.promisify() · util.callbackify() · callback hell · returning early on err</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Original Async Style</h2>
+						<div class="description">
+							Before promises, every async Node API took a <strong>callback</strong> as its last argument and called it with <code>(err, result)</code>: the <strong>error-first</strong> convention. If <code>err</code> is non-null, the operation failed and <code>result</code> is meaningless. Most core modules now have promise versions, but you still meet callbacks in older packages, event handlers, and some core APIs. <code>util.promisify</code> converts them.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Callbacks don't return values; results only flow into the callback</li>
+							<li class="note-item"><code>try/catch</code> around a callback API doesn't catch its async errors</li>
+							<li class="note-item">A callback must be called exactly once</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Error-First Callbacks &amp; Conversion</h2>
+						<pre><code class="language-javascript">import fs from 'node:fs';
+import { promisify, callbackify } from 'node:util';
+
+fs.readFile('config.json', 'utf8', (err, text) =&gt; {
+  if (err) return console.error(err.code);   // 'ENOENT' — return early!
+  console.log(JSON.parse(text).port);        // 3000
+});
+
+function getUser(id, cb) {                     // writing your own
+  if (!id) return cb(new Error('id required'));
+  setImmediate(() =&gt; cb(null, { id, name: 'Ada' }));  // always async
+}
+
+const getUserAsync = promisify(getUser);       // callback → promise
+const user = await getUserAsync(7);            // { id: 7, name: 'Ada' }
+
+const legacyApi = callbackify(async (id) =&gt; ({ id }));  // promise → callback
+legacyApi(7, (err, u) =&gt; console.log(u));      // { id: 7 }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>return console.error</code> — stops the success path running too</div>
+							<div class="explain-item"><code>cb(null, value)</code> — <code>null</code> means no error</div>
+							<div class="explain-item"><code>setImmediate</code> — never call a callback synchronously some of the time</div>
+							<div class="explain-item"><code>promisify</code> — expects <code>(…args, cb)</code> with <code>(err, value)</code></div>
+							<div class="explain-item"><code>callbackify</code> — for APIs that still require callbacks</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Compare Table | Rules Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-compare">
+						<h2 class="section-title">Callback → Promise Equivalents</h2>
+						<table>
+							<thead><tr><th>Callback</th><th>Promise</th></tr></thead>
+							<tbody>
+								<tr><td>fs.readFile(p, cb)</td><td class="kw">fsp.readFile(p)</td></tr>
+								<tr><td>dns.lookup(h, cb)</td><td class="kw">dnsp.lookup(h)</td></tr>
+								<tr><td>setTimeout(cb, ms)</td><td class="kw">timersp.setTimeout(ms)</td></tr>
+								<tr><td>stream.pipeline(…, cb)</td><td class="kw">streamp.pipeline(…)</td></tr>
+								<tr><td>crypto.scrypt(…, cb)</td><td class="kw">promisify(crypto.scrypt)</td></tr>
+								<tr><td>emitter.once('x', cb)</td><td class="kw">events.once(e, 'x')</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-rules">
+						<h2 class="section-title">Callback Rules</h2>
+						<table>
+							<thead><tr><th>Rule</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>err first</td><td class="desc">promisify depends on it</td></tr>
+								<tr><td>call once</td><td class="desc">Twice causes double replies</td></tr>
+								<tr><td>always async</td><td class="desc">Avoids "Zalgo" ordering bugs</td></tr>
+								<tr><td>return after err</td><td class="desc">Stops fall-through</td></tr>
+								<tr><td>Error objects</td><td class="desc">Keep stack traces</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>return</code> after handling <code>err</code>; the success code runs with <code>undefined</code></li>
+							<li class="note-item">Throwing inside a callback; nothing up the stack can catch it, so the process crashes</li>
+							<li class="note-item">Promisifying a method loses <code>this</code>; use <code>promisify(obj.fn).bind(obj)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Check for a <code>/promises</code> module before reaching for <code>promisify</code></li>
+							<li class="note-item">Flatten nested callbacks ("callback hell") by converting to <code>async</code>/<code>await</code></li>
+							<li class="note-item">Pass <code>Error</code> objects, never strings, as the first argument</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>(err, result)</code> — error-first convention</li>
+							<li class="note-item"><code>return cb(err)</code> — handle and exit</li>
+							<li class="note-item"><code>promisify</code> — callback API → promise</li>
+							<li class="note-item"><code>callbackify</code> — promise → callback API</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-13-timers.html">Timers</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-15-promise-apis.html">Promise-Based Core APIs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 35: pipeline() &amp; Transforms</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>pipeline() &amp; Transforms</h1>
+			<div class="sheet-desc">stream/promises pipeline() · Transform · zlib gzip / brotli · error propagation · finished()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Connecting Streams Safely</h2>
+						<div class="description">
+							<code>pipeline()</code> from <code>node:stream/promises</code> connects any number of streams, propagates <strong>backpressure</strong>, and if any stage fails, <strong>destroys every stream</strong> and rejects. Middle stages can be <code>Transform</code> streams, <code>zlib</code> compressors, or plain <strong>async generator functions</strong>, which are the simplest way to write a transform.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>.pipe()</code> doesn't forward errors; <code>pipeline</code> does</li>
+							<li class="note-item">A generator stage receives the previous stage as <code>source</code></li>
+							<li class="note-item">Pass <code>{ signal }</code> as the last argument to make it cancellable</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">pipeline, Transforms &amp; Compression</h2>
+						<pre><code class="language-javascript">import { pipeline } from 'node:stream/promises';
+import { Transform } from 'node:stream';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { createGzip, createGunzip } from 'node:zlib';
+
+const upper = new Transform({
+  transform(chunk, enc, cb) { cb(null, chunk.toString().toUpperCase()); },
+});
+await pipeline(createReadStream('in.txt'), upper, createGzip(),
+  createWriteStream('out.txt.gz'));           // any error rejects
+
+await pipeline(
+  createReadStream('data.csv.gz'),
+  createGunzip(),
+  async function* (source) {                  // generator as a transform
+    for await (const chunk of source)
+      yield chunk.toString().replaceAll(';', ',');
+  },
+  createWriteStream('data.csv'),
+  { signal: AbortSignal.timeout(60_000) },    // cancel after 60 s
+);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>cb(null, data)</code> — push transformed data downstream</div>
+							<div class="explain-item"><code>createGzip</code> — a Transform stream from zlib</div>
+							<div class="explain-item"><code>source</code> — async iterable of the previous stage's chunks</div>
+							<div class="explain-item"><code>yield</code> — sends a chunk to the next stage</div>
+							<div class="explain-item"><code>signal</code> — aborting destroys all stages</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Zlib Table | Oneshot Table | Utils Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-zlib">
+						<h2 class="section-title">zlib Streams</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Format</th></tr></thead>
+							<tbody>
+								<tr><td>createGzip / createGunzip</td><td class="desc">.gz</td></tr>
+								<tr><td>createBrotliCompress</td><td class="desc">.br (best for text)</td></tr>
+								<tr><td>createBrotliDecompress</td><td class="desc">.br</td></tr>
+								<tr><td>createDeflate / createInflate</td><td class="desc">zlib / deflate</td></tr>
+								<tr><td>createZstdCompress</td><td class="desc">.zst (newer)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-oneshot">
+						<h2 class="section-title">One-Shot zlib</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>gzipSync(buf)</td><td class="desc">Small data, sync</td></tr>
+								<tr><td>promisify(gzip)</td><td class="desc">Small data, async</td></tr>
+								<tr><td>gunzipSync(buf)</td><td class="desc">Decompress</td></tr>
+								<tr><td>brotliCompressSync</td><td class="desc">Brotli, small data</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-utils">
+						<h2 class="section-title">stream/promises</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>pipeline(...)</td><td class="desc">Connect + await all</td></tr>
+								<tr><td>finished(stream)</td><td class="desc">Await end or error</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>a.pipe(b).pipe(c)</code> in production; an error in <code>b</code> leaves <code>a</code> and <code>c</code> open</li>
+							<li class="note-item">Using <code>replaceAll</code> on chunks for multi-character patterns; a match can be split between chunks</li>
+							<li class="note-item">Gzipping already-compressed files (JPEG, MP4); it wastes CPU for no gain</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Serve precompressed <code>.br</code> / <code>.gz</code> files instead of compressing per request</li>
+							<li class="note-item">Split text into lines first (readline) before line-based transforms</li>
+							<li class="note-item">Use <code>objectMode</code> transforms to parse records, not raw bytes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>pipeline</code> — connect, propagate errors</li>
+							<li class="note-item"><code>Transform</code> — change chunks in flight</li>
+							<li class="note-item"><code>async generator</code> — easiest transform</li>
+							<li class="note-item"><code>zlib</code> — gzip / brotli streams</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-34-readable-writable.html">Readable &amp; Writable Streams</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-36-web-streams.html">Web Streams</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

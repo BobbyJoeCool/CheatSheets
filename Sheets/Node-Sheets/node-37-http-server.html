@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 37: HTTP Server Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>HTTP Server Basics</h1>
+			<div class="sheet-desc">http.createServer() · req / res · writeHead() · setHeader() · end() · listen() · keep-alive</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The http Module</h2>
+						<div class="description">
+							<code>node:http</code> is the server every Node framework is built on. <code>createServer</code> takes one function that runs for <strong>every request</strong>, receiving <code>req</code> (an IncomingMessage, a Readable) and <code>res</code> (a ServerResponse, a Writable). You set the status and headers, write the body, and <strong>must</strong> call <code>res.end()</code>. Routing, parsing, and middleware are up to you, which is why frameworks exist.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Header names in <code>req.headers</code> are lowercase</li>
+							<li class="note-item">Headers must be set before the first body write</li>
+							<li class="note-item">Default <code>requestTimeout</code> is 300 s; <code>headersTimeout</code> 60 s</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Minimal Server</h2>
+						<pre><code class="language-javascript">import { createServer } from 'node:http';
+
+const server = createServer((req, res) =&gt; {
+  if (req.method === 'GET' &amp;&amp; req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end('&lt;h1&gt;Home&lt;/h1&gt;');
+  }
+  if (req.url === '/api/health') {
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ ok: true }));   // 200 by default
+  }
+  res.statusCode = 404;
+  res.end('Not found');
+});
+
+server.listen(3000, () =&gt; console.log('http://localhost:3000'));
+server.keepAliveTimeout = 65_000;   // above the load balancer's idle timeout
+server.on('error', (err) =&gt; {
+  if (err.code === 'EADDRINUSE') console.error('Port 3000 is taken');
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>req.url</code> — path + query string, e.g. <code>/a?b=1</code></div>
+							<div class="explain-item"><code>writeHead</code> — status and headers in one call</div>
+							<div class="explain-item"><code>return res.end()</code> — prevents writing twice</div>
+							<div class="explain-item"><code>statusCode</code> — set before <code>end()</code></div>
+							<div class="explain-item"><code>keepAliveTimeout</code> — avoids 502s behind AWS ALB / nginx</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Req Table | Res Table | Timeouts Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-req">
+						<h2 class="section-title">Request (req)</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Value</th></tr></thead>
+							<tbody>
+								<tr><td>method</td><td class="desc">'GET', 'POST' …</td></tr>
+								<tr><td>url</td><td class="desc">'/path?query'</td></tr>
+								<tr><td>headers</td><td class="desc">Lowercase object</td></tr>
+								<tr><td>httpVersion</td><td class="desc">'1.1'</td></tr>
+								<tr><td>socket.remoteAddress</td><td class="desc">Client IP</td></tr>
+								<tr><td>on('data' / 'end')</td><td class="desc">Body chunks</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-res">
+						<h2 class="section-title">Response (res)</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>statusCode</td><td class="desc">Set status</td></tr>
+								<tr><td>setHeader(k, v)</td><td class="desc">Set a header</td></tr>
+								<tr><td>writeHead(s, h)</td><td class="desc">Status + headers</td></tr>
+								<tr><td>write(chunk)</td><td class="desc">Body chunk</td></tr>
+								<tr><td>end(data?)</td><td class="desc">Finish response</td></tr>
+								<tr><td>headersSent</td><td class="desc">true once sent</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-timeouts">
+						<h2 class="section-title">Server Timeouts</h2>
+						<table>
+							<thead><tr><th>Property</th><th>Default</th></tr></thead>
+							<tbody>
+								<tr><td>requestTimeout</td><td class="desc">300 000 ms</td></tr>
+								<tr><td>headersTimeout</td><td class="desc">60 000 ms</td></tr>
+								<tr><td>keepAliveTimeout</td><td class="desc">5 000 ms</td></tr>
+								<tr><td>maxHeadersCount</td><td class="desc">2 000</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>res.end()</code>; the client waits until it times out</li>
+							<li class="note-item">Writing after <code>end()</code> → <code>ERR_STREAM_WRITE_AFTER_END</code></li>
+							<li class="note-item">Comparing <code>req.url === '/search'</code> when a query string is attached; parse it (Sheet 38)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Bind to <code>0.0.0.0</code> in containers; <code>localhost</code> isn't reachable from outside</li>
+							<li class="note-item">Read the port from <code>process.env.PORT</code></li>
+							<li class="note-item">Use a framework (Express, Fastify) for anything beyond a few routes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>createServer(fn)</code> — one handler per request</li>
+							<li class="note-item"><code>req</code> — method, url, headers, body stream</li>
+							<li class="note-item"><code>res.writeHead / end</code> — send the reply</li>
+							<li class="note-item"><code>listen(port)</code> — start accepting</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-36-web-streams.html">Web Streams</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-38-requests-bodies-urls.html">Requests, Bodies &amp; URLs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

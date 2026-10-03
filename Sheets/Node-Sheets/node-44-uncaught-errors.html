@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 44: Uncaught Errors &amp; Rejections</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s44">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 44</div>
+			<h1>Uncaught Errors &amp; Rejections</h1>
+			<div class="sheet-desc">uncaughtException · unhandledRejection · --unhandled-rejections · crash-and-restart design · error in streams / emitters</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">When Errors Escape</h2>
+						<div class="description">
+							An error nobody catches emits <code>'uncaughtException'</code>; a rejected promise nobody handles emits <code>'unhandledRejection'</code>. Both crash the process by default, which is correct: after an unknown error, the app's state can't be trusted. Use these handlers only to <strong>log and exit</strong>, and let a supervisor (Docker, systemd, Kubernetes, PM2) start a fresh process.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Without a handler: stack trace to stderr, exit code <code>1</code></li>
+							<li class="note-item"><code>origin</code> tells you whether it came from a rejection</li>
+							<li class="note-item">Errors thrown inside callbacks can't be caught by an outer <code>try</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Last-Resort Handlers</h2>
+						<pre><code class="language-javascript">process.on('uncaughtException', (err, origin) =&gt; {
+  logger.fatal({ err, origin }, 'uncaught exception');
+  process.exitCode = 1;
+  setTimeout(() =&gt; process.exit(1), 1000).unref();   // let logs flush
+});
+
+process.on('unhandledRejection', (reason) =&gt; {
+  throw reason;                     // turn it into an uncaughtException
+});
+
+// Where escaped errors come from:
+setTimeout(() =&gt; { throw new Error('boom'); });     // no caller to catch it
+emitter.emit('error', new Error('x'));              // no 'error' listener
+async function save() { throw new Error('db down'); }
+save();                                             // no await, no .catch()
+stream.pipe(dest);                           // pipe errors aren't forwarded
+
+try {
+  setTimeout(() =&gt; { throw new Error('nope'); });   // ✖ try can't catch this
+} catch {}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>logger.fatal</code> — log with full stack before dying</div>
+							<div class="explain-item"><code>exit</code> after a delay — gives async log transports time</div>
+							<div class="explain-item"><code>throw reason</code> — one code path for both kinds</div>
+							<div class="explain-item"><code>save()</code> without <code>await</code> — a floating promise</div>
+							<div class="explain-item"><code>try</code> only catches errors on the current call stack</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Sources Table | Flags Table | Supervise Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-sources">
+						<h2 class="section-title">Sources &amp; Fixes</h2>
+						<table>
+							<thead><tr><th>Source</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>Thrown in a callback</td><td class="desc">try/catch inside it</td></tr>
+								<tr><td>Floating promise</td><td class="desc">await or .catch()</td></tr>
+								<tr><td>Emitter 'error'</td><td class="desc">Add a listener</td></tr>
+								<tr><td>.pipe() chains</td><td class="desc">stream pipeline()</td></tr>
+								<tr><td>JSON.parse on input</td><td class="desc">Wrap in try/catch</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-flags">
+						<h2 class="section-title">Related Flags</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>--unhandled-rejections=strict</td><td class="desc">Crash immediately</td></tr>
+								<tr><td>--trace-uncaught</td><td class="desc">Show where it was thrown</td></tr>
+								<tr><td>--abort-on-uncaught-exception</td><td class="desc">Core dump</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-supervise">
+						<h2 class="section-title">Restart With</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Setting</th></tr></thead>
+							<tbody>
+								<tr><td>Docker</td><td class="desc">--restart unless-stopped</td></tr>
+								<tr><td>systemd</td><td class="desc">Restart=on-failure</td></tr>
+								<tr><td>Kubernetes</td><td class="desc">Pod restartPolicy</td></tr>
+								<tr><td>PM2</td><td class="desc">Restarts by default</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Logging in <code>uncaughtException</code> and continuing to serve requests; resources may be half-open or corrupted</li>
+							<li class="note-item"><code>process.on('unhandledRejection', () =&gt; {})</code> to hide warnings; real failures go silent</li>
+							<li class="note-item">Relying on the handler instead of fixing the floating promise it reported</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Turn on <code>no-floating-promises</code> in typescript-eslint</li>
+							<li class="note-item">Send fatal errors to your error tracker (Sentry, etc.) before exit</li>
+							<li class="note-item">Test crash behavior: make sure your container actually restarts</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>uncaughtException</code> — last chance to log</li>
+							<li class="note-item"><code>unhandledRejection</code> — floating promise failed</li>
+							<li class="note-item"><code>log + exit</code> — the only safe response</li>
+							<li class="note-item"><code>supervisor</code> — restarts the process</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-43-error-patterns.html">Error Patterns in Node</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-45-debugger.html">Debugging</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 33: Stream Concepts</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s33">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 33</div>
+			<h1>Stream Concepts</h1>
+			<div class="sheet-desc">Readable · Writable · Duplex · Transform · backpressure · highWaterMark · objectMode</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Processing Data in Pieces</h2>
+						<div class="description">
+							A <strong>stream</strong> moves data in chunks instead of all at once, so memory stays flat no matter how big the input is. There are four kinds: <strong>Readable</strong> (a source), <strong>Writable</strong> (a destination), <strong>Duplex</strong> (both, like a socket), and <strong>Transform</strong> (a Duplex that changes data, like gzip). <strong>Backpressure</strong> slows a fast producer down when the consumer can't keep up.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Files, HTTP requests/responses, sockets, and stdin/stdout are all streams</li>
+							<li class="note-item">Chunks are Buffers by default, strings with an encoding</li>
+							<li class="note-item"><code>objectMode: true</code> streams carry any JS values</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Readable → Transform → Writable</h2>
+						<pre><code class="language-javascript">import { createReadStream, createWriteStream } from 'node:fs';
+import { createGzip } from 'node:zlib';
+import { pipeline } from 'node:stream/promises';
+
+await pipeline(                          // backpressure handled for you
+  createReadStream('access.log'),        // Readable: produces chunks
+  createGzip(),                          // Transform: compresses
+  createWriteStream('access.log.gz'),    // Writable: consumes chunks
+);
+
+// What pipeline does for you (simplified):
+const src = createReadStream('a.log');
+const dst = createWriteStream('b.log');
+src.on('data', (chunk) =&gt; {
+  if (!dst.write(chunk)) src.pause();    // destination buffer is full
+});
+dst.on('drain', () =&gt; src.resume());     // destination caught up
+src.on('end', () =&gt; dst.end());
+
+src.readableHighWaterMark;               // 65536 (64 KB chunks)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>pipeline</code> — connects streams and forwards errors</div>
+							<div class="explain-item"><code>write()</code> false — buffer passed the high-water mark</div>
+							<div class="explain-item"><code>pause / resume</code> — the backpressure mechanism</div>
+							<div class="explain-item"><code>'drain'</code> — safe to write again</div>
+							<div class="explain-item"><code>highWaterMark</code> — buffer size before backpressure kicks in</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Types Table | Events Table | When Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-types">
+						<h2 class="section-title">Stream Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Examples</th></tr></thead>
+							<tbody>
+								<tr><td>Readable</td><td class="desc">fs read, http request, stdin</td></tr>
+								<tr><td>Writable</td><td class="desc">fs write, http response, stdout</td></tr>
+								<tr><td>Duplex</td><td class="desc">TCP socket, WebSocket</td></tr>
+								<tr><td>Transform</td><td class="desc">gzip, crypto cipher, parsers</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-events">
+						<h2 class="section-title">Key Events</h2>
+						<table>
+							<thead><tr><th>Event</th><th>Fired by</th></tr></thead>
+							<tbody>
+								<tr><td>data</td><td class="desc">Readable: a chunk arrived</td></tr>
+								<tr><td>end</td><td class="desc">Readable: no more data</td></tr>
+								<tr><td>drain</td><td class="desc">Writable: ready for more</td></tr>
+								<tr><td>finish</td><td class="desc">Writable: all data flushed</td></tr>
+								<tr><td>close</td><td class="desc">Both: resource released</td></tr>
+								<tr><td>error</td><td class="desc">Both: something failed</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-when">
+						<h2 class="section-title">Stream or Not?</h2>
+						<table>
+							<thead><tr><th>Data</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Fits in memory</td><td class="desc">readFile / text()</td></tr>
+								<tr><td>Large file</td><td class="desc">Stream</td></tr>
+								<tr><td>Unknown size (upload)</td><td class="desc">Stream</td></tr>
+								<tr><td>Live / infinite</td><td class="desc">Stream</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Listening to <code>'data'</code> and writing without checking <code>write()</code>; memory grows on slow destinations</li>
+							<li class="note-item">Using <code>.pipe()</code> chains; an error in the middle leaves other streams open</li>
+							<li class="note-item">Forgetting an <code>'error'</code> handler on a bare stream; one bad file crashes the process</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Default to <code>pipeline</code> from <code>node:stream/promises</code></li>
+							<li class="note-item">Consume Readables with <code>for await</code> instead of <code>'data'</code> events</li>
+							<li class="note-item">Raise <code>highWaterMark</code> for fast disks or big sequential reads</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Readable / Writable</code> — source / destination</li>
+							<li class="note-item"><code>Transform</code> — modify data in flight</li>
+							<li class="note-item"><code>backpressure</code> — producer waits for consumer</li>
+							<li class="note-item"><code>pipeline</code> — the safe way to connect streams</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-32-binary-data.html">Binary Data</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-34-readable-writable.html">Readable &amp; Writable Streams</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

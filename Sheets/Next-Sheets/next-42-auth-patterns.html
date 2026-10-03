@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 42: Authentication Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s42">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 42</div>
+			<h1>Authentication Patterns</h1>
+			<div class="sheet-desc">session cookies · Auth.js · Better Auth · data access layer · verifySession() · stateless vs database sessions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Who Is the User?</h2>
+					<div class="description">Authentication in the App Router centers on a <strong>session</strong>, stored either in an encrypted <strong>stateless cookie</strong> (a signed JWT) or as a <strong>database session</strong> referenced by a cookie ID. Wrap session reading in one <code>verifySession()</code> function inside a <strong>Data Access Layer (DAL)</strong> and call it wherever data is read or changed.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Library Options</h2>
+					<ul class="note-list">
+						<li class="note-item"><strong>Auth.js</strong> (<code>next-auth</code> v5) — OAuth, email, credentials</li>
+						<li class="note-item"><strong>Better Auth</strong> — TypeScript-first, plugins, orgs</li>
+						<li class="note-item"><strong>Clerk / WorkOS / Kinde</strong> — hosted user management</li>
+						<li class="note-item">Roll your own with <code>jose</code> + <code>cookies()</code></li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Stateless Session + DAL</h2>
+					<pre><code class="language-typescript">// lib/session.ts
+import 'server-only'
+import { SignJWT, jwtVerify } from 'jose'
+import { cookies } from 'next/headers'
+const key = new TextEncoder().encode(process.env.SESSION_SECRET)
+export async function createSession(userId: string) {
+  const token = await new SignJWT({ userId })
+    .setProtectedHeader({ alg: 'HS256' }).setExpirationTime('7d').sign(key)
+  ;(await cookies()).set('session', token, { httpOnly: true, secure: true,
+    sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 7 })
+}
+
+// lib/dal.ts — imports cache (react), redirect (next/navigation)
+export const verifySession = cache(async () =&gt; {
+  const token = (await cookies()).get('session')?.value
+  const res = token ? await jwtVerify(token, key).catch(() =&gt; null) : null
+  if (!res) redirect('/login')
+  const payload = res.payload
+  return { userId: payload.userId as string }
+})</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>server-only</code> — secret code can't leak to the client</div>
+						<div class="explain-item"><code>httpOnly</code> + <code>secure</code> + <code>sameSite</code> — baseline cookie safety</div>
+						<div class="explain-item"><code>cache()</code> — verify once per request, reuse everywhere</div>
+						<div class="explain-item">Call <code>createSession</code> from a Server Action after login</div>
+						<div class="explain-item">Logout: <code>(await cookies()).delete('session')</code></div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Sessions Table | Authjs Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-sessions">
+					<h2 class="section-title">Session Types</h2>
+					<table>
+						<thead><tr><th>Aspect</th><th>Stateless (JWT)</th><th>Database</th></tr></thead>
+						<tbody>
+							<tr><td>Storage</td><td class="desc">Encrypted cookie</td><td class="desc">Sessions table</td></tr>
+							<tr><td>Lookup cost</td><td class="desc">None (verify signature)</td><td class="desc">DB query</td></tr>
+							<tr><td>Revoke instantly</td><td class="center">✖ (wait for expiry)</td><td class="center">✔</td></tr>
+							<tr><td>Size limit</td><td class="desc">~4 KB cookie</td><td class="desc">No limit</td></tr>
+							<tr><td>Good for</td><td class="desc">Simple apps</td><td class="desc">Security-sensitive apps</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-authjs">
+					<h2 class="section-title">Auth.js v5 Basics</h2>
+					<table>
+						<thead><tr><th>Piece</th><th>Code</th></tr></thead>
+						<tbody>
+							<tr><td>Config</td><td class="kw">export const { auth, handlers } = NextAuth({...})</td></tr>
+							<tr><td>Route</td><td class="kw">app/api/auth/[...nextauth]/route.ts</td></tr>
+							<tr><td>Read session</td><td class="kw">const session = await auth()</td></tr>
+							<tr><td>Sign in</td><td class="kw">await signIn('github')</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Checking auth only in a layout; layouts don't re-run on every navigation, and data calls bypass them</li>
+						<li class="note-item">Storing roles or permissions in a long-lived JWT; changes don't apply until the token expires</li>
+						<li class="note-item">Hashing passwords with a fast hash (SHA-256); use <code>bcrypt</code> or <code>argon2</code></li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Return a minimal <code>{ userId, role }</code> from <code>verifySession()</code>; fetch the rest only when needed</li>
+						<li class="note-item">Rotate <code>SESSION_SECRET</code> with a key list so old sessions still verify during rollover</li>
+						<li class="note-item">Prefer a maintained auth library over custom crypto for OAuth flows</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Session — cookie (JWT) or DB-backed</li>
+						<li class="note-item"><code>verifySession()</code> — one cached check</li>
+						<li class="note-item">DAL — auth checks live next to data access</li>
+						<li class="note-item">Auth.js / Better Auth — full-featured libraries</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-41-scripts-lazy-loading.html" class="nav-link prev">Scripts &amp; Lazy Loading</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-43-protecting-routes.html" class="nav-link next">Protecting Routes &amp; Data</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

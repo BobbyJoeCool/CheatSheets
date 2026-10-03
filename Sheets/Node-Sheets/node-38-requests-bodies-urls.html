@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 38: Requests, Bodies &amp; URLs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>Requests, Bodies &amp; URLs</h1>
+			<div class="sheet-desc">new URL() · URLSearchParams · req.method · collecting the body · JSON bodies · body size limits</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Parsing URLs &amp; Bodies</h2>
+						<div class="description">
+							<code>req.url</code> is just a string like <code>/search?q=node</code>. Parse it with the WHATWG <code>URL</code> class, which needs a base, and read query values from <code>url.searchParams</code>. The request <strong>body</strong> arrives as a stream; <code>node:stream/consumers</code> collects it into text, JSON, or a Buffer. Always cap the body size before reading it.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>searchParams</code> values are strings, already decoded</li>
+							<li class="note-item">Query keys can repeat: use <code>getAll</code></li>
+							<li class="note-item">Check <code>Content-Type</code> before parsing JSON</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Query Strings &amp; JSON Bodies</h2>
+						<pre><code class="language-javascript">import { createServer } from 'node:http';
+import { json } from 'node:stream/consumers';
+
+createServer(async (req, res) =&gt; {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  url.pathname;                       // '/search'
+  url.searchParams.get('q');          // 'node streams'
+  url.searchParams.getAll('tag');     // ['a', 'b']
+  Number(url.searchParams.get('page') ?? 1);   // 2
+
+  if (req.method === 'POST') {
+    if (Number(req.headers['content-length']) &gt; 1_000_000) {
+      res.writeHead(413); return res.end('Too large');
+    }
+    try {
+      const body = await json(req);   // read + parse the whole body
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ received: body }));
+    } catch { res.writeHead(400); return res.end('Bad JSON'); }
+  }
+  res.end();
+}).listen(3000);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Base URL — required because <code>req.url</code> is relative</div>
+							<div class="explain-item"><code>get</code> — first value or <code>null</code></div>
+							<div class="explain-item"><code>413</code> — Payload Too Large</div>
+							<div class="explain-item"><code>json(req)</code> — throws on invalid JSON, hence <code>try</code></div>
+							<div class="explain-item"><code>content-length</code> can be absent (chunked); a stream limit is safer</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Url Table | Sp Table | Status Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-url">
+						<h2 class="section-title">URL Parts</h2>
+						<table>
+							<thead><tr><th>Property</th><th>https://a.dev:8080/p?q=1#top</th></tr></thead>
+							<tbody>
+								<tr><td>protocol</td><td class="desc">'https:'</td></tr>
+								<tr><td>host</td><td class="desc">'a.dev:8080'</td></tr>
+								<tr><td>hostname</td><td class="desc">'a.dev'</td></tr>
+								<tr><td>pathname</td><td class="desc">'/p'</td></tr>
+								<tr><td>search</td><td class="desc">'?q=1'</td></tr>
+								<tr><td>hash</td><td class="desc">'#top'</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sp">
+						<h2 class="section-title">URLSearchParams</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>get(k)</td><td class="desc">First value / null</td></tr>
+								<tr><td>getAll(k)</td><td class="desc">All values</td></tr>
+								<tr><td>has(k)</td><td class="desc">Key present?</td></tr>
+								<tr><td>set / append</td><td class="desc">Replace / add</td></tr>
+								<tr><td>toString()</td><td class="desc">'q=1&amp;tag=a'</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-status">
+						<h2 class="section-title">Common Statuses</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>201</td><td class="desc">Created</td></tr>
+								<tr><td>204</td><td class="desc">No content</td></tr>
+								<tr><td>400</td><td class="desc">Bad request</td></tr>
+								<tr><td>404</td><td class="desc">Not found</td></tr>
+								<tr><td>413</td><td class="desc">Body too large</td></tr>
+								<tr><td>422</td><td class="desc">Validation failed</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Splitting <code>req.url</code> on <code>?</code> and <code>&amp;</code> by hand; misses decoding and repeated keys</li>
+							<li class="note-item">Reading the full body without a size cap; one client can exhaust memory</li>
+							<li class="note-item">Trusting <code>Host</code> to build absolute URLs; it's client-controlled</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>URL.canParse(str)</code> to validate URLs without try/catch</li>
+							<li class="note-item">Build query strings with <code>new URLSearchParams(obj).toString()</code></li>
+							<li class="note-item">Validate parsed bodies with a schema before using them</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>new URL(req.url, base)</code> — parse a request URL</li>
+							<li class="note-item"><code>searchParams</code> — query values</li>
+							<li class="note-item"><code>stream/consumers</code> — read the body</li>
+							<li class="note-item"><code>size limit</code> — always cap uploads</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-37-http-server.html">HTTP Server Basics</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-39-fetch-undici.html">fetch &amp; Undici</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

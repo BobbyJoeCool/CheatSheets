@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 50: Child Processes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s50">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 50</div>
+			<h1>Child Processes</h1>
+			<div class="sheet-desc">spawn() · exec() · execFile() · fork() · stdio options · shell injection risk · exit codes</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Running Other Programs</h2>
+						<div class="description">
+							<code>node:child_process</code> starts other programs. <code>execFile</code> runs a command and buffers its output; <code>spawn</code> streams output for long-running or chatty commands; <code>exec</code> runs a string through a <strong>shell</strong> (pipes, globs, and also injection risk); <code>fork</code> starts another Node script with a message channel. Prefer the versions that <strong>don't use a shell</strong>.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Arguments as an array are never shell-interpreted</li>
+							<li class="note-item"><code>exec</code> / <code>execFile</code> buffer up to 1 MB of output by default</li>
+							<li class="note-item">On Windows, <code>.cmd</code> / <code>.bat</code> files need <code>shell: true</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">execFile, spawn, exec &amp; fork</h2>
+						<pre><code class="language-javascript">import { spawn, execFile, exec, fork } from 'node:child_process';
+import { promisify } from 'node:util';
+const execFileP = promisify(execFile);
+
+const { stdout } = await execFileP('git', ['rev-parse', 'HEAD']);
+stdout.trim();                                   // 'a1b2c3d…'
+
+const ff = spawn('ffmpeg', ['-i', 'in.mp4', 'out.webm'], { stdio: 'inherit' });
+ff.on('close', (code) =&gt; console.log('exit', code));   // live output
+
+const g = spawn('grep', ['ERROR']);
+g.stdout.on('data', (d) =&gt; process.stdout.write(d));
+g.stdin.end('ok\nERROR disk full\n');            // feed input, close stdin
+
+await promisify(exec)('ls *.log | wc -l');       // shell: never with user input
+
+const child = fork('./job.js');                   // Node + IPC channel
+child.send({ jobId: 42 });
+child.on('message', (m) =&gt; console.log('result', m));</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>execFile</code> + array — safe from shell injection</div>
+							<div class="explain-item"><code>stdio: 'inherit'</code> — child writes straight to your terminal</div>
+							<div class="explain-item"><code>stdin.end</code> — send input and signal EOF</div>
+							<div class="explain-item"><code>exec</code> — only for fixed strings you wrote yourself</div>
+							<div class="explain-item"><code>fork</code> — child calls <code>process.send()</code> to reply</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Compare Table | Stdio Table | Opts Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-compare">
+						<h2 class="section-title">Which Function</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Shell / Output</th></tr></thead>
+							<tbody>
+								<tr><td>execFile</td><td class="desc">No / buffered</td></tr>
+								<tr><td>spawn</td><td class="desc">No / streamed</td></tr>
+								<tr><td>exec</td><td class="desc">Yes / buffered</td></tr>
+								<tr><td>fork</td><td class="desc">No / IPC messages</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-stdio">
+						<h2 class="section-title">stdio Options</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>'pipe'</td><td class="desc">Access via child.stdout</td></tr>
+								<tr><td>'inherit'</td><td class="desc">Share parent's streams</td></tr>
+								<tr><td>'ignore'</td><td class="desc">Discard</td></tr>
+								<tr><td>[in, out, err]</td><td class="desc">Set each separately</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-opts">
+						<h2 class="section-title">Useful Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>cwd</td><td class="desc">Working directory</td></tr>
+								<tr><td>env</td><td class="desc">Child environment</td></tr>
+								<tr><td>timeout</td><td class="desc">Kill after ms</td></tr>
+								<tr><td>maxBuffer</td><td class="desc">Output cap (exec)</td></tr>
+								<tr><td>signal</td><td class="desc">Abort the child</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>exec('convert ' + filename)</code> with user input; a filename like <code>x; rm -rf ~</code> runs</li>
+							<li class="note-item">Not handling <code>'error'</code> on spawn; a missing binary emits ENOENT and crashes</li>
+							<li class="note-item">Ignoring the exit code; a failed command still "succeeds" if you don't check</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>execa</code> for nicer promises, errors, and cross-platform behavior</li>
+							<li class="note-item">Pass <code>env: { ...process.env, LANG: 'C' }</code> for predictable command output</li>
+							<li class="note-item">Kill child processes on shutdown so they don't outlive the parent</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>execFile</code> — run a command, get output</li>
+							<li class="note-item"><code>spawn</code> — stream long-running output</li>
+							<li class="note-item"><code>exec</code> — shell strings (careful)</li>
+							<li class="note-item"><code>fork</code> — Node child with messages</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-49-mocking-coverage.html">Mocking, Snapshots &amp; Coverage</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-51-worker-threads.html">Worker Threads</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

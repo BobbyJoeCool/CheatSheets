@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 11: Filtering: Advanced &amp; Pagination</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Filtering: Advanced &amp; Pagination</h1>
+			<div class="sheet-desc">cursor · skip/take · some/every/none · is/isNot · has/hasSome · nulls · _count</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Advanced Filters & Paging</h2>
+						<div class="description">
+							<strong>Offset pagination</strong> (<code>skip</code>/<code>take</code>) is simple but slows down as the offset grows. <strong>Cursor pagination</strong> starts after a known unique value, so every page costs the same. Relation filters (<code>some</code>, <code>every</code>, <code>none</code>, <code>is</code>) filter parents by their children; list filters (<code>has</code>, <code>hasSome</code>) query scalar arrays.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Cursor must be unique & in <code>orderBy</code></li>
+							<li class="note-item"><code>skip: 1</code> skips the cursor row itself</li>
+							<li class="note-item"><code>every</code> is true when there are no children</li>
+							<li class="note-item">Null check: <code>{ field: null }</code> / <code>{ not: null }</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Cursor Paging + Advanced Filters</h2>
+						<pre class="language-typescript"><code class="language-typescript">async function page(cursor?: number) {
+  const rows = await prisma.post.findMany({
+    take: 20,
+    ...(cursor &amp;&amp; { skip: 1, cursor: { id: cursor } }),
+    orderBy: { id: "desc" },
+  });
+  return { rows, next: rows.at(-1)?.id };   // pass `next` back as cursor
+}
+await prisma.user.findMany({
+  where: {
+    posts: { some: { published: true } },   // ≥1 published post
+    comments: { none: {} },                 // no comments at all
+    profile: { isNot: null },               // 1-1 relation exists
+    tags: { hasSome: ["ts", "orm"] },       // String[] overlap
+    deletedAt: null,                        // IS NULL
+  },
+  orderBy: [
+    { lastLogin: { sort: "desc", nulls: "last" } },
+    { posts: { _count: "desc" } },
+  ],
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>cursor</code> + <code>skip: 1</code> — start after last row</div>
+							<div class="explain-item"><code>take: 20</code> — page size (negative = backwards)</div>
+							<div class="explain-item"><code>some</code> — at least one child matches</div>
+							<div class="explain-item"><code>none: {}</code> — has zero children</div>
+							<div class="explain-item"><code>isNot: null</code> — optional 1-1 exists</div>
+							<div class="explain-item"><code>hasSome</code> — array overlaps list</div>
+							<div class="explain-item"><code>nulls: 'last'</code> — null ordering</div>
+							<div class="explain-item"><code>_count</code> — sort by relation count</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-rel">
+						<h2 class="section-title">Relation Filters</h2>
+						<table>
+							<thead><tr><th>Filter</th><th>Matches parent when</th></tr></thead>
+							<tbody>
+								<tr><td>some: {…}</td><td class="desc">≥1 child matches</td></tr>
+								<tr><td>every: {…}</td><td class="desc">all children match (or none exist)</td></tr>
+								<tr><td>none: {…}</td><td class="desc">no child matches</td></tr>
+								<tr><td>is: {…}</td><td class="desc">to-one relation matches</td></tr>
+								<tr><td>isNot: {…}</td><td class="desc">to-one doesn't match</td></tr>
+								<tr><td>is: null</td><td class="desc">to-one is missing</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-list">
+						<h2 class="section-title">Scalar List Filters</h2>
+						<table>
+							<thead><tr><th>Filter</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>has: v</td><td class="desc">contains v</td></tr>
+								<tr><td>hasSome: [..]</td><td class="desc">any overlap</td></tr>
+								<tr><td>hasEvery: [..]</td><td class="desc">contains all</td></tr>
+								<tr><td>isEmpty: true</td><td class="desc">empty array</td></tr>
+								<tr><td>equals: [..]</td><td class="desc">exact array</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-paging">
+						<h2 class="section-title">Offset vs Cursor</h2>
+						<table>
+							<thead><tr><th></th><th>Offset</th><th>Cursor</th></tr></thead>
+							<tbody>
+								<tr><td>Jump to N</td><td class="center">✔</td><td class="center">✖</td></tr>
+								<tr><td>Deep pages</td><td class="desc">slow</td><td class="desc">fast</td></tr>
+								<tr><td>Insert-safe</td><td class="center">✖</td><td class="center">✔</td></tr>
+								<tr><td>Page count</td><td class="center">✔</td><td class="center">✖</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Cursor on a non-unique column — rows skipped or repeated</li>
+							<li class="note-item">Forgetting <code>skip: 1</code> — the cursor row repeats</li>
+							<li class="note-item"><code>isEmpty</code> on a <code>String</code> — it's for scalar lists; use <code>equals: ""</code></li>
+							<li class="note-item"><code>every</code> returning parents with no children — add <code>some: {}</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Return <code>next</code> cursor in your API instead of page numbers</li>
+							<li class="note-item">Add <code>id</code> as the last <code>orderBy</code> for deterministic order</li>
+							<li class="note-item">Index the cursor/orderBy columns together</li>
+							<li class="note-item">Use offset only for small, admin-style tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>cursor</code> + <code>skip: 1</code> + <code>take</code> — keyset paging</li>
+							<li class="note-item"><code>some</code> · <code>every</code> · <code>none</code> — to-many filters</li>
+							<li class="note-item"><code>is</code> · <code>isNot</code> — to-one filters</li>
+							<li class="note-item"><code>has</code> · <code>hasSome</code> · <code>hasEvery</code> — arrays</li>
+							<li class="note-item"><code>nulls: 'last'</code> — null sort order</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-10-filtering-where-operators.html" class="nav-link prev">Filtering: Where Clauses &amp; Operators</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-12-relations-include-select.html" class="nav-link next">Relations: Include &amp; Select</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

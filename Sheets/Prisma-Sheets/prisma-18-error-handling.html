@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 18: Error Handling</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Error Handling</h1>
+			<div class="sheet-desc">PrismaClientKnownRequestError · P2002 · P2025 · P2003 · …OrThrow · retry</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Handling Query Errors</h2>
+						<div class="description">
+							Prisma throws typed error classes from the <code>Prisma</code> namespace. Database-level failures arrive as <code>PrismaClientKnownRequestError</code> with a stable <code>code</code> (e.g. <code>P2002</code>) and a <code>meta</code> object. Check the class with <code>instanceof</code>, branch on <code>code</code>, and translate it into a domain error or HTTP status at one boundary.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Import <code>Prisma</code> from your generated client</li>
+							<li class="note-item"><code>meta</code> shape can vary by driver adapter</li>
+							<li class="note-item"><code>…OrThrow</code> → <code>P2025</code> when not found</li>
+							<li class="note-item">Validation errors = bug in your query shape</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Catching & Mapping Errors</h2>
+						<pre class="language-typescript"><code class="language-typescript">import { Prisma } from "../generated/prisma/client";
+
+export async function createUser(email: string) {
+  try {
+    return await prisma.user.create({ data: { email } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      switch (e.code) {
+        case "P2002": throw new ConflictError(`Duplicate: ${e.meta?.target}`);
+        case "P2003": throw new BadRequestError("Related record missing");
+        case "P2025": throw new NotFoundError();
+      }
+    }
+    if (e instanceof Prisma.PrismaClientValidationError) {
+      throw new BadRequestError("Invalid query input");
+    }
+    throw e;                                       // unknown → 500
+  }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Prisma</code> namespace — error classes</div>
+							<div class="explain-item"><code>instanceof</code> — narrow the type</div>
+							<div class="explain-item"><code>e.code</code> — stable error code</div>
+							<div class="explain-item"><code>P2002</code> — unique constraint</div>
+							<div class="explain-item"><code>P2003</code> — foreign key failed</div>
+							<div class="explain-item"><code>P2025</code> — record not found</div>
+							<div class="explain-item">Validation — wrong args/types</div>
+							<div class="explain-item">rethrow unknown errors</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-codes">
+						<h2 class="section-title">Common Error Codes</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Meaning</th><th>HTTP</th></tr></thead>
+							<tbody>
+								<tr><td>P1001</td><td class="desc">Can't reach database</td><td class="desc">503</td></tr>
+								<tr><td>P2000</td><td class="desc">Value too long for column</td><td class="desc">400</td></tr>
+								<tr><td>P2002</td><td class="desc">Unique constraint failed</td><td class="desc">409</td></tr>
+								<tr><td>P2003</td><td class="desc">Foreign key constraint failed</td><td class="desc">400/409</td></tr>
+								<tr><td>P2025</td><td class="desc">Record not found</td><td class="desc">404</td></tr>
+								<tr><td>P2034</td><td class="desc">Tx write conflict / deadlock</td><td class="desc">retry</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-classes">
+						<h2 class="section-title">Error Classes</h2>
+						<table>
+							<thead><tr><th>Class</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>KnownRequestError</td><td class="desc">DB error with a code</td></tr>
+								<tr><td>UnknownRequestError</td><td class="desc">DB error, no code</td></tr>
+								<tr><td>ValidationError</td><td class="desc">Bad query shape/types</td></tr>
+								<tr><td>InitializationError</td><td class="desc">Startup/connection fail</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>e.code</code> without <code>instanceof</code> — <code>e</code> is <code>unknown</code></li>
+							<li class="note-item">Leaking raw Prisma messages to clients — exposes schema</li>
+							<li class="note-item">Swallowing errors with an empty <code>catch</code></li>
+							<li class="note-item">Retrying <code>P2002</code> — it will keep failing</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Map errors once in middleware, not in every handler</li>
+							<li class="note-item">Retry only transient codes: <code>P2034</code>, <code>P1001</code></li>
+							<li class="note-item">Validate input (Zod) before querying — Sheet 29</li>
+							<li class="note-item">Log <code>code</code>, <code>meta</code>, and the model with each error</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>KnownRequestError</code> + <code>code</code> — branch</li>
+							<li class="note-item"><code>P2002</code> 409 · <code>P2025</code> 404 · <code>P2003</code> 400</li>
+							<li class="note-item"><code>…OrThrow</code> — explicit not-found</li>
+							<li class="note-item">retry transient errors only</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-17-migrations.html" class="nav-link prev">Migrations</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-19-performance-n-plus-1-indexing.html" class="nav-link next">Performance: N+1 &amp; Indexing</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

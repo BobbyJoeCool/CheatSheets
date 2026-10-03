@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 19: Client-Side Fetching</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Client-Side Fetching</h1>
+			<div class="sheet-desc">SWR · TanStack Query · route handlers as endpoints · useEffect pitfalls · polling</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">When the Browser Should Fetch</h2>
+					<div class="description">Most data should be fetched on the server. Fetch on the <strong>client</strong> when data depends on user interaction after load (search-as-you-type, infinite scroll), needs <strong>polling</strong> or real-time updates, or is per-user and not worth server rendering. Use a data library such as <strong>SWR</strong> or <strong>TanStack Query</strong> for caching, deduping, and revalidation.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Good Client Cases</h2>
+					<ul class="note-list">
+						<li class="note-item">Live data: notifications, stock prices</li>
+						<li class="note-item">Infinite scroll and pagination UI</li>
+						<li class="note-item">Optimistic updates with local cache</li>
+						<li class="note-item">Data needed only after a user action</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">SWR Seeded From the Server</h2>
+					<pre><code class="language-tsx">// app/inbox/page.tsx (server) — initial data, no spinner
+const initial = await getMessages()
+return &lt;Inbox fallback={initial} /&gt;
+
+// app/inbox/inbox.tsx
+'use client'
+import useSWR from 'swr'
+const fetcher = (url: string) =&gt; fetch(url).then((r) =&gt; r.json())
+
+export function Inbox({ fallback }: { fallback: Message[] }) {
+  const { data, error, isLoading, mutate } = useSWR(
+    '/api/messages', fetcher,
+    { fallbackData: fallback, refreshInterval: 10_000 })   // poll 10 s
+  if (error) return &lt;p&gt;Failed to load&lt;/p&gt;
+  return &lt;MessageList items={data} onRead={() =&gt; mutate()} /&gt;
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>fallbackData</code> — first render uses server data</div>
+						<div class="explain-item"><code>/api/messages</code> — a Route Handler (<code>app/api/messages/route.ts</code>)</div>
+						<div class="explain-item"><code>refreshInterval</code> — background polling</div>
+						<div class="explain-item"><code>mutate()</code> — revalidate after a change</div>
+						<div class="explain-item">Same key in two components = one request</div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Libs Table | Pitfalls Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-libs">
+					<h2 class="section-title">Library Comparison</h2>
+					<table>
+						<thead><tr><th>Feature</th><th>SWR</th><th>TanStack Query</th></tr></thead>
+						<tbody>
+							<tr><td>Hook</td><td class="kw">useSWR(key, fn)</td><td class="kw">useQuery(opts)</td></tr>
+							<tr><td>Mutate</td><td class="kw">mutate()</td><td class="kw">useMutation()</td></tr>
+							<tr><td>Devtools</td><td class="center">✖</td><td class="center">✔</td></tr>
+							<tr><td>SSR hydration</td><td class="desc">fallbackData</td><td class="desc">HydrationBoundary</td></tr>
+							<tr><td>Size</td><td class="desc">Small</td><td class="desc">Larger, more features</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-pitfalls">
+					<h2 class="section-title">useEffect Pitfalls</h2>
+					<table>
+						<thead><tr><th>Issue</th><th>Fix</th></tr></thead>
+						<tbody>
+							<tr><td>Race conditions</td><td class="desc">Use a library or AbortController</td></tr>
+							<tr><td>Double fetch in dev</td><td class="desc">StrictMode; libraries dedupe</td></tr>
+							<tr><td>No caching</td><td class="desc">SWR / TanStack Query</td></tr>
+							<tr><td>Waterfall after hydration</td><td class="desc">Fetch on server instead</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Fetching first-render data in <code>useEffect</code>; users see a spinner the server could have avoided</li>
+						<li class="note-item">Calling a Route Handler with a relative URL from a Server Component; there is no browser origin on the server</li>
+						<li class="note-item">Putting <code>QueryClientProvider</code> in a Server Component; it must live in a client provider</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Seed client caches with server data (<code>fallbackData</code> or <code>HydrationBoundary</code>) to skip loading states</li>
+						<li class="note-item">Prefer Server Actions over custom POST endpoints for mutations from your own UI</li>
+						<li class="note-item">Create the TanStack <code>QueryClient</code> with <code>useState(() =&gt; new QueryClient())</code> so it's stable</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Server first — client only for interactive data</li>
+						<li class="note-item"><code>useSWR</code> / <code>useQuery</code> — cache, dedupe, revalidate</li>
+						<li class="note-item">Route Handlers — JSON endpoints for the client</li>
+						<li class="note-item">Seed client caches from server data</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-18-streaming-suspense.html" class="nav-link prev">Streaming &amp; Suspense</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-20-params-searchparams.html" class="nav-link next">params &amp; searchParams</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

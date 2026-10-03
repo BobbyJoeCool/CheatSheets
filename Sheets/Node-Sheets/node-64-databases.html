@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 64: Databases from Node</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s64">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 64</div>
+			<h1>Databases from Node</h1>
+			<div class="sheet-desc">pg Pool · parameterized queries · mysql2 · Prisma · Drizzle · connection pooling · transactions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Talking to Databases</h2>
+						<div class="description">
+							Node apps reach SQL databases through a <strong>driver</strong> (<code>pg</code> for PostgreSQL, <code>mysql2</code> for MySQL), usually behind a <strong>connection pool</strong> that reuses a fixed number of connections. Always use <strong>parameterized queries</strong>. <strong>ORMs</strong> and query builders (Prisma, Drizzle, Kysely) add types and migrations on top of the same drivers.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Create one pool per process and reuse it</li>
+							<li class="note-item">A transaction must run on a single client</li>
+							<li class="note-item"><code>$1, $2</code> (pg) and <code>?</code> (mysql2) are parameter placeholders</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Pooling, Parameters &amp; Transactions</h2>
+						<pre><code class="language-javascript">import pg from 'pg';                              // npm i pg
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
+const { rows } = await pool.query(
+  'SELECT id, title FROM notes WHERE owner_id = $1 AND done = $2',
+  [userId, false],
+);
+
+const client = await pool.connect();              // one client per transaction
+try {
+  await client.query('BEGIN');
+  await client.query('UPDATE acct SET bal = bal - $1 WHERE id = $2', [50, a]);
+  await client.query('UPDATE acct SET bal = bal + $1 WHERE id = $2', [50, b]);
+  await client.query('COMMIT');
+} catch (err) {
+  await client.query('ROLLBACK');
+  throw err;
+} finally {
+  client.release();                               // back to the pool
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Pool</code> — opens connections lazily up to <code>max</code> (default 10)</div>
+							<div class="explain-item"><code>$1, $2</code> — values sent separately; injection-safe</div>
+							<div class="explain-item"><code>pool.connect()</code> — check out one client</div>
+							<div class="explain-item"><code>ROLLBACK</code> — undo both updates on any error</div>
+							<div class="explain-item"><code>release()</code> — in <code>finally</code>, or the pool runs dry</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Drivers Table | Orm Table | Pool Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-drivers">
+						<h2 class="section-title">Drivers</h2>
+						<table>
+							<thead><tr><th>Database</th><th>Package</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">pg / postgres</td></tr>
+								<tr><td>MySQL</td><td class="desc">mysql2</td></tr>
+								<tr><td>SQLite</td><td class="desc">node:sqlite / better-sqlite3</td></tr>
+								<tr><td>MongoDB</td><td class="desc">mongodb / mongoose</td></tr>
+								<tr><td>Redis</td><td class="desc">redis / ioredis</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-orm">
+						<h2 class="section-title">ORMs &amp; Builders</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Style</th></tr></thead>
+							<tbody>
+								<tr><td>Prisma</td><td class="desc">Schema file, generated client</td></tr>
+								<tr><td>Drizzle</td><td class="desc">TS schema, SQL-like API</td></tr>
+								<tr><td>Kysely</td><td class="desc">Typed query builder</td></tr>
+								<tr><td>Sequelize / TypeORM</td><td class="desc">Classic ORM</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-pool">
+						<h2 class="section-title">Pool Settings</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>max</td><td class="desc">Max connections</td></tr>
+								<tr><td>idleTimeoutMillis</td><td class="desc">Close idle clients</td></tr>
+								<tr><td>connectionTimeoutMillis</td><td class="desc">Wait for a client</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Building <code>WHERE id = ${id}</code> from user input; that's SQL injection, so use parameters</li>
+							<li class="note-item">Running <code>BEGIN</code> via <code>pool.query</code>; each call may use a different connection</li>
+							<li class="note-item">Forgetting <code>release()</code>; the app freezes once all clients are checked out</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Size <code>max</code> so instances × max stays under the DB's connection limit</li>
+							<li class="note-item">Close the pool on shutdown: <code>await pool.end()</code> (Sheet 19)</li>
+							<li class="note-item">Use PgBouncer or a serverless driver for many short-lived instances</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Pool</code> — reuse connections</li>
+							<li class="note-item"><code>$1 / ?</code> — always parameterize</li>
+							<li class="note-item"><code>connect + BEGIN/COMMIT</code> — transactions</li>
+							<li class="note-item"><code>ORMs</code> — types and migrations on top</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-63-fastify.html">Fastify</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-65-logging.html">Logging</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

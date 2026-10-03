@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Agentic Coding — Sheet 37: Hook Recipes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ai-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>Hook Recipes</h1>
+			<div class="sheet-desc">auto-format after edit · block .env edits · tests on Stop · desktop notifications · JSON decision output · http / prompt hooks</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Hook Recipes</h2>
+						<div class="description">These patterns cover most real-world hook use: format files after every edit, block reads or edits of secrets, stop destructive commands, run tests before Claude declares victory, and notify you when it needs input. Keep scripts in <code>.claude/hooks/</code>, make them executable, and commit them so the whole team gets the same guardrails.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Recipe Checklist</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>chmod +x .claude/hooks/*.sh</code></li>
+							<li class="note-item">Read input with <code>jq -r '.tool_input.file_path'</code></li>
+							<li class="note-item">Exit <code>2</code> + stderr message to block</li>
+							<li class="note-item">Keep each hook fast (&lt; 1–2 s)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Protect Secrets + Auto-Format</h2>
+						<pre><code class="language-bash">#!/usr/bin/env bash
+# .claude/hooks/protect-files.sh   (PreToolUse, matcher: "Edit|Write|Read")
+f=$(jq -r '.tool_input.file_path // empty')
+case "$f" in
+  *.env|*.env.*|*/secrets/*|*.pem)
+    echo "Blocked: $f is a protected file" &gt;&amp;2
+    exit 2 ;;                                  # 2 = block, stderr → Claude
+esac
+exit 0
+
+#!/usr/bin/env bash
+# .claude/hooks/format.sh   (PostToolUse, matcher: "Edit|Write")
+f=$(jq -r '.tool_input.file_path // empty')
+case "$f" in
+  *.ts|*.tsx|*.js) npx prettier --write "$f" &gt;/dev/null ;;
+  *.py)            ruff format "$f" &gt;/dev/null ;;
+esac
+exit 0</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>jq -r ...</code> — pull the file path from stdin JSON</div>
+							<div class="explain-item"><code>// empty</code> — avoid <code>null</code> when the field is missing</div>
+							<div class="explain-item"><code>exit 2</code> — blocks; message goes to Claude</div>
+							<div class="explain-item"><code>PostToolUse format</code> — every edit gets formatted</div>
+							<div class="explain-item"><code>&gt;/dev/null</code> — keep hook output out of context</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Recipes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-recipes">
+						<h2 class="section-title">More Recipes</h2>
+						<table>
+							<thead><tr><th>Goal</th><th>Event · Approach</th></tr></thead>
+							<tbody>
+								<tr><td>Block <code>rm -rf</code>, <code>git push --force</code></td><td class="desc">PreToolUse · Bash · grep command, exit 2</td></tr>
+								<tr><td>Tests must pass before done</td><td class="desc">Stop · run tests; <code>decision: block</code> if red</td></tr>
+								<tr><td>Desktop notification</td><td class="desc">Notification · <code>osascript</code> / <code>notify-send</code></td></tr>
+								<tr><td>Inject ticket context</td><td class="desc">UserPromptSubmit · <code>additionalContext</code></td></tr>
+								<tr><td>Load env vars</td><td class="desc">SessionStart · write to <code>$CLAUDE_ENV_FILE</code></td></tr>
+								<tr><td>Audit log of commands</td><td class="desc">PostToolUse · Bash · append to log file</td></tr>
+								<tr><td>Model-judged check</td><td class="desc">Stop · <code>type: prompt</code> ("is the task done?")</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Formatting with a hook that prints the whole file to stdout; it floods Claude's context</li>
+							<li class="note-item">Forgetting <code>chmod +x</code>; the hook fails silently as a non-blocking error</li>
+							<li class="note-item">A Stop hook that always blocks; Claude can never finish. Track attempts or check <code>stop_hook_active</code></li>
+							<li class="note-item">Matching <code>Read</code> only and missing <code>cat .env</code> via Bash; also add <code>Read(./.env)</code> deny rules</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Combine hooks with deny rules and the sandbox for defense in depth</li>
+							<li class="note-item">Put team hooks in <code>.claude/settings.json</code>, personal ones in <code>~/.claude/settings.json</code></li>
+							<li class="note-item">Use <code>http</code> hooks to send events to an internal audit service</li>
+							<li class="note-item">Package proven hooks in a plugin to share across repos</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>protect files</code> — PreToolUse + exit 2</li>
+							<li class="note-item"><code>auto-format</code> — PostToolUse on Edit|Write</li>
+							<li class="note-item"><code>tests before done</code> — Stop hook</li>
+							<li class="note-item"><code>notify</code> — Notification hook</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ai-36-hook-events.html" class="nav-link prev">Hook Events</a>
+				<a href="index.html" class="nav-toc">Agentic Coding Reference · 73 Sheets</a>
+				<a href="ai-38-mcp-in-claude-code.html" class="nav-link next">MCP in Claude Code</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

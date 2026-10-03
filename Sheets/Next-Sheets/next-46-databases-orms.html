@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 46: Databases &amp; ORMs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s46">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 46</div>
+			<h1>Databases &amp; ORMs</h1>
+			<div class="sheet-desc">Prisma · Drizzle · client singleton on globalThis · connection pooling · serverless drivers</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Talking to a Database</h2>
+					<div class="description">Server Components, Server Actions, and Route Handlers can query a database directly. Two things matter in Next.js: create <strong>one client instance</strong> per server process (hot reload in dev creates new modules, so cache it on <code>globalThis</code>), and use <strong>pooling</strong> or an HTTP-based <strong>serverless driver</strong> when deploying to functions that scale out.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Where Queries Live</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>lib/db.ts</code> — the client singleton</li>
+						<li class="note-item"><code>lib/dal/*.ts</code> — auth-aware query functions</li>
+						<li class="note-item">Mark both with <code>import 'server-only'</code></li>
+						<li class="note-item">Never import them from <code>'use client'</code> files</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Code -->
+			<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code-prisma">
+					<h2 class="section-title">Prisma Singleton</h2>
+					<pre><code class="language-typescript">// lib/db.ts
+import 'server-only'
+import { PrismaClient } from '@/generated/prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+
+const g = globalThis as unknown as { db?: PrismaClient }
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL })
+
+export const db = g.db ?? new PrismaClient({ adapter })
+if (process.env.NODE_ENV !== 'production') g.db = db
+
+// usage in a Server Component
+const posts = await db.post.findMany({
+  where: { published: true }, take: 10 })</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-code" id="code-drizzle">
+					<h2 class="section-title">Drizzle + Serverless Driver</h2>
+					<pre><code class="language-typescript">// lib/db.ts
+import 'server-only'
+import { neon } from '@neondatabase/serverless'
+import { drizzle } from 'drizzle-orm/neon-http'
+import * as schema from './schema'
+
+const sql = neon(process.env.DATABASE_URL!)
+export const db = drizzle({ client: sql, schema })
+
+// usage
+import { eq } from 'drizzle-orm'
+const user = await db.query.users.findFirst({
+  where: eq(schema.users.id, id) })</code></pre>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Deploy Table | Cache Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-deploy">
+					<h2 class="section-title">Connections by Host</h2>
+					<table>
+						<thead><tr><th>Deployment</th><th>Approach</th></tr></thead>
+						<tbody>
+							<tr><td>Long-running server</td><td class="desc">Normal pool (e.g. <code>pg.Pool</code>)</td></tr>
+							<tr><td>Serverless functions</td><td class="desc">Pooler (PgBouncer, Supavisor) or HTTP driver</td></tr>
+							<tr><td>Edge (deprecated)</td><td class="desc">HTTP/WebSocket drivers only</td></tr>
+							<tr><td>Dev hot reload</td><td class="desc"><code>globalThis</code> singleton</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-cache">
+					<h2 class="section-title">Caching Queries</h2>
+					<table>
+						<thead><tr><th>Goal</th><th>Tool</th></tr></thead>
+						<tbody>
+							<tr><td>Dedupe in one request</td><td class="desc"><code>React.cache(fn)</code></td></tr>
+							<tr><td>Reuse across requests</td><td class="desc"><code>'use cache'</code> + <code>cacheTag</code></td></tr>
+							<tr><td>Invalidate after write</td><td class="desc"><code>updateTag</code> / <code>revalidateTag</code></td></tr>
+							<tr><td>Large result sets</td><td class="desc">Paginate; select needed columns</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Creating <code>new PrismaClient()</code> in each file; dev hot reloads exhaust database connections</li>
+						<li class="note-item">Opening TCP connections per serverless invocation without a pooler; you hit connection limits</li>
+						<li class="note-item">Returning full ORM rows (with hashes and tokens) to Client Components</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Add <code>serverExternalPackages</code> for native drivers that shouldn't be bundled</li>
+						<li class="note-item">Run migrations in CI or a release step, never on app startup</li>
+						<li class="note-item">Use <code>select</code> / column lists so cached entries stay small</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">One client per process — <code>globalThis</code> in dev</li>
+						<li class="note-item">Pooling / HTTP drivers — for serverless</li>
+						<li class="note-item"><code>server-only</code> — keep DB code off the client</li>
+						<li class="note-item"><code>'use cache'</code> + tags — cache query results</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-45-environment-variables.html" class="nav-link prev">Environment Variables</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-47-internationalization.html" class="nav-link next">Internationalization</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

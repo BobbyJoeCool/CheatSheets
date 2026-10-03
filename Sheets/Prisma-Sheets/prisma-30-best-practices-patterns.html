@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 30: Best Practices &amp; Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>Best Practices &amp; Patterns</h1>
+			<div class="sheet-desc">naming · multi-file schema · repository · select shapes · error mapping · project layout</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Production-Ready Prisma</h2>
+						<div class="description">
+							Keep Prisma behind a thin <strong>data-access layer</strong>: one client instance, query shapes defined once, errors mapped once, and services that never leak Prisma types to HTTP responses. Split large schemas into <strong>multiple <code>.prisma</code> files</strong> by domain, and keep naming consistent so the generated API reads naturally.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Naming</h2>
+						<ul class="note-list">
+							<li class="note-item">Model: <code>PascalCase</code> singular · field: <code>camelCase</code></li>
+							<li class="note-item">FK: <code>authorId</code> next to <code>author</code></li>
+							<li class="note-item">Booleans: <code>isActive</code>, <code>hasPaid</code></li>
+							<li class="note-item">Enums: <code>PascalCase</code>; values <code>UPPER_CASE</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-layout">
+						<h2 class="section-title">Project Layout</h2>
+						<pre class="language-bash"><code class="language-bash">prisma/
+  schema/                 # multi-file schema
+    base.prisma           # generator + datasource
+    user.prisma
+    order.prisma
+  migrations/
+  seed.ts
+prisma.config.ts          # schema: "prisma/schema"
+generated/prisma/         # gitignored client
+src/
+  lib/prisma.ts           # singleton + $extends
+  lib/prisma-errors.ts    # P-code → HTTP mapping
+  modules/user/
+    user.repo.ts          # queries + shapes
+    user.service.ts       # rules, transactions
+    user.schema.ts        # zod input schemas</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-code" id="code-repo">
+						<h2 class="section-title">Repository Pattern</h2>
+						<pre class="language-typescript"><code class="language-typescript">// user.repo.ts
+export const publicUser = {
+  select: { id: true, email: true, name: true, createdAt: true },
+} satisfies Prisma.UserDefaultArgs;
+export type PublicUser = Prisma.UserGetPayload&lt;typeof publicUser&gt;;
+
+export const userRepo = {
+  byId: (id: number) =&gt;
+    db.user.findUnique({ where: { id }, ...publicUser }),
+  list: (cursor?: number, take = 20) =&gt;
+    db.user.findMany({
+      ...publicUser, take,
+      ...(cursor &amp;&amp; { skip: 1, cursor: { id: cursor } }),
+      orderBy: { id: "desc" },
+    }),
+  create: (data: Prisma.UserCreateInput) =&gt;
+    db.user.create({ data, ...publicUser }),
+};</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-do">
+						<h2 class="section-title">Do / Avoid</h2>
+						<table>
+							<thead><tr><th>Do</th><th>Avoid</th></tr></thead>
+							<tbody>
+								<tr><td>one PrismaClient</td><td class="desc">client per request</td></tr>
+								<tr><td>select shapes</td><td class="desc">returning full rows to APIs</td></tr>
+								<tr><td>cursor pagination</td><td class="desc">deep <code>skip</code> offsets</td></tr>
+								<tr><td>createMany / updateMany</td><td class="desc">awaits in loops</td></tr>
+								<tr><td>migrate deploy in CI</td><td class="desc">db push in prod</td></tr>
+								<tr><td>map P-codes centrally</td><td class="desc">try/catch everywhere</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-monitor">
+						<h2 class="section-title">Logging & Monitoring</h2>
+						<table>
+							<thead><tr><th>Signal</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>Slow queries</td><td class="desc"><code>$on('query')</code> + threshold</td></tr>
+								<tr><td>Traces</td><td class="desc"><code>@prisma/instrumentation</code></td></tr>
+								<tr><td>Errors</td><td class="desc">log <code>code</code> + <code>meta</code> + model</td></tr>
+								<tr><td>Pool pressure</td><td class="desc">connection timeouts</td></tr>
+								<tr><td>Schema drift</td><td class="desc"><code>migrate status</code> in CI</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Prisma calls scattered through controllers — hard to change</li>
+							<li class="note-item">Returning Prisma models directly — leaks new columns</li>
+							<li class="note-item">One giant <code>schema.prisma</code> in big apps — merge conflicts</li>
+							<li class="note-item">Inconsistent names (<code>user_id</code> vs <code>authorId</code>) — confusing API</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep transactions in services, queries in repos</li>
+							<li class="note-item">Export <code>typeof db</code> as the app's DB type</li>
+							<li class="note-item">Use <code>@@map</code> to keep DB snake_case with camelCase code</li>
+							<li class="note-item">Review generated SQL for hot paths before launch</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">one client + <code>$extends</code> — single entry point</li>
+							<li class="note-item">shapes + <code>GetPayload</code> — consistent responses</li>
+							<li class="note-item">multi-file schema — organize by domain</li>
+							<li class="note-item">repo → service → route — clear layers</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-29-validation-custom-logic.html" class="nav-link prev">Validation &amp; Custom Logic</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-31-security-data-protection.html" class="nav-link next">Security &amp; Data Protection</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 36: Web Streams</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>Web Streams</h1>
+			<div class="sheet-desc">ReadableStream · WritableStream · TransformStream · Readable.toWeb() / fromWeb() · TextDecoderStream · compose()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Web-Standard Streams</h2>
+						<div class="description">
+							Node also implements the <strong>WHATWG streams</strong> used by browsers, <code>fetch</code>, and edge runtimes: <code>ReadableStream</code>, <code>WritableStream</code>, and <code>TransformStream</code>. They have a different API from Node streams but the same ideas. Use them for code that must run everywhere, and convert with <code>Readable.toWeb()</code> / <code>fromWeb()</code> when mixing with Node APIs.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>fetch</code> request and response bodies are Web streams</li>
+							<li class="note-item">Web streams are globals; no import needed</li>
+							<li class="note-item"><code>pipeTo</code> / <code>pipeThrough</code> replace <code>pipeline</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">ReadableStream, TransformStream &amp; Bridges</h2>
+						<pre><code class="language-javascript">import fs from 'node:fs';
+import { Readable, Writable } from 'node:stream';
+
+const rs = new ReadableStream({
+  start(controller) {
+    controller.enqueue('a'); controller.enqueue('b'); controller.close();
+  },
+});
+for await (const chunk of rs) console.log(chunk);   // a, b
+
+const upper = new TransformStream({
+  transform(chunk, controller) { controller.enqueue(chunk.toUpperCase()); },
+});
+
+const res = await fetch('https://example.com/readme.txt');
+await res.body
+  .pipeThrough(new TextDecoderStream())             // bytes → strings
+  .pipeThrough(upper)
+  .pipeTo(Writable.toWeb(process.stdout));          // Node → Web writable
+
+const web = Readable.toWeb(fs.createReadStream('a.txt'));   // Node → Web
+const gz = web.pipeThrough(new CompressionStream('gzip'));</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>controller.enqueue</code> — push a chunk</div>
+							<div class="explain-item"><code>controller.close()</code> — end of data</div>
+							<div class="explain-item"><code>pipeThrough</code> — attach a TransformStream, returns the readable side</div>
+							<div class="explain-item"><code>pipeTo</code> — sends to a WritableStream, returns a promise</div>
+							<div class="explain-item"><code>CompressionStream</code> — built-in gzip / deflate</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Terms Table | Builtin Table | Bridge Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-terms">
+						<h2 class="section-title">Node vs Web Terms</h2>
+						<table>
+							<thead><tr><th>Node</th><th>Web</th></tr></thead>
+							<tbody>
+								<tr><td>Readable</td><td class="desc">ReadableStream</td></tr>
+								<tr><td>Writable</td><td class="desc">WritableStream</td></tr>
+								<tr><td>Transform</td><td class="desc">TransformStream</td></tr>
+								<tr><td>pipeline()</td><td class="desc">pipeThrough / pipeTo</td></tr>
+								<tr><td>push()</td><td class="desc">controller.enqueue()</td></tr>
+								<tr><td>destroy()</td><td class="desc">cancel() / abort()</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-builtin">
+						<h2 class="section-title">Built-In Transforms</h2>
+						<table>
+							<thead><tr><th>Class</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>TextDecoderStream</td><td class="desc">Bytes → text</td></tr>
+								<tr><td>TextEncoderStream</td><td class="desc">Text → bytes</td></tr>
+								<tr><td>CompressionStream</td><td class="desc">gzip / deflate</td></tr>
+								<tr><td>DecompressionStream</td><td class="desc">Inflate</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-bridge">
+						<h2 class="section-title">Bridges</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Converts</th></tr></thead>
+							<tbody>
+								<tr><td>Readable.toWeb(r)</td><td class="desc">Node → Web</td></tr>
+								<tr><td>Readable.fromWeb(rs)</td><td class="desc">Web → Node</td></tr>
+								<tr><td>Writable.toWeb(w)</td><td class="desc">Node → Web</td></tr>
+								<tr><td>Duplex.toWeb(d)</td><td class="desc">→ { readable, writable }</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Reading <code>res.body</code> twice; a stream can only be consumed once (use <code>res.clone()</code>)</li>
+							<li class="note-item">Passing a Node stream where a Web stream is expected, e.g. to <code>new Response()</code></li>
+							<li class="note-item">Forgetting <code>await</code> on <code>pipeTo</code>; errors become unhandled rejections</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Write portable libraries against Web streams; convert at the Node edge</li>
+							<li class="note-item">Use <code>new Response(stream).text()</code> to collect a Web stream</li>
+							<li class="note-item">Stick with Node streams for fs and sockets; they're faster there</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ReadableStream</code> — web-standard source</li>
+							<li class="note-item"><code>pipeThrough / pipeTo</code> — connect stages</li>
+							<li class="note-item"><code>TextDecoderStream</code> — decode safely</li>
+							<li class="note-item"><code>toWeb / fromWeb</code> — convert between worlds</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-35-pipeline-transform.html">pipeline() &amp; Transforms</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-37-http-server.html">HTTP Server Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

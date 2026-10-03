@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 25: Partial Prerendering</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Partial Prerendering</h1>
+			<div class="sheet-desc">static shell · dynamic holes · &lt;Suspense&gt; boundaries · App Shell · instant navigation</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">One Route, Static and Dynamic</h2>
+					<div class="description"><strong>Partial Prerendering (PPR)</strong> is how Cache Components renders a route: at build time Next.js prerenders a <strong>static shell</strong> containing all static and cached UI, plus the <code>&lt;Suspense&gt;</code> fallbacks for anything dynamic. At request time the shell is served immediately (often from a CDN) and the dynamic <strong>holes</strong> stream in. There's no separate PPR flag anymore.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">16.x Changes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>experimental.ppr</code> and <code>experimental_ppr</code> export removed</li>
+						<li class="note-item">Enable with <code>cacheComponents: true</code></li>
+						<li class="note-item">16.3 <code>partialPrefetching: true</code> prefetches each route's App Shell</li>
+						<li class="note-item">Dev overlay flags navigations that would block</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Shell + Holes</h2>
+					<pre><code class="language-tsx">// app/product/[id]/page.tsx   (cacheComponents: true)
+export default function Page(props: PageProps&lt;'/product/[id]'&gt;) {
+  return (
+    &lt;&gt;
+      &lt;SiteHeader /&gt;                                  {/* static */}
+      &lt;Suspense fallback={&lt;DetailsSkeleton /&gt;}&gt;
+        &lt;Details params={props.params} /&gt;             {/* cached */}
+      &lt;/Suspense&gt;
+      &lt;Suspense fallback={&lt;p&gt;Checking stock…&lt;/p&gt;}&gt;
+        &lt;Stock params={props.params} /&gt;               {/* dynamic */}
+      &lt;/Suspense&gt;
+    &lt;/&gt;
+  )
+}
+async function Details({ params }: { params: Promise&lt;{ id: string }&gt; }) {
+  const { id } = await params
+  return &lt;ProductInfo p={await getProduct(id)} /&gt;    // 'use cache'
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">What Ends Up Where</h2>
+					<div class="section-body">
+						<div class="explain-item">Shell: header, skeletons, and cached <code>Details</code> for prerendered IDs</div>
+						<div class="explain-item">Hole: <code>Stock</code> queries live inventory per request</div>
+						<div class="explain-item">Uncached data outside <code>&lt;Suspense&gt;</code> → dev/build error</div>
+						<div class="explain-item">Unlisted IDs serve the shell first, then fill the cache (16.3)</div>
+						<div class="explain-item">Opt a segment out of validation: <code>export const instant = false</code></div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: What Table | Tools Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-what">
+					<h2 class="section-title">What Goes in the Shell</h2>
+					<table>
+						<thead><tr><th>Content</th><th>In Shell?</th></tr></thead>
+						<tbody>
+							<tr><td>Static JSX</td><td class="center">✔</td></tr>
+							<tr><td>'use cache' (normal lifetime)</td><td class="center">✔</td></tr>
+							<tr><td>Suspense fallbacks</td><td class="center">✔</td></tr>
+							<tr><td>cookies() / headers() readers</td><td class="center">✖ (hole)</td></tr>
+							<tr><td>Uncached fetch / DB</td><td class="center">✖ (hole)</td></tr>
+							<tr><td>cacheLife('seconds')</td><td class="center">✖ (hole)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-tools">
+					<h2 class="section-title">16.3 Instant Navigation Tools</h2>
+					<table>
+						<thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+						<tbody>
+							<tr><td>Instant Insights</td><td class="desc">Dev panel listing slow navigations</td></tr>
+							<tr><td>Navigation Inspector</td><td class="desc">Pause on the loading shell</td></tr>
+							<tr><td>@next/playwright instant()</td><td class="desc">Assert shell content in tests</td></tr>
+							<tr><td>prefetch={true}</td><td class="desc">Per-link data prefetch</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Placing one <code>&lt;Suspense&gt;</code> around the whole page; the shell becomes a single spinner</li>
+						<li class="note-item">Awaiting <code>params</code> at the top of the page; it blocks the shell for dynamic routes</li>
+						<li class="note-item">Expecting shell content from <code>'use cache: private'</code>; private caches are never in the static shell</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Pass <code>params</code> promises down and await them inside the boundary</li>
+						<li class="note-item">Push Suspense boundaries close to the data so more real content lands in the shell</li>
+						<li class="note-item">Use the Navigation Inspector to see exactly what users see before data arrives</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Static shell — prerendered at build</li>
+						<li class="note-item">Dynamic holes — <code>&lt;Suspense&gt;</code> streamed per request</li>
+						<li class="note-item">Enabled by <code>cacheComponents: true</code></li>
+						<li class="note-item"><code>partialPrefetching</code> — App Shell prefetch (16.3)</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-24-revalidation.html" class="nav-link prev">Revalidation</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-26-legacy-caching.html" class="nav-link next">Previous Caching Model</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

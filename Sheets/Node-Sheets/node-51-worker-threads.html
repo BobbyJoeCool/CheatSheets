@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 51: Worker Threads</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>Worker Threads</h1>
+			<div class="sheet-desc">new Worker() · parentPort · workerData · postMessage() · MessageChannel · SharedArrayBuffer · Atomics</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Parallel JavaScript</h2>
+						<div class="description">
+							<code>worker_threads</code> runs JavaScript on <strong>additional threads</strong> inside the same process, each with its own event loop and V8 isolate. Use them for <strong>CPU-heavy</strong> work (image processing, parsing, hashing, compression) so the main thread keeps answering requests. They don't help with I/O, which is already non-blocking.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Workers don't share variables; they exchange messages</li>
+							<li class="note-item">Messages are copied via structured clone</li>
+							<li class="note-item">Starting a worker costs tens of milliseconds; reuse them</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Offloading CPU Work</h2>
+						<pre><code class="language-javascript">// main.js
+import { Worker } from 'node:worker_threads';
+
+function hashInWorker(text) {
+  return new Promise((resolve, reject) =&gt; {
+    const url = new URL('./hash-worker.js', import.meta.url);
+    const w = new Worker(url, { workerData: text });
+    w.once('message', resolve);
+    w.once('error', reject);
+    w.once('exit', (code) =&gt; code &amp;&amp; reject(new Error(`exit ${code}`)));
+  });
+}
+console.log(await hashInWorker('big input'));   // main thread stayed free
+
+// hash-worker.js
+import { parentPort, workerData } from 'node:worker_threads';
+import { createHash } from 'node:crypto';
+const digest = createHash('sha256').update(workerData).digest('hex');
+parentPort.postMessage(digest);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>new URL(…, import.meta.url)</code> — worker path relative to this file</div>
+							<div class="explain-item"><code>workerData</code> — initial input, cloned into the worker</div>
+							<div class="explain-item"><code>once('message')</code> — first reply resolves the promise</div>
+							<div class="explain-item"><code>'exit'</code> with non-zero code — worker crashed</div>
+							<div class="explain-item"><code>parentPort</code> — the worker's line back to the main thread</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Api Table | Share Table | When Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-api">
+						<h2 class="section-title">Key APIs</h2>
+						<table>
+							<thead><tr><th>API</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>new Worker(file, opts)</td><td class="desc">Start a thread</td></tr>
+								<tr><td>workerData</td><td class="desc">Initial input</td></tr>
+								<tr><td>parentPort.postMessage</td><td class="desc">Send to main</td></tr>
+								<tr><td>worker.postMessage</td><td class="desc">Send to worker</td></tr>
+								<tr><td>worker.terminate()</td><td class="desc">Stop it</td></tr>
+								<tr><td>isMainThread</td><td class="desc">Which side am I?</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-share">
+						<h2 class="section-title">Sharing Data</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Cost</th></tr></thead>
+							<tbody>
+								<tr><td>postMessage(obj)</td><td class="desc">Copied</td></tr>
+								<tr><td>transferList</td><td class="desc">Moved, zero-copy</td></tr>
+								<tr><td>SharedArrayBuffer</td><td class="desc">Shared memory</td></tr>
+								<tr><td>Atomics</td><td class="desc">Safe shared updates</td></tr>
+								<tr><td>MessageChannel</td><td class="desc">Worker ↔ worker</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-when">
+						<h2 class="section-title">Workers or Not?</h2>
+						<table>
+							<thead><tr><th>Task</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Heavy math, parsing</td><td class="desc">Worker</td></tr>
+								<tr><td>Image resize</td><td class="desc">Worker (or sharp)</td></tr>
+								<tr><td>DB / HTTP calls</td><td class="desc">Plain async</td></tr>
+								<tr><td>Separate programs</td><td class="desc">child_process</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Creating a new worker per request; startup cost exceeds the work, so use a pool</li>
+							<li class="note-item">Moving I/O into workers; it was never blocking the main thread</li>
+							<li class="note-item">Sending huge objects back and forth; cloning costs more than the computation</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>piscina</code> for a ready-made worker pool</li>
+							<li class="note-item">Size pools with <code>os.availableParallelism()</code></li>
+							<li class="note-item">Transfer <code>ArrayBuffer</code>s with <code>transferList</code> instead of copying</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Worker</code> — run JS on another thread</li>
+							<li class="note-item"><code>postMessage</code> — the only way to talk</li>
+							<li class="note-item"><code>SharedArrayBuffer</code> — opt-in shared memory</li>
+							<li class="note-item"><code>pool</code> — reuse workers</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-50-child-process.html">Child Processes</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-52-cluster.html">Cluster &amp; Scaling</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

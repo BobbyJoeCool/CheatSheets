@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 20: Connection Pooling &amp; Optimization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Connection Pooling &amp; Optimization</h1>
+			<div class="sheet-desc">PrismaPg · max · connectionTimeoutMillis · idleTimeoutMillis · PgBouncer · $on('query')</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Managing Connections</h2>
+						<div class="description">
+							In Prisma 7 the <strong>driver adapter owns the pool</strong>. Pool size and timeouts are adapter options (<code>max</code>, <code>connectionTimeoutMillis</code>, <code>idleTimeoutMillis</code> for <code>pg</code>); the old <code>connection_limit</code> URL parameters no longer apply. Every app instance has its own pool, so total connections = instances × <code>max</code>, which must stay below the database's <code>max_connections</code>.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>pg</code> default <code>max</code> is 10 (v6: CPUs × 2 + 1)</li>
+							<li class="note-item">Serverless: small <code>max</code> + external pooler</li>
+							<li class="note-item">CLI uses the URL in <code>prisma.config.ts</code></li>
+							<li class="note-item">App uses the adapter's <code>connectionString</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Pool Configuration & Monitoring</h2>
+						<pre class="language-typescript"><code class="language-typescript">import { PrismaPg } from "@prisma/adapter-pg";
+
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,   // pooled URL (PgBouncer)
+  max: 10,                                      // pool size per instance
+  connectionTimeoutMillis: 5_000,               // fail fast when pool is full
+  idleTimeoutMillis: 30_000,                    // close idle connections
+});
+
+export const prisma = new PrismaClient({
+  adapter,
+  log: [{ emit: "event", level: "query" }, "warn", "error"],
+});
+
+prisma.$on("query", (e) =&gt; {
+  if (e.duration &gt; 200) console.warn(`slow ${e.duration}ms: ${e.query}`);
+});
+
+// prisma.config.ts → datasource: { url: env("DIRECT_URL") }  // migrations</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>max</code> — connections per process</div>
+							<div class="explain-item"><code>connectionTimeoutMillis</code> — default 0 = wait forever</div>
+							<div class="explain-item"><code>idleTimeoutMillis</code> — default 10s</div>
+							<div class="explain-item"><code>emit: 'event'</code> — enables <code>$on('query')</code></div>
+							<div class="explain-item"><code>e.duration</code> — ms per query</div>
+							<div class="explain-item"><code>DIRECT_URL</code> — migrations bypass the pooler</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-v6v7">
+						<h2 class="section-title">v6 URL Param → v7 pg Option</h2>
+						<table>
+							<thead><tr><th>v6</th><th>v7 (adapter-pg)</th></tr></thead>
+							<tbody>
+								<tr><td>connection_limit</td><td class="desc"><code>max</code> (default 10)</td></tr>
+								<tr><td>connect_timeout</td><td class="desc"><code>connectionTimeoutMillis</code> (0)</td></tr>
+								<tr><td>max_idle_connection_lifetime</td><td class="desc"><code>idleTimeoutMillis</code> (10s)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sizing">
+						<h2 class="section-title">Sizing Guide</h2>
+						<table>
+							<thead><tr><th>Deployment</th><th>Pool</th></tr></thead>
+							<tbody>
+								<tr><td>Single server</td><td class="desc"><code>max</code> 10–20</td></tr>
+								<tr><td>N replicas</td><td class="desc"><code>max</code> ≤ DB limit ÷ N</td></tr>
+								<tr><td>Serverless functions</td><td class="desc"><code>max</code> 1–5 + pooler</td></tr>
+								<tr><td>Edge runtime</td><td class="desc">HTTP driver / Accelerate</td></tr>
+								<tr><td>Monitor (PG)</td><td class="desc"><code>pg_stat_activity</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Copying v6 <code>?connection_limit=</code> into v7 URLs — ignored</li>
+							<li class="note-item">Large <code>max</code> × many replicas — "too many connections"</li>
+							<li class="note-item">Running migrations through a transaction-mode pooler</li>
+							<li class="note-item">Leaving <code>connectionTimeoutMillis</code> at 0 — requests hang</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Set a finite <code>connectionTimeoutMillis</code> to surface pool exhaustion</li>
+							<li class="note-item">Use a pooled URL in the app and a direct URL for the CLI</li>
+							<li class="note-item">Log slow queries with <code>$on('query')</code> and <code>duration</code></li>
+							<li class="note-item">Call <code>$disconnect()</code> on shutdown to drain the pool</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">adapter options — pool size & timeouts</li>
+							<li class="note-item">instances × <code>max</code> < <code>max_connections</code></li>
+							<li class="note-item">pooler for serverless, direct URL for CLI</li>
+							<li class="note-item"><code>$on('query')</code> — slow-query logging</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-19-performance-n-plus-1-indexing.html" class="nav-link prev">Performance: N+1 &amp; Indexing</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-21-soft-deletes-auditing.html" class="nav-link next">Advanced: Soft Deletes &amp; Auditing</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

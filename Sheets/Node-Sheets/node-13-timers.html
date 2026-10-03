@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 13: Timers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Timers</h1>
+			<div class="sheet-desc">setTimeout · setInterval · setImmediate · timers/promises · ref() / unref() · AbortSignal.timeout()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Scheduling Code Later</h2>
+						<div class="description">
+							Node has the browser's <code>setTimeout</code> and <code>setInterval</code>, plus <code>setImmediate</code> (run after the current I/O phase). In Node they return a <strong>Timeout object</strong>, not a number. The <code>node:timers/promises</code> module offers <strong>promise versions</strong> you can <code>await</code>, cancel with an <code>AbortSignal</code>, and loop over with <code>for await</code>.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Delays are clamped to at least 1 ms and max ~24.8 days</li>
+							<li class="note-item">An active timer keeps the process alive unless you <code>unref()</code> it</li>
+							<li class="note-item">Extra arguments after the delay are passed to the callback</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Callback &amp; Promise Timers</h2>
+						<pre><code class="language-javascript">import { setTimeout as sleep, setInterval as every }
+  from 'node:timers/promises';
+
+const t = setTimeout((name) =&gt; console.log(`hi ${name}`), 1000, 'Ada'); // hi Ada
+clearTimeout(t);                          // cancel before it fires
+
+const id = setInterval(() =&gt; console.log('tick'), 500);
+setTimeout(() =&gt; clearInterval(id), 2100); // tick ×4, then stops
+
+setTimeout(flushLogs, 60_000).unref();    // won't keep the process alive
+
+await sleep(250);                         // pause 250 ms
+const v = await sleep(100, 'done');       // resolves with 'done'
+
+const ac = new AbortController();
+sleep(5000, null, { signal: ac.signal })
+  .catch(e =&gt; console.log(e.name));      // AbortError
+ac.abort();
+
+for await (const _ of every(1000)) {      // async interval
+  if (await poll()) break;                // break clears the interval
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>as sleep</code> — rename to avoid shadowing the global</div>
+							<div class="explain-item"><code>'Ada'</code> — extra arg forwarded to the callback</div>
+							<div class="explain-item"><code>unref()</code> — background timer, exit allowed</div>
+							<div class="explain-item"><code>sleep(ms, value)</code> — resolves with value</div>
+							<div class="explain-item"><code>signal</code> — abort rejects with <code>AbortError</code></div>
+							<div class="explain-item"><code>for await</code> — interval that can't overlap itself</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Timers Table | Object Table | Abort Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-timers">
+						<h2 class="section-title">Timer Functions</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Cancel with</th></tr></thead>
+							<tbody>
+								<tr><td>setTimeout(fn, ms)</td><td class="desc">clearTimeout(t)</td></tr>
+								<tr><td>setInterval(fn, ms)</td><td class="desc">clearInterval(t)</td></tr>
+								<tr><td>setImmediate(fn)</td><td class="desc">clearImmediate(t)</td></tr>
+								<tr><td>queueMicrotask(fn)</td><td class="desc">Can't cancel</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-object">
+						<h2 class="section-title">Timeout Object</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>unref()</td><td class="desc">Don't hold process open</td></tr>
+								<tr><td>ref()</td><td class="desc">Undo unref()</td></tr>
+								<tr><td>hasRef()</td><td class="desc">true / false</td></tr>
+								<tr><td>refresh()</td><td class="desc">Restart the countdown</td></tr>
+								<tr><td>[Symbol.dispose]</td><td class="desc">Clear via using</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-abort">
+						<h2 class="section-title">Timeouts on Other Work</h2>
+						<table>
+							<thead><tr><th>API</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>AbortSignal.timeout(ms)</td><td class="desc">Auto-abort signal</td></tr>
+								<tr><td>AbortSignal.any([...])</td><td class="desc">Combine signals</td></tr>
+								<tr><td>fetch(url, { signal })</td><td class="desc">Request timeout</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>setInterval</code> with async work: runs overlap if one takes longer than the delay</li>
+							<li class="note-item">Storing the timer in a number type (TS); use <code>ReturnType&lt;typeof setTimeout&gt;</code></li>
+							<li class="note-item">A forgotten interval keeps the process from ever exiting</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Debounce with <code>t.refresh()</code> instead of clearing and recreating</li>
+							<li class="note-item">Use <code>AbortSignal.timeout()</code> rather than racing promises against a timer</li>
+							<li class="note-item">Mock timers in tests with <code>mock.timers</code> (Sheet 49)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>setTimeout</code> — run once after a delay</li>
+							<li class="note-item"><code>setInterval</code> — run repeatedly</li>
+							<li class="note-item"><code>timers/promises</code> — awaitable timers</li>
+							<li class="note-item"><code>unref()</code> — let the process exit</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-12-event-loop.html">The Event Loop</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-14-callbacks.html">Callbacks &amp; Error-First Style</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

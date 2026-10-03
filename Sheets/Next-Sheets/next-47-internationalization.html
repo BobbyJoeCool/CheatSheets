@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 47: Internationalization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s47">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 47</div>
+			<h1>Internationalization</h1>
+			<div class="sheet-desc">app/[lang] · generateStaticParams · getDictionary() · locale detection in proxy · next-intl · root params</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Routing by Locale</h2>
+					<div class="description">The App Router has no built-in i18n config (that was a Pages Router feature). Instead, put a <code>[lang]</code> dynamic segment at the top of <code>app/</code>, detect the preferred locale in <strong>proxy</strong>, and load per-locale <strong>dictionaries</strong> on the server. Libraries like <strong>next-intl</strong> package this pattern. Next.js 16.3 adds <strong>root params</strong> so any Server Component can read <code>lang</code> without prop drilling.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Pieces</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>app/[lang]/layout.tsx</code> — sets <code>&lt;html lang&gt;</code></li>
+						<li class="note-item"><code>generateStaticParams</code> — prerender each locale</li>
+						<li class="note-item">proxy — redirect <code>/</code> to <code>/en</code> or <code>/de</code></li>
+						<li class="note-item">Dictionaries — JSON loaded with <code>import()</code></li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Code -->
+			<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code-dict">
+					<h2 class="section-title">Dictionaries + Layout</h2>
+					<pre><code class="language-typescript">// app/[lang]/dictionaries.ts
+import 'server-only'
+const dicts = {
+  en: () =&gt; import('./dict/en.json').then(m =&gt; m.default),
+  de: () =&gt; import('./dict/de.json').then(m =&gt; m.default),
+}
+export type Locale = keyof typeof dicts
+export const getDictionary = (l: Locale) =&gt; dicts[l]()
+
+// app/[lang]/layout.tsx
+export const generateStaticParams = () =&gt;
+  [{ lang: 'en' }, { lang: 'de' }]
+export default async function Layout(
+  { children, params }: LayoutProps&lt;'/[lang]'&gt;) {
+  const { lang } = await params
+  return &lt;html lang={lang}&gt;&lt;body&gt;{children}&lt;/body&gt;&lt;/html&gt;
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-code" id="code-detect">
+					<h2 class="section-title">Root Params + Detection</h2>
+					<pre><code class="language-tsx">// any Server Component (16.3)
+import { lang } from 'next/root-params'
+export async function Footer() {
+  const dict = await getDictionary(
+    (await lang()) as Locale)
+  return &lt;footer&gt;{dict.footer.copyright}&lt;/footer&gt;
+}
+
+// proxy.ts
+const locales = ['en', 'de']
+export function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl
+  if (locales.some((l) =&gt; pathname.startsWith(`/${l}`)))
+    return
+  const al = req.headers.get('accept-language') ?? ''
+  const l = al.startsWith('de') ? 'de' : 'en'
+  req.nextUrl.pathname = `/${l}${pathname}`
+  return NextResponse.redirect(req.nextUrl)
+}</code></pre>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Libs Table | Format Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-libs">
+					<h2 class="section-title">Library Options</h2>
+					<table>
+						<thead><tr><th>Library</th><th>Highlights</th></tr></thead>
+						<tbody>
+							<tr><td>next-intl</td><td class="desc">Routing helpers, ICU messages, RSC support</td></tr>
+							<tr><td>Lingui</td><td class="desc">Extraction tooling, macros</td></tr>
+							<tr><td>i18next / react-i18next</td><td class="desc">Large ecosystem</td></tr>
+							<tr><td>DIY dictionaries</td><td class="desc">No dependency; server-only</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-format">
+					<h2 class="section-title">Formatting Built In</h2>
+					<table>
+						<thead><tr><th>Need</th><th>API</th></tr></thead>
+						<tbody>
+							<tr><td>Numbers / currency</td><td class="desc"><code>Intl.NumberFormat</code></td></tr>
+							<tr><td>Dates</td><td class="desc"><code>Intl.DateTimeFormat</code></td></tr>
+							<tr><td>Relative time</td><td class="desc"><code>Intl.RelativeTimeFormat</code></td></tr>
+							<tr><td>Plurals</td><td class="desc"><code>Intl.PluralRules</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using the Pages Router <code>i18n</code> key in <code>next.config</code> for App Router routes; it doesn't apply</li>
+						<li class="note-item">Shipping every dictionary to the client; load on the server and pass only needed strings</li>
+						<li class="note-item">Forgetting to exclude <code>/api</code> and assets from the locale-redirect matcher</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>Intl</code> formatters with the active locale instead of formatting libraries</li>
+						<li class="note-item">Add <code>alternates.languages</code> in metadata for hreflang SEO</li>
+						<li class="note-item">Root params work inside <code>'use cache'</code>, and only the params read join the cache key</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>app/[lang]/</code> — locale as a route segment</li>
+						<li class="note-item">proxy — detect and redirect</li>
+						<li class="note-item"><code>getDictionary()</code> — server-side strings</li>
+						<li class="note-item"><code>next/root-params</code> — read <code>lang</code> anywhere (16.3)</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-46-databases-orms.html" class="nav-link prev">Databases &amp; ORMs</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-48-unit-testing.html" class="nav-link next">Unit &amp; Component Testing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

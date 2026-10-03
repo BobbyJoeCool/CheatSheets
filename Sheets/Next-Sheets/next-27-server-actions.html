@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 27: Server Actions Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>Server Actions Basics</h1>
+			<div class="sheet-desc">'use server' · &lt;form action={fn}&gt; · FormData · actions.ts · client calls · redirect()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Functions That Run on the Server</h2>
+					<div class="description">A <strong>Server Action</strong> (Server Function) is an async function marked with <code>'use server'</code>. Pass it to <code>&lt;form action&gt;</code> or call it from a Client Component, and Next.js sends a POST request, runs it on the server, and returns the result. Actions are the App Router's way to handle <strong>mutations</strong> without writing API routes.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Basics</h2>
+					<ul class="note-list">
+						<li class="note-item">Forms work before JS loads (progressive enhancement)</li>
+						<li class="note-item">Arguments and return values must be serializable</li>
+						<li class="note-item">Run one at a time per client (sequential queue)</li>
+						<li class="note-item">Usually end with <code>updateTag</code>, <code>revalidatePath</code>, or <code>redirect</code></li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Action File + Form</h2>
+					<pre><code class="language-tsx">// app/todos/actions.ts
+'use server'                          // every export is an action
+import { updateTag } from 'next/cache'
+import { redirect } from 'next/navigation'
+
+export async function createTodo(formData: FormData) {
+  const user = await requireUser()   // always authorize
+  const title = String(formData.get('title') ?? '').trim()
+  const todo = await db.todo.create({ data: { title, userId: user.id } })
+  updateTag(`todos-${user.id}`)
+  redirect(`/todos/${todo.id}`)      // throws; call last
+}
+
+// app/todos/new/page.tsx  (Server Component)
+import { createTodo } from '../actions'
+export default function NewTodo() {
+  return &lt;form action={createTodo}&gt;&lt;input name="title" /&gt;&lt;/form&gt;
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item">File-level <code>'use server'</code> — every export becomes an action</div>
+						<div class="explain-item"><code>formData.get()</code> — read fields by <code>name</code> attribute</div>
+						<div class="explain-item"><code>redirect()</code> in an action responds with 303</div>
+						<div class="explain-item">Call <code>redirect</code> outside <code>try/catch</code>, after the write</div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Code | Calls Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-code" id="code-inline">
+					<h2 class="section-title">Inline Action + Bound Args</h2>
+					<pre><code class="language-tsx">export default async function Post({ id }: Props) {
+  async function like() {
+    'use server'           // inline action
+    await db.like.create({ data: { postId: id } })
+  }
+  const remove = deletePost.bind(null, id) // bind
+  return &lt;&gt;
+    &lt;form action={like}&gt;&lt;button&gt;♥&lt;/button&gt;&lt;/form&gt;
+    &lt;form action={remove}&gt;&lt;button&gt;Delete&lt;/button&gt;&lt;/form&gt;
+  &lt;/&gt;
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-calls">
+					<h2 class="section-title">Ways to Invoke</h2>
+					<table>
+						<thead><tr><th>From</th><th>How</th></tr></thead>
+						<tbody>
+							<tr><td>&lt;form action&gt;</td><td class="desc">Receives <code>FormData</code></td></tr>
+							<tr><td>&lt;button formAction&gt;</td><td class="desc">Per-button action</td></tr>
+							<tr><td>Client onClick</td><td class="desc"><code>startTransition(() =&gt; act(x))</code></td></tr>
+							<tr><td>useActionState</td><td class="desc">Adds prev state + pending</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Skipping authorization because the form is on a protected page; actions are public POST endpoints</li>
+						<li class="note-item">Calling <code>redirect()</code> inside <code>try</code>; the thrown redirect is caught and never happens</li>
+						<li class="note-item">Defining <code>'use server'</code> functions inside Client Components; define them in a separate file and import</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Keep actions in <code>actions.ts</code> files per feature so they're easy to audit</li>
+						<li class="note-item">Use <code>.bind(null, id)</code> to pass IDs; bound args are encrypted, unlike hidden inputs</li>
+						<li class="note-item">Return plain objects (<code>{ ok, error }</code>) for expected errors instead of throwing</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>'use server'</code> — marks Server Actions</li>
+						<li class="note-item"><code>&lt;form action={fn}&gt;</code> — progressive enhancement</li>
+						<li class="note-item"><code>FormData</code> — input values by <code>name</code></li>
+						<li class="note-item">Finish with <code>updateTag</code> or <code>redirect</code></li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-26-legacy-caching.html" class="nav-link prev">Previous Caching Model</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-28-forms-pending-states.html" class="nav-link next">Forms &amp; Pending States</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

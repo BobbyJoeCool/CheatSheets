@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 24: Revalidation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s24">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 24</div>
+			<h1>Revalidation</h1>
+			<div class="sheet-desc">revalidateTag(tag, profile) · updateTag() · revalidatePath() · refresh() · read-your-writes</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Refreshing Cached Data</h2>
+					<div class="description">Cached data refreshes in two ways: <strong>time-based</strong> (from <code>cacheLife</code>) and <strong>on-demand</strong> after a mutation. Next.js 16 splits on-demand APIs by intent: <code>revalidateTag(tag, 'max')</code> marks entries stale and refreshes them in the background, <code>updateTag(tag)</code> expires them immediately so the user sees their own write, and <code>refresh()</code> re-renders uncached data only.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Where They Work</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>updateTag</code> / <code>refresh</code> — Server Actions only</li>
+						<li class="note-item"><code>revalidateTag</code> / <code>revalidatePath</code> — Actions and Route Handlers</li>
+						<li class="note-item">Calling any of them in an Action clears the client router cache</li>
+						<li class="note-item">Single-argument <code>revalidateTag(tag)</code> is deprecated</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Choosing the Right Call</h2>
+					<pre><code class="language-typescript">'use server'
+import { updateTag, revalidateTag, revalidatePath, refresh } from 'next/cache'
+
+export async function saveProfile(form: FormData) {
+  const user = await requireUser()
+  await db.user.update({ where: { id: user.id }, data: parse(form) })
+  updateTag(`user-${user.id}`)       // read-your-writes, right now
+}
+
+export async function publishPost(id: string) {
+  await db.post.update({ where: { id }, data: { published: true } })
+  revalidateTag('posts', 'max')     // stale-while-revalidate for readers
+}
+
+export async function markRead(id: string) {
+  await db.notification.update({ where: { id }, data: { read: true } })
+  refresh()                          // re-render uncached badge count
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>updateTag</code> — next render waits for fresh data</div>
+						<div class="explain-item"><code>revalidateTag(tag, 'max')</code> — serve stale, refresh in background</div>
+						<div class="explain-item">Second arg: profile name or <code>{ expire: 3600 }</code></div>
+						<div class="explain-item"><code>revalidatePath('/blog', 'layout')</code> — include nested routes</div>
+					</div>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Apis Table | Webhook Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-apis">
+					<h2 class="section-title">Revalidation APIs</h2>
+					<table>
+						<thead><tr><th>API</th><th>Semantics</th><th>Where</th></tr></thead>
+						<tbody>
+							<tr><td>updateTag(tag)</td><td class="desc">Expire now; read-your-writes</td><td class="desc">Server Actions</td></tr>
+							<tr><td>revalidateTag(tag, p)</td><td class="desc">Stale-while-revalidate</td><td class="desc">Actions, handlers</td></tr>
+							<tr><td>revalidatePath(path)</td><td class="desc">Invalidate a route</td><td class="desc">Actions, handlers</td></tr>
+							<tr><td>refresh()</td><td class="desc">Re-render uncached data</td><td class="desc">Server Actions</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-webhook">
+					<h2 class="section-title">CMS Webhook Pattern</h2>
+					<table>
+						<thead><tr><th>Step</th><th>Detail</th></tr></thead>
+						<tbody>
+							<tr><td>Endpoint</td><td class="desc"><code>app/api/revalidate/route.ts</code></td></tr>
+							<tr><td>Verify</td><td class="desc">Check a shared secret header</td></tr>
+							<tr><td>Invalidate</td><td class="kw">revalidateTag(body.tag, 'max')</td></tr>
+							<tr><td>Respond</td><td class="kw">Response.json({ ok: true })</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using <code>revalidateTag</code> after a form save and wondering why the user sees old data; use <code>updateTag</code></li>
+						<li class="note-item">Calling <code>updateTag</code> in a Route Handler; it's only allowed in Server Actions</li>
+						<li class="note-item">Revalidating <code>/blog/[slug]</code> literally instead of the real path <code>/blog/hello</code> (or pass <code>'page'</code> type)</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Tag at the data layer, then invalidate by tag; it scales better than tracking paths</li>
+						<li class="note-item">Use <code>'max'</code> as the default second argument unless you need a custom window</li>
+						<li class="note-item">Protect revalidation webhooks with a secret and rate limiting</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>updateTag</code> — immediate, Server Actions only</li>
+						<li class="note-item"><code>revalidateTag(tag, 'max')</code> — background refresh</li>
+						<li class="note-item"><code>revalidatePath</code> — invalidate by URL</li>
+						<li class="note-item"><code>refresh()</code> — uncached data only</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-23-cachelife-cachetag.html" class="nav-link prev">cacheLife &amp; cacheTag</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-25-partial-prerendering.html" class="nav-link next">Partial Prerendering</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

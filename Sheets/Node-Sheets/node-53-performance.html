@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 53: Measuring Performance</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s53">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 53</div>
+			<h1>Measuring Performance</h1>
+			<div class="sheet-desc">perf_hooks · performance.now() · mark() / measure() · monitorEventLoopDelay() · --cpu-prof · flame graphs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Finding What's Slow</h2>
+						<div class="description">
+							Measure before optimizing. <code>performance.now()</code> and marks/measures time specific code. <strong>Event loop delay</strong> tells you whether the main thread is blocked, the most common cause of a slow Node server. For "where does the time go?", record a <strong>CPU profile</strong> and read it as a flame graph in Chrome DevTools.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>performance.now()</code> is monotonic; <code>Date.now()</code> can jump</li>
+							<li class="note-item">Event loop delay above ~100 ms means users notice</li>
+							<li class="note-item">Profile production-like builds; dev mode skews results</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Timing &amp; Loop Health</h2>
+						<pre><code class="language-javascript">import { performance, monitorEventLoopDelay } from 'node:perf_hooks';
+
+const t0 = performance.now();
+await work();
+console.log(`${(performance.now() - t0).toFixed(1)} ms`);   // 41.7 ms
+
+performance.mark('start'); await work(); performance.mark('end');
+performance.measure('work', 'start', 'end').duration;      // 41.7
+
+const h = monitorEventLoopDelay({ resolution: 20 });
+h.enable();
+setInterval(() =&gt; {
+  console.log('p99 delay', (h.percentile(99) / 1e6).toFixed(1), 'ms');
+  h.reset();
+}, 10_000).unref();
+
+performance.eventLoopUtilization().utilization;   // 0.37 (37% busy)
+const timed = performance.timerify(slowFn);       // records each call</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>mark / measure</code> — named spans, visible in profilers</div>
+							<div class="explain-item"><code>monitorEventLoopDelay</code> — histogram in nanoseconds</div>
+							<div class="explain-item"><code>/ 1e6</code> — nanoseconds → milliseconds</div>
+							<div class="explain-item"><code>eventLoopUtilization</code> — near 1 means CPU-bound</div>
+							<div class="explain-item"><code>timerify</code> — wraps a function to time every call</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Flags Table | Code | Signals Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-flags">
+						<h2 class="section-title">Profiling Flags</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Output</th></tr></thead>
+							<tbody>
+								<tr><td>--cpu-prof</td><td class="desc">.cpuprofile on exit</td></tr>
+								<tr><td>--cpu-prof-dir=dir</td><td class="desc">Where to save</td></tr>
+								<tr><td>--heap-prof</td><td class="desc">Allocation profile</td></tr>
+								<tr><td>--prof</td><td class="desc">V8 tick log</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-code" id="code-prof">
+						<h2 class="section-title">Profile a Script</h2>
+						<pre><code class="language-bash">node --cpu-prof app.js
+# open the .cpuprofile in
+# DevTools → Performance
+npx 0x app.js   # flame graph</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-signals">
+						<h2 class="section-title">Health Signals</h2>
+						<table>
+							<thead><tr><th>Metric</th><th>Watch for</th></tr></thead>
+							<tbody>
+								<tr><td>ELU</td><td class="desc">&gt; 0.8 sustained</td></tr>
+								<tr><td>Loop delay p99</td><td class="desc">&gt; 100 ms</td></tr>
+								<tr><td>Heap used</td><td class="desc">Steady growth</td></tr>
+								<tr><td>Response time</td><td class="desc">p95 / p99</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Optimizing on a hunch; most time is usually in one or two functions</li>
+							<li class="note-item">Benchmarking a single run; JIT warm-up dominates, so run many iterations</li>
+							<li class="note-item">Measuring with <code>Date.now()</code>; millisecond resolution and clock jumps</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Export loop delay and ELU as metrics (Sheet 58)</li>
+							<li class="note-item">Use <code>autocannon</code> to load-test an HTTP endpoint</li>
+							<li class="note-item">Profile under realistic load, not with one request</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>performance.now</code> — precise timing</li>
+							<li class="note-item"><code>monitorEventLoopDelay</code> — blocked-loop detector</li>
+							<li class="note-item"><code>ELU</code> — how busy the main thread is</li>
+							<li class="note-item"><code>--cpu-prof</code> — flame-graph profiles</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-52-cluster.html">Cluster &amp; Scaling</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-54-memory-gc.html">Memory &amp; Garbage Collection</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

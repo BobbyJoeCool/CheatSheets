@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 08: CJS ↔ ESM Interop</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>CJS ↔ ESM Interop</h1>
+			<div class="sheet-desc">require(esm) · createRequire() · default export interop · dual packages · module.register · file extensions in imports</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Mixing the Two Systems</h2>
+						<div class="description">
+							Most projects end up with both formats: ESM app code that uses CJS packages, or CJS code that needs an ESM-only package. <strong>ESM can always import CJS.</strong> CJS can <code>require()</code> an ES module directly as long as that module (and everything it imports) has <strong>no top-level await</strong>. For anything else, use <code>await import()</code>. Inside ESM, <code>createRequire()</code> gives you a working <code>require</code>.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>require(esm)</code> works without a flag since Node 22.12 / 20.19</li>
+							<li class="note-item">Named imports from CJS depend on static analysis of the CJS file</li>
+							<li class="note-item">The CJS <code>module.exports</code> object is always the ESM default import</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Crossing the Boundary</h2>
+						<pre><code class="language-javascript">// ── ESM importing CommonJS ──────────────────────────
+import legacy from './legacy.cjs';           // default = module.exports
+import { helper } from './legacy.cjs';       // named, if Node can detect it
+import pkg from 'old-cjs-package';
+const { helper: h } = pkg;                   // fallback when named import fails
+
+// ── CommonJS requiring ESM ──────────────────────────
+const { area } = require('./math.mjs');      // namespace object
+const Circle = require('./math.mjs').default;   // default export
+require('./uses-await.mjs');                 // ✖ ERR_REQUIRE_ASYNC_MODULE
+async function load() {
+  const { default: chalk } = await import('chalk');  // always works
+}
+
+// ── require() inside an ES module ───────────────────
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const data = require('./data.json');         // sync JSON load</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>import legacy</code> — gets the whole <code>module.exports</code></div>
+							<div class="explain-item"><code>{ helper }</code> — works for plain <code>exports.x =</code> patterns</div>
+							<div class="explain-item"><code>.default</code> — where an ESM default export lands</div>
+							<div class="explain-item"><code>ERR_REQUIRE_ASYNC_MODULE</code> — top-level await can't be loaded synchronously</div>
+							<div class="explain-item"><code>createRequire</code> — needs a file URL or path as its base</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Errors Table | Code -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-errors">
+						<h2 class="section-title">Interop Errors</h2>
+						<table>
+							<thead><tr><th>Error</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>ERR_REQUIRE_ASYNC_MODULE</td><td class="desc">Use await import()</td></tr>
+								<tr><td>ERR_REQUIRE_ESM</td><td class="desc">Old Node: upgrade or import()</td></tr>
+								<tr><td>ERR_MODULE_NOT_FOUND</td><td class="desc">Add the file extension</td></tr>
+								<tr><td>does not provide an export named</td><td class="desc">Import default, destructure</td></tr>
+								<tr><td>require is not defined</td><td class="desc">createRequire()</td></tr>
+								<tr><td>__dirname is not defined</td><td class="desc">import.meta.dirname</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-code" id="code-dual">
+						<h2 class="section-title">Dual Package (exports)</h2>
+						<pre><code class="language-json">"exports": {
+  ".": {
+    "import": "./dist/index.mjs",
+    "require": "./dist/index.cjs"
+  }
+}</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Shipping a dual package with module-level state; ESM and CJS copies don't share it (the dual package hazard)</li>
+							<li class="note-item">Assuming every CJS named export is importable; computed exports can't be detected</li>
+							<li class="note-item">Adding top-level await to a library breaks all of its CJS users</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">On Node 22.12+, you can usually drop the CJS build and ship ESM only</li>
+							<li class="note-item">Keep library entry points free of top-level await so <code>require()</code> works</li>
+							<li class="note-item">Check a package's format: look at its <code>"type"</code> and <code>"exports"</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ESM → CJS</code> — import works; default is <code>module.exports</code></li>
+							<li class="note-item"><code>CJS → ESM</code> — <code>require()</code> if no top-level await</li>
+							<li class="note-item"><code>import()</code> — works from either side</li>
+							<li class="note-item"><code>createRequire</code> — <code>require</code> inside ESM</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-07-es-modules.html">ES Modules</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-09-package-json.html">package.json</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

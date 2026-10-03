@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 34: Readable &amp; Writable Streams</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>Readable &amp; Writable Streams</h1>
+			<div class="sheet-desc">'data' / 'end' events · async iteration · Readable.from() · write() return value · 'drain' · end()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Producing &amp; Consuming Streams</h2>
+						<div class="description">
+							You'll rarely subclass streams. Most of the time you <strong>consume</strong> Readables with <code>for await</code>, and <strong>create</strong> them from iterables or async generators with <code>Readable.from()</code>. For a custom destination, pass a <code>write</code> function to <code>new Writable()</code>. <code>Readable.fromWeb</code> and <code>toWeb</code> convert to and from the Web Streams that <code>fetch</code> uses.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Async iteration handles pause/resume for you</li>
+							<li class="note-item">Call <code>callback()</code> in <code>write</code>, or the stream stalls</li>
+							<li class="note-item"><code>end(chunk)</code> writes a final chunk and closes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Creating Readables &amp; Writables</h2>
+						<pre><code class="language-javascript">import { Readable, Writable } from 'node:stream';
+
+const r = Readable.from(['a', 'b', 'c']);        // from any iterable
+for await (const chunk of r) console.log(chunk); // a, b, c
+
+async function* lines() {
+  for (let i = 1; i &lt;= 3; i++) yield `row ${i}\n`;
+}
+Readable.from(lines()).pipe(process.stdout);     // row 1, row 2, row 3
+
+const upper = new Writable({
+  write(chunk, encoding, callback) {
+    process.stdout.write(chunk.toString().toUpperCase());
+    callback();                                  // ready for the next chunk
+  },
+});
+upper.write('hello ');
+upper.end('world\n');                            // HELLO WORLD
+upper.on('finish', () =&gt; console.log('done'));
+
+const res = await fetch('https://example.com/data.csv');
+const nodeStream = Readable.fromWeb(res.body);   // Web → Node stream</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Readable.from</code> — objectMode by default for non-Buffers</div>
+							<div class="explain-item"><code>async function*</code> — the easiest custom source</div>
+							<div class="explain-item"><code>callback(err)</code> — pass an error to fail the stream</div>
+							<div class="explain-item"><code>'finish'</code> — all writes processed</div>
+							<div class="explain-item"><code>fromWeb</code> — use Node stream APIs on a fetch body</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Readable Table | Writable Table | Helpers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-readable">
+						<h2 class="section-title">Readable API</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>for await</td><td class="desc">Read chunk by chunk</td></tr>
+								<tr><td>read()</td><td class="desc">Pull a chunk manually</td></tr>
+								<tr><td>setEncoding(e)</td><td class="desc">Emit strings</td></tr>
+								<tr><td>pause() / resume()</td><td class="desc">Flow control</td></tr>
+								<tr><td>destroy(err)</td><td class="desc">Abort and clean up</td></tr>
+								<tr><td>readableEnded</td><td class="desc">true after 'end'</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-writable">
+						<h2 class="section-title">Writable API</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>write(chunk)</td><td class="desc">false = wait for drain</td></tr>
+								<tr><td>end(chunk?)</td><td class="desc">Finish writing</td></tr>
+								<tr><td>cork() / uncork()</td><td class="desc">Batch small writes</td></tr>
+								<tr><td>writableFinished</td><td class="desc">true after 'finish'</td></tr>
+								<tr><td>destroy(err)</td><td class="desc">Abort</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-helpers">
+						<h2 class="section-title">Readable Helpers</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>map(fn)</td><td class="desc">New Readable</td></tr>
+								<tr><td>filter(fn)</td><td class="desc">New Readable</td></tr>
+								<tr><td>take(n)</td><td class="desc">First n chunks</td></tr>
+								<tr><td>toArray()</td><td class="desc">Promise of all chunks</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Never calling <code>callback</code> in a custom <code>write</code>; the stream stops after one chunk</li>
+							<li class="note-item">Mixing <code>for await</code> with <code>'data'</code> listeners on the same stream</li>
+							<li class="note-item">Breaking out of <code>for await</code> and expecting the source to stay open; it's destroyed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Generate large CSV or JSON exports with an async generator + <code>Readable.from</code></li>
+							<li class="note-item">Use <code>stream/consumers</code> (<code>text</code>, <code>json</code>) to read a whole stream</li>
+							<li class="note-item">Add <code>concurrency</code> to <code>map()</code> to process chunks in parallel</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>for await</code> — consume a Readable</li>
+							<li class="note-item"><code>Readable.from</code> — make one from data</li>
+							<li class="note-item"><code>new Writable({ write })</code> — custom destination</li>
+							<li class="note-item"><code>fromWeb / toWeb</code> — bridge to fetch streams</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-33-stream-concepts.html">Stream Concepts</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-35-pipeline-transform.html">pipeline() &amp; Transforms</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

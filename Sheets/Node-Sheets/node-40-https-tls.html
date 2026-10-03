@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 40: HTTPS &amp; TLS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s40">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 40</div>
+			<h1>HTTPS &amp; TLS</h1>
+			<div class="sheet-desc">https.createServer() · key / cert · tls options · self-signed certs · NODE_EXTRA_CA_CERTS · http2</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Encrypted Servers &amp; Clients</h2>
+						<div class="description">
+							<code>node:https</code> is <code>node:http</code> plus TLS: pass a private <strong>key</strong> and <strong>certificate</strong> and everything else works the same. <code>node:http2</code> adds HTTP/2 (multiplexed streams over one connection). In production, TLS is often handled by a reverse proxy or load balancer instead, with Node serving plain HTTP behind it.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>cert</code> should contain the full chain (leaf + intermediates)</li>
+							<li class="note-item">Browsers require TLS for HTTP/2</li>
+							<li class="note-item">Clients reject untrusted certs by default</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">HTTPS &amp; HTTP/2 Servers</h2>
+						<pre><code class="language-javascript">import https from 'node:https';
+import http2 from 'node:http2';
+import { readFileSync } from 'node:fs';
+
+const tls = {
+  key:  readFileSync('certs/key.pem'),
+  cert: readFileSync('certs/fullchain.pem'),   // cert + intermediates
+  minVersion: 'TLSv1.2',
+};
+https.createServer(tls, (req, res) =&gt; res.end('secure\n')).listen(8443);
+
+const h2 = http2.createSecureServer({ ...tls, allowHTTP1: true });
+h2.on('request', (req, res) =&gt; res.end(`HTTP/${req.httpVersion}`));
+h2.listen(8444);
+
+const agent = new https.Agent({ ca: readFileSync('company-ca.pem') });
+https.get('https://intranet.local', { agent }, (res) =&gt; {
+  console.log(res.statusCode);                 // 200
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>key / cert</code> — PEM files as Buffers or strings</div>
+							<div class="explain-item"><code>minVersion</code> — refuse old TLS versions</div>
+							<div class="explain-item"><code>allowHTTP1</code> — same server answers HTTP/1.1 clients</div>
+							<div class="explain-item"><code>Agent({ ca })</code> — trust a private CA for these requests</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Env Table | Opts Table | Code -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-env">
+						<h2 class="section-title">Trust Settings</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>NODE_EXTRA_CA_CERTS=file</td><td class="desc">Add CAs to bundled list</td></tr>
+								<tr><td>--use-system-ca</td><td class="desc">Trust the OS cert store</td></tr>
+								<tr><td>ca: [...]</td><td class="desc">Per-agent CAs</td></tr>
+								<tr><td>rejectUnauthorized: false</td><td class="desc">Disable checks (never in prod)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-opts">
+						<h2 class="section-title">TLS Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>key / cert</td><td class="desc">Server identity</td></tr>
+								<tr><td>ca</td><td class="desc">Trusted CAs</td></tr>
+								<tr><td>minVersion</td><td class="desc">e.g. 'TLSv1.2'</td></tr>
+								<tr><td>requestCert</td><td class="desc">Ask for client cert (mTLS)</td></tr>
+								<tr><td>SNICallback</td><td class="desc">Cert per hostname</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-code" id="code-openssl">
+						<h2 class="section-title">Self-Signed Dev Cert</h2>
+						<pre><code class="language-bash">openssl req -x509 -newkey rsa:2048 \
+  -nodes -days 365 \
+  -keyout key.pem -out cert.pem \
+  -subj "/CN=localhost"</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> to "fix" a cert error; it disables TLS checks for every request</li>
+							<li class="note-item">Serving only the leaf cert; some clients fail with "unable to verify the first certificate"</li>
+							<li class="note-item">Reading cert files once and never reloading them after renewal</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>mkcert</code> to create locally trusted dev certificates</li>
+							<li class="note-item">Terminate TLS at a proxy (nginx, Caddy, cloud LB) unless you need it in Node</li>
+							<li class="note-item">Use <code>--use-system-ca</code> on corporate networks with inspection proxies</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>https.createServer(tls)</code> — TLS server</li>
+							<li class="note-item"><code>http2.createSecureServer</code> — HTTP/2</li>
+							<li class="note-item"><code>Agent({ ca })</code> — trust private CAs</li>
+							<li class="note-item"><code>fullchain.pem</code> — serve the whole chain</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-39-fetch-undici.html">fetch &amp; Undici</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-41-websockets.html">WebSockets</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

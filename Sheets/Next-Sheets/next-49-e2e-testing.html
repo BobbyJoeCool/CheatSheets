@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Next.js — Sheet 49: End-to-End Testing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/next-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s49">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 49</div>
+			<h1>End-to-End Testing</h1>
+			<div class="sheet-desc">Playwright · Cypress · next build &amp;&amp; next start · webServer config · testing server actions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Testing the Real App</h2>
+					<div class="description">End-to-end tests drive a real browser against a running app, so they cover Server Components, Server Actions, streaming, and proxy together. Run them against a <strong>production build</strong> (<code>next build &amp;&amp; next start</code>) to catch caching and prerender behavior. Next.js 16.3 adds <code>@next/playwright</code> with an <code>instant()</code> helper for navigation shells.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Good E2E Targets</h2>
+					<ul class="note-list">
+						<li class="note-item">Auth flows and redirects</li>
+						<li class="note-item">Forms backed by Server Actions</li>
+						<li class="note-item">Loading and error states</li>
+						<li class="note-item">Critical purchase / signup journeys</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Code -->
+			<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code-config">
+					<h2 class="section-title">playwright.config.ts</h2>
+					<pre><code class="language-typescript">import { defineConfig, devices } from '@playwright/test'
+
+export default defineConfig({
+  testDir: './e2e',
+  use: { baseURL: 'http://localhost:3000',
+         trace: 'on-first-retry' },
+  webServer: {
+    command: 'npm run build &amp;&amp; npm run start',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 180_000,
+  },
+  projects: [
+    { name: 'chromium', use: devices['Desktop Chrome'] }],
+})</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-code" id="code-test">
+					<h2 class="section-title">A Server Action Flow</h2>
+					<pre><code class="language-typescript">import { test, expect } from '@playwright/test'
+
+test('creates a todo', async ({ page }) =&gt; {
+  await page.goto('/todos/new')
+  await page.getByLabel('Title').fill('Write tests')
+  await page.getByRole('button', { name: 'Add' }).click()
+  await expect(page).toHaveURL(/\/todos\/\w+/)
+  await expect(page.getByRole('heading'))
+    .toHaveText('Write tests')
+})
+
+// 16.3: assert what shows instantly on navigation
+import { instant } from '@next/playwright'
+await instant(page, async () =&gt; {
+  await page.click('a[href="/products/hats"]')
+  await expect(page.locator('h1')).toContainText('Cap')
+})</code></pre>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Tools Table | Notes Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-tools">
+					<h2 class="section-title">Playwright vs Cypress</h2>
+					<table>
+						<thead><tr><th>Aspect</th><th>Playwright</th><th>Cypress</th></tr></thead>
+						<tbody>
+							<tr><td>Browsers</td><td class="desc">Chromium, Firefox, WebKit</td><td class="desc">Chromium, Firefox</td></tr>
+							<tr><td>Parallel runs</td><td class="desc">Built in</td><td class="desc">Paid / plugins</td></tr>
+							<tr><td>Multiple tabs</td><td class="center">✔</td><td class="center">✖</td></tr>
+							<tr><td>Component tests</td><td class="desc">Experimental</td><td class="center">✔</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-notes">
+					<h2 class="section-title">Next.js-Specific Notes</h2>
+					<table>
+						<thead><tr><th>Topic</th><th>Advice</th></tr></thead>
+						<tbody>
+							<tr><td>Activity (16)</td><td class="desc">Hidden pages stay in DOM; use <code>getByRole</code></td></tr>
+							<tr><td>Test API in prod</td><td class="desc"><code>experimental.exposeTestingApiInProductionBuild</code></td></tr>
+							<tr><td>Seeding data</td><td class="desc">API route or DB script in <code>globalSetup</code></td></tr>
+							<tr><td>Auth</td><td class="desc">Save <code>storageState</code> once, reuse</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Testing only against <code>next dev</code>; caching, prefetching, and prerendering behave differently in production</li>
+						<li class="note-item">Using CSS selectors that match hidden routes kept alive by <code>&lt;Activity&gt;</code>; prefer role-based locators</li>
+						<li class="note-item">Logging in through the UI in every test; reuse a saved <code>storageState</code></li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Run E2E in CI against the same build you deploy</li>
+						<li class="note-item">Use <code>trace: 'on-first-retry'</code> and open traces with <code>npx playwright show-trace</code></li>
+						<li class="note-item">Lock down instant navigations with <code>@next/playwright</code> <code>instant()</code> tests</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Playwright — default E2E choice</li>
+						<li class="note-item"><code>webServer</code> — build + start before tests</li>
+						<li class="note-item">Role locators — robust with <code>&lt;Activity&gt;</code></li>
+						<li class="note-item"><code>instant()</code> — test navigation shells (16.3)</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="next-48-unit-testing.html" class="nav-link prev">Unit &amp; Component Testing</a>
+				<a href="index.html" class="nav-toc">Next.js Reference · 58 Sheets</a>
+				<a href="next-50-debugging.html" class="nav-link next">Debugging</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

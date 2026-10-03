@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Prisma — Sheet 26: Raw SQL Queries</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/prisma-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Raw SQL Queries</h1>
+			<div class="sheet-desc">$queryRaw · $executeRaw · Prisma.sql · Prisma.join · $queryRawUnsafe · TypedSQL</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Escape Hatch to SQL</h2>
+						<div class="description">
+							Use raw SQL when Prisma's API can't express a query: CTEs, window functions, <code>date_trunc</code> buckets, full-text search, or vendor features. <code>$queryRaw</code> returns rows; <code>$executeRaw</code> returns the affected-row count. Written as <strong>tagged templates</strong>, every <code>${value}</code> becomes a bound parameter, so input is never spliced into SQL. <strong>TypedSQL</strong> adds generated types for <code>.sql</code> files.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Results are not validated — type is a cast</li>
+							<li class="note-item">Use DB column names, not <code>@map</code>ped names</li>
+							<li class="note-item"><code>bigint</code> → <code>BigInt</code>, <code>numeric</code> → <code>Decimal</code></li>
+							<li class="note-item">TypedSQL: preview feature <code>typedSql</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Raw Query Examples</h2>
+						<pre class="language-typescript"><code class="language-typescript">import { Prisma } from "../generated/prisma/client";
+
+const email = "ada@example.com";
+const users = await prisma.$queryRaw&lt;{ id: number; email: string }[]&gt;`
+  SELECT id, email FROM users WHERE email = ${email}`;   // $1 param
+
+const n = await prisma.$executeRaw`
+  UPDATE posts SET views = 0 WHERE created_at &lt; ${cutoff}`;  // 37
+
+const ids = [1, 2, 3];
+await prisma.$queryRaw`SELECT * FROM users WHERE id IN (${Prisma.join(ids)})`;
+
+const byStatus = status ? Prisma.sql`AND status = ${status}` : Prisma.empty;
+await prisma.$queryRaw`SELECT * FROM orders WHERE total &gt; ${min} ${byStatus}`;
+
+const daily = await prisma.$queryRaw`
+  SELECT date_trunc('day', created_at) AS day, count(*)::int AS n
+  FROM orders GROUP BY 1 ORDER BY 1`;
+
+await prisma.$queryRawUnsafe("SELECT * FROM users WHERE id = $1", id); // positional</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>$queryRaw&lt;T&gt;</code> — rows cast to <code>T</code></div>
+							<div class="explain-item"><code>${email}</code> — parameter, not concatenation</div>
+							<div class="explain-item"><code>$executeRaw</code> — affected row count</div>
+							<div class="explain-item"><code>Prisma.join</code> — safe <code>IN (...)</code> list</div>
+							<div class="explain-item"><code>Prisma.sql</code> / <code>Prisma.empty</code> — compose</div>
+							<div class="explain-item"><code>::int</code> — avoid <code>BigInt</code> from <code>count(*)</code></div>
+							<div class="explain-item"><code>…Unsafe</code> — string SQL; params only</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-typed">
+						<h2 class="section-title">TypedSQL</h2>
+						<pre class="language-sql"><code class="language-sql">-- prisma/sql/topAuthors.sql
+-- @param {Int} $1:minPosts
+SELECT u.id, u.email, count(p.id)::int AS posts
+FROM users u JOIN posts p ON p.author_id = u.id
+GROUP BY u.id HAVING count(p.id) &gt;= $1;
+
+-- npx prisma generate --sql
+-- import { topAuthors } from "../generated/prisma/sql";
+-- await prisma.$queryRawTyped(topAuthors(5));</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-safety">
+						<h2 class="section-title">Safe vs Unsafe</h2>
+						<table>
+							<thead><tr><th>API</th><th>Injection-safe?</th></tr></thead>
+							<tbody>
+								<tr><td>$queryRaw`…${v}`</td><td class="center">✔ parameterized</td></tr>
+								<tr><td>Prisma.sql`…${v}`</td><td class="center">✔ parameterized</td></tr>
+								<tr><td>Prisma.join(arr)</td><td class="center">✔ parameterized</td></tr>
+								<tr><td>$queryRawUnsafe(sql, v)</td><td class="center">✔ only with <code>$1</code> params</td></tr>
+								<tr><td>$queryRawUnsafe(`…${v}`)</td><td class="center">✖ string concat</td></tr>
+								<tr><td>Prisma.raw(str)</td><td class="center">✖ inserted verbatim</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>$queryRawUnsafe</code> with template-string interpolation — SQL injection</li>
+							<li class="note-item">Quoting params yourself: <code>'${v}'</code> — breaks binding</li>
+							<li class="note-item">Interpolating table/column names — params can't be identifiers</li>
+							<li class="note-item">Using model field names instead of mapped column names</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer TypedSQL for complex, frequently used queries</li>
+							<li class="note-item">Cast <code>count(*)</code> to <code>::int</code> to get <code>number</code></li>
+							<li class="note-item">Allow-list identifiers before using <code>Prisma.raw</code></li>
+							<li class="note-item">Use <code>EXPLAIN ANALYZE</code> the same way for tuning</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>$queryRaw</code> — SELECT → rows</li>
+							<li class="note-item"><code>$executeRaw</code> — writes → count</li>
+							<li class="note-item">tagged template — automatic parameters</li>
+							<li class="note-item"><code>Prisma.join</code> / <code>Prisma.sql</code> — safe composition</li>
+							<li class="note-item">TypedSQL — <code>.sql</code> files with types</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="prisma-25-debugging-studio.html" class="nav-link prev">Debugging &amp; Studio</a>
+				<a href="index.html" class="nav-toc">Prisma Reference · 32 Sheets</a>
+				<a href="prisma-27-null-json-arrays.html" class="nav-link next">Special Cases: Null, JSON, Arrays</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

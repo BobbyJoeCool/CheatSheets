@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Node.js — Sheet 19: Signals &amp; Graceful Shutdown</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/node-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Signals &amp; Graceful Shutdown</h1>
+			<div class="sheet-desc">SIGINT · SIGTERM · process.on('exit') · beforeExit · server.close() · shutdown timeout</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Shutting Down Cleanly</h2>
+						<div class="description">
+							Servers get stopped by <strong>signals</strong>: <code>SIGTERM</code> from Docker, Kubernetes, and systemd, <code>SIGINT</code> from Ctrl+C. By default Node exits immediately, dropping in-flight requests and unflushed data. A <strong>graceful shutdown</strong> handler stops accepting new work, lets current work finish, closes resources, and then exits, with a hard deadline in case something hangs.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>SIGKILL</code> and <code>SIGSTOP</code> can't be caught</li>
+							<li class="note-item">Docker sends <code>SIGKILL</code> 10 s after <code>SIGTERM</code> by default</li>
+							<li class="note-item">Windows doesn't send <code>SIGTERM</code>; <code>SIGINT</code> works</li>
+							<li class="note-item">The <code>'exit'</code> handler can only run synchronous code</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Graceful Shutdown Handler</h2>
+						<pre><code class="language-javascript">import { createServer } from 'node:http';
+const server = createServer(handler).listen(3000);
+
+let stopping = false;
+async function shutdown(signal) {
+  if (stopping) return;                 // ignore a second Ctrl+C
+  stopping = true;
+  console.log(`${signal}: draining`);
+  setTimeout(() =&gt; process.exit(1), 10_000).unref();   // hard deadline
+  server.close();                       // stop accepting; finish in-flight
+  server.closeIdleConnections();        // drop idle keep-alive sockets
+  await db.end();                       // close pools, flush logs
+  process.exitCode = 0;                 // exit once the loop is empty
+}
+process.on('SIGTERM', shutdown);        // docker stop, k8s, systemd
+process.on('SIGINT', shutdown);         // Ctrl+C
+
+process.on('exit', (code) =&gt; console.log('exit', code));  // sync only</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>stopping</code> flag — handlers can fire more than once</div>
+							<div class="explain-item"><code>unref()</code> — the deadline itself won't keep the process alive</div>
+							<div class="explain-item"><code>server.close()</code> — waits for open requests to finish</div>
+							<div class="explain-item"><code>closeIdleConnections</code> — otherwise keep-alive sockets delay close</div>
+							<div class="explain-item">No <code>process.exit(0)</code> — exit happens naturally when work is done</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Signals Table | Events Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-signals">
+						<h2 class="section-title">Signals</h2>
+						<table>
+							<thead><tr><th>Signal</th><th>Sent by</th></tr></thead>
+							<tbody>
+								<tr><td>SIGINT</td><td class="desc">Ctrl+C in a terminal</td></tr>
+								<tr><td>SIGTERM</td><td class="desc">docker stop, kill, k8s</td></tr>
+								<tr><td>SIGHUP</td><td class="desc">Terminal closed</td></tr>
+								<tr><td>SIGUSR2</td><td class="desc">Free for your own use</td></tr>
+								<tr><td>SIGUSR1</td><td class="desc">Reserved: starts debugger</td></tr>
+								<tr><td>SIGKILL</td><td class="desc">kill -9 (uncatchable)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-events">
+						<h2 class="section-title">Exit Events</h2>
+						<table>
+							<thead><tr><th>Event</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>beforeExit</td><td class="desc">Loop empty; can add work</td></tr>
+								<tr><td>exit</td><td class="desc">Exiting; sync code only</td></tr>
+								<tr><td>SIGTERM etc.</td><td class="desc">Signal received</td></tr>
+								<tr><td>uncaughtException</td><td class="desc">Thrown error not caught</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Running <code>node</code> as PID 1 in Docker without an init; signals may never reach your handler (use <code>--init</code> or <code>tini</code>)</li>
+							<li class="note-item"><code>npm start</code> as the container command; npm may not forward <code>SIGTERM</code> to Node</li>
+							<li class="note-item">Async work in <code>process.on('exit')</code>; it never runs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep the deadline shorter than your orchestrator's kill timeout</li>
+							<li class="note-item">Fail health checks once shutdown starts so load balancers stop sending traffic</li>
+							<li class="note-item">Run <code>CMD ["node", "server.js"]</code> directly in Dockerfiles (Sheet 67)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>SIGTERM / SIGINT</code> — the signals to handle</li>
+							<li class="note-item"><code>server.close()</code> — stop accepting, drain</li>
+							<li class="note-item"><code>deadline</code> — force exit if draining hangs</li>
+							<li class="note-item"><code>'exit'</code> — final sync hook</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="node-18-process-object.html">The process Object</a>
+				<a class="nav-toc" href="index.html">Node.js Reference · 68 Sheets</a>
+				<a class="nav-link next" href="node-20-env-config.html">Environment Variables &amp; Config</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
