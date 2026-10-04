@@ -6,24 +6,38 @@
 		<title>Markdown Reference — Print All</title>
 		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
 		<link rel="stylesheet" href="../CSS/md-cheatsheet.css" />
-		<link
-			rel="stylesheet"
-			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
-		/>
-		<script
-			src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"
-			defer
-		></script>
-		<script
-			src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"
-			defer
-		></script>
-		<script
-			src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-latex.min.js"
-			defer
-		></script>
-		<link rel="stylesheet" href="../CSS/print-all.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js" defer></script>
 		<link rel="stylesheet" href="../CSS/cover.css" />
+		<link rel="stylesheet" href="../CSS/print-all.css" />
+		<style>
+			/* Grouped TOC styles (from INDEX_LARGE_TEMPLATE), scoped to the injected index page.
+			   The index's own <style> is NOT injected: its body rules would break this page. */
+			#toc .page-header { height: var(--header-height); display: flex; align-items: center; gap: 12px;
+				margin-bottom: 10px; border-bottom: 1px solid var(--accent-primary); flex-shrink: 0; }
+			#toc .page-header .sheet-desc { font-family: var(--font-code); white-space: nowrap; max-width: none; }
+			#toc #toc-columns { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.2in;
+				align-content: start; overflow: hidden; min-height: 0; height: auto; }
+			#toc .toc-group { break-inside: avoid; margin-bottom: 7px; }
+			#toc .toc-group-head { display: flex; align-items: baseline; gap: 7px; padding: 3px 7px;
+				background: rgba(92, 107, 192, 0.12); border-left: 3px solid var(--accent-primary);
+				border-radius: 0 3px 3px 0; margin-bottom: 3px; }
+			#toc .g-name { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+				color: var(--accent-purple); }
+			#toc .g-range { font-family: var(--font-code); font-size: 8px; color: var(--text-muted); margin-left: auto; }
+			#toc .toc-entries { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; }
+			#toc .toc-entry { display: flex; align-items: center; gap: 4px; padding: 2px 5px 2px 4px;
+				border: 1px solid var(--border-section); border-radius: 3px; background: var(--bg-section);
+				text-decoration: none; color: inherit; overflow: hidden; }
+			#toc .toc-num { flex-shrink: 0; font-family: var(--font-code); font-size: 7.5px; font-weight: 700;
+				color: var(--accent-purple); background: rgba(126, 87, 194, 0.12);
+				border: 1px solid rgba(126, 87, 194, 0.2); border-radius: 2px; padding: 0 3px; line-height: 14px; }
+			#toc .toc-title { font-size: 8px; font-weight: 500; color: var(--text-primary); white-space: nowrap;
+				overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+			#toc #toc-error { display: none; }
+		</style>
 	</head>
 	<body>
 		<div id="print-bar">
@@ -36,30 +50,76 @@
 		<div id="sheets-container"></div>
 
 		<script>
-			const btn = document.getElementById("print-btn");
-			const status = document.getElementById("status");
-			const container = document.getElementById("sheets-container");
+			const btn = document.getElementById('print-btn');
+			const status = document.getElementById('status');
+			const container = document.getElementById('sheets-container');
 			const parser = new DOMParser();
 			const injectedStyles = new Set();
 
-			async function injectPage(url) {
-				const html = await fetch(url).then((r) => r.text());
-				const doc = parser.parseFromString(html, "text/html");
-				doc.querySelectorAll("head style").forEach((style) => {
-					const key = style.textContent.trim().slice(0, 60);
-					if (!injectedStyles.has(key)) {
-						injectedStyles.add(key);
-						const s = document.createElement("style");
-						s.textContent = style.textContent;
-						document.head.appendChild(s);
-					}
-				});
-				const wrapper = document.createElement("div");
-				wrapper.className = "sheet-page";
-				const bodyId = doc.body.getAttribute("id");
+			async function injectPage(url, { copyStyles = true } = {}) {
+				const html = await fetch(url).then(r => r.text());
+				const doc = parser.parseFromString(html, 'text/html');
+				if (copyStyles) {
+					doc.querySelectorAll('head style').forEach(style => {
+						const key = style.textContent.trim().slice(0, 60);
+						if (!injectedStyles.has(key)) {
+							injectedStyles.add(key);
+							const s = document.createElement('style');
+							s.textContent = style.textContent;
+							document.head.appendChild(s);
+						}
+					});
+				}
+				doc.querySelectorAll('script').forEach(s => s.remove());
+				const wrapper = document.createElement('div');
+				wrapper.className = 'sheet-page';
+				const bodyId = doc.body.getAttribute('id');
 				if (bodyId) wrapper.id = bodyId;
 				wrapper.innerHTML = doc.body.innerHTML;
 				return wrapper;
+			}
+
+			// Same grouped layout as index.html (INDEX_LARGE_TEMPLATE buildGrouped)
+			function buildToc(main, manifest) {
+				const { groups, pages } = manifest;
+				const half = Math.ceil(pages.length / 2);
+				const cols = [[], []];
+				let running = 0, second = false;
+				for (const g of groups) {
+					if (!second && running + g.sheets.length <= half + 2) { cols[0].push(g); running += g.sheets.length; }
+					else { second = true; cols[1].push(g); }
+				}
+				const pad = n => String(n).padStart(2, '0');
+				for (const list of cols) {
+					const col = document.createElement('div');
+					col.style.cssText = 'display:flex;flex-direction:column;min-width:0;overflow:hidden;';
+					for (const g of list) {
+						const first = g.sheets[0], last = g.sheets[g.sheets.length - 1];
+						const group = document.createElement('div');
+						group.className = 'toc-group';
+						const head = document.createElement('div');
+						head.className = 'toc-group-head';
+						head.append(
+							Object.assign(document.createElement('span'), { className: 'g-name', textContent: g.title }),
+							Object.assign(document.createElement('span'), { className: 'g-range',
+								textContent: first === last ? pad(first) : `${pad(first)} – ${pad(last)}` }));
+						const entries = document.createElement('div');
+						entries.className = 'toc-entries';
+						for (const n of g.sheets) {
+							const p = pages[n - 1];
+							const a = document.createElement('a');
+							a.className = 'toc-entry';
+							a.href = p.file;
+							a.append(
+								Object.assign(document.createElement('span'), { className: 'toc-num', textContent: pad(n) }),
+								Object.assign(document.createElement('span'), { className: 'toc-title', textContent: p.title }));
+							entries.appendChild(a);
+						}
+						group.append(head, entries);
+						col.appendChild(group);
+					}
+					main.appendChild(col);
+				}
 			}
 
 			// Load everything and print. Runs when the page opens; the button re-prints
@@ -72,49 +132,35 @@
 					return;
 				}
 				btn.disabled = true;
-				status.textContent = "Loading…";
-				container.innerHTML = "";
+				status.textContent = 'Loading…';
+				container.innerHTML = '';
 
 				try {
-					const { pages } = await fetch("manifest.json").then((r) => r.json());
+					const manifest = await fetch('manifest.json').then(r => r.json());
+					const { pages, title } = manifest;
 
 					// 1. Cover page
-					container.appendChild(await injectPage("cover.html"));
+					const cover = await injectPage('cover.html');
+					cover.classList.add('cover-page');
+					container.appendChild(cover);
 
 					// 2. Blank page
-					const blank = document.createElement("div");
-					blank.className = "sheet-page";
+					const blank = document.createElement('div');
+					blank.className = 'sheet-page';
 					container.appendChild(blank);
 
-					// 3. TOC — inject index.html and populate nav from manifest
-					const tocWrapper = await injectPage("index.html");
-					const tocNav = tocWrapper.querySelector("#toc-nav");
-					if (tocNav) {
-						pages.forEach((page, i) => {
-							const a = document.createElement("a");
-							a.id = `toc_entry_${i + 1}`;
-							a.className = "toc_entry";
-							a.append(
-								Object.assign(document.createElement("h2"), {
-									textContent: `Sheet ${i + 1}`,
-								}),
-								Object.assign(document.createElement("h3"), {
-									textContent: page.title,
-								}),
-								Object.assign(document.createElement("p"), {
-									textContent: page.desc,
-								}),
-							);
-							tocNav.appendChild(a);
-						});
-					}
-					const tocCount = tocWrapper.querySelector("#toc-count");
-					if (tocCount)
-						tocCount.textContent = `${pages.length} reference sheets · syntax · examples · notes`;
-					const tocFooter = tocWrapper.querySelector("#toc-footer-label");
-					if (tocFooter)
-						tocFooter.textContent = `Markdown Reference · ${pages.length} sheets`;
-					container.appendChild(tocWrapper);
+					// 3. TOC — inject index.html (without its page-level styles) and build the grouped TOC
+					const toc = await injectPage('index.html', { copyStyles: false });
+					toc.id = 'toc';
+					toc.querySelector('#print-all-btn')?.remove();
+					toc.querySelector('#hdr-lang').textContent = (manifest.lang || '').toUpperCase();
+					toc.querySelector('#hdr-desc').textContent = `${pages.length} sheets · syntax · examples · notes`;
+					toc.querySelector('#ftr-toc').textContent = `${title} · ${pages.length} Sheets`;
+					const first = toc.querySelector('#ftr-first');
+					first.textContent = pages[0].title;
+					first.href = pages[0].file;
+					buildToc(toc.querySelector('#toc-columns'), manifest);
+					container.appendChild(toc);
 
 					// 4. Manifest pages
 					for (let i = 0; i < pages.length; i++) {
@@ -123,6 +169,7 @@
 					}
 
 					if (window.Prism) Prism.highlightAll();
+					// Total = cover (1) + blank (1) + toc (1) + sheets
 					loaded = true;
 					// Force layout so the injected text requests its fonts, then wait for them
 					void document.body.offsetHeight;
@@ -131,14 +178,14 @@
 					btn.disabled = false;
 					window.print();
 				} catch (err) {
-					status.textContent = "Error: " + err.message;
+					status.textContent = 'Error: ' + err.message;
 					btn.disabled = false;
 				}
 			}
 
-			btn.addEventListener("click", printAll);
+			btn.addEventListener('click', printAll);
 			// DOMContentLoaded fires after the deferred Prism scripts have run
-			document.addEventListener("DOMContentLoaded", printAll);
+			document.addEventListener('DOMContentLoaded', printAll);
 		</script>
 	</body>
 </html>

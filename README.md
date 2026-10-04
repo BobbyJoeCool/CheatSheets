@@ -166,7 +166,7 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ✅ | Markdown | 3 | code blocks & math, LaTeX reference |
+| ✅ | Markdown | 22 | flavors (CommonMark, GFM, Pandoc, Obsidian), paragraphs, line breaks & escaping, text formatting, headings & anchors, unordered & ordered lists, nested, task & definition lists, blockquotes, callouts & rules, links, images, inline code & code blocks, syntax highlighting & Mermaid diagrams, table basics & alignment, complex tables, footnotes & math, front matter & attributes, raw HTML & collapsible sections, GitHub Markdown & READMEs, Obsidian & chat-app Markdown, tooling (Pandoc, linters & site generators), best practices & pitfalls, quick reference (core & extended) |
 | ✅ | Mermaid | 12 | flowcharts, sequence diagrams, class diagrams, entity relationship diagrams, Gantt charts, mind maps, state diagrams, pie & quadrant charts, timeline & git graph, themes & styling, config & integration |
 | ✅ | JSON | 8 | Values & Data Types, Objects & Arrays, JSON Schema, Parsing & Serialization, JSONPath & Querying, JSON in APIs & HTTP, Advanced & Related Formats |
 | ✅ | XML | 10 | Elements & Attributes, Text, Data & Special Characters, Namespaces, DTD, XML Schema (XSD), XPath, XSLT, Parsing XML, Practical XML |
