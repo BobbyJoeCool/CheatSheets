@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PowerShell — Sheet 35: Jobs &amp; Parallelism</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ps-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>Jobs &amp; Parallelism</h1>
+			<div class="sheet-desc">Start-Job · Receive-Job · Start-ThreadJob · ForEach-Object -Parallel · -ThrottleLimit · $using:</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Overview</h2>
+						<div class="description">PowerShell can run work in the background or in parallel. <code>Start-Job</code> runs code in a separate process (heavy, but isolated); <code>Start-ThreadJob</code> uses a thread in the same process (fast). <code>ForEach-Object -Parallel</code> (7.0+) is the easiest way to process a list concurrently. None of them see your variables unless you pass them with <code>$using:</code> or <code>-ArgumentList</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Default <code>-ThrottleLimit</code> for <code>-Parallel</code> is 5</li>
+							<li class="note-item">Job output is serialized: objects become property bags</li>
+							<li class="note-item"><code>-Parallel</code> blocks run in separate runspaces</li>
+							<li class="note-item">Parallel is only faster for slow I/O or CPU-heavy work</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Background and Parallel Work</h2>
+						<pre class="language-powershell"><code class="language-powershell">$job = Start-Job { param($p) Get-ChildItem $p -Recurse } -Arg C:\Logs
+Get-Job                                  # State: Running / Completed
+Wait-Job $job | Out-Null
+$files = Receive-Job $job                # get output (once)
+Remove-Job $job
+
+$tj = Start-ThreadJob { Invoke-RestMethod https://api.github.com }
+Receive-Job $tj -Wait -AutoRemoveJob
+
+$servers = 'web01', 'web02', 'db01', 'db02'
+$timeout = 2
+$servers | ForEach-Object -Parallel {
+    [PSCustomObject]@{ Server = $_
+        Up = Test-Connection $_ -Count 1 -Quiet -TimeoutSeconds $using:timeout
+    }
+} -ThrottleLimit 10
+
+$bg = Get-Process &amp;                      # background operator (7+)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-ArgumentList</code> — values passed to the block’s <code>param()</code></div>
+							<div class="explain-item"><code>Receive-Job</code> — returns output once; <code>-Keep</code> to read again</div>
+							<div class="explain-item"><code>-Wait -AutoRemoveJob</code> — wait, collect and clean up in one call</div>
+							<div class="explain-item"><code>$using:timeout</code> — copies a caller variable into each parallel runspace</div>
+							<div class="explain-item"><code>-ThrottleLimit 10</code> — maximum blocks running at once</div>
+							<div class="explain-item"><code>&amp;</code> — end a pipeline with <code>&amp;</code> to run it as a job</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-compare">
+						<h2 class="section-title">Which to Use?</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Runs in</th><th>Startup</th></tr></thead>
+							<tbody>
+								<tr><td>Start-Job</td><td>process</td><td class="desc">slow</td></tr>
+								<tr><td>Start-ThreadJob</td><td>thread</td><td class="desc">fast</td></tr>
+								<tr><td>-Parallel</td><td>runspace</td><td class="desc">fast</td></tr>
+								<tr><td>Invoke-Command</td><td>remote</td><td class="desc">varies</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-jobcmd">
+						<h2 class="section-title">Job Cmdlets</h2>
+						<table>
+							<thead><tr><th>Cmdlet</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Get-Job</td><td class="desc">list jobs + state</td></tr>
+								<tr><td>Wait-Job</td><td class="desc">block until done</td></tr>
+								<tr><td>Receive-Job</td><td class="desc">collect output</td></tr>
+								<tr><td>Stop-Job</td><td class="desc">cancel</td></tr>
+								<tr><td>Remove-Job</td><td class="desc">delete job object</td></tr>
+								<tr><td>-Timeout</td><td class="desc">Wait-Job limit</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-pass">
+						<h2 class="section-title">Passing Data In</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Where</th></tr></thead>
+							<tbody>
+								<tr><td>$using:var</td><td class="desc">-Parallel, remoting, jobs</td></tr>
+								<tr><td>-ArgumentList</td><td class="desc">Start-Job / ThreadJob</td></tr>
+								<tr><td>param($a)</td><td class="desc">receives -ArgumentList</td></tr>
+								<tr><td>$_</td><td class="desc">-Parallel current item</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Referencing an outer variable in a job without <code>$using:</code>. It’s <code>$null</code> inside the job’s runspace</li>
+							<li class="note-item">Modifying a shared collection from <code>-Parallel</code> blocks. Not thread-safe; output objects and collect them instead</li>
+							<li class="note-item">Forgetting <code>Receive-Job</code> or <code>Remove-Job</code>. Output sits in memory and finished jobs pile up</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer <code>Start-ThreadJob</code> over <code>Start-Job</code> unless you need process isolation</li>
+							<li class="note-item">Tune <code>-ThrottleLimit</code> to the bottleneck: higher for network waits, ≈ cores for CPU</li>
+							<li class="note-item">Use <code>-AsJob</code> on <code>ForEach-Object -Parallel</code> to keep the console free</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Start-Job</code> / <code>Receive-Job</code> — background process</li>
+							<li class="note-item"><code>Start-ThreadJob</code> — lightweight background thread</li>
+							<li class="note-item"><code>ForEach-Object -Parallel</code> — concurrent pipeline (7+)</li>
+							<li class="note-item"><code>$using:</code> — pass outer variables in</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ps-34-dates-times.html" class="nav-link prev">Dates &amp; Times</a>
+				<a href="index.html" class="nav-toc">PowerShell Reference · 40 Sheets</a>
+				<a href="ps-36-web-requests-rest.html" class="nav-link next">Web Requests &amp; REST APIs</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-powershell.min.js"></script>
+	</body>
+</html>

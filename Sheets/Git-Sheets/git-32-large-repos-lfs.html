@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Git — Sheet 32: Large Repos &amp; Big Files</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/git-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s32">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 32</div>
+			<h1>Large Repos &amp; Big Files</h1>
+			<div class="sheet-desc">clone --filter=blob:none · sparse-checkout set · fetch --unshallow · git lfs install / track · git maintenance start · scalar</div>
+		</header>
+
+		<main>
+		<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Scaling Git</h2>
+					<div class="description">Git copies all history by default, which gets slow for huge monorepos or repos full of binaries. <strong>Partial clones</strong> skip file contents until needed, <strong>sparse checkout</strong> materializes only the folders you work in, and <strong>Git LFS</strong> stores large binaries outside the repo, leaving small pointer files behind. Background <strong>maintenance</strong> keeps big repos fast.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Partial clone keeps full history; shallow clone cuts it</li>
+						<li class="note-item">Git LFS is a separate install: <code>brew install git-lfs</code></li>
+						<li class="note-item">GitHub warns at 50 MB and blocks files over 100 MB</li>
+						<li class="note-item"><code>scalar</code> (bundled since 2.38) sets all of this up at once</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Big-Repo Tools</h2>
+					<pre><code class="language-bash">git clone --filter=blob:none &lt;url&gt;        # blobs downloaded on demand
+git clone --filter=tree:0 &lt;url&gt;           # even lighter (CI builds)
+git clone --depth 1 &lt;url&gt;                 # shallow: latest commit only
+git fetch --unshallow                     # convert shallow to full
+
+git clone --sparse &lt;url&gt; &amp;&amp; cd repo       # start with root files only
+git sparse-checkout set apps/web libs/ui  # materialize just these folders
+git sparse-checkout add docs              # add another folder
+git sparse-checkout disable               # back to everything
+
+git lfs install                           # once per machine
+git lfs track "*.psd" "*.mp4"             # writes rules to .gitattributes
+git add .gitattributes design.psd &amp;&amp; git commit -m "Track PSDs in LFS"
+git lfs ls-files                          # files stored in LFS
+git lfs migrate import --include="*.zip"  # move existing files (rewrites history)
+
+git maintenance start                     # scheduled background optimization</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>blob:none</code> — commits + trees now, file contents lazily</div>
+						<div class="explain-item"><code>--sparse</code> + <code>sparse-checkout set</code> — only listed folders on disk</div>
+						<div class="explain-item"><code>lfs track</code> — adds <code>filter=lfs</code> lines to <code>.gitattributes</code></div>
+						<div class="explain-item"><code>lfs ls-files</code> — confirms what LFS manages</div>
+						<div class="explain-item"><code>lfs migrate import</code> — moves history into LFS (force push needed)</div>
+						<div class="explain-item"><code>maintenance start</code> — registers prefetch, gc, commit-graph tasks</div>
+					</div>
+				</section>
+			</div>
+		</div>
+		<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-options">
+					<h2 class="section-title">Which Option?</h2>
+					<table>
+						<thead><tr><th>Problem</th><th>Tool</th></tr></thead>
+						<tbody>
+							<tr><td>Clone takes forever</td><td class="desc"><code>--filter=blob:none</code></td></tr>
+							<tr><td>CI only needs latest</td><td class="desc"><code>--depth 1</code></td></tr>
+							<tr><td>Huge monorepo, one team</td><td class="desc"><code>sparse-checkout</code></td></tr>
+							<tr><td>Large binaries</td><td class="desc">Git LFS</td></tr>
+							<tr><td>Slow status/log</td><td class="desc"><code>git maintenance start</code></td></tr>
+							<tr><td>All of the above</td><td class="desc"><code>scalar clone &lt;url&gt;</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-size">
+					<h2 class="section-title">Measuring Size</h2>
+					<table>
+						<thead><tr><th>Command</th><th>Shows</th></tr></thead>
+						<tbody>
+							<tr><td>git count-objects -vH</td><td class="desc">repo size on disk</td></tr>
+							<tr><td>git lfs ls-files -s</td><td class="desc">LFS files + sizes</td></tr>
+							<tr><td>git rev-list --objects --all</td><td class="desc">every object (pipe to find big ones)</td></tr>
+							<tr><td>du -sh .git</td><td class="desc">total .git size</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Committing a large binary, then deleting it. It stays in history forever; rewrite with filter-repo (Sheet 34)</li>
+						<li class="note-item">Running <code>git lfs track</code> without committing <code>.gitattributes</code>. Teammates add the files as normal blobs</li>
+						<li class="note-item">Using <code>--depth 1</code> for development work. Blame, log, and merges lose history</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Set up LFS before the first binary is committed</li>
+						<li class="note-item">Use partial clone over shallow clone for day-to-day work</li>
+						<li class="note-item">Add <code>.gitattributes</code> LFS rules in the very first commit of asset-heavy repos</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>--filter=blob:none</code> — partial clone</li>
+						<li class="note-item"><code>sparse-checkout set</code> — some folders</li>
+						<li class="note-item"><code>git lfs track</code> — big binaries</li>
+						<li class="note-item"><code>maintenance start</code> — keep it fast</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="git-31-submodules-subtrees.html">Submodules &amp; Subtrees</a>
+				<a class="nav-toc" href="index.html">Git CLI Reference · 36 Sheets</a>
+				<a class="nav-link next" href="git-33-hooks.html">Hooks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

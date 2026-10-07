@@ -121,16 +121,20 @@ CheatSheets/
 
 ## Collections
 
+✅ Complete · 🚧 In progress · ⬜ Coming soon / planned
+
 ### Concepts & Tools
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ✅ | Concepts | 14 | Algorithms, data structures, design patterns |
+| ✅ | Concepts | 104 | pseudocode & problem solving, core concepts, paradigms & design, complexity analysis, linear data structures, trees & heaps, graphs, searching & sorting, array & string patterns, recursion & backtracking, dynamic programming, greedy, advanced data structures, math & number theory, string algorithms, quick reference |
 | ✅ | RegEx | 9 | Character Classes, Anchors & Boundaries, Quantifiers, Groups & References, Lookarounds, Substitution & Flags, Practical Patterns, Language Syntax |
 | ✅ | Bitwise | 8 | operators, masks & flags, bit tricks, packing & fields, subset enumeration, bit counting, real-world patterns; CSS warnings — see bitwise-verify.log |
-| ✅ | Bash | 12 | files & dirs, wildcards & patterns, redirection & piping, permissions, environment, script basics, operators & control flow, functions & arrays, processes & jobs, text processing, macOS tools |
-| ✅ | Git | 12 | core workflow, branching, remotes & syncing, history, undoing changes, stash & tags, rebase & merging, workflows, hooks, internals, power commands |
+| 🚧 | Bash | 27 | In progress — setup & configuration (startup files, shell options), the command line (output & quoting, redirection & pipes, history, readline & completion), variables & parameters, indexed & associative arrays, globbing & expansion, tests, arithmetic & control flow, functions & scripting (input, getopts, errors & debugging), processes & interactive use, quick reference |
+| 🚧 | Git | 36 | In progress — introduction & setup, starting a repository, everyday workflow (staging, committing, diff), history & inspection, branches & tags, merging & rebasing, remotes & collaboration, undoing & recovery (reset, revert, stash, reflog), advanced tools (bisect, worktrees, submodules, LFS, hooks, rewriting history), quick reference |
 | ✅ | Agentic Coding | 73 | introduction & concepts, prompting for code, Claude Code (setup, memory & context, permissions & safety, skills & subagents, hooks, MCP & plugins, automation & headless), instruction files across tools, MCP fundamentals, OpenAI Codex, GitHub Copilot, other agentic tools, quality, security & team practice, quick reference |
+| ⬜ | zsh | 27 | Coming soon — setup & configuration, the command line (ZLE & key bindings), variables & parameters (typeset, expansion flags), arrays, globbing (qualifiers & modifiers), tests, arithmetic & control flow, functions & scripting, interactive customization (prompt & hooks, completion system, plugins & frameworks), quick reference |
+| ⬜ | PowerShell | 40 | Coming soon — getting started (editions, cmdlets, profiles), output & comments, variables & types, strings, operators, control flow, the pipeline, error handling, functions, collections, .NET & classes, files & data (JSON, CSV, XML), modules, advanced topics (regex, dates, jobs, REST, debugging), system administration |
 | ⬜ | Playwright |
 
 ### Web Technologies

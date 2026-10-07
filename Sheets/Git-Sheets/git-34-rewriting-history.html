@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Git — Sheet 34: Rewriting History &amp; Removing Secrets</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/git-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>Rewriting History &amp; Removing Secrets</h1>
+			<div class="sheet-desc">git filter-repo · --path / --invert-paths · --replace-text · BFG · force-push afterward · rotate leaked secrets · filter-branch (deprecated)</div>
+		</header>
+
+		<main>
+		<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Purging Files from Every Commit</h2>
+					<div class="description">When a secret or huge file was committed, deleting it in a new commit isn't enough: it's still in history. <code>git filter-repo</code> rewrites <strong>every commit</strong> to remove paths or replace text, producing new hashes for the whole history. Afterward everyone must re-clone. Most importantly, a leaked secret must be <strong>rotated</strong> first, because it may already have been copied.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">filter-repo is a separate install: <code>pip install git-filter-repo</code></li>
+						<li class="note-item">It refuses to run on a non-fresh clone without <code>--force</code></li>
+						<li class="note-item">It removes the <code>origin</code> remote as a safety measure</li>
+						<li class="note-item"><code>git filter-branch</code> is deprecated: slow and error-prone</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">filter-repo and BFG</h2>
+					<pre><code class="language-bash"># 0. Rotate the leaked key/password FIRST
+git clone --mirror git@github.com:org/app.git &amp;&amp; cd app.git   # fresh copy
+
+git filter-repo --path secrets.env --invert-paths   # delete a file everywhere
+git filter-repo --path-glob "*.mp4" --invert-paths  # delete by pattern
+git filter-repo --strip-blobs-bigger-than 50M       # drop huge blobs
+git filter-repo --replace-text ../replacements.txt  # scrub strings
+# replacements.txt:   sk_live_abc123==&gt;***REMOVED***
+git filter-repo --path src/ --path-rename src/:lib/ # keep only src/, rename it
+
+git remote add origin git@github.com:org/app.git
+git push --force --mirror origin                    # rewrite the server
+
+# BFG alternative (Java)
+bfg --delete-files id_rsa
+bfg --replace-text passwords.txt
+git reflog expire --expire=now --all &amp;&amp; git gc --prune=now --aggressive</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>--mirror</code> — bare clone with every ref, ideal for rewriting</div>
+						<div class="explain-item"><code>--path X --invert-paths</code> — keep everything except X</div>
+						<div class="explain-item"><code>--strip-blobs-bigger-than</code> — remove large files by size</div>
+						<div class="explain-item"><code>--replace-text</code> — <code>old==&gt;new</code> lines, <code>regex:</code> allowed</div>
+						<div class="explain-item"><code>push --force --mirror</code> — replaces all branches and tags</div>
+						<div class="explain-item"><code>reflog expire</code> + <code>gc --prune=now</code> — purge old objects locally (BFG)</div>
+					</div>
+				</section>
+			</div>
+		</div>
+		<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-steps">
+					<h2 class="section-title">Leaked Secret Checklist</h2>
+					<table>
+						<thead><tr><th>Step</th><th>Action</th></tr></thead>
+						<tbody>
+							<tr><td>1</td><td class="desc">revoke / rotate the secret</td></tr>
+							<tr><td>2</td><td class="desc">rewrite history (filter-repo)</td></tr>
+							<tr><td>3</td><td class="desc">force-push all branches + tags</td></tr>
+							<tr><td>4</td><td class="desc">ask the host to purge cached views/PR refs</td></tr>
+							<tr><td>5</td><td class="desc">everyone re-clones (don't merge old clones)</td></tr>
+							<tr><td>6</td><td class="desc">add the file to <code>.gitignore</code> + secret scanning</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-tools">
+					<h2 class="section-title">Tools</h2>
+					<table>
+						<thead><tr><th>Tool</th><th>Notes</th></tr></thead>
+						<tbody>
+							<tr><td>git filter-repo</td><td class="desc">recommended; fast, flexible</td></tr>
+							<tr><td>BFG Repo-Cleaner</td><td class="desc">simple deletes/replacements; needs Java</td></tr>
+							<tr><td>git filter-branch</td><td class="desc">deprecated; avoid</td></tr>
+							<tr><td>rebase -i</td><td class="desc">fine for a few recent local commits</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Rewriting history but not rotating the secret. Forks, clones, and caches may still have it</li>
+						<li class="note-item">Letting teammates pull into old clones. Merging old history brings the secret right back</li>
+						<li class="note-item">Running filter-repo on your only copy. Work on a fresh mirror clone and keep a backup</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Turn on secret scanning / push protection on your host</li>
+						<li class="note-item">Use <code>.env.example</code> with placeholders; ignore real <code>.env</code> files</li>
+						<li class="note-item">Run <code>git log --all -- secrets.env</code> afterward to confirm it's gone</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">rotate the secret first</li>
+						<li class="note-item"><code>filter-repo --invert-paths</code> — remove files</li>
+						<li class="note-item"><code>--replace-text</code> — scrub strings</li>
+						<li class="note-item">force-push + everyone re-clones</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="git-33-hooks.html">Hooks</a>
+				<a class="nav-toc" href="index.html">Git CLI Reference · 36 Sheets</a>
+				<a class="nav-link next" href="git-35-quick-reference-everyday.html">Quick Reference — Everyday Commands</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

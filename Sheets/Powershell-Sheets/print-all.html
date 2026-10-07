@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PowerShell Reference — Print All</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ps-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-powershell.min.js" defer></script>
+		<link rel="stylesheet" href="../CSS/print-all.css" />
+	</head>
+	<body>
+		<div id="print-bar">
+			<a href="index.html" id="back-link">← Index</a>
+			<span id="bar-title">PowerShell Reference · Print All</span>
+			<span id="status"></span>
+			<button id="print-btn" type="button">Print All</button>
+		</div>
+
+		<div id="sheets-container"></div>
+
+		<script>
+			const btn = document.getElementById('print-btn');
+			const status = document.getElementById('status');
+			const container = document.getElementById('sheets-container');
+			const parser = new DOMParser();
+			const injectedStyles = new Set();
+
+			async function injectPage(url, copyStyles = true) {
+				const html = await fetch(url).then(r => r.text());
+				const doc = parser.parseFromString(html, 'text/html');
+				if (copyStyles) doc.querySelectorAll('head style').forEach(style => {
+					const key = style.textContent.trim().slice(0, 60);
+					if (!injectedStyles.has(key)) {
+						injectedStyles.add(key);
+						const s = document.createElement('style');
+						s.textContent = style.textContent;
+						document.head.appendChild(s);
+					}
+				});
+				const wrapper = document.createElement('div');
+				wrapper.className = 'sheet-page';
+				const bodyId = doc.body.getAttribute('id');
+				if (bodyId) wrapper.id = bodyId;
+				wrapper.innerHTML = doc.body.innerHTML;
+				return wrapper;
+			}
+
+			btn.addEventListener('click', async () => {
+				btn.disabled = true;
+				status.textContent = 'Loading…';
+				container.innerHTML = '';
+
+				try {
+					const { pages } = await fetch('manifest.json').then(r => r.json());
+
+					// 1. Cover page
+					container.appendChild(await injectPage('cover.html'));
+
+					// 2. Blank page
+					const blank = document.createElement('div');
+					blank.className = 'sheet-page';
+					container.appendChild(blank);
+
+					// 3. TOC — the large-model index builds itself from the manifest
+					//    with a script, which does not run when injected, and its <style> block
+					//    restyles <body>, so its styles are skipped and the TOC is rebuilt here.
+					const tocWrapper = await injectPage('index.html', false);
+					const m = await fetch('manifest.json').then(r => r.json());
+					buildToc(tocWrapper, m);
+					container.appendChild(tocWrapper);
+
+					// 4. Manifest pages
+					for (let i = 0; i < pages.length; i++) {
+						container.appendChild(await injectPage(pages[i].file));
+						status.textContent = `${i + 1} / ${pages.length}`;
+					}
+
+					if (window.Prism) Prism.highlightAll();
+					status.textContent = `${pages.length + 3} pages ready`;
+					btn.disabled = false;
+					window.print();
+				} catch (err) {
+					status.textContent = 'Error: ' + err.message;
+					btn.disabled = false;
+				}
+			});
+
+			// Fills the injected index page: header text, footer, and grouped chips.
+			function buildToc(wrapper, m) {
+				const q = s => wrapper.querySelector(s);
+				if (q('#toc-error')) q('#toc-error').remove();
+				if (q('#hdr-lang')) q('#hdr-lang').textContent = m.lang.toUpperCase();
+				if (q('#hdr-desc')) q('#hdr-desc').textContent = `${m.count} sheets · syntax · examples · notes`;
+				if (q('#ftr-toc')) q('#ftr-toc').textContent = `${m.title} · ${m.count} Sheets`;
+				if (q('#ftr-first')) q('#ftr-first').textContent = m.pages[0].title;
+				const grid = q('#toc-columns');
+				if (!grid) return;
+				grid.style.cssText = 'flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0 0.2in;align-content:start;';
+				const half = Math.ceil(m.count / 2);
+				let running = 0, done = false;
+				const cols = [[], []];
+				for (const g of m.groups) {
+					if (!done && running + g.sheets.length <= half + 2) { cols[0].push(g); running += g.sheets.length; }
+					else { done = true; cols[1].push(g); }
+				}
+				for (const list of cols) {
+					const col = document.createElement('div');
+					for (const g of list) {
+						const p = n => String(n).padStart(2, '0');
+						const f = g.sheets[0], l = g.sheets[g.sheets.length - 1];
+						const block = document.createElement('div');
+						block.style.cssText = 'margin-bottom:7px;';
+						block.innerHTML =
+							`<div style="display:flex;gap:7px;padding:3px 7px;border-left:3px solid var(--accent-primary);margin-bottom:3px;font-size:9px;font-weight:700;text-transform:uppercase;color:var(--accent-purple)">` +
+							`<span>${g.title}</span><span style="margin-left:auto;font-family:var(--font-code);font-size:8px;color:var(--text-muted)">${p(f)} – ${p(l)}</span></div>` +
+							`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px">` +
+							g.sheets.map(n => `<div style="border:1px solid var(--border-section);border-radius:3px;padding:2px 5px;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b style="font-family:var(--font-code);color:var(--accent-purple)">${p(n)}</b> ${m.pages[n - 1].title}</div>`).join('') +
+							`</div>`;
+						col.appendChild(block);
+					}
+					grid.appendChild(col);
+				}
+			}
+		</script>
+	</body>
+</html>

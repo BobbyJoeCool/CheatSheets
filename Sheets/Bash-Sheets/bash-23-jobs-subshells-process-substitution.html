@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Bash — Sheet 23: Jobs, Subshells &amp; Process Substitution</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/bash-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<h1>Jobs, Subshells &amp; Process Substitution</h1>
+			<div class="sheet-desc"><code>&amp;</code> · <code>jobs</code> · <code>fg</code> / <code>bg</code> · <code>disown</code> · <code>wait -n</code> · <code>( )</code> vs <code>{ }</code> · <code>&lt;(cmd)</code> · <code>coproc</code></div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Running Things Concurrently</h2>
+						<div class="description">A trailing <code>&amp;</code> runs a command in the <strong>background</strong> and returns immediately; <code>wait</code> pauses until background jobs finish. Parentheses <code>( … )</code> run commands in a <strong>subshell</strong>, a forked copy where <code>cd</code> and variable changes don't leak out, while braces <code>{ …; }</code> group commands in the <strong>current</strong> shell. <strong>Process substitution</strong> <code>&lt;(cmd)</code> turns a command's output into a filename, so tools that only accept files can read it.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Job specs: <code>%1</code> job 1, <code>%+</code> current, <code>%-</code> previous, <code>%vim</code> by name</li>
+							<li class="note-item"><code>$!</code> is the PID of the most recent background job</li>
+							<li class="note-item">Job control (<code>fg</code>, <code>bg</code>, Ctrl-Z) is for interactive shells</li>
+							<li class="note-item">Braces need spaces and a final <code>;</code>: <code>{ a; b; }</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Background Jobs &amp; Grouping</h2>
+						<pre><code class="language-bash">./long_task.sh &amp;                    # run in the background
+echo "started PID $!"
+jobs -l                             # list jobs with PIDs
+fg %1                               # bring job 1 to the foreground
+# Ctrl-Z suspends the foreground job, then:
+bg %1                               # resume it in the background
+disown %1                           # keep it alive after the terminal closes
+nohup ./server.sh &gt; srv.log 2&gt;&amp;1 &amp;  # immune to hangup from the start
+
+for h in web1 web2 web3; do ping -c1 "$h" &gt; "$h.log" &amp; done
+wait                                # wait for all background jobs
+wait -n                             # wait for whichever finishes next (4.3+)
+
+( cd /tmp &amp;&amp; make )                 # subshell: the cd doesn't leak out
+{ echo header; cat data; } &gt; out.csv   # group: one redirect, same shell
+diff &lt;(sort a.txt) &lt;(sort b.txt)    # compare two command outputs
+tar cf - src | tee &gt;(sha256sum &gt; sum.txt) &gt; src.tar</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>jobs -l</code> — job numbers, PIDs and states</div>
+							<div class="explain-item"><code>disown</code> — removes the job from the shell's table so SIGHUP isn't sent</div>
+							<div class="explain-item"><code>wait</code> — returns when all children finish; <code>wait $pid</code> for one</div>
+							<div class="explain-item"><code>( … )</code> — changes stay inside; costs a fork</div>
+							<div class="explain-item"><code>&lt;(cmd)</code> — becomes a path like <code>/dev/fd/63</code></div>
+							<div class="explain-item"><code>&gt;(cmd)</code> — a writable path whose data feeds <code>cmd</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-jobs">
+						<h2 class="section-title">Job Control</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>cmd &amp;</td><td class="desc">start in background</td></tr>
+								<tr><td>jobs</td><td class="desc">list jobs</td></tr>
+								<tr><td>fg %n</td><td class="desc">to foreground</td></tr>
+								<tr><td>bg %n</td><td class="desc">resume in background</td></tr>
+								<tr><td>Ctrl-Z</td><td class="desc">suspend foreground job</td></tr>
+								<tr><td>kill %n</td><td class="desc">signal a job</td></tr>
+								<tr><td>disown -h %n</td><td class="desc">ignore HUP, keep in list</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-group">
+						<h2 class="section-title">Grouping &amp; Substitution</h2>
+						<table>
+							<thead><tr><th>Form</th><th>Runs In / Gives</th></tr></thead>
+							<tbody>
+								<tr><td>( cmds )</td><td class="desc">subshell</td></tr>
+								<tr><td>{ cmds; }</td><td class="desc">current shell</td></tr>
+								<tr><td>$(cmd)</td><td class="desc">output as a string</td></tr>
+								<tr><td>&lt;(cmd)</td><td class="desc">output as a file path</td></tr>
+								<tr><td>&gt;(cmd)</td><td class="desc">file path that feeds cmd</td></tr>
+								<tr><td>coproc NAME { … }</td><td class="desc">two-way pipe (4.0+)</td></tr>
+								<tr><td>cmd1 | cmd2</td><td class="desc">each side in a subshell</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Exiting the terminal kills background jobs; use <code>disown</code>, <code>nohup</code>, or <code>tmux</code></li>
+							<li class="note-item">Starting hundreds of <code>&amp;</code> jobs at once; throttle with <code>wait -n</code> or use <code>xargs -P</code></li>
+							<li class="note-item"><code>{ a; b }</code> without the final <code>;</code> (or newline) is a syntax error</li>
+							<li class="note-item">Using <code>cd</code> in a subshell and expecting the parent's directory to change</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Limit parallel jobs: <code>(( $(jobs -rp | wc -l) &gt;= 4 )) &amp;&amp; wait -n</code> before each <code>&amp;</code></li>
+							<li class="note-item">Check each job's status: <code>wait "$pid" || echo "$pid failed"</code></li>
+							<li class="note-item">Use a subshell to scope <code>cd</code>, <code>IFS</code> or <code>set</code> changes temporarily</li>
+							<li class="note-item"><code>$( … )</code> nests cleanly; backticks don't, so avoid them</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>cmd &amp;</code> / <code>wait</code> — run in parallel, then sync</li>
+							<li class="note-item"><code>fg</code> / <code>bg</code> / <code>disown</code> — manage jobs</li>
+							<li class="note-item"><code>( … )</code> — isolated subshell</li>
+							<li class="note-item"><code>{ …; }</code> — group in the current shell</li>
+							<li class="note-item"><code>&lt;(cmd)</code> — command output as a file</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="bash-22-errors-debugging.html">Errors, Traps &amp; Debugging</a>
+				<a class="nav-toc" href="index.html">Bash Reference · 27 Sheets</a>
+				<a class="nav-link next" href="bash-24-aliases-prompt-navigation.html">Aliases, Prompt &amp; Navigation</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

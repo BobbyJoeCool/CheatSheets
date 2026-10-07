@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PowerShell — Sheet 23: Pipeline Input &amp; ShouldProcess</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ps-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<h1>Pipeline Input &amp; ShouldProcess</h1>
+			<div class="sheet-desc">ValueFromPipeline · ByPropertyName · begin / process / end · clean · SupportsShouldProcess · -WhatIf / -Confirm</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Overview</h2>
+						<div class="description">To accept pipeline input, mark a parameter <code>ValueFromPipeline</code> (whole objects) or <code>ValueFromPipelineByPropertyName</code> (match a property by name), then put per-item work in a <code>process</code> block. Functions that change things should support <code>-WhatIf</code> and <code>-Confirm</code> by declaring <code>SupportsShouldProcess</code> and checking <code>$PSCmdlet.ShouldProcess()</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Without a <code>process</code> block, the body runs once, in <code>end</code></li>
+							<li class="note-item"><code>begin</code> runs once before input, <code>end</code> once after</li>
+							<li class="note-item"><code>clean</code> (7.3+) always runs, even on Ctrl+C or errors</li>
+							<li class="note-item">ByPropertyName also matches parameter <code>[Alias()]</code> names</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Pipeline-Aware, Safe Function</h2>
+						<pre class="language-powershell"><code class="language-powershell">function Remove-OldLog {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+    param([Parameter(Mandatory, ValueFromPipeline)] [IO.FileInfo[]]$File,
+          [int]$Days = 30)
+    begin   { $cutoff = (Get-Date).AddDays(-$Days); $n = 0 }
+    process {
+        foreach ($f in $File) {
+            if ($f.LastWriteTime -lt $cutoff -and
+                $PSCmdlet.ShouldProcess($f.FullName, 'Delete')) {
+                Remove-Item $f.FullName; $n++
+            }
+        }
+    }
+    end { Write-Verbose "Removed $n file(s)" }
+}
+Get-ChildItem C:\Logs -File | Remove-OldLog -Days 7 -WhatIf</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>SupportsShouldProcess</code> — adds <code>-WhatIf</code> and <code>-Confirm</code> parameters</div>
+							<div class="explain-item"><code>ConfirmImpact</code> — prompts automatically when ≥ <code>$ConfirmPreference</code> (High)</div>
+							<div class="explain-item"><code>ValueFromPipeline</code> — each piped FileInfo binds to <code>$File</code></div>
+							<div class="explain-item"><code>foreach ($f in $File)</code> — also handles <code>-File $a, $b</code> passed directly</div>
+							<div class="explain-item"><code>ShouldProcess(target, action)</code> — returns False under <code>-WhatIf</code> and prints “What if: …”</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-blocks">
+						<h2 class="section-title">Function Blocks</h2>
+						<table>
+							<thead><tr><th>Block</th><th>Runs</th></tr></thead>
+							<tbody>
+								<tr><td>begin</td><td class="desc">once, before input</td></tr>
+								<tr><td>process</td><td class="desc">once per input item</td></tr>
+								<tr><td>end</td><td class="desc">once, after input</td></tr>
+								<tr><td>clean</td><td class="desc">always, last (7.3+)</td></tr>
+								<tr><td>(no blocks)</td><td class="desc">same as end</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-binding">
+						<h2 class="section-title">Binding Modes</h2>
+						<table>
+							<thead><tr><th>Mode</th><th>Piped input</th></tr></thead>
+							<tbody>
+								<tr><td>ValueFromPipeline</td><td class="desc">the object itself</td></tr>
+								<tr><td>…ByPropertyName</td><td class="desc">obj.Name → -Name</td></tr>
+								<tr><td>both</td><td class="desc">try value, then property</td></tr>
+								<tr><td>$input</td><td class="desc">simple functions, end block</td></tr>
+								<tr><td>filter keyword</td><td class="desc">body = process block</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-should">
+						<h2 class="section-title">ShouldProcess Pieces</h2>
+						<table>
+							<thead><tr><th>Piece</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>-WhatIf</td><td class="desc">describe, don't act</td></tr>
+								<tr><td>-Confirm</td><td class="desc">ask per item</td></tr>
+								<tr><td>ConfirmImpact</td><td class="desc">Low / Medium / High</td></tr>
+								<tr><td>ShouldContinue()</td><td class="desc">extra yes/no prompt</td></tr>
+								<tr><td>[OutputType()]</td><td class="desc">documents output type</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Putting the work outside <code>process</code>. Only the last piped item is handled, because the body runs once in <code>end</code></li>
+							<li class="note-item">Calling <code>Remove-Item</code> before checking <code>ShouldProcess</code>. <code>-WhatIf</code> then deletes for real</li>
+							<li class="note-item">Typing a pipeline parameter as <code>[string]</code> when callers pass arrays directly; use <code>[string[]]</code> plus <code>foreach</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Test new destructive functions with <code>-WhatIf</code> first, every time</li>
+							<li class="note-item">Use ByPropertyName so output from <code>Get-ADUser</code>, <code>Import-Csv</code> etc. binds by column name</li>
+							<li class="note-item">Use <code>[OutputType([pscustomobject])]</code> so tooling knows what you return</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ValueFromPipeline</code> / <code>…ByPropertyName</code> — accept input</li>
+							<li class="note-item"><code>begin / process / end</code> — setup, per item, wrap up</li>
+							<li class="note-item"><code>SupportsShouldProcess</code> — add <code>-WhatIf</code> / <code>-Confirm</code></li>
+							<li class="note-item"><code>$PSCmdlet.ShouldProcess()</code> — guard every change</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ps-22-advanced-functions-validation.html" class="nav-link prev">Advanced Functions &amp; Parameter Validation</a>
+				<a href="index.html" class="nav-toc">PowerShell Reference · 40 Sheets</a>
+				<a href="ps-24-arrays-lists.html" class="nav-link next">Arrays &amp; Lists</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-powershell.min.js"></script>
+	</body>
+</html>

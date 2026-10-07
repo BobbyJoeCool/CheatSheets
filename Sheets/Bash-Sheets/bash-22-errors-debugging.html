@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Bash — Sheet 22: Errors, Traps &amp; Debugging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/bash-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Errors, Traps &amp; Debugging</h1>
+			<div class="sheet-desc"><code>set -euo pipefail</code> · <code>trap … EXIT</code> · <code>trap … ERR</code> · <code>set -x</code> · <code>PS4</code> · <code>bash -n</code> · <code>exit</code></div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Failing Safely</h2>
+						<div class="description">By default bash keeps going after a command fails. <strong>Strict mode</strong>, <code>set -euo pipefail</code>, makes a script stop on failures (<code>-e</code>), on unset variables (<code>-u</code>), and on failures anywhere in a pipeline (<code>pipefail</code>). <code>-e</code> has many exceptions, so treat it as a safety net, not error handling. <strong><code>trap</code></strong> runs code on exit or on signals, which is how you clean up temp files no matter how the script ends.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Where -e Doesn't Fire</h2>
+						<ul class="note-list">
+							<li class="note-item">Commands tested by <code>if</code>, <code>while</code>, <code>&amp;&amp;</code>, <code>||</code> or <code>!</code></li>
+							<li class="note-item">Any command except the last in a pipeline (without <code>pipefail</code>)</li>
+							<li class="note-item">Inside <code>$(…)</code> unless <code>shopt -s inherit_errexit</code> (4.4+)</li>
+							<li class="note-item">Inside a function called from an <code>if</code> or <code>&amp;&amp;</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Defensive Script Header</h2>
+						<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail                      # strict mode
+trap 'echo "line $LINENO: $BASH_COMMAND failed" &gt;&amp;2' ERR
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT              # runs on any exit
+trap 'echo "interrupted" &gt;&amp;2; exit 130' INT TERM
+
+grep -q x maybe.txt || true            # allowed to fail
+if ! out=$(build 2&gt;&amp;1); then           # handle failure yourself
+  echo "build failed: $out" &gt;&amp;2; exit 1
+fi
+name=${NAME:-anon}                     # -u safe: default for unset
+
+PS4='+ ${BASH_SOURCE##*/}:${LINENO}: ' # richer trace prefix
+set -x                                 # trace from here...
+cp config.yml "$tmp/"
+set +x                                 # ...to here</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ERR</code> trap — runs when a command fails; <code>$BASH_COMMAND</code> is the culprit</div>
+							<div class="explain-item"><code>EXIT</code> trap — runs on normal exit, <code>exit</code>, <code>-e</code> abort, and most signals</div>
+							<div class="explain-item"><code>|| true</code> — marks a command as allowed to fail under <code>-e</code></div>
+							<div class="explain-item"><code>if ! out=$(…)</code> — capture output and test status in one step</div>
+							<div class="explain-item"><code>PS4</code> — prefix for <code>set -x</code> lines; set it before tracing</div>
+							<div class="explain-item"><code>exit 130</code> — conventional status after Ctrl-C</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-strict">
+						<h2 class="section-title">Strict-Mode Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>set -e</td><td class="desc">exit on a failing command</td></tr>
+								<tr><td>set -u</td><td class="desc">unset variable is an error</td></tr>
+								<tr><td>set -o pipefail</td><td class="desc">pipe fails if any stage fails</td></tr>
+								<tr><td>set -E</td><td class="desc">ERR trap applies in functions</td></tr>
+								<tr><td>inherit_errexit</td><td class="desc"><code>-e</code> inside <code>$(…)</code> (4.4+)</td></tr>
+								<tr><td>cmd || true</td><td class="desc">opt out for one command</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-trap">
+						<h2 class="section-title">trap Signals</h2>
+						<table>
+							<thead><tr><th>Signal</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>EXIT</td><td class="desc">shell exits for any reason</td></tr>
+								<tr><td>ERR</td><td class="desc">a command fails</td></tr>
+								<tr><td>INT</td><td class="desc">Ctrl-C</td></tr>
+								<tr><td>TERM</td><td class="desc"><code>kill</code> (default signal)</td></tr>
+								<tr><td>HUP</td><td class="desc">terminal closed</td></tr>
+								<tr><td>RETURN</td><td class="desc">function/source returns</td></tr>
+								<tr><td>trap - INT</td><td class="desc">reset to default</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-debug">
+						<h2 class="section-title">Debugging Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>bash -n s.sh</td><td class="desc">syntax check, don't run</td></tr>
+								<tr><td>bash -x s.sh</td><td class="desc">trace every command</td></tr>
+								<tr><td>set -x / set +x</td><td class="desc">trace a section</td></tr>
+								<tr><td>BASH_XTRACEFD=3</td><td class="desc">send trace to fd 3</td></tr>
+								<tr><td>caller</td><td class="desc">print caller's line + file</td></tr>
+								<tr><td>shellcheck s.sh</td><td class="desc">static analysis</td></tr>
+								<tr><td>trap '…' DEBUG</td><td class="desc">run before each command</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Relying on <code>-e</code> inside functions used in <code>if</code>: errors in them are silently ignored</li>
+							<li class="note-item"><code>local v=$(cmd)</code> or <code>export v=$(cmd)</code> always succeeds, so <code>-e</code> never sees <code>cmd</code> fail</li>
+							<li class="note-item"><code>(( i++ ))</code> with <code>i=0</code> returns 1 and kills a <code>set -e</code> script</li>
+							<li class="note-item"><code>set -o pipefail</code> plus <code>cmd | head -1</code> can fail with status 141 (SIGPIPE) when <code>cmd</code> keeps writing</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Set the <code>EXIT</code> trap right after creating a temp file</li>
+							<li class="note-item">Write messages to stderr and use distinct exit codes per failure</li>
+							<li class="note-item">Run <code>shellcheck</code> on every script; it catches most <code>-e</code> and quoting traps</li>
+							<li class="note-item">Trace only the part you're debugging with <code>set -x</code> … <code>set +x</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>set -euo pipefail</code> — stop on errors</li>
+							<li class="note-item"><code>trap 'cleanup' EXIT</code> — always clean up</li>
+							<li class="note-item"><code>trap '…' ERR</code> — report failures</li>
+							<li class="note-item"><code>set -x</code> + <code>PS4</code> — trace execution</li>
+							<li class="note-item"><code>bash -n</code> / <code>shellcheck</code> — check before running</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="bash-21-script-arguments-getopts.html">Script Arguments &amp; getopts</a>
+				<a class="nav-toc" href="index.html">Bash Reference · 27 Sheets</a>
+				<a class="nav-link next" href="bash-23-jobs-subshells-process-substitution.html">Jobs, Subshells &amp; Process Substitution</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Zsh Reference — Print All</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/zsh-cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cover.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js" defer></script>
+		<link rel="stylesheet" href="../CSS/print-all.css" />
+	</head>
+	<body>
+		<div id="print-bar">
+			<a href="index.html" id="back-link">← Index</a>
+			<span id="bar-title">Zsh Reference · 27 Sheets</span>
+			<span id="status"></span>
+			<button id="print-btn" type="button">Print All</button>
+		</div>
+
+		<div id="sheets-container"></div>
+
+		<script>
+			const btn = document.getElementById('print-btn');
+			const status = document.getElementById('status');
+			const container = document.getElementById('sheets-container');
+			const parser = new DOMParser();
+			const injectedStyles = new Set();
+
+			async function injectPage(url) {
+				const html = await fetch(url).then(r => r.text());
+				const doc = parser.parseFromString(html, 'text/html');
+				doc.querySelectorAll('head style').forEach(style => {
+					const key = style.textContent.trim().slice(0, 60);
+					if (!injectedStyles.has(key)) {
+						injectedStyles.add(key);
+						const s = document.createElement('style');
+						// Scope page-level body rules (e.g. index.html's) to that injected page only
+						s.textContent = style.textContent.replace(/(^|[}\s])body(\s*[{,])/g, '$1.sheet-page.toc-page$2');
+						document.head.appendChild(s);
+					}
+				});
+				const wrapper = document.createElement('div');
+				wrapper.className = 'sheet-page';
+				const bodyId = doc.body.getAttribute('id');
+				if (bodyId) wrapper.id = bodyId;
+				wrapper.innerHTML = doc.body.innerHTML;
+				wrapper.querySelectorAll('script').forEach(s => s.remove());
+				return wrapper;
+			}
+
+			btn.addEventListener('click', async () => {
+				btn.disabled = true;
+				status.textContent = 'Loading…';
+				container.innerHTML = '';
+				try {
+					const manifest = await fetch('manifest.json').then(r => r.json());
+					const { pages, groups, title } = manifest;
+
+					// 1. Cover page
+					container.appendChild(await injectPage('cover.html'));
+
+					// 2. Blank page
+					const blank = document.createElement('div');
+					blank.className = 'sheet-page';
+					container.appendChild(blank);
+
+					// 3. TOC — the large index builds its grouped TOC with a script,
+					//    which does not run when injected, so build it here from the manifest.
+					const tocWrapper = await injectPage('index.html');
+					tocWrapper.classList.add('toc-page');
+					const cols = tocWrapper.querySelector('#toc-columns');
+					if (cols) {
+						const byNum = {};
+						pages.forEach((p, i) => { byNum[i + 1] = p; });
+						buildGrouped(cols, groups, byNum, pages.length);
+					}
+					const hdrDesc = tocWrapper.querySelector('#hdr-desc');
+					if (hdrDesc) hdrDesc.textContent = `${pages.length} sheets · syntax · examples · notes`;
+					const ftr = tocWrapper.querySelector('#ftr-toc');
+					if (ftr) ftr.textContent = `${title} · ${pages.length} Sheets`;
+					tocWrapper.querySelectorAll('#print-all-link, #ftr-first').forEach(a => a.style.visibility = 'hidden');
+					container.appendChild(tocWrapper);
+
+					// 4. Manifest pages
+					for (let i = 0; i < pages.length; i++) {
+						container.appendChild(await injectPage(pages[i].file));
+						status.textContent = `${i + 1} / ${pages.length}`;
+					}
+
+					if (window.Prism) Prism.highlightAll();
+					status.textContent = `${pages.length + 3} pages ready`;
+					btn.disabled = false;
+					window.print();
+				} catch (err) {
+					status.textContent = 'Error: ' + err.message;
+					btn.disabled = false;
+				}
+			});
+
+			function buildGrouped(container, groups, byNum, totalSheets) {
+				const half = Math.ceil(totalSheets / 2);
+				let running = 0, col1Done = false;
+				const col1Groups = [], col2Groups = [];
+				for (const g of groups) {
+					if (!col1Done && running + g.sheets.length <= half + 2) {
+						col1Groups.push(g);
+						running += g.sheets.length;
+					} else {
+						col1Done = true;
+						col2Groups.push(g);
+					}
+				}
+				if (!col2Groups.length && col1Groups.length > 1) col2Groups.push(col1Groups.pop());
+				container.appendChild(buildColumn(col1Groups, byNum));
+				container.appendChild(buildColumn(col2Groups, byNum));
+			}
+
+			function buildColumn(groupList, byNum) {
+				const col = document.createElement("div");
+				col.style.cssText = "display:flex;flex-direction:column;gap:0;min-width:0;overflow:hidden;";
+				for (const g of groupList) {
+					const groupPages = g.sheets.map(n => (byNum[n] ? { num: n, ...byNum[n] } : null)).filter(Boolean);
+					if (!groupPages.length) continue;
+					const first = g.sheets[0], last = g.sheets[g.sheets.length - 1];
+					const range = first === last
+						? String(first).padStart(2, "0")
+						: `${String(first).padStart(2, "0")} – ${String(last).padStart(2, "0")}`;
+					const group = document.createElement("div");
+					group.className = "toc-group";
+					const head = document.createElement("div");
+					head.className = "toc-group-head";
+					head.innerHTML = `<span class="g-name">${escHtml(g.title)}</span><span class="g-range">${range}</span>`;
+					group.appendChild(head);
+					const entries = document.createElement("div");
+					entries.className = "toc-entries";
+					for (const p of groupPages) {
+						const a = document.createElement("a");
+						a.className = "toc-entry";
+						a.href = p.file;
+						a.title = p.desc || p.title;
+						a.innerHTML = `<span class="toc-num">${String(p.num).padStart(2, "0")}</span>` +
+							`<span class="toc-title">${escHtml(p.title)}</span>`;
+						entries.appendChild(a);
+					}
+					group.appendChild(entries);
+					col.appendChild(group);
+				}
+				return col;
+			}
+
+			function escHtml(str) {
+				return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+			}
+		</script>
+	</body>
+</html>

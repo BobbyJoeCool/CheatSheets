@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PowerShell — Sheet 20: try / catch / finally &amp; throw</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ps-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>try / catch / finally &amp; throw</h1>
+			<div class="sheet-desc">try / catch / finally · catch [Type] · $_.Exception.Message · throw · rethrow · trap</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Overview</h2>
+						<div class="description"><code>try</code> runs code, <code>catch</code> handles <strong>terminating</strong> errors, and <code>finally</code> always runs (cleanup). Catch specific exception types first, then a general <code>catch</code>. Inside <code>catch</code>, <code>$_</code> is the ErrorRecord. Use <code>throw</code> to raise your own terminating error, or a bare <code>throw</code> to rethrow.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Only terminating errors reach <code>catch</code>: add <code>-ErrorAction Stop</code></li>
+							<li class="note-item">First matching <code>catch</code> wins; put specific types first</li>
+							<li class="note-item"><code>finally</code> runs even after <code>return</code>, <code>break</code> or Ctrl+C</li>
+							<li class="note-item">Find a type to catch with <code>$_.Exception.GetType().FullName</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Structured Error Handling</h2>
+						<pre class="language-powershell"><code class="language-powershell">try {
+    $data = Get-Content .\config.json -ErrorAction Stop | ConvertFrom-Json
+    $stream = [IO.File]::OpenRead($data.LogPath)
+}
+catch [System.Management.Automation.ItemNotFoundException] {
+    Write-Warning "No config file: $($_.Exception.Message)"
+}
+catch [System.ArgumentException], [System.FormatException] { 'Bad config' }
+catch {
+    Write-Error "Unexpected: $($_.Exception.GetType().FullName)"
+    throw                       # rethrow the same error
+}
+finally {
+    if ($stream) { $stream.Dispose() }   # always runs
+}
+
+if (-not $Path) { throw 'Path is required' }
+throw [System.IO.FileNotFoundException]::new('Missing', $Path)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-ErrorAction Stop</code> — needed so the cmdlet error is catchable</div>
+							<div class="explain-item"><code>catch [Type]</code> — matches that type or any subclass</div>
+							<div class="explain-item"><code>[A], [B]</code> — one block can catch several types</div>
+							<div class="explain-item"><code>$_.Exception</code> — the .NET exception: <code>.Message</code>, <code>.InnerException</code></div>
+							<div class="explain-item"><code>throw</code> — bare in <code>catch</code> = rethrow, preserving details</div>
+							<div class="explain-item"><code>finally</code> — close files, connections, restore settings</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-types">
+						<h2 class="section-title">Common Exception Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Raised when</th></tr></thead>
+							<tbody>
+								<tr><td>ItemNotFoundException</td><td class="desc">path doesn't exist</td></tr>
+								<tr><td>UnauthorizedAccessException</td><td class="desc">access denied</td></tr>
+								<tr><td>IOException</td><td class="desc">file in use / disk</td></tr>
+								<tr><td>ArgumentException</td><td class="desc">bad argument</td></tr>
+								<tr><td>WebException / HttpRequestException</td><td class="desc">web call failed (5.1 / 7)</td></tr>
+								<tr><td>RuntimeException</td><td class="desc">plain <code>throw 'msg'</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-throw">
+						<h2 class="section-title">Raising &amp; Trapping</h2>
+						<table>
+							<thead><tr><th>Form</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>throw 'msg'</td><td class="desc">quick terminating error</td></tr>
+								<tr><td>throw [Type]::new('m')</td><td class="desc">typed exception</td></tr>
+								<tr><td>throw</td><td class="desc">rethrow inside catch</td></tr>
+								<tr><td>Write-Error -EA Stop</td><td class="desc">terminating ErrorRecord</td></tr>
+								<tr><td>ThrowTerminatingError()</td><td class="desc">via <code>$PSCmdlet</code> in advanced functions</td></tr>
+								<tr><td>trap { …; continue }</td><td class="desc">older style: handle, resume</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Catching but not rethrowing in a library function. The caller thinks it worked; log and <code>throw</code></li>
+							<li class="note-item">Using <code>throw $_</code> instead of <code>throw</code>. It works but resets details in some cases; a bare <code>throw</code> keeps the original</li>
+							<li class="note-item">Putting cleanup after the try block instead of in <code>finally</code>. It’s skipped when an error escapes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Log <code>$_.ScriptStackTrace</code> in catch blocks to see where it failed</li>
+							<li class="note-item">Run the failing line once, then check <code>$Error[0].Exception.GetType()</code> to learn which type to catch</li>
+							<li class="note-item">Keep <code>try</code> blocks small so you know which line failed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>try / catch / finally</code> — handle terminating errors, always clean up</li>
+							<li class="note-item"><code>catch [Type]</code> — specific first, general last</li>
+							<li class="note-item"><code>$_.Exception.Message</code> — the error text</li>
+							<li class="note-item"><code>throw</code> — raise, or rethrow when bare</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ps-19-errors-erroraction.html" class="nav-link prev">Errors &amp; ErrorAction</a>
+				<a href="index.html" class="nav-toc">PowerShell Reference · 40 Sheets</a>
+				<a href="ps-21-functions-script-blocks.html" class="nav-link next">Functions &amp; Script Blocks</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-powershell.min.js"></script>
+	</body>
+</html>

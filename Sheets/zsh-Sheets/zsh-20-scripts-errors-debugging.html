@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Zsh — Sheet 20: Scripts, Errors &amp; Debugging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/zsh-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Scripts, Errors &amp; Debugging</h1>
+			<div class="sheet-desc">#!/usr/bin/env zsh · ERR_EXIT / ERR_RETURN · trap / TRAPEXIT · { } always { } · setopt XTRACE / zsh -x · zparseopts</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Robust Scripts</h2>
+						<div class="description">A zsh script is a text file starting with <code>#!/usr/bin/env zsh</code> and marked executable. For safer scripts, turn on <strong>strict options</strong> so errors stop execution, clean up with <code>trap</code> or an <strong><code>always</code> block</strong> (zsh's try/finally), and parse flags with the <code>zparseopts</code> builtin. When something goes wrong, <code>XTRACE</code> prints every command before it runs.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ERR_EXIT</code> = <code>set -e</code>, <code>NO_UNSET</code> = <code>set -u</code></li>
+							<li class="note-item"><code>ERR_RETURN</code> returns from the function instead of exiting</li>
+							<li class="note-item">Check syntax without running: <code>zsh -n script.zsh</code></li>
+							<li class="note-item"><code>${0:A:h}</code> is the script's own directory</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Script Skeleton</h2>
+<pre><code class="language-bash">#!/usr/bin/env zsh
+setopt NO_UNSET PIPE_FAIL               # strict mode
+
+zparseopts -D -E -F -- h=help v=verbose o:=out || exit 1
+(( $#help )) &amp;&amp; { print "usage: ${0:t} [-v] [-o FILE] ARGS"; exit 0 }
+outfile=${out[-1]:-out.txt}             # value after -o, or default
+
+tmp=$(mktemp)
+trap 'rm -f $tmp' EXIT                  # cleanup on any exit
+TRAPINT() { print -u2 "interrupted"; return 130 }
+
+main() {
+  setopt LOCAL_OPTIONS ERR_RETURN       # stop at the first failure
+  build_report &gt; $tmp
+  mv $tmp $outfile
+}
+{ main "$@" } always { print -u2 "done (status $?)" }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>zparseopts -D</code> — removes parsed flags from <code>$@</code>; <code>-E</code> allows unknown args; <code>-F</code> fails on bad flags</div>
+							<div class="explain-item"><code>o:=out</code> — <code>-o</code> takes a value; <code>$out</code> becomes <code>(-o FILE)</code></div>
+							<div class="explain-item"><code>trap … EXIT</code> — runs when the script exits, for any reason</div>
+							<div class="explain-item"><code>ERR_RETURN</code> — makes <code>main</code> return at its first failing command</div>
+							<div class="explain-item"><code>{ } always { }</code> — like <code>finally</code>: runs after errors and returns, but <strong>not</strong> after <code>exit</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-strict">
+						<h2 class="section-title">Strict Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>ERR_EXIT</td><td class="desc">exit on failure</td></tr>
+								<tr><td>ERR_RETURN</td><td class="desc">return from function</td></tr>
+								<tr><td>NO_UNSET</td><td class="desc">unset var = error</td></tr>
+								<tr><td>PIPE_FAIL</td><td class="desc">failed pipe part = failure</td></tr>
+								<tr><td>WARN_CREATE_GLOBAL</td><td class="desc">flag accidental globals</td></tr>
+								<tr><td>LOCAL_TRAPS</td><td class="desc">traps local to function</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-traps">
+						<h2 class="section-title">Traps</h2>
+						<table>
+							<thead><tr><th>Syntax</th><th>Runs On</th></tr></thead>
+							<tbody>
+								<tr><td>trap 'c' EXIT</td><td class="desc">shell or function exit</td></tr>
+								<tr><td>trap 'c' INT TERM</td><td class="desc">Ctrl-C, kill</td></tr>
+								<tr><td>trap 'c' ZERR</td><td class="desc">any failing command</td></tr>
+								<tr><td>TRAPEXIT() {…}</td><td class="desc">function form</td></tr>
+								<tr><td>trap '' INT</td><td class="desc">ignore signal</td></tr>
+								<tr><td>trap - INT</td><td class="desc">reset to default</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-debug">
+						<h2 class="section-title">Debugging</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>zsh -n f</td><td class="desc">syntax check only</td></tr>
+								<tr><td>zsh -x f</td><td class="desc">trace every command</td></tr>
+								<tr><td>setopt XTRACE</td><td class="desc">trace from here on</td></tr>
+								<tr><td>PS4='+%N:%i&gt; '</td><td class="desc">trace prefix (file:line)</td></tr>
+								<tr><td>functions -t f</td><td class="desc">trace one function</td></tr>
+								<tr><td>typeset -p v</td><td class="desc">inspect a variable</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Relying on <code>ERR_EXIT</code> inside <code>if</code>, <code>&amp;&amp;</code> or <code>||</code>: failures there are ignored by design</li>
+							<li class="note-item">Counting on <code>always</code> with <code>ERR_EXIT</code> or <code>exit</code>: the shell exits first. Use a <code>trap … EXIT</code> for cleanup that must run</li>
+							<li class="note-item">Reading <code>$out</code> as the value: zparseopts stores <code>(-o FILE)</code>. Use <code>$out[-1]</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>print -u2</code> for messages so stdout stays clean for data</li>
+							<li class="note-item">Find a script's folder with <code>${0:A:h}</code> to load files next to it</li>
+							<li class="note-item">Exit with clear codes: <code>exit 2</code> for usage errors, <code>exit 1</code> for failures</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>#!/usr/bin/env zsh</code> — shebang</li>
+							<li class="note-item"><code>ERR_EXIT NO_UNSET PIPE_FAIL</code> — strict mode</li>
+							<li class="note-item"><code>zparseopts</code> — flag parsing</li>
+							<li class="note-item"><code>trap … EXIT</code> / <code>always</code> — cleanup</li>
+							<li class="note-item"><code>zsh -x</code> / <code>XTRACE</code> — trace</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="zsh-19-functions.html">Functions</a>
+				<a class="nav-toc" href="index.html">Zsh Reference · 27 Sheets</a>
+				<a class="nav-link next" href="zsh-21-jobs-process-substitution.html">Jobs &amp; Process Substitution</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

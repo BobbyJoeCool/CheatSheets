@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PowerShell — Sheet 32: Writing Modules</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ps-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s32">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 32</div>
+			<h1>Writing Modules</h1>
+			<div class="sheet-desc">.psm1 · Export-ModuleMember · New-ModuleManifest · FunctionsToExport · Public / Private · Publish-PSResource</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Overview</h2>
+						<div class="description">A script module is a <code>.psm1</code> file in a folder <strong>with the same name</strong>, optionally with a <code>.psd1</code> <strong>manifest</strong> describing version, author, dependencies and exports. Keep one function per file in <code>Public</code> and <code>Private</code> folders and dot-source them from the .psm1. Place the folder on <code>$env:PSModulePath</code> and it autoloads.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Folder name = module name = file base name</li>
+							<li class="note-item">Without exports, every function in the .psm1 is public</li>
+							<li class="note-item">List exports explicitly; <code>*</code> slows autoloading</li>
+							<li class="note-item">Bump <code>ModuleVersion</code> on every release</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Module Layout &amp; Manifest</h2>
+						<pre class="language-powershell"><code class="language-powershell"># MyTools\                       ← folder on $env:PSModulePath
+#   MyTools.psd1  MyTools.psm1
+#   Public\Get-Thing.ps1   Private\Format-Thing.ps1
+
+# --- MyTools.psm1 ---
+$public  = @(Get-ChildItem $PSScriptRoot\Public\*.ps1)
+$private = @(Get-ChildItem $PSScriptRoot\Private\*.ps1)
+foreach ($file in $public + $private) { . $file.FullName }
+Export-ModuleMember -Function $public.BaseName
+
+# --- create the manifest ---
+$m = @{
+    Path = '.\MyTools\MyTools.psd1'; RootModule = 'MyTools.psm1'
+    ModuleVersion = '1.0.0'; Author = 'Bob'
+    FunctionsToExport = 'Get-Thing'; PowerShellVersion = '7.2'
+}
+New-ModuleManifest @m
+Test-ModuleManifest .\MyTools\MyTools.psd1
+Publish-PSResource -Path .\MyTools -ApiKey $env:PSGALLERY_KEY</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>folder layout</code> — Public = exported, Private = helpers</div>
+							<div class="explain-item"><code>. $file.FullName</code> — dot-source each function into module scope</div>
+							<div class="explain-item"><code>$public.BaseName</code> — file names double as function names</div>
+							<div class="explain-item"><code>RootModule</code> — the .psm1 the manifest loads</div>
+							<div class="explain-item"><code>FunctionsToExport</code> — what users see; also drives autoload</div>
+							<div class="explain-item"><code>Test-ModuleManifest</code> — validates the .psd1 before publishing</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-manifest">
+						<h2 class="section-title">Key Manifest Fields</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>RootModule</td><td class="desc">main .psm1</td></tr>
+								<tr><td>ModuleVersion</td><td class="desc">semver</td></tr>
+								<tr><td>GUID</td><td class="desc">unique ID (auto)</td></tr>
+								<tr><td>FunctionsToExport</td><td class="desc">public functions</td></tr>
+								<tr><td>RequiredModules</td><td class="desc">dependencies</td></tr>
+								<tr><td>PowerShellVersion</td><td class="desc">minimum version</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-export">
+						<h2 class="section-title">Controlling Exports</h2>
+						<table>
+							<thead><tr><th>Mechanism</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>Export-ModuleMember</td><td class="desc">in .psm1</td></tr>
+								<tr><td>FunctionsToExport</td><td class="desc">in .psd1 (wins)</td></tr>
+								<tr><td>AliasesToExport</td><td class="desc">aliases</td></tr>
+								<tr><td>VariablesToExport</td><td class="desc">variables</td></tr>
+								<tr><td>CmdletsToExport</td><td class="desc">binary cmdlets</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-where">
+						<h2 class="section-title">Install Locations</h2>
+						<table>
+							<thead><tr><th>Scope</th><th>Folder (Windows)</th></tr></thead>
+							<tbody>
+								<tr><td>CurrentUser 7</td><td class="desc">Documents\PowerShell\Modules</td></tr>
+								<tr><td>CurrentUser 5.1</td><td class="desc">Documents\WindowsPowerShell\Modules</td></tr>
+								<tr><td>AllUsers 7</td><td class="desc">Program Files\PowerShell\Modules</td></tr>
+								<tr><td>Linux/macOS</td><td class="desc">~/.local/share/powershell/Modules</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Folder and .psm1 names don’t match. <code>Import-Module</code> by name then can’t find the module</li>
+							<li class="note-item">Leaving <code>FunctionsToExport = '*'</code>. Works, but autoload must load the module to find commands</li>
+							<li class="note-item">Exporting in the .psm1 but not the .psd1. The manifest’s list wins, so the function stays hidden</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>Import-Module .\MyTools -Force -Verbose</code> while developing to see what loads</li>
+							<li class="note-item">Keep tests next to code: <code>Tests\Get-Thing.Tests.ps1</code></li>
+							<li class="note-item">Store the Gallery API key in a secret vault, never in the script</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>.psm1</code> in a same-named folder — a module</li>
+							<li class="note-item"><code>.psd1</code> via <code>New-ModuleManifest</code> — metadata + exports</li>
+							<li class="note-item">Public/Private + dot-sourcing — tidy layout</li>
+							<li class="note-item"><code>Publish-PSResource</code> — release to a gallery</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ps-31-using-modules-gallery.html" class="nav-link prev">Using Modules &amp; the PowerShell Gallery</a>
+				<a href="index.html" class="nav-toc">PowerShell Reference · 40 Sheets</a>
+				<a href="ps-33-regular-expressions.html" class="nav-link next">Regular Expressions</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-powershell.min.js"></script>
+	</body>
+</html>

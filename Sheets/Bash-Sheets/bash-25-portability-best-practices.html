@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Bash — Sheet 25: Portability &amp; Best Practices</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/bash-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Portability &amp; Best Practices</h1>
+			<div class="sheet-desc">ShellCheck · bashisms vs POSIX <code>sh</code> · bash 3.2 · <code>command -v</code> · <code>printf</code> · <code>mktemp</code> · quoting</div>
+		</header>
+
+		<main>
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Writing Scripts That Hold Up</h2>
+						<div class="description">Most shell bugs come from a short list: unquoted variables, parsing <code>ls</code>, ignored failures, and assuming a feature exists on every machine. Decide up front which shell you're targeting: use <code>#!/usr/bin/env bash</code> and bash features freely, or <code>#!/bin/sh</code> and stick to <strong>POSIX</strong>. Run <strong>ShellCheck</strong> on everything; it catches most of these problems automatically.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Install ShellCheck: <code>brew install shellcheck</code> / <code>apt install shellcheck</code></li>
+							<li class="note-item">On Debian/Ubuntu, <code>/bin/sh</code> is <strong>dash</strong>, not bash</li>
+							<li class="note-item">Silence one warning: <code># shellcheck disable=SC2086</code> above the line</li>
+							<li class="note-item">When a script passes about 100 lines, consider Python</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Script Template</h2>
+						<pre><code class="language-bash">#!/usr/bin/env bash
+# deploy.sh — sync a build to a server
+set -euo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" &amp;&amp; pwd)
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+log() { printf '%s %s\n' "$(date +%T)" "$*" &gt;&amp;2; }
+
+main() {
+  command -v rsync &gt; /dev/null || { log "rsync not found"; exit 127; }
+  local target=${1:?usage: deploy.sh host}
+  log "deploying to $target"
+  rsync -a "$script_dir/dist/" "$target:/srv/app/"
+}
+main "$@"</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>script_dir</code> — find files next to the script, wherever it's run from</div>
+							<div class="explain-item"><code>mktemp -d</code> + <code>trap … EXIT</code> — private temp dir, always removed</div>
+							<div class="explain-item"><code>log</code> to stderr — keeps stdout clean for real output</div>
+							<div class="explain-item"><code>command -v</code> — POSIX way to test that a program exists</div>
+							<div class="explain-item"><code>${1:?usage}</code> — required argument with a built-in error</div>
+							<div class="explain-item"><code>main "$@"</code> — whole file is parsed before anything runs</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-instead">
+						<h2 class="section-title">Instead Of → Use</h2>
+						<table>
+							<thead><tr><th>Avoid</th><th>Prefer</th></tr></thead>
+							<tbody>
+								<tr><td>which x</td><td class="kw">command -v x</td></tr>
+								<tr><td>echo -e</td><td class="kw">printf</td></tr>
+								<tr><td>backticks</td><td class="kw">$( … )</td></tr>
+								<tr><td>for f in $(ls)</td><td class="kw">for f in *</td></tr>
+								<tr><td>[ $x = y ]</td><td class="kw">[[ $x == y ]]</td></tr>
+								<tr><td>expr / let</td><td class="kw">(( … ))</td></tr>
+								<tr><td>cat f | grep x</td><td class="kw">grep x f</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-posix">
+						<h2 class="section-title">Bashism → POSIX sh</h2>
+						<table>
+							<thead><tr><th>bash</th><th>POSIX sh</th></tr></thead>
+							<tbody>
+								<tr><td>[[ … ]]</td><td class="kw">[ … ]</td></tr>
+								<tr><td>==</td><td class="kw">=</td></tr>
+								<tr><td>arrays</td><td class="kw">"$@" / set --</td></tr>
+								<tr><td>{1..5}</td><td class="kw">seq / while loop</td></tr>
+								<tr><td>source f</td><td class="kw">. f</td></tr>
+								<tr><td>&amp;&gt; f</td><td class="kw">&gt; f 2&gt;&amp;1</td></tr>
+								<tr><td>function f</td><td class="kw">f()</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-32">
+						<h2 class="section-title">Missing in bash 3.2 (macOS)</h2>
+						<table>
+							<thead><tr><th>Feature</th><th>Since</th></tr></thead>
+							<tbody>
+								<tr><td>declare -A</td><td class="center">4.0</td></tr>
+								<tr><td>mapfile / readarray</td><td class="center">4.0</td></tr>
+								<tr><td>${v,,} ${v^^}</td><td class="center">4.0</td></tr>
+								<tr><td>globstar, &amp;&gt;&gt;, |&amp;</td><td class="center">4.0</td></tr>
+								<tr><td>declare -n, wait -n</td><td class="center">4.3</td></tr>
+								<tr><td>${v@Q}</td><td class="center">4.4</td></tr>
+								<tr><td>EPOCHSECONDS</td><td class="center">5.0</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>#!/bin/sh</code> with <code>[[ ]]</code> or arrays: works where sh is bash, breaks on Debian (dash) and Alpine (busybox)</li>
+							<li class="note-item">Parsing <code>ls</code> output: breaks on spaces and newlines in names; use globs or <code>find -print0</code></li>
+							<li class="note-item"><code>cd somewhere; rm -rf *</code> without checking <code>cd</code> succeeded; use <code>cd dir || exit</code></li>
+							<li class="note-item">Hard-coding <code>/tmp/myfile</code>: collisions and security issues; use <code>mktemp</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Quote everything, then remove quotes only where you want splitting</li>
+							<li class="note-item">Use <code>--</code> before untrusted filenames: <code>rm -- "$f"</code></li>
+							<li class="note-item">Check the version you need: <code>(( BASH_VERSINFO[0] &gt;= 4 )) || { echo 'need bash 4+' &gt;&amp;2; exit 1; }</code></li>
+							<li class="note-item">Format with <code>shfmt -i 2 -w script.sh</code> for consistent style</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">ShellCheck — run on every script</li>
+							<li class="note-item"><code>#!/usr/bin/env bash</code> — be explicit about bash</li>
+							<li class="note-item"><code>command -v</code> / <code>printf</code> / <code>$( )</code> — portable choices</li>
+							<li class="note-item"><code>mktemp</code> + <code>trap</code> — safe temp files</li>
+							<li class="note-item">Quote every expansion</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="bash-24-aliases-prompt-navigation.html">Aliases, Prompt &amp; Navigation</a>
+				<a class="nav-toc" href="index.html">Bash Reference · 27 Sheets</a>
+				<a class="nav-link next" href="bash-26-quick-reference-syntax.html">Quick Reference — Syntax &amp; Expansion</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>
