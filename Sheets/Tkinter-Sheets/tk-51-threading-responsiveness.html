@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Tkinter — Sheet 51: Threading &amp; Responsive UIs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tk-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>Threading &amp; Responsive UIs</h1>
+			<div class="sheet-desc">threading.Thread · queue.Queue · after() polling · not thread-safe · daemon threads · concurrent.futures</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Keeping the UI Responsive</h2>
+						<div class="description">Tk runs everything on <strong>one thread</strong>: while a callback works, the window can't redraw or respond. Move slow work (network, files, heavy math) to a <strong>worker thread</strong>, but remember that Tkinter is <strong>not thread-safe</strong>: workers must not touch widgets or Tk variables. Instead they put results on a <code>queue.Queue</code>, and the main thread <strong>polls</strong> the queue with <code>after()</code> and updates the UI. <code>concurrent.futures</code> works the same way with a future you check from an <code>after()</code> loop.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Mark workers <code>daemon=True</code> so they don't block exit</li>
+						<li class="note-item">Pass data, not widgets, into worker functions</li>
+						<li class="note-item">Disable the start button while work runs</li>
+						<li class="note-item">Catch exceptions in the worker and queue them</li>
+						<li class="note-item">CPU-bound work may need <code>multiprocessing</code> instead</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Worker Thread + Queue + after()</h2>
+						<pre><code class="language-python">import tkinter as tk, threading, queue, time
+from tkinter import ttk
+
+root = tk.Tk(); q = queue.Queue()
+bar = ttk.Progressbar(root, length=260); bar.pack(padx=10, pady=8)
+status = ttk.Label(root, text="Idle"); status.pack()
+
+def worker(n):                        # runs off the main thread
+    try:
+        for i in range(1, n + 1):
+            time.sleep(0.05)          # slow work stand-in
+            q.put(("progress", i * 100 / n))
+        q.put(("done", f"Processed {n} items"))
+    except Exception as exc:
+        q.put(("error", str(exc)))
+
+def poll():                           # runs on the main thread
+    while not q.empty():
+        kind, value = q.get_nowait()
+        if kind == "progress":
+            bar["value"] = value
+        else:
+            status.config(text=value); start.state(["!disabled"]); return
+    root.after(50, poll)
+
+def begin():
+    start.state(["disabled"]); status.config(text="Working…")
+    threading.Thread(target=worker, args=(60,), daemon=True).start(); poll()
+start = ttk.Button(root, text="Start", command=begin); start.pack(pady=8)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">The worker only writes to the queue, never to widgets</div>
+							<div class="explain-item">Errors are sent through the queue too</div>
+							<div class="explain-item"><code>poll()</code> drains all queued messages each tick</div>
+							<div class="explain-item">Polling stops after the final message</div>
+							<div class="explain-item">The button is disabled while work runs</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Thread Rules | Tools | Futures Pattern -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-thread-rules">
+						<h2 class="section-title">Thread Rules</h2>
+						<table>
+							<thead><tr><th>Do</th><th>Don't</th></tr></thead>
+							<tbody>
+								<tr><td>Queue results</td><td class="desc">Touch widgets in worker</td></tr>
+								<tr><td>Poll with after()</td><td class="desc">Block on q.get()</td></tr>
+								<tr><td>daemon=True</td><td class="desc">Join in a callback</td></tr>
+								<tr><td>Copy data in</td><td class="desc">Share mutable state</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-tools">
+						<h2 class="section-title">Tools</h2>
+						<table>
+							<thead><tr><th>Module</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>threading</td><td class="desc">I/O-bound work</td></tr>
+								<tr><td>queue.Queue</td><td class="desc">Thread-safe channel</td></tr>
+								<tr><td>concurrent.futures</td><td class="desc">Pools, futures</td></tr>
+								<tr><td>multiprocessing</td><td class="desc">CPU-bound work</td></tr>
+								<tr><td>asyncio</td><td class="desc">Separate loop thread</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-futures-pattern">
+						<h2 class="section-title">Futures Pattern</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Code</th></tr></thead>
+							<tbody>
+								<tr><td>Submit</td><td class="desc">fut = pool.submit(f)</td></tr>
+								<tr><td>Check</td><td class="desc">fut.done()</td></tr>
+								<tr><td>Result</td><td class="desc">fut.result()</td></tr>
+								<tr><td>Reschedule</td><td class="desc">after(100, check)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Calling <code>label.config()</code> from a worker thread</li>
+						<li class="note-item">Using <code>q.get()</code> (blocking) on the main thread</li>
+						<li class="note-item">Starting a new poll loop on every click</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Wrap the pattern in a small helper class</li>
+						<li class="note-item">Send tagged tuples like <code>("progress", 40)</code></li>
+						<li class="note-item">Show progress or a spinner for anything over ~0.2 s</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">One UI thread; never block it</li>
+						<li class="note-item">Workers → queue → <code>after()</code> poll</li>
+						<li class="note-item">Never touch Tk from workers</li>
+						<li class="note-item">Disable controls while busy</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="tk-50-after-timers.html" class="nav-link prev">after() &amp; Timers</a>
+				<a href="index.html" class="nav-toc">Tkinter Reference · 62 Sheets</a>
+				<a href="tk-52-input-validation.html" class="nav-link next">Input Validation</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tcl.min.js"></script>
+	</body>
+</html>
