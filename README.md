@@ -141,7 +141,7 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ✅ | HTML | 15 | head, landmark & structural tags, semantic containers, generic containers, classes & IDs, typography, lists, tables, inline & misc, media, links, forms, accessibility, DOM & script basics |
+| 🚧 | HTML | 56 | In progress — introduction & document basics, comments & character references, head & metadata, page structure & semantics, text content, lists, links, images & graphics, audio/video & embeds, tables, forms & validation, details/dialog/popover, accessibility & ARIA, scripting & web components, quick reference; every sheet adds Accessibility and Pairing with CSS sections |
 | ✅ | CSS | 25 | naming, selectors: basic & combinators, pseudo-classes, pseudo-elements & attribute, box model, borders & outlines, typography: fonts & text, colors, backgrounds, gradients, flexbox, grid, positioning, display & overflow, transitions, animations, transform, responsive: media queries, fluid units & functions, variables, modern CSS |
 | ✅ | CSS Systems | 46 | utility-first (Tailwind, UnoCSS), component frameworks (Bootstrap, Bulma, Foundation), CSS-in-JS (Styled Components, CSS Modules), preprocessors (Sass/SCSS, PostCSS), design tokens & architecture (Open Props, ITCSS), comparisons & migration |
 | ✅ | JavaScript / TypeScript | 131 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & packages, tooling, advanced topics, async, DOM, browser APIs, Node.js, TypeScript fundamentals & type system |
