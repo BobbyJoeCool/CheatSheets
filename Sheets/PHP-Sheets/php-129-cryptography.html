@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 129: Hashing, HMAC &amp; Encryption</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s129">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 129</div>
+			<h1>Hashing, HMAC &amp; Encryption</h1>
+			<div class="sheet-desc">hash() · hash_hmac() · sodium_crypto_secretbox() · sodium_crypto_box() · openssl_encrypt() · random_bytes()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Choosing the Right Primitive</h2>
+						<div class="description">A <strong>hash</strong> (<code>hash('sha256', $data)</code>) fingerprints data — fine for checksums, never for passwords. An <strong>HMAC</strong> (<code>hash_hmac()</code>) adds a secret key so only key holders can create a valid signature — use it to verify tokens and webhooks. <strong>Encryption</strong> hides data and is reversible with the key: use <strong>libsodium</strong> (<code>sodium_crypto_secretbox()</code> for one shared key, <code>sodium_crypto_box()</code> for public-key) — it's built in and hard to misuse.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Never invent your own crypto schemes</li>
+						<li class="note-item">Keys come from <code>random_bytes()</code> or <code>sodium_crypto_*_keygen()</code></li>
+						<li class="note-item">A nonce must never repeat with the same key</li>
+						<li class="note-item">Prefer authenticated encryption (secretbox, AES-GCM)</li>
+						<li class="note-item">Wipe secrets with <code>sodium_memzero()</code> when done</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Hash, HMAC, Encrypt</h2>
+						<pre><code class="language-php">&lt;?php
+// Integrity / fingerprint
+hash('sha256', 'hello');               // 2cf24dba5fb0a30e…
+hash_file('sha256', 'release.zip');    // checksum
+
+// Authenticity: HMAC-signed webhook
+$expected = hash_hmac('sha256', $rawBody, $webhookSecret);
+if (!hash_equals($expected, $_SERVER['HTTP_X_SIGNATURE'] ?? '')) {
+    http_response_code(401); exit;
+}
+
+// Secret-key authenticated encryption (libsodium)
+$key   = sodium_crypto_secretbox_keygen();          // store safely
+$nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+$box   = sodium_crypto_secretbox('card ****4242', $nonce, $key);
+$stored = base64_encode($nonce . $box);
+
+$raw   = base64_decode($stored);
+$n     = substr($raw, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+$c     = substr($raw, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+$plain = sodium_crypto_secretbox_open($c, $n, $key);  // false if tampered
+
+// OpenSSL AES-256-GCM (when interoperability requires it)
+$iv  = random_bytes(12);
+$enc = openssl_encrypt('data', 'aes-256-gcm', $aesKey, 0, $iv, $tag);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Plain hash: anyone can recompute it</div>
+							<div class="explain-item">HMAC: only holders of the secret can sign</div>
+							<div class="explain-item"><code>hash_equals</code> prevents timing attacks</div>
+							<div class="explain-item">Store nonce + ciphertext together; never reuse a nonce</div>
+							<div class="explain-item">Decryption returns <code>false</code> if data was modified</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Which Tool Table | Hash Algorithms Table | Key Handling Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-which-tool">
+						<h2 class="section-title">Which Tool?</h2>
+						<table>
+							<thead><tr><th>Goal</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Checksum</td><td class="desc">hash('sha256')</td></tr>
+								<tr><td>Password storage</td><td class="desc">password_hash()</td></tr>
+								<tr><td>Sign / verify messages</td><td class="desc">hash_hmac() + hash_equals()</td></tr>
+								<tr><td>Encrypt with shared key</td><td class="desc">sodium_crypto_secretbox</td></tr>
+								<tr><td>Encrypt to a public key</td><td class="desc">sodium_crypto_box</td></tr>
+								<tr><td>Digital signatures</td><td class="desc">sodium_crypto_sign</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-hash-algorithms">
+						<h2 class="section-title">Hash Algorithms</h2>
+						<table>
+							<thead><tr><th>Algorithm</th><th>Status</th></tr></thead>
+							<tbody>
+								<tr><td>sha256 / sha512</td><td class="desc">Good</td></tr>
+								<tr><td>sha3-256</td><td class="desc">Good</td></tr>
+								<tr><td>xxh3 / xxh128</td><td class="desc">Fast, non-crypto (8.1)</td></tr>
+								<tr><td>crc32c</td><td class="desc">Checksums only</td></tr>
+								<tr><td>md5 / sha1</td><td class="desc">Broken for security</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-key-handling">
+						<h2 class="section-title">Key Handling</h2>
+						<table>
+							<thead><tr><th>Practice</th><th>Detail</th></tr></thead>
+							<tbody>
+								<tr><td>Generate</td><td class="desc">random_bytes / *_keygen()</td></tr>
+								<tr><td>Store</td><td class="desc">Env var / secrets manager</td></tr>
+								<tr><td>Rotate</td><td class="desc">Version your keys</td></tr>
+								<tr><td>Encode</td><td class="desc">base64 / hex for storage</td></tr>
+								<tr><td>Never</td><td class="desc">Commit keys to git</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Using <code>md5</code>/<code>sha1</code> for security</li>
+						<li class="note-item">Reusing a nonce/IV with the same key</li>
+						<li class="note-item">Comparing signatures with <code>==</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Prefer libsodium over OpenSSL for new code</li>
+						<li class="note-item">Use HMAC for webhooks and signed URLs</li>
+						<li class="note-item">Keep keys out of the codebase</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Hash ≠ HMAC ≠ encryption</li>
+						<li class="note-item"><code>hash_hmac</code> + <code>hash_equals</code></li>
+						<li class="note-item">libsodium secretbox</li>
+						<li class="note-item">Unique nonces, safe keys</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-128-password-hashing.html" class="nav-link prev">Password Hashing</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-130-secure-configuration.html" class="nav-link next">Secure Configuration &amp; File Safety</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

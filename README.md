@@ -142,7 +142,7 @@ CheatSheets/
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
 | 🚧 | HTML | 56 | In progress — introduction & document basics, comments & character references, head & metadata, page structure & semantics, text content, lists, links, images & graphics, audio/video & embeds, tables, forms & validation, details/dialog/popover, accessibility & ARIA, scripting & web components, quick reference; every sheet adds Accessibility and Pairing with CSS sections |
-| ✅ | CSS | 25 | naming, selectors: basic & combinators, pseudo-classes, pseudo-elements & attribute, box model, borders & outlines, typography: fonts & text, colors, backgrounds, gradients, flexbox, grid, positioning, display & overflow, transitions, animations, transform, responsive: media queries, fluid units & functions, variables, modern CSS |
+| 🚧 | CSS | 77 | In progress — introduction & setup, cascade & inheritance (specificity, layers, nesting & @scope), selectors, values, units & functions, custom properties, color (oklch, color-mix, light-dark), box model & sizing, typography, backgrounds & visual effects, layout fundamentals, flexbox, grid, responsive design & print, transforms, transitions & animation (scroll-driven, view transitions), UI & interaction, organization, accessibility & quick reference; every sheet adds Accessibility and Browser Support sections |
 | ✅ | CSS Systems | 46 | utility-first (Tailwind, UnoCSS), component frameworks (Bootstrap, Bulma, Foundation), CSS-in-JS (Styled Components, CSS Modules), preprocessors (Sass/SCSS, PostCSS), design tokens & architecture (Open Props, ITCSS), comparisons & migration |
 | ✅ | JavaScript / TypeScript | 131 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & packages, tooling, advanced topics, async, DOM, browser APIs, Node.js, TypeScript fundamentals & type system |
 | ✅ | JSP | 32 | directives, implicit objects & scope, Expression Language, standard actions, JSTL (core, fmt, fn), custom tags & TLDs, integration & security |
@@ -150,7 +150,7 @@ CheatSheets/
 | ✅ | Node.js | 68 | introduction & setup, modules & packages, event loop & async, process & environment, CLI tools, file system, buffers & streams, networking & HTTP, errors & debugging, testing, concurrency & performance, security, built-in utilities, web frameworks & libraries, deployment |
 | ✅ | Next.js | 58 | introduction & setup, routing, server & client components, data fetching, caching & rendering, mutations & server actions, route handlers & proxy, styling, optimizations, authentication & security, data, environment & i18n, testing & debugging, deployment & operations, Pages Router (legacy) |
 | ⬜ | Prisma | 69 | intro & setup, schema definition, client basics, CRUD, filtering & querying, relations & nested writes, aggregations, transactions, migrations, error handling, advanced patterns, performance, testing |
-| ⬜ | PHP | — | Planned |
+| 🚧 | PHP | 133 | In progress — introduction & setup, output & comments, variables & data types, strings, operators, control flow, error handling, functions, arrays & data structures, OOP (enums, readonly, property hooks, asymmetric visibility), files & I/O, modules & Composer, standard library, testing & tooling, advanced topics, web fundamentals, PDO, security, quick reference; targets PHP 8.0–8.5 |
 | ⬜ | Django | — | Planned |
 | ⬜ | Spring | — | Planned |
 
@@ -160,6 +160,7 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | SQL | 22 | SELECT, WHERE Operators, JOIN Types, Aggregate Functions, CASE Statement, String Functions, Date Functions, UNION / INTERSECT / EXCEPT, Subqueries, CTEs, Window Functions, NULL Handling, INSERT, UPDATE & DELETE, CREATE TABLE & Data Types, Constraints, Views, Transactions, Stored Procedures, Triggers, Indexes |
 | ✅ | Python | 96 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & standard library, testing & logging, advanced topics, Tkinter GUI |
+| 🚧 | Tkinter | 62 | In progress — introduction & setup, windows, classic widgets, layout managers (pack, grid, place), variables & events, menus & dialogs, ttk themed widgets (styles, Notebook, Treeview), Canvas, colors, fonts & images, application patterns (timers, threading, validation, scrollable frames, architecture, DPI, testing, packaging), external libraries (sv-ttk, ttkbootstrap, CustomTkinter, Matplotlib), quick reference |
 | ✅ | Java | 134 | control flow, methods & functions, data structures, OOP, files & I/O, modules & packages, standard library, external libraries, concurrency, database, Swing, JavaFX |
 | ⬜ | C++ | — | Planned |
 | ⬜ | C# | — | Planned |
