@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 94: Testing Async Code, Hooks &amp; Mocks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s94">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 94</div>
+			<h1>Testing Async Code, Hooks &amp; Mocks</h1>
+			<div class="sheet-desc">findBy · waitFor · renderHook · vi.mock · MSW · fake timers</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Waiting, Hooks and Fakes</h2>
+					<div class="description">For async UI, prefer <code>findBy*</code> queries; use <code>waitFor(() =&gt; expect(…))</code> when you need to wait for an assertion that isn't a query. Test custom hooks with <strong><code>renderHook</code></strong>. Replace modules with <code>vi.mock</code>, spy on functions with <code>vi.fn()</code> and <code>vi.spyOn</code>, and control time with <strong>fake timers</strong>. For network calls, <strong>MSW</strong> (Mock Service Worker) intercepts requests at the network level, so components keep using real <code>fetch</code>.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>waitFor</code> retries its callback until it stops throwing or times out</li>
+						<li class="note-item"><code>renderHook</code> returns <code>{ result, rerender, unmount }</code>; read <code>result.current</code></li>
+						<li class="note-item">Wrap hooks that need context with the <code>wrapper</code> option</li>
+						<li class="note-item">With fake timers, pass <code>advanceTimers: vi.advanceTimersByTime</code> to <code>userEvent.setup</code></li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Assert that error states render <code>role="alert"</code> so failures are announced</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>renderHook</code> lives in <code>@testing-library/react</code>; <code>@testing-library/react-hooks</code> is deprecated</li>
+						<li class="note-item">MSW 2 uses <code>http</code> and <code>HttpResponse</code> (v1's <code>rest</code> and <code>res(ctx…)</code> are gone)</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item">MSW answers <code>/api/user</code> for every test; <code>server.use</code> overrides one test</div>
+						<div class="explain-item"><code>findByText</code> waits for the fetched name to render</div>
+						<div class="explain-item"><code>renderHook</code> runs the hook in a test component; <code>act</code> applies the update</div>
+						<div class="explain-item"><code>vi.mock</code> replaces the analytics module with a spy</div>
+						<div class="explain-item">Fake timers skip the 300 ms debounce instantly</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Async, Hooks, Mocks</h2>
+					<pre class="language-tsx"><code class="language-tsx">import { act, fireEvent, render, renderHook, screen }
+  from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+
+const server = setupServer(
+  http.get('/api/user', () =&gt; HttpResponse.json({ name: 'Ada' })),
+);
+beforeAll(() =&gt; server.listen());
+afterEach(() =&gt; server.resetHandlers());
+afterAll(() =&gt; server.close());
+
+test('loads the user', async () =&gt; {
+  render(&lt;Profile /&gt;);
+  expect(await screen.findByText('Ada')).toBeInTheDocument();
+});
+
+test('shows an error', async () =&gt; {
+  server.use(http.get('/api/user', () =&gt;
+    new HttpResponse(null, { status: 500 })));
+  render(&lt;Profile /&gt;);
+  expect(await screen.findByRole('alert')).toHaveTextContent(/error/i);
+});
+
+test('useCounter', () =&gt; {
+  const { result } = renderHook(() =&gt; useCounter(5));
+  act(() =&gt; result.current.increment());
+  expect(result.current.count).toBe(6);
+});
+
+vi.mock('./analytics', () =&gt; ({ track: vi.fn() }));
+
+test('debounced search', async () =&gt; {
+  vi.useFakeTimers();
+  const onSearch = vi.fn();
+  render(&lt;Search onSearch={onSearch} /&gt;);
+  fireEvent.change(screen.getByRole('searchbox'),
+    { target: { value: 'mug' } });
+  act(() =&gt; vi.advanceTimersByTime(300));
+  expect(onSearch).toHaveBeenCalledWith('mug');
+  vi.useRealTimers();
+});</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Async Helpers Table | Mocking Tools Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-async-helpers">
+					<h2 class="section-title">Async Helpers</h2>
+					<table>
+						<thead><tr><th>Helper</th><th>Use</th></tr></thead>
+						<tbody>
+							<tr><td><code>findBy*</code></td><td class="desc">wait for an element</td></tr>
+							<tr><td><code>waitFor(fn)</code></td><td class="desc">wait for an assertion</td></tr>
+							<tr><td><code>waitForElementToBeRemoved(el)</code></td><td class="desc">wait for removal</td></tr>
+							<tr><td><code>act(fn)</code></td><td class="desc">flush manual updates</td></tr>
+							<tr><td><code>vi.advanceTimersByTime(ms)</code></td><td class="desc">move fake time</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-mocking-tools">
+					<h2 class="section-title">Mocking Tools</h2>
+					<table>
+						<thead><tr><th>Tool</th><th>Replaces</th></tr></thead>
+						<tbody>
+							<tr><td><code>vi.fn()</code></td><td class="desc">a function (spy)</td></tr>
+							<tr><td><code>vi.spyOn(obj, 'm')</code></td><td class="desc">a method, keeps original</td></tr>
+							<tr><td><code>vi.mock('mod')</code></td><td class="desc">a whole module</td></tr>
+							<tr><td>MSW</td><td class="desc">network responses</td></tr>
+							<tr><td><code>vi.useFakeTimers()</code></td><td class="desc"><code>setTimeout</code>, <code>Date</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Side effects inside <code>waitFor</code> callbacks (they run many times)</li>
+						<li class="note-item">Mocking <code>fetch</code> by hand in every test instead of MSW</li>
+						<li class="note-item">Forgetting to restore real timers</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Share MSW handlers between tests, Storybook and local dev</li>
+						<li class="note-item">Test hooks through components when possible; use <code>renderHook</code> for reusable hooks</li>
+						<li class="note-item">Set <code>onUnhandledRequest: 'error'</code> in MSW to catch unmocked calls</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>findBy</code> / <code>waitFor</code> for async</li>
+						<li class="note-item"><code>renderHook</code> for hooks</li>
+						<li class="note-item">MSW for the network</li>
+						<li class="note-item"><code>vi.fn</code>, <code>vi.mock</code>, fake timers</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-93-rtl-interactions.html">Testing Library: User Interactions</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-95-environment-variables.html">Environment Variables</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

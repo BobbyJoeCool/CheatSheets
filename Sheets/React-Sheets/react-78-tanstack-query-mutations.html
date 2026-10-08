@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 78: TanStack Query: Mutations &amp; Cache</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s78">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 78</div>
+			<h1>TanStack Query: Mutations &amp; Cache</h1>
+			<div class="sheet-desc">useMutation · invalidateQueries · setQueryData · optimistic updates · onSettled · mutation state</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Changing Server Data</h2>
+					<div class="description"><code>useMutation({ mutationFn })</code> runs create, update and delete requests. Call <code>mutate(variables)</code> (or <code>await mutateAsync</code>) to trigger it, and read <code>isPending</code>, <code>isError</code> and <code>data</code>. After a mutation succeeds, keep the cache correct by <strong>invalidating</strong> affected queries so they refetch, or by writing the new data directly with <code>setQueryData</code>. For instant feedback, apply an <strong>optimistic update</strong> and roll back on error.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>invalidateQueries({ queryKey: ['todos'] })</code> matches all keys starting with <code>['todos']</code></li>
+						<li class="note-item">Returning the invalidation promise from <code>onSuccess</code>/<code>onSettled</code> keeps the mutation pending until refetch completes</li>
+						<li class="note-item"><code>onMutate</code> runs before the request; its return value is the context passed to <code>onError</code></li>
+						<li class="note-item">Simplest optimistic UI: render <code>variables</code> while <code>isPending</code></li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Disable or mark buttons while <code>isPending</code>, and announce success or failure</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">In v5, the value returned by <code>onMutate</code> arrives as the third argument of <code>onError</code> and <code>onSettled</code></li>
+						<li class="note-item"><code>useMutationState</code> reads pending mutations from anywhere</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>invalidateQueries</code> marks every todos query stale and refetches active ones</div>
+						<div class="explain-item"><code>add.variables</code> shows the pending title as a faded item</div>
+						<div class="explain-item"><code>cancelQueries</code> stops in-flight fetches from overwriting the optimistic data</div>
+						<div class="explain-item"><code>onMutate</code> snapshots and updates the cache, returning the snapshot</div>
+						<div class="explain-item"><code>onError</code> restores it; <code>onSettled</code> refetches to sync with the server</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Mutations and Cache Updates</h2>
+					<pre class="language-jsx"><code class="language-jsx">import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+function AddTodo() {
+  const queryClient = useQueryClient();
+  const add = useMutation({
+    mutationFn: (title) =&gt; api.post('/todos', { title }),
+    onSuccess: () =&gt;
+      queryClient.invalidateQueries({ queryKey: ['todos'] }),
+  });
+
+  return (
+    &lt;form onSubmit={(e) =&gt; {
+      e.preventDefault();
+      add.mutate(new FormData(e.currentTarget).get('title'));
+    }}&gt;
+      &lt;input name="title" /&gt;
+      &lt;button disabled={add.isPending}&gt;Add&lt;/button&gt;
+      {add.isError &amp;&amp; &lt;p role="alert"&gt;{add.error.message}&lt;/p&gt;}
+      {add.isPending &amp;&amp; &lt;li style={{ opacity: 0.5 }}&gt;{add.variables}&lt;/li&gt;}
+    &lt;/form&gt;
+  );
+}
+
+// Optimistic update with rollback
+const toggle = useMutation({
+  mutationFn: (todo) =&gt; api.patch(`/todos/${todo.id}`,
+    { done: !todo.done }),
+  onMutate: async (todo) =&gt; {
+    await queryClient.cancelQueries({ queryKey: ['todos'] });
+    const previous = queryClient.getQueryData(['todos']);
+    queryClient.setQueryData(['todos'], (old) =&gt; old.map((t) =&gt;
+      t.id === todo.id ? { ...t, done: !t.done } : t));
+    return { previous };
+  },
+  onError: (err, todo, context) =&gt;
+    queryClient.setQueryData(['todos'], context.previous),
+  onSettled: () =&gt;
+    queryClient.invalidateQueries({ queryKey: ['todos'] }),
+});</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Usemutation Table | Cache Methods Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-usemutation">
+					<h2 class="section-title">useMutation</h2>
+					<table>
+						<thead><tr><th>Member</th><th>Use</th></tr></thead>
+						<tbody>
+							<tr><td><code>mutate(vars)</code></td><td class="desc">fire and forget</td></tr>
+							<tr><td><code>mutateAsync(vars)</code></td><td class="desc">returns a promise</td></tr>
+							<tr><td><code>isPending</code> / <code>isError</code> / <code>isSuccess</code></td><td class="desc">status</td></tr>
+							<tr><td><code>variables</code></td><td class="desc">what's being sent</td></tr>
+							<tr><td><code>reset()</code></td><td class="desc">clear state</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-cache-methods">
+					<h2 class="section-title">Cache Methods</h2>
+					<table>
+						<thead><tr><th>Method</th><th>Use</th></tr></thead>
+						<tbody>
+							<tr><td><code>invalidateQueries({ queryKey })</code></td><td class="desc">mark stale + refetch</td></tr>
+							<tr><td><code>setQueryData(key, updater)</code></td><td class="desc">write directly</td></tr>
+							<tr><td><code>getQueryData(key)</code></td><td class="desc">read</td></tr>
+							<tr><td><code>cancelQueries({ queryKey })</code></td><td class="desc">stop fetches</td></tr>
+							<tr><td><code>removeQueries({ queryKey })</code></td><td class="desc">delete from cache</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Mutating cached arrays in place inside <code>setQueryData</code></li>
+						<li class="note-item">Forgetting to invalidate, so lists show stale data</li>
+						<li class="note-item">Optimistic updates without <code>cancelQueries</code> (race with refetch)</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Prefer invalidation; use <code>setQueryData</code> when the response contains the new entity</li>
+						<li class="note-item">Use <code>variables</code>-based optimistic UI for simple cases</li>
+						<li class="note-item">Centralize mutations in custom hooks (<code>useAddTodo</code>)</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>useMutation({ mutationFn })</code></li>
+						<li class="note-item">Invalidate after success</li>
+						<li class="note-item"><code>setQueryData</code> for direct writes</li>
+						<li class="note-item"><code>onMutate</code> + rollback for optimistic UI</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-77-tanstack-query-basics.html">TanStack Query: Setup &amp; Queries</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-79-tanstack-query-advanced.html">TanStack Query: Advanced</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

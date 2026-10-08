@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 62: Profiling &amp; Large Lists</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s62">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 62</div>
+			<h1>Profiling &amp; Large Lists</h1>
+			<div class="sheet-desc">&lt;Profiler onRender&gt; · flame graph · virtualization · TanStack Virtual · react-window · content-visibility</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Finding and Fixing Slow Renders</h2>
+					<div class="description">Measure before optimizing. The DevTools <strong>Profiler</strong> records commits and shows which components rendered, why, and how long each took. The <code>&lt;Profiler&gt;</code> component logs timing from code. For long lists, the usual fix is <strong>virtualization</strong>: render only the rows in view with <strong>TanStack Virtual</strong> or <strong>react-window</strong>, or let the browser skip off-screen work with CSS <code>content-visibility: auto</code>.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Profile production builds; development React is much slower</li>
+						<li class="note-item">Look for components that render often <em>and</em> take long</li>
+						<li class="note-item">Virtualization keeps DOM size constant regardless of list length</li>
+						<li class="note-item"><code>content-visibility: auto</code> with <code>contain-intrinsic-size</code> skips rendering off-screen sections</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Virtualized lists remove off-screen rows from the DOM; set <code>aria-rowcount</code>/<code>aria-setsize</code> and <code>aria-posinset</code> so screen readers know the full size</li>
+						<li class="note-item">Browser find-in-page can't see virtualized rows; offer search</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>&lt;Profiler&gt;</code> API is stable and unchanged in React 19</li>
+						<li class="note-item">React 19.2 adds React tracks to the Chrome Performance panel</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>onRender</code> warns when a commit takes longer than a frame</div>
+						<div class="explain-item"><code>useVirtualizer</code> calculates which rows are visible</div>
+						<div class="explain-item">Only visible rows plus <code>overscan</code> are in the DOM</div>
+						<div class="explain-item"><code>aria-setsize</code>/<code>aria-posinset</code> report the full list size</div>
+						<div class="explain-item"><code>content-visibility</code> lets the browser skip off-screen layout and paint</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Profiler and Virtualization</h2>
+					<pre class="language-jsx"><code class="language-jsx">import { Profiler, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+function onRender(id, phase, actualDuration, baseDuration) {
+  if (actualDuration &gt; 16) {
+    console.warn(`${id} ${phase}: ${actualDuration.toFixed(1)}ms`);
+  }
+}
+
+&lt;Profiler id="Inbox" onRender={onRender}&gt;
+  &lt;Inbox /&gt;
+&lt;/Profiler&gt;
+
+function BigList({ rows }) {
+  const parentRef = useRef(null);
+  const v = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () =&gt; parentRef.current,
+    estimateSize: () =&gt; 36,
+    overscan: 5,
+  });
+
+  return (
+    &lt;div ref={parentRef} style={{ height: 400, overflow: 'auto' }}&gt;
+      &lt;ul role="list"
+        style={{ height: v.getTotalSize(), position: 'relative' }}&gt;
+        {v.getVirtualItems().map((item) =&gt; (
+          &lt;li key={item.key}
+            aria-setsize={rows.length}
+            aria-posinset={item.index + 1}
+            style={{ position: 'absolute', top: 0, width: '100%',
+              transform: `translateY(${item.start}px)` }}&gt;
+            {rows[item.index].name}
+          &lt;/li&gt;
+        ))}
+      &lt;/ul&gt;
+    &lt;/div&gt;
+  );
+}
+
+/* CSS alternative for long pages */
+.feed-item { content-visibility: auto;
+  contain-intrinsic-size: auto 120px; }</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Onrender Args Table | Large List Options Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-onrender-args">
+					<h2 class="section-title">onRender Args</h2>
+					<table>
+						<thead><tr><th>Arg</th><th>Meaning</th></tr></thead>
+						<tbody>
+							<tr><td><code>id</code></td><td class="desc">Profiler id</td></tr>
+							<tr><td><code>phase</code></td><td class="desc"><code>mount</code>, <code>update</code>, <code>nested-update</code></td></tr>
+							<tr><td><code>actualDuration</code></td><td class="desc">time this commit</td></tr>
+							<tr><td><code>baseDuration</code></td><td class="desc">time without memoization</td></tr>
+							<tr><td><code>startTime</code> / <code>commitTime</code></td><td class="desc">timestamps</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-large-list-options">
+					<h2 class="section-title">Large List Options</h2>
+					<table>
+						<thead><tr><th>Option</th><th>Use</th></tr></thead>
+						<tbody>
+							<tr><td>TanStack Virtual</td><td class="desc">headless, flexible</td></tr>
+							<tr><td>react-window</td><td class="desc">simple fixed/variable lists</td></tr>
+							<tr><td><code>content-visibility</code></td><td class="desc">long static content</td></tr>
+							<tr><td>Pagination / infinite load</td><td class="desc">fewer items at once</td></tr>
+							<tr><td><code>useDeferredValue</code></td><td class="desc">keep input responsive</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Optimizing based on development-mode timings</li>
+						<li class="note-item">Virtualizing short lists and adding complexity</li>
+						<li class="note-item">Rendering 10,000 rows and blaming React</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Start with the Profiler's <em>Ranked</em> view</li>
+						<li class="note-item">Virtualize lists over a few hundred rows</li>
+						<li class="note-item">Combine virtualization with <code>memo</code> on row components</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Measure with Profiler first</li>
+						<li class="note-item"><code>&lt;Profiler onRender&gt;</code> in code</li>
+						<li class="note-item">Virtualize long lists</li>
+						<li class="note-item"><code>content-visibility</code> for long pages</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-61-code-splitting.html">Code Splitting &amp; Lazy Loading</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-63-ts-props-components.html">TypeScript: Props &amp; Components</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

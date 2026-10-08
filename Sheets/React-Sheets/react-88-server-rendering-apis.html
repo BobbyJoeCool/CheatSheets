@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 88: Server Rendering APIs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s88">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 88</div>
+			<h1>Server Rendering APIs</h1>
+			<div class="sheet-desc">renderToReadableStream · renderToPipeableStream · prerender · hydrateRoot · hydration mismatches · suppressHydrationWarning</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">react-dom/server and Hydration</h2>
+					<div class="description"><code>react-dom/server</code> renders a React tree to HTML. <code>renderToReadableStream</code> (Web Streams: Deno, Bun, edge, modern Node) and <code>renderToPipeableStream</code> (Node streams) <strong>stream</strong> HTML and support Suspense. <code>prerender</code> from <code>react-dom/static</code> waits for all data, for static generation. On the client, <code>hydrateRoot</code> attaches React to the HTML. If server and client output differ, React reports a <strong>hydration mismatch</strong> and re-renders that part on the client.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>bootstrapScripts</code> / <code>bootstrapModules</code> add the client entry script tags</li>
+						<li class="note-item"><code>onShellReady</code> / awaiting the stream gives you the shell before Suspense content</li>
+						<li class="note-item"><code>renderToString</code> still exists but doesn't support streaming or waiting for Suspense data</li>
+						<li class="note-item"><code>suppressHydrationWarning</code> silences one element's text mismatch (e.g. timestamps)</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Avoid rendering different text on server and client (dates, random IDs); use <code>useId</code> for IDs</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>prerender</code>/<code>prerenderToNodeStream</code> (<code>react-dom/static</code>) are new in React 19</li>
+						<li class="note-item">React 19.2 adds <code>resume</code> APIs for Partial Pre-rendering</li>
+						<li class="note-item">React 19 shows a single diff-style error for hydration mismatches</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>renderToReadableStream</code> returns a stream you can send as a <code>Response</code></div>
+						<div class="explain-item"><code>bootstrapModules</code> adds the script that will hydrate the page</div>
+						<div class="explain-item"><code>stream.allReady</code> waits for every Suspense boundary, useful for crawlers</div>
+						<div class="explain-item"><code>prerender</code> resolves all data and returns static HTML</div>
+						<div class="explain-item"><code>suppressHydrationWarning</code> allows a known one-level text mismatch</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Server Render and Hydrate</h2>
+					<pre class="language-tsx"><code class="language-tsx">// server.ts (Web Streams)
+import { renderToReadableStream } from 'react-dom/server';
+
+export async function handler(request: Request) {
+  let status = 200;
+  const stream = await renderToReadableStream(
+    &lt;App url={request.url} /&gt;,
+    {
+      bootstrapModules: ['/assets/client.js'],
+      onError(error) { status = 500; console.error(error); },
+    },
+  );
+  // await stream.allReady;   // wait for everything (bots)
+  return new Response(stream, {
+    status, headers: { 'Content-Type': 'text/html' },
+  });
+}
+
+// Node streams
+import { renderToPipeableStream } from 'react-dom/server';
+const { pipe } = renderToPipeableStream(&lt;App /&gt;, {
+  bootstrapScripts: ['/client.js'],
+  onShellReady() { res.setHeader('content-type', 'text/html'); pipe(res); },
+});
+
+// Static generation
+import { prerender } from 'react-dom/static';
+const { prelude } = await prerender(&lt;App url="/about" /&gt;);
+
+// client.tsx
+import { hydrateRoot } from 'react-dom/client';
+hydrateRoot(document, &lt;App url={location.href} /&gt;, {
+  onRecoverableError: (e) =&gt; report(e),
+});
+
+// Intentional difference
+&lt;time suppressHydrationWarning&gt;{new Date().toLocaleTimeString()}&lt;/time&gt;</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Server Apis Table | Mismatch Causes Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-server-apis">
+					<h2 class="section-title">Server APIs</h2>
+					<table>
+						<thead><tr><th>API</th><th>Environment</th></tr></thead>
+						<tbody>
+							<tr><td><code>renderToReadableStream</code></td><td class="desc">Web Streams (edge, Bun, Deno)</td></tr>
+							<tr><td><code>renderToPipeableStream</code></td><td class="desc">Node streams</td></tr>
+							<tr><td><code>prerender</code></td><td class="desc">static, Web Streams</td></tr>
+							<tr><td><code>prerenderToNodeStream</code></td><td class="desc">static, Node</td></tr>
+							<tr><td><code>renderToString</code></td><td class="desc">legacy, no streaming</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-mismatch-causes">
+					<h2 class="section-title">Mismatch Causes</h2>
+					<table>
+						<thead><tr><th>Cause</th><th>Fix</th></tr></thead>
+						<tbody>
+							<tr><td><code>Date.now()</code> / locale formatting</td><td class="desc">render on client or pass from server</td></tr>
+							<tr><td><code>Math.random()</code> IDs</td><td class="desc"><code>useId</code></td></tr>
+							<tr><td><code>typeof window</code> branches</td><td class="desc"><code>useEffect</code> or <code>useSyncExternalStore</code></td></tr>
+							<tr><td>Invalid HTML nesting</td><td class="desc">fix markup (<code>&lt;div&gt;</code> in <code>&lt;p&gt;</code>)</td></tr>
+							<tr><td>Browser extensions</td><td class="desc">usually harmless</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Reading <code>window</code> or <code>localStorage</code> during render</li>
+						<li class="note-item">Using <code>suppressHydrationWarning</code> to hide real bugs</li>
+						<li class="note-item">Choosing <code>renderToString</code> for new SSR code</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Use a framework unless you need a custom server</li>
+						<li class="note-item">Send the shell fast; stream the rest</li>
+						<li class="note-item">Wire <code>onRecoverableError</code> to logging to catch mismatches in production</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Stream with <code>renderTo*Stream</code></li>
+						<li class="note-item"><code>prerender</code> for static HTML</li>
+						<li class="note-item"><code>hydrateRoot</code> on the client</li>
+						<li class="note-item">Same output on both sides</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-87-server-functions.html">Server Functions</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-89-accessible-jsx.html">Accessible JSX</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

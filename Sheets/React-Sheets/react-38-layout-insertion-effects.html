@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 38: useLayoutEffect &amp; useInsertionEffect</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>useLayoutEffect &amp; useInsertionEffect</h1>
+			<div class="sheet-desc">before paint · measuring the DOM · tooltip positioning · flicker · useInsertionEffect for CSS-in-JS · SSR caveats</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Effects Before Paint</h2>
+					<div class="description"><code>useLayoutEffect</code> has the same signature as <code>useEffect</code> but runs <strong>synchronously after DOM changes and before the browser paints</strong>. Use it when you must measure layout and update state before the user sees anything, such as positioning a tooltip, to avoid a visible jump. It blocks painting, so keep it rare and fast. <code>useInsertionEffect</code> runs even earlier and exists for CSS-in-JS libraries to inject styles.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Order: render → DOM mutation → insertion effects → layout effects → paint → effects</li>
+						<li class="note-item">State updates inside <code>useLayoutEffect</code> re-render synchronously before paint</li>
+						<li class="note-item"><code>useLayoutEffect</code> does nothing on the server and warns in older React versions</li>
+						<li class="note-item"><code>useInsertionEffect</code> can't update state or read refs</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Positioning popovers before paint prevents them from appearing over the trigger and confusing magnifier users</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">React 19 no longer warns about <code>useLayoutEffect</code> during server rendering</li>
+						<li class="note-item">CSS anchor positioning can replace many measure-and-position effects</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item">The first render places the tooltip at height <code>0</code>, invisibly</div>
+						<div class="explain-item">The layout effect measures and sets <code>height</code> before the browser paints</div>
+						<div class="explain-item">The second render positions it correctly; users never see the first</div>
+						<div class="explain-item">If there's no room above, the tooltip flips below the target</div>
+						<div class="explain-item"><code>useInsertionEffect</code> adds styles before any layout effect reads them</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Measure Before Paint</h2>
+					<pre class="language-jsx"><code class="language-jsx">import { useLayoutEffect, useRef, useState } from 'react';
+
+function Tooltip({ targetRect, children }) {
+  const ref = useRef(null);
+  const [height, setHeight] = useState(0);
+
+  useLayoutEffect(() =&gt; {
+    const { height } = ref.current.getBoundingClientRect();
+    setHeight(height);             // re-renders before paint
+  }, []);
+
+  let top = targetRect.top - height;
+  if (top &lt; 0) top = targetRect.bottom;   // flip below
+
+  return (
+    &lt;div ref={ref} role="tooltip"
+      style={{ position: 'fixed', top, left: targetRect.left }}&gt;
+      {children}
+    &lt;/div&gt;
+  );
+}
+
+// For CSS-in-JS authors only
+import { useInsertionEffect } from 'react';
+function useCSS(rule) {
+  useInsertionEffect(() =&gt; {
+    const style = document.createElement('style');
+    style.textContent = rule;
+    document.head.append(style);
+    return () =&gt; style.remove();
+  }, [rule]);
+}
+
+// Timeline:
+// render -&gt; DOM -&gt; insertion -&gt; layout -&gt; PAINT -&gt; useEffect</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Effect Timing Table | Which Effect Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-effect-timing">
+					<h2 class="section-title">Effect Timing</h2>
+					<table>
+						<thead><tr><th>Hook</th><th>Runs</th></tr></thead>
+						<tbody>
+							<tr><td><code>useInsertionEffect</code></td><td class="desc">before layout effects; no state</td></tr>
+							<tr><td><code>useLayoutEffect</code></td><td class="desc">after DOM update, before paint</td></tr>
+							<tr><td><code>useEffect</code></td><td class="desc">after paint</td></tr>
+							<tr><td>Ref callbacks</td><td class="desc">during commit, before layout effects</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-which-effect">
+					<h2 class="section-title">Which Effect?</h2>
+					<table>
+						<thead><tr><th>Task</th><th>Hook</th></tr></thead>
+						<tbody>
+							<tr><td>Measure then position</td><td class="desc"><code>useLayoutEffect</code></td></tr>
+							<tr><td>Scroll restore without flash</td><td class="desc"><code>useLayoutEffect</code></td></tr>
+							<tr><td>Subscribe / fetch / log</td><td class="desc"><code>useEffect</code></td></tr>
+							<tr><td>Inject <code>&lt;style&gt;</code> (library)</td><td class="desc"><code>useInsertionEffect</code></td></tr>
+							<tr><td>Position popover</td><td class="desc">CSS anchor positioning</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Using <code>useLayoutEffect</code> by default and slowing every render</li>
+						<li class="note-item">Heavy work in layout effects that blocks paint</li>
+						<li class="note-item">Using <code>useInsertionEffect</code> in app code</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Start with <code>useEffect</code>; switch only if you see a flicker</li>
+						<li class="note-item">Check whether CSS (anchor positioning, <code>position: sticky</code>) solves it first</li>
+						<li class="note-item">Use a positioning library such as Floating UI for complex popovers</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>useLayoutEffect</code> = before paint</li>
+						<li class="note-item">For measure-then-render</li>
+						<li class="note-item">Blocks paint: use sparingly</li>
+						<li class="note-item"><code>useInsertionEffect</code> = CSS-in-JS only</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-37-fetching-in-effects.html">Fetching Data in Effects</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-39-context-basics.html">Context Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

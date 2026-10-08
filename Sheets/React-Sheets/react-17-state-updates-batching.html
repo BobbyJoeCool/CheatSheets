@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 17: State Updates &amp; Batching</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>State Updates &amp; Batching</h1>
+			<div class="sheet-desc">state as a snapshot · queued updates · updater function · automatic batching · Object.is bailout · flushSync</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">State Is a Snapshot</h2>
+					<div class="description">Within one render, a state variable is a <strong>fixed snapshot</strong>: calling the setter doesn't change the variable you're reading, it queues a new value for the <em>next</em> render. React <strong>batches</strong> every update from the same event into one re-render. When the next value depends on the previous one, pass an <strong>updater function</strong> (<code>n =&gt; n + 1</code>) so each queued update sees the latest value.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Automatic batching covers handlers, timeouts, promises and native events</li>
+						<li class="note-item">Updater functions run during the next render, in the order they were queued</li>
+						<li class="note-item">If the new value is <code>Object.is</code>-equal to the old one, React may skip the re-render</li>
+						<li class="note-item"><code>flushSync</code> forces an update to apply immediately (rarely needed)</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Use <code>flushSync</code> before moving focus to an element that a state update just rendered, or focus it in an effect</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">React 18 extended automatic batching beyond React event handlers</li>
+						<li class="note-item">In React 17 and earlier, updates in timeouts and promises were not batched</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>n</code> is <code>0</code> for the whole handler, so three <code>setN(n + 1)</code> calls produce <code>1</code></div>
+						<div class="explain-item">Each updater receives the result of the previous one, producing <code>3</code></div>
+						<div class="explain-item"><code>console.log(n)</code> prints the snapshot, not the queued value</div>
+						<div class="explain-item">After <code>await</code>, the two setters still batch into one render</div>
+						<div class="explain-item"><code>flushSync</code> commits the update so the new DOM node exists on the next line</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Snapshots and Updaters</h2>
+					<pre class="language-jsx"><code class="language-jsx">function Counter() {
+  const [n, setN] = useState(0);
+
+  function addThreeWrong() {
+    setN(n + 1);   // 0 + 1
+    setN(n + 1);   // 0 + 1
+    setN(n + 1);   // 0 + 1  -&gt; 1
+  }
+
+  function addThree() {
+    setN((prev) =&gt; prev + 1);   // 0 -&gt; 1
+    setN((prev) =&gt; prev + 1);   // 1 -&gt; 2
+    setN((prev) =&gt; prev + 1);   // 2 -&gt; 3
+  }
+
+  function logAfterSet() {
+    setN(n + 5);
+    console.log(n);    // still the old value
+  }
+
+  return &lt;button onClick={addThree}&gt;{n}&lt;/button&gt;;
+}
+
+// One re-render for both updates (batched)
+function Form() {
+  const [name, setName] = useState('');
+  const [saved, setSaved] = useState(false);
+  async function save() {
+    await api.save(name);
+    setSaved(true);
+    setName('');
+  }
+}
+
+// Apply now, then measure the DOM
+import { flushSync } from 'react-dom';
+flushSync(() =&gt; setItems([...items, next]));
+listRef.current.lastChild.scrollIntoView();</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Queue Examples Table | Batching Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-queue-examples">
+					<h2 class="section-title">Queue Examples</h2>
+					<table>
+						<thead><tr><th>Calls (n = 0)</th><th>Result</th></tr></thead>
+						<tbody>
+							<tr><td><code>setN(n+1)</code> ×3</td><td class="desc">1</td></tr>
+							<tr><td><code>setN(p =&gt; p+1)</code> ×3</td><td class="desc">3</td></tr>
+							<tr><td><code>setN(5); setN(p =&gt; p+1)</code></td><td class="desc">6</td></tr>
+							<tr><td><code>setN(p =&gt; p+1); setN(42)</code></td><td class="desc">42</td></tr>
+							<tr><td><code>setN(0)</code> when n is 0</td><td class="desc">may skip render</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-batching">
+					<h2 class="section-title">Batching</h2>
+					<table>
+						<thead><tr><th>Source</th><th>Batched?</th></tr></thead>
+						<tbody>
+							<tr><td>React event handler</td><td class="desc">yes</td></tr>
+							<tr><td><code>setTimeout</code> / promise</td><td class="desc">yes (18+)</td></tr>
+							<tr><td>Native <code>addEventListener</code></td><td class="desc">yes (18+)</td></tr>
+							<tr><td>Inside <code>flushSync</code></td><td class="desc">no, applied at once</td></tr>
+							<tr><td>Separate events</td><td class="desc">separate renders</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Expecting the state variable to change right after calling the setter</li>
+						<li class="note-item">Using <code>setN(n + 1)</code> in loops or repeated calls</li>
+						<li class="note-item">Reaching for <code>flushSync</code> to fix logic that should use updaters</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Name updater params after the state: <code>setCount(c =&gt; c + 1)</code></li>
+						<li class="note-item">Compute the next value once, store it in a variable, then use it for both the setter and any logging</li>
+						<li class="note-item">Read the DOM after updates in an effect, not right after the setter</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">State = snapshot per render</li>
+						<li class="note-item">Setters queue, React batches</li>
+						<li class="note-item">Updater fn for previous-based updates</li>
+						<li class="note-item"><code>flushSync</code> = rare escape hatch</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-16-usestate.html">useState</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-18-objects-arrays-state.html">Objects &amp; Arrays in State</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

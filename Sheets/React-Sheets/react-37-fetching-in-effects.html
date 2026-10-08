@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 37: Fetching Data in Effects</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>Fetching Data in Effects</h1>
+			<div class="sheet-desc">fetch in useEffect · AbortController · ignore flag · loading/error state · race conditions · when to use a library</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Fetching Without a Library</h2>
+					<div class="description">You can fetch inside <code>useEffect</code>, but you must handle <strong>loading</strong>, <strong>errors</strong> and <strong>race conditions</strong>: if the input changes quickly, an older response can arrive after a newer one. Cancel stale requests with an <code>AbortController</code> in the cleanup, or set an <code>ignore</code> flag. For real apps, prefer <strong>TanStack Query</strong>, <strong>SWR</strong> or a framework loader, which add caching, deduping and retries.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">The effect callback can't be <code>async</code>; define an async function inside and call it</li>
+						<li class="note-item"><code>AbortController</code> cancels the network request; ignore flags just drop the result</li>
+						<li class="note-item"><code>fetch</code> only rejects on network errors; check <code>res.ok</code> for HTTP errors</li>
+						<li class="note-item">Effects don't run on the server, so this pattern can't prefetch during SSR</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Render loading and error text inside an element with <code>role="status"</code> or <code>aria-live="polite"</code></li>
+						<li class="note-item">Use <code>aria-busy="true"</code> on the region being updated</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">React 19's <code>use()</code> with Suspense offers a different approach for cached promises (sheet 47)</li>
+						<li class="note-item">React docs recommend frameworks or data libraries over effect-based fetching</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item">One <code>status</code> field avoids contradictory loading/error booleans</div>
+						<div class="explain-item"><code>signal</code> ties the request to the controller</div>
+						<div class="explain-item">Cleanup aborts the old request when <code>userId</code> changes or the component unmounts</div>
+						<div class="explain-item"><code>AbortError</code> is expected and ignored</div>
+						<div class="explain-item"><code>res.ok</code> turns 404s and 500s into errors</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">useEffect + AbortController</h2>
+					<pre class="language-jsx"><code class="language-jsx">function UserProfile({ userId }) {
+  const [state, setState] = useState({
+    status: 'loading', user: null, error: null,
+  });
+
+  useEffect(() =&gt; {
+    const controller = new AbortController();
+    setState({ status: 'loading', user: null, error: null });
+
+    async function load() {
+      try {
+        const res = await fetch(`/api/users/${userId}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const user = await res.json();
+        setState({ status: 'success', user, error: null });
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        setState({ status: 'error', user: null, error: err });
+      }
+    }
+
+    load();
+    return () =&gt; controller.abort();
+  }, [userId]);
+
+  if (state.status === 'loading')
+    return &lt;p role="status"&gt;Loading…&lt;/p&gt;;
+  if (state.status === 'error')
+    return &lt;p role="alert"&gt;{state.error.message}&lt;/p&gt;;
+  return &lt;h2&gt;{state.user.name}&lt;/h2&gt;;
+}
+
+// Same idea, ignore flag:
+// let ignore = false; … if (!ignore) setX(data);
+// return () =&gt; { ignore = true; };</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Problems To Handle Table | Effect Vs Library Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-problems-to-handle">
+					<h2 class="section-title">Problems to Handle</h2>
+					<table>
+						<thead><tr><th>Problem</th><th>Fix</th></tr></thead>
+						<tbody>
+							<tr><td>Race conditions</td><td class="desc">abort or ignore in cleanup</td></tr>
+							<tr><td>HTTP errors</td><td class="desc">check <code>res.ok</code></td></tr>
+							<tr><td>Loading state</td><td class="desc">status field</td></tr>
+							<tr><td>StrictMode double fetch</td><td class="desc">abort makes it harmless</td></tr>
+							<tr><td>No cache</td><td class="desc">use a data library</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-effect-vs-library">
+					<h2 class="section-title">Effect vs Library</h2>
+					<table>
+						<thead><tr><th>useEffect</th><th>TanStack Query / SWR</th></tr></thead>
+						<tbody>
+							<tr><td>Manual loading/error</td><td class="desc">built in</td></tr>
+							<tr><td>No caching</td><td class="desc">cache + dedupe</td></tr>
+							<tr><td>Manual retries</td><td class="desc">automatic retries</td></tr>
+							<tr><td>Refetch by hand</td><td class="desc">refetch on focus/reconnect</td></tr>
+							<tr><td>No SSR prefetch</td><td class="desc">SSR/hydration support</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>useEffect(async () =&gt; …)</code>, which returns a promise instead of cleanup</li>
+						<li class="note-item">Ignoring stale responses and showing the wrong user's data</li>
+						<li class="note-item">Treating a 404 as success because <code>fetch</code> didn't throw</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Extract the pattern into a <code>useFetch</code> hook while learning</li>
+						<li class="note-item">Switch to TanStack Query (sheet 77) before adding caching by hand</li>
+						<li class="note-item">Show stale data with a spinner rather than blanking the UI on refetch</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Async function inside the effect</li>
+						<li class="note-item">Abort in cleanup</li>
+						<li class="note-item">Check <code>res.ok</code></li>
+						<li class="note-item">Prefer a data library</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-36-you-might-not-need-an-effect.html">You Might Not Need an Effect</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-38-layout-insertion-effects.html">useLayoutEffect &amp; useInsertionEffect</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

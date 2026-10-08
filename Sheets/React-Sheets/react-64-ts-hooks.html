@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 64: TypeScript: Hooks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s64">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 64</div>
+			<h1>TypeScript: Hooks</h1>
+			<div class="sheet-desc">useState&lt;T&gt; · null initial state · useRef&lt;HTMLInputElement&gt;(null) · reducer action unions · typed context guard · custom hook returns</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Typing State, Refs and Context</h2>
+					<div class="description">Most hooks infer their types: <code>useState(0)</code> is <code>number</code>. Provide a type argument when the initial value doesn't describe all possible values, such as <code>null</code> before data loads or an empty array. DOM refs start as <code>null</code> and take the element type. Reducers use a <strong>discriminated union</strong> for actions so each <code>case</code> knows its payload. Context typed as <code>T | null</code> plus a guard hook avoids non-null assertions.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>useState&lt;User | null&gt;(null)</code> allows <code>null</code> until data arrives</li>
+						<li class="note-item"><code>useState&lt;string[]&gt;([])</code> avoids an inferred <code>never[]</code></li>
+						<li class="note-item"><code>useRef&lt;HTMLInputElement&gt;(null)</code> gives <code>RefObject&lt;HTMLInputElement | null&gt;</code></li>
+						<li class="note-item"><code>useRef&lt;number | null&gt;(null)</code> for mutable values like timer IDs</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Type focus-target refs precisely (<code>HTMLButtonElement</code>) so <code>.focus()</code> calls are checked</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>@types/react</code> 19: <code>useRef</code> requires an argument; all refs are mutable (<code>RefObject.current</code> is writable)</li>
+						<li class="note-item"><code>useReducer</code> types infer from the reducer; explicit generics are rarely needed</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>User | null</code> lets you render a loading state before <code>setUser</code></div>
+						<div class="explain-item"><code>inputRef.current?.focus()</code> handles the unmounted case</div>
+						<div class="explain-item">Each <code>Action</code> member has its own payload; <code>case 'added'</code> knows <code>text</code> exists</div>
+						<div class="explain-item">Exhaustive <code>switch</code> with a return type catches missing cases</div>
+						<div class="explain-item"><code>as const</code> makes <code>useToggle</code> return a tuple, not <code>(boolean | fn)[]</code></div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Hooks with Types</h2>
+					<pre class="language-tsx"><code class="language-tsx">import { createContext, use, useReducer, useRef, useState } from 'react';
+
+type User = { id: string; name: string };
+
+const [user, setUser] = useState&lt;User | null&gt;(null);
+const [tags, setTags] = useState&lt;string[]&gt;([]);
+const [count, setCount] = useState(0);          // number
+
+const inputRef = useRef&lt;HTMLInputElement&gt;(null);
+inputRef.current?.focus();
+const timer = useRef&lt;number | null&gt;(null);
+
+type Action =
+  | { type: 'added'; text: string }
+  | { type: 'toggled'; id: string }
+  | { type: 'cleared' };
+type Todo = { id: string; text: string; done: boolean };
+
+function reducer(state: Todo[], action: Action): Todo[] {
+  switch (action.type) {
+    case 'added':
+      return [...state, { id: crypto.randomUUID(),
+        text: action.text, done: false }];
+    case 'toggled':
+      return state.map((t) =&gt; t.id === action.id
+        ? { ...t, done: !t.done } : t);
+    case 'cleared':
+      return [];
+  }
+}
+const [todos, dispatch] = useReducer(reducer, []);
+
+const AuthContext = createContext&lt;User | null&gt;(null);
+export function useAuth(): User {
+  const user = use(AuthContext);
+  if (!user) throw new Error('useAuth outside &lt;AuthProvider&gt;');
+  return user;
+}
+
+export function useToggle(init = false) {
+  const [on, setOn] = useState(init);
+  return [on, () =&gt; setOn((v) =&gt; !v)] as const;
+}</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: When To Annotate Table | Element Types Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-when-to-annotate">
+					<h2 class="section-title">When to Annotate</h2>
+					<table>
+						<thead><tr><th>Hook</th><th>Annotate when</th></tr></thead>
+						<tbody>
+							<tr><td><code>useState</code></td><td class="desc">initial is <code>null</code>, <code>[]</code>, <code>{}</code></td></tr>
+							<tr><td><code>useRef</code> (DOM)</td><td class="desc">always: <code>&lt;HTMLDivElement&gt;(null)</code></td></tr>
+							<tr><td><code>useRef</code> (value)</td><td class="desc">value type differs from initial</td></tr>
+							<tr><td><code>useReducer</code></td><td class="desc">type the reducer, not the hook</td></tr>
+							<tr><td><code>createContext</code></td><td class="desc">always: <code>&lt;T | null&gt;(null)</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-element-types">
+					<h2 class="section-title">Element Types</h2>
+					<table>
+						<thead><tr><th>Element</th><th>Type</th></tr></thead>
+						<tbody>
+							<tr><td><code>&lt;input&gt;</code></td><td class="desc"><code>HTMLInputElement</code></td></tr>
+							<tr><td><code>&lt;button&gt;</code></td><td class="desc"><code>HTMLButtonElement</code></td></tr>
+							<tr><td><code>&lt;div&gt;</code></td><td class="desc"><code>HTMLDivElement</code></td></tr>
+							<tr><td><code>&lt;form&gt;</code></td><td class="desc"><code>HTMLFormElement</code></td></tr>
+							<tr><td><code>&lt;dialog&gt;</code></td><td class="desc"><code>HTMLDialogElement</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>useState([])</code> inferring <code>never[]</code></li>
+						<li class="note-item">Non-null assertions (<code>ctx!</code>) on context instead of a guard hook</li>
+						<li class="note-item">Returning <code>[a, b]</code> from a custom hook without <code>as const</code></li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Let inference work; annotate only where it can't</li>
+						<li class="note-item">Name action types in past tense (<code>added</code>) like events</li>
+						<li class="note-item">Use <code>satisfies</code> to check objects without widening</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>useState&lt;T | null&gt;(null)</code></li>
+						<li class="note-item"><code>useRef&lt;HTMLElement&gt;(null)</code></li>
+						<li class="note-item">Discriminated union actions</li>
+						<li class="note-item">Context <code>T | null</code> + guard hook</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-63-ts-props-components.html">TypeScript: Props &amp; Components</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-65-ts-events-forms.html">TypeScript: Events &amp; Forms</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

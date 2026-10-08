@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 87: Server Functions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s87">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 87</div>
+			<h1>Server Functions</h1>
+			<div class="sheet-desc">'use server' · calling from the client · forms + actions · validation &amp; auth · framework support · closures</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Calling the Server from the Client</h2>
+					<div class="description">A <strong>Server Function</strong> is an <code>async</code> function marked with <code>'use server'</code>. The framework turns it into an endpoint, and Client Components can call it like a normal function or pass it to <code>&lt;form action&gt;</code>. React serializes the arguments, runs the function on the server, and returns the result. Treat every Server Function as a <strong>public API</strong>: validate inputs and check authorization inside it.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Put <code>'use server'</code> at the top of a file to mark every export, or inside a function body</li>
+						<li class="note-item">Server Functions used in <code>action</code> props are also called <em>Server Actions</em></li>
+						<li class="note-item">Arguments and return values must be serializable</li>
+						<li class="note-item">Forms using Server Functions work before JavaScript loads (progressive enhancement)</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Return field errors and render them next to inputs; with progressive enhancement, the server must re-render the form with errors</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Server Functions are stable in React 19 with a supporting framework</li>
+						<li class="note-item">Frameworks encrypt closed-over values, but you should still never close over secrets</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>'use server'</code> at the top makes both exports Server Functions</div>
+						<div class="explain-item">Authorization runs inside the function, every time</div>
+						<div class="explain-item">Zod validates <code>FormData</code> because anyone can call the endpoint</div>
+						<div class="explain-item"><code>useActionState</code> shows the returned error and pending state</div>
+						<div class="explain-item"><code>likePost</code> is called directly from a click handler</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">'use server' Functions</h2>
+					<pre class="language-tsx"><code class="language-tsx">// app/actions.ts
+'use server';
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';   // framework API
+import { auth } from '@/lib/auth';
+
+const Comment = z.object({
+  postId: z.string(), body: z.string().min(1).max(500),
+});
+
+export async function addComment(prevState, formData: FormData) {
+  const session = await auth();
+  if (!session) return { error: 'Please sign in' };
+
+  const parsed = Comment.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Comment is empty or too long' };
+
+  await db.comment.create({ data: { ...parsed.data,
+    authorId: session.userId } });
+  revalidatePath(`/posts/${parsed.data.postId}`);
+  return { error: null };
+}
+
+export async function likePost(postId: string) {
+  const session = await auth();
+  if (!session) throw new Error('Unauthorized');
+  return db.like.toggle(postId, session.userId);
+}
+
+// CommentForm.tsx
+'use client';
+import { useActionState } from 'react';
+import { addComment, likePost } from './actions';
+
+export function CommentForm({ postId }) {
+  const [state, action, pending] = useActionState(addComment,
+    { error: null });
+  return (
+    &lt;form action={action}&gt;
+      &lt;input type="hidden" name="postId" value={postId} /&gt;
+      &lt;textarea name="body" aria-describedby="err" /&gt;
+      &lt;p id="err" role="alert"&gt;{state.error}&lt;/p&gt;
+      &lt;button disabled={pending}&gt;Post&lt;/button&gt;
+      &lt;button type="button" onClick={() =&gt; likePost(postId)}&gt;♥&lt;/button&gt;
+    &lt;/form&gt;
+  );
+}</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Calling Styles Table | Security Checklist Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-calling-styles">
+					<h2 class="section-title">Calling Styles</h2>
+					<table>
+						<thead><tr><th>Style</th><th>Example</th></tr></thead>
+						<tbody>
+							<tr><td>Form action</td><td class="desc"><code>&lt;form action={fn}&gt;</code></td></tr>
+							<tr><td>Button override</td><td class="desc"><code>&lt;button formAction={fn}&gt;</code></td></tr>
+							<tr><td>With state</td><td class="desc"><code>useActionState(fn, init)</code></td></tr>
+							<tr><td>Direct call</td><td class="desc"><code>await fn(args)</code> in a handler</td></tr>
+							<tr><td>In a transition</td><td class="desc"><code>startTransition(() =&gt; fn())</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-security-checklist">
+					<h2 class="section-title">Security Checklist</h2>
+					<table>
+						<thead><tr><th>Check</th><th>Why</th></tr></thead>
+						<tbody>
+							<tr><td>Authenticate</td><td class="desc">endpoint is public</td></tr>
+							<tr><td>Authorize the resource</td><td class="desc">user owns it?</td></tr>
+							<tr><td>Validate input</td><td class="desc">client can send anything</td></tr>
+							<tr><td>Return minimal data</td><td class="desc">avoid leaking fields</td></tr>
+							<tr><td>Rate-limit sensitive actions</td><td class="desc">abuse</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Assuming a Server Function is private because it isn't linked in the UI</li>
+						<li class="note-item">Trusting hidden form fields without checking ownership</li>
+						<li class="note-item">Returning whole database records to the client</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Keep Server Functions in <code>actions.ts</code> files per feature</li>
+						<li class="note-item">Return <code>{ error }</code> objects for expected failures; throw for bugs</li>
+						<li class="note-item">Revalidate or update caches after writes</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>'use server'</code> async functions</li>
+						<li class="note-item">Callable from forms and handlers</li>
+						<li class="note-item">Public endpoints: auth + validate</li>
+						<li class="note-item">Serializable args and results</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-86-server-components.html">Server Components</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-88-server-rendering-apis.html">Server Rendering APIs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

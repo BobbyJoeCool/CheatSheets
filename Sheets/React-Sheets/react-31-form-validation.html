@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 31: Form Validation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s31">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 31</div>
+			<h1>Form Validation</h1>
+			<div class="sheet-desc">constraint validation · Zod schemas · safeParse · zodResolver · field errors · aria-invalid / aria-describedby</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Validate Once, Everywhere</h2>
+					<div class="description">Start with <strong>native constraint validation</strong> (<code>required</code>, <code>type</code>, <code>pattern</code>, <code>min</code>) for free browser checks. For real rules, define a <strong>Zod schema</strong> once and use it everywhere: <code>safeParse</code> returns either typed data or a list of field errors. With React Hook Form, <code>zodResolver</code> plugs the schema straight into <code>useForm</code>. Always validate again on the server.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>schema.safeParse(data)</code> never throws; check <code>result.success</code></li>
+						<li class="note-item"><code>z.infer&lt;typeof schema&gt;</code> gives the TypeScript type for free</li>
+						<li class="note-item"><code>z.coerce.number()</code> converts form strings to numbers</li>
+						<li class="note-item"><code>noValidate</code> on <code>&lt;form&gt;</code> turns off browser bubbles when you render your own messages</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Set <code>aria-invalid="true"</code> on invalid fields and connect the message with <code>aria-describedby</code></li>
+						<li class="note-item">Show errors as text, not only red borders</li>
+						<li class="note-item">Move focus to the first invalid field on submit</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Zod 4 is current; <code>z.email()</code> and other top-level string formats are new in v4 (<code>z.string().email()</code> still works)</li>
+						<li class="note-item"><code>@hookform/resolvers/zod</code> supports Zod 4</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item">The schema is the single definition of what valid data looks like</div>
+						<div class="explain-item"><code>z.coerce.number()</code> turns the <code>'17'</code> string from <code>FormData</code> into <code>17</code></div>
+						<div class="explain-item"><code>z.flattenError(...).fieldErrors</code> maps each field to its messages</div>
+						<div class="explain-item"><code>zodResolver</code> runs the same schema inside React Hook Form</div>
+						<div class="explain-item"><code>noValidate</code> hides native bubbles so only your messages show</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">One Schema, Two Uses</h2>
+					<pre class="language-tsx"><code class="language-tsx">import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+const Signup = z.object({
+  email: z.email('Enter a valid email'),
+  age: z.coerce.number().int().min(13, 'Must be 13+'),
+  password: z.string().min(8, 'At least 8 characters'),
+});
+type SignupData = z.infer&lt;typeof Signup&gt;;
+
+// 1) With a React 19 action
+async function signUp(prev, formData) {
+  const result = Signup.safeParse(Object.fromEntries(formData));
+  if (!result.success) {
+    return { errors: z.flattenError(result.error).fieldErrors };
+  }
+  await api.signUp(result.data);
+  return { errors: {} };
+}
+
+// 2) With React Hook Form
+function SignupForm() {
+  const { register, handleSubmit, formState: { errors } } =
+    useForm&lt;SignupData&gt;({ resolver: zodResolver(Signup) });
+  return (
+    &lt;form noValidate onSubmit={handleSubmit(api.signUp)}&gt;
+      &lt;input {...register('email')}
+        aria-invalid={!!errors.email}
+        aria-describedby="email-err" /&gt;
+      &lt;p id="email-err"&gt;{errors.email?.message}&lt;/p&gt;
+    &lt;/form&gt;
+  );
+}</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Native Constraints Table | Zod Basics Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-native-constraints">
+					<h2 class="section-title">Native Constraints</h2>
+					<table>
+						<thead><tr><th>Attribute</th><th>Checks</th></tr></thead>
+						<tbody>
+							<tr><td><code>required</code></td><td class="desc">not empty</td></tr>
+							<tr><td><code>type="email"</code> / <code>"url"</code></td><td class="desc">format</td></tr>
+							<tr><td><code>minLength</code> / <code>maxLength</code></td><td class="desc">text length</td></tr>
+							<tr><td><code>min</code> / <code>max</code> / <code>step</code></td><td class="desc">numbers, dates</td></tr>
+							<tr><td><code>pattern</code></td><td class="desc">regex match</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-zod-basics">
+					<h2 class="section-title">Zod Basics</h2>
+					<table>
+						<thead><tr><th>Schema</th><th>Validates</th></tr></thead>
+						<tbody>
+							<tr><td><code>z.string().min(1)</code></td><td class="desc">non-empty string</td></tr>
+							<tr><td><code>z.email()</code></td><td class="desc">email format</td></tr>
+							<tr><td><code>z.coerce.number()</code></td><td class="desc">numeric string → number</td></tr>
+							<tr><td><code>z.enum(['a','b'])</code></td><td class="desc">one of a set</td></tr>
+							<tr><td><code>.optional()</code> / <code>.nullable()</code></td><td class="desc">may be missing / null</td></tr>
+							<tr><td><code>.refine(fn, msg)</code></td><td class="desc">custom rule</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Validating only on the client</li>
+						<li class="note-item">Using <code>parse</code> (throws) where <code>safeParse</code> fits better</li>
+						<li class="note-item">Showing all errors before the user has touched a field</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Share schemas between client and server code</li>
+						<li class="note-item">Validate on blur, then on change once a field has an error</li>
+						<li class="note-item">Keep messages specific: say what to fix</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Native constraints first</li>
+						<li class="note-item">Zod schema = single source</li>
+						<li class="note-item"><code>safeParse</code> → data or errors</li>
+						<li class="note-item"><code>zodResolver</code> for RHF</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-30-react-hook-form.html">React Hook Form</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-32-useref.html">useRef</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

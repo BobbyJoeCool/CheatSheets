@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 43: Writing Custom Hooks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s43">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 43</div>
+			<h1>Writing Custom Hooks</h1>
+			<div class="sheet-desc">extracting logic · naming · return values · composing hooks · state isn't shared · useDebugValue</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Extracting Logic</h2>
+					<div class="description">A <strong>custom hook</strong> is a function whose name starts with <code>use</code> and that calls other hooks. It packages stateful logic (subscriptions, timers, form state, data fetching) so several components can share it. Each component that calls the hook gets its <strong>own independent state</strong>; hooks share logic, not data. Return whatever is most convenient: a value, a tuple, or an object.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Name it after what it does: <code>useOnlineStatus</code>, <code>useChatRoom</code></li>
+						<li class="note-item">Pass reactive values in as arguments; the hook re-syncs when they change</li>
+						<li class="note-item">Return tuples <code>[value, setValue]</code> for two items, objects for more</li>
+						<li class="note-item"><code>useDebugValue(label)</code> shows a label next to the hook in React DevTools</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Encapsulate accessibility behavior (focus traps, roving tabindex, live announcements) in hooks so every component gets it right</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Custom hooks are plain functions; nothing new in React 19</li>
+						<li class="note-item">The React Compiler optimizes custom hooks like components</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>useOnlineStatus</code> hides two listeners and their cleanup</div>
+						<div class="explain-item"><code>useDebugValue</code> labels the hook in DevTools</div>
+						<div class="explain-item"><code>useToggle</code> returns a tuple, like <code>useState</code></div>
+						<div class="explain-item"><code>useAutosave</code> composes <code>useOnlineStatus</code> and re-runs when <code>value</code> changes</div>
+						<div class="explain-item">Every component calling <code>useOnlineStatus</code> gets its own state and listeners</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Writing and Composing Hooks</h2>
+					<pre class="language-jsx"><code class="language-jsx">import { useDebugValue, useEffect, useState } from 'react';
+
+export function useOnlineStatus() {
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() =&gt; {
+    const on = () =&gt; setOnline(true);
+    const off = () =&gt; setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () =&gt; {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+  useDebugValue(online ? 'Online' : 'Offline');
+  return online;
+}
+
+export function useToggle(initial = false) {
+  const [on, setOn] = useState(initial);
+  const toggle = () =&gt; setOn((v) =&gt; !v);
+  return [on, toggle];
+}
+
+// Hooks can call hooks
+export function useAutosave(value, save) {
+  const online = useOnlineStatus();
+  useEffect(() =&gt; {
+    if (!online) return;
+    const id = setTimeout(() =&gt; save(value), 1000);
+    return () =&gt; clearTimeout(id);
+  }, [value, online, save]);
+  return online;
+}
+
+function StatusBar() {
+  const online = useOnlineStatus();   // own state
+  const [open, toggle] = useToggle();
+  return &lt;p&gt;{online ? '✅ Online' : '❌ Offline'}&lt;/p&gt;;
+}</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Return Shapes Table | Good Candidates Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-return-shapes">
+					<h2 class="section-title">Return Shapes</h2>
+					<table>
+						<thead><tr><th>Shape</th><th>When</th></tr></thead>
+						<tbody>
+							<tr><td>Single value</td><td class="desc"><code>const online = useOnline()</code></td></tr>
+							<tr><td>Tuple</td><td class="desc">value + setter, easy renaming</td></tr>
+							<tr><td>Object</td><td class="desc">many values, named access</td></tr>
+							<tr><td>Nothing</td><td class="desc">side effect only (<code>useTitle</code>)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-good-candidates">
+					<h2 class="section-title">Good Candidates</h2>
+					<table>
+						<thead><tr><th>Logic</th><th>Hook</th></tr></thead>
+						<tbody>
+							<tr><td>Browser API subscription</td><td class="desc"><code>useMediaQuery</code></td></tr>
+							<tr><td>Timer</td><td class="desc"><code>useInterval</code></td></tr>
+							<tr><td>Form field state</td><td class="desc"><code>useField</code></td></tr>
+							<tr><td>Data loading</td><td class="desc"><code>useUser(id)</code></td></tr>
+							<tr><td>Keyboard shortcut</td><td class="desc"><code>useHotkey</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Expecting two components using the same hook to share state</li>
+						<li class="note-item">Hooks named <code>useX</code> that don't call hooks (make them plain functions)</li>
+						<li class="note-item">Lifecycle-style hooks (<code>useMount</code>) that hide missing dependencies</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Extract a hook when two components copy the same effect</li>
+						<li class="note-item">Keep hooks focused on one concern</li>
+						<li class="note-item">Test hooks with <code>renderHook</code> (sheet 94)</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>use*</code> + calls hooks</li>
+						<li class="note-item">Shares logic, not state</li>
+						<li class="note-item">Compose hooks freely</li>
+						<li class="note-item"><code>useDebugValue</code> for DevTools</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-42-rules-of-hooks.html">Rules of Hooks</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-44-common-custom-hooks.html">Common Custom Hooks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

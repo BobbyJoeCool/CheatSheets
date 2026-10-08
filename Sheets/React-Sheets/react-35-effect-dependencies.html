@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React — Sheet 35: Effect Dependencies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/react-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>Effect Dependencies</h1>
+			<div class="sheet-desc">exhaustive-deps · object &amp; function deps · removing deps · updater functions · useEffectEvent · never suppress the linter</div>
+		</header>
+
+		<main>
+		<!-- Row 1: Description + Notes + Accessibility + Version Notes + Explain | Code -->
+		<div class="row row-intro-code" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Deps Are Not a Choice</h2>
+					<div class="description">Every <strong>reactive value</strong> an effect reads (props, state, and anything computed from them in the component body) must be in its dependency array. You don't pick dependencies; the code does, and the <code>react-hooks/exhaustive-deps</code> lint rule checks them. To remove a dependency, change the code so the effect doesn't need it. <code>useEffectEvent</code> lets an effect read the latest values <strong>without</strong> re-running when they change.</div>
+				</section>
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Objects and functions created during render are new each time, so they re-run the effect every render</li>
+						<li class="note-item">Move such objects inside the effect, or outside the component if they don't use props</li>
+						<li class="note-item">Use updater functions (<code>setX(x =&gt; …)</code>) so the effect doesn't depend on <code>x</code></li>
+						<li class="note-item">Values outside the component, refs and setters are not reactive</li>
+					</ul>
+				</section>
+				<section class="section-a11y" id="a11y">
+					<h2 class="section-title">♿ Accessibility</h2>
+					<ul class="note-list">
+						<li class="note-item">Over-firing effects can re-announce live regions or steal focus repeatedly; correct deps prevent it</li>
+					</ul>
+				</section>
+				<section class="section-version" id="version">
+					<h2 class="section-title">Version Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>useEffectEvent</code> is stable in React 19.2</li>
+						<li class="note-item">The React Compiler lint rules in <code>eslint-plugin-react-hooks</code> also catch dependency problems</li>
+					</ul>
+				</section>
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>options</code> is a new object each render, so <code>[options]</code> always changes</div>
+						<div class="explain-item">Building the object inside the effect leaves only <code>roomId</code> as a dependency</div>
+						<div class="explain-item"><code>setCount(c =&gt; c + 1)</code> doesn't read <code>count</code>, so the deps can be <code>[]</code></div>
+						<div class="explain-item"><code>onConnected</code> always sees the latest <code>theme</code> but isn't a dependency</div>
+						<div class="explain-item">Effect Events are called only from inside effects</div>
+					</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Fixing Dependencies</h2>
+					<pre class="language-jsx"><code class="language-jsx">import { useEffect, useEffectEvent, useState } from 'react';
+
+// ✗ options is new every render -&gt; reconnects every render
+function Chat({ roomId }) {
+  const options = { serverUrl, roomId };
+  useEffect(() =&gt; {
+    const c = createConnection(options);
+    c.connect();
+    return () =&gt; c.disconnect();
+  }, [options]);
+}
+
+// ✓ Create it inside the effect; depend on primitives
+function Chat2({ roomId }) {
+  useEffect(() =&gt; {
+    const c = createConnection({ serverUrl, roomId });
+    c.connect();
+    return () =&gt; c.disconnect();
+  }, [roomId]);
+}
+
+// ✓ Updater removes the state dependency
+useEffect(() =&gt; {
+  const id = setInterval(() =&gt; setCount((c) =&gt; c + 1), 1000);
+  return () =&gt; clearInterval(id);
+}, []);
+
+// ✓ Read latest theme without reconnecting on theme change
+function Room({ roomId, theme }) {
+  const onConnected = useEffectEvent(() =&gt; {
+    showToast('Connected!', theme);
+  });
+  useEffect(() =&gt; {
+    const c = createConnection({ serverUrl, roomId });
+    c.on('connected', () =&gt; onConnected());
+    c.connect();
+    return () =&gt; c.disconnect();
+  }, [roomId]);   // theme is not a dependency
+}</code></pre>
+				</section>
+			</div>
+		</div>
+		<!-- Row 2: Remove A Dependency Table | Reactive Table -->
+		<div class="row" id="row-2">
+			<div class="col" id="col-2-1">
+				<section id="tbl-remove-a-dependency">
+					<h2 class="section-title">Remove a Dependency</h2>
+					<table>
+						<thead><tr><th>Problem</th><th>Fix</th></tr></thead>
+						<tbody>
+							<tr><td>Object/array created in render</td><td class="desc">create inside effect</td></tr>
+							<tr><td>Function created in render</td><td class="desc">move inside effect</td></tr>
+							<tr><td>Reads state only to update it</td><td class="desc">updater function</td></tr>
+							<tr><td>Reads value but shouldn't re-run</td><td class="desc"><code>useEffectEvent</code></td></tr>
+							<tr><td>Doesn't use props/state</td><td class="desc">move outside component</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section id="tbl-reactive">
+					<h2 class="section-title">Reactive?</h2>
+					<table>
+						<thead><tr><th>Value</th><th>In deps?</th></tr></thead>
+						<tbody>
+							<tr><td>Props, state</td><td class="desc">yes</td></tr>
+							<tr><td>Values computed in render</td><td class="desc">yes</td></tr>
+							<tr><td><code>useState</code> setters, <code>dispatch</code></td><td class="desc">no (stable)</td></tr>
+							<tr><td><code>ref</code> objects</td><td class="desc">no</td></tr>
+							<tr><td>Module constants</td><td class="desc">no</td></tr>
+							<tr><td><code>useEffectEvent</code> functions</td><td class="desc">no (never list)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+		</div>
+		<!-- Row 3: Mistakes | Tips | Summary -->
+		<div class="row row-footer-trio" id="row-3">
+			<div class="col" id="col-3-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Silencing the linter with <code>// eslint-disable-next-line</code></li>
+						<li class="note-item">Wrapping everything in <code>useCallback</code> to stabilize deps instead of restructuring</li>
+						<li class="note-item">Passing Effect Events to other components or hooks</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Treat a lint warning as a bug report</li>
+						<li class="note-item">Prefer primitive deps (<code>roomId</code>) over objects (<code>room</code>)</li>
+						<li class="note-item">Ask whether the code needs to be in an effect at all (sheet 36)</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-3-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Every reactive value is a dep</li>
+						<li class="note-item">Change code, not the array</li>
+						<li class="note-item">Updaters remove state deps</li>
+						<li class="note-item"><code>useEffectEvent</code> for non-reactive reads</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="react-34-useeffect.html">useEffect</a>
+				<a class="nav-toc" href="index.html">React Reference · 98 Sheets</a>
+				<a class="nav-link next" href="react-36-you-might-not-need-an-effect.html">You Might Not Need an Effect</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>
