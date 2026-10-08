@@ -1,11 +1,11 @@
 # Tkinter Reference — Outline
 
-Drafted from the Outline Guide (`CheatSheets/Outline_guide.md` in Google Drive). Keep this file and `manifest.json` in sync when sheets are added, renamed or reordered.
+Drafted from the Outline Guide (`CheatSheets/Outline_guide.md` in Google Drive) and built into the sheets listed below. Keep this file and `manifest.json` in sync when sheets are added, renamed or reordered.
 
 ## Profile
 
 - **Collection section:** Languages (Python GUI framework)
-- **Status:** Planned (outline only)
+- **Status:** In progress (all 62 sheets built and fit-tuned; awaiting review)
 - **Sheets:** 62 across 12 groups
 - **File prefix:** `tk` (`tk-##-[slug].html`)
 - **Folder:** `Sheets/Tkinter-Sheets/`
