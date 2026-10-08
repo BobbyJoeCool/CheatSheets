@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 105: Fibers &amp; Async PHP</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s105">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 105</div>
+			<h1>Fibers &amp; Async PHP</h1>
+			<div class="sheet-desc">Fiber · start() · suspend() · resume() · event loops · Revolt · ReactPHP · AMPHP</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Cooperative Concurrency (8.1)</h2>
+						<div class="description">A <strong>Fiber</strong> is a block of code with its own call stack that can <strong>pause</strong> (<code>Fiber::suspend()</code>) and <strong>resume</strong> later, exchanging values each way. Fibers don't run in parallel — they let an <strong>event loop</strong> switch tasks while one waits on I/O. Application code rarely uses fibers directly; libraries such as <strong>Revolt</strong> (the shared loop), <strong>AMPHP</strong> and <strong>ReactPHP</strong> build async HTTP clients, servers and database drivers on top of them without <code>async</code>/<code>await</code> keywords.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Fibers are single-threaded; CPU-bound work still blocks</li>
+						<li class="note-item">Suspending is invisible to callers — no function colouring</li>
+						<li class="note-item">Blocking functions (<code>sleep</code>, PDO) block the whole loop</li>
+						<li class="note-item">Use async-aware libraries for sockets, HTTP, DB</li>
+						<li class="note-item">For real parallelism: processes, queues, or <code>ext-parallel</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Fiber Basics and an Async Library</h2>
+						<pre><code class="language-php">&lt;?php
+$fiber = new Fiber(function (string $start): string {
+    echo "got $start\n";
+    $x = Fiber::suspend('paused-1');     // pause, send value out
+    echo "resumed with $x\n";
+    $y = Fiber::suspend('paused-2');
+    return "done $y";
+});
+
+$out = $fiber-&gt;start('go');              // got go
+echo $out, "\n";                         // paused-1
+$out = $fiber-&gt;resume('A');              // resumed with A
+echo $out, "\n";                         // paused-2
+$fiber-&gt;resume('B');
+echo $fiber-&gt;getReturn();                // done B
+
+// AMPHP: concurrent HTTP requests
+use Amp\Future;
+use Amp\Http\Client\HttpClientBuilder;
+use function Amp\async;
+
+$client = HttpClientBuilder::buildDefault();
+$fetch = fn(string $url) =&gt; $client
+    -&gt;request(new Amp\Http\Client\Request($url))
+    -&gt;getBody()-&gt;buffer();
+$futures = array_map(fn($u) =&gt; async($fetch, $u), $urls);
+$bodies = Future\await($futures);       // all run concurrently</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>start()</code> runs until the first <code>suspend()</code></div>
+							<div class="explain-item"><code>suspend()</code> returns the value passed to <code>resume()</code></div>
+							<div class="explain-item">Values flow out through <code>suspend()</code> and back via <code>resume()</code></div>
+							<div class="explain-item"><code>getReturn()</code> reads the final value</div>
+							<div class="explain-item">AMPHP's <code>async()</code> + <code>await()</code> hide the fiber plumbing</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Fiber Api Table | Async Ecosystem Table | Concurrency Options Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-fiber-api">
+						<h2 class="section-title">Fiber API</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>new Fiber($fn)</td><td class="desc">Create</td></tr>
+								<tr><td>-&gt;start(...$args)</td><td class="desc">Run until suspend</td></tr>
+								<tr><td>Fiber::suspend($v)</td><td class="desc">Pause (inside)</td></tr>
+								<tr><td>-&gt;resume($v)</td><td class="desc">Continue</td></tr>
+								<tr><td>-&gt;throw($e)</td><td class="desc">Throw into fiber</td></tr>
+								<tr><td>-&gt;getReturn()</td><td class="desc">Final value</td></tr>
+								<tr><td>-&gt;isTerminated()</td><td class="desc">Finished?</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-async-ecosystem">
+						<h2 class="section-title">Async Ecosystem</h2>
+						<table>
+							<thead><tr><th>Library</th><th>Provides</th></tr></thead>
+							<tbody>
+								<tr><td>Revolt</td><td class="desc">Shared event loop</td></tr>
+								<tr><td>AMPHP</td><td class="desc">Fiber-based async (HTTP, SQL, Redis)</td></tr>
+								<tr><td>ReactPHP</td><td class="desc">Event-driven I/O, promises</td></tr>
+								<tr><td>Swoole / OpenSwoole</td><td class="desc">Coroutine extension</td></tr>
+								<tr><td>FrankenPHP worker mode</td><td class="desc">Long-lived workers</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-concurrency-options">
+						<h2 class="section-title">Concurrency Options</h2>
+						<table>
+							<thead><tr><th>Approach</th><th>Parallel?</th></tr></thead>
+							<tbody>
+								<tr><td>Fibers + event loop</td><td class="desc">No — interleaved I/O</td></tr>
+								<tr><td>pcntl_fork / proc_open</td><td class="desc">Yes — processes</td></tr>
+								<tr><td>Job queues (Redis, SQS)</td><td class="desc">Yes — workers</td></tr>
+								<tr><td>ext-parallel</td><td class="desc">Yes — threads (ZTS)</td></tr>
+								<tr><td>curl_multi</td><td class="desc">Concurrent HTTP</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Expecting fibers to speed up CPU-bound code</li>
+						<li class="note-item">Calling blocking functions inside an async loop</li>
+						<li class="note-item">Building your own scheduler instead of using Revolt</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use AMPHP or ReactPHP rather than raw fibers</li>
+						<li class="note-item">Offload heavy work to queues</li>
+						<li class="note-item">Use <code>curl_multi</code> or async clients for many HTTP calls</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Fibers pause and resume</li>
+						<li class="note-item">Single-threaded, cooperative</li>
+						<li class="note-item">Libraries provide the loop</li>
+						<li class="note-item">Not for CPU-bound work</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-104-serialization.html" class="nav-link prev">Serialization</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 108 Sheets</a>
+				<a href="php-106-cli-scripts.html" class="nav-link next">CLI Scripts</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

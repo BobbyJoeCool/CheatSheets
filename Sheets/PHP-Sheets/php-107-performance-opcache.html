@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 107: Performance, OPcache &amp; JIT</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s107">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 107</div>
+			<h1>Performance, OPcache &amp; JIT</h1>
+			<div class="sheet-desc">OPcache · opcache.validate_timestamps · preloading · JIT · realpath cache · memory_get_usage() · profiling</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Making PHP Fast</h2>
+						<div class="description"><strong>OPcache</strong> stores compiled bytecode in shared memory so scripts aren't re-parsed on every request — it's the single biggest win and should always be on in production. Turn off timestamp checks there and clear the cache on deploy. <strong>Preloading</strong> loads framework classes into memory at server start. The <strong>JIT</strong> compiles hot code to machine code; it helps CPU-heavy work far more than typical I/O-bound web apps. Measure with a profiler before optimising.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">OPcache is bundled; enable it with <code>opcache.enable=1</code></li>
+						<li class="note-item"><code>opcache_reset()</code> or an FPM reload clears it after deploys</li>
+						<li class="note-item">JIT is off by default; enable with <code>opcache.jit</code> + buffer size</li>
+						<li class="note-item">Composer's optimised autoloader also matters (Sheet 87)</li>
+						<li class="note-item">Most web latency is database and network, not PHP</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Production php.ini Settings</h2>
+						<pre><code class="language-ini">; OPcache
+opcache.enable=1
+opcache.enable_cli=0
+opcache.memory_consumption=256
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=20000
+opcache.validate_timestamps=0     ; reload FPM on deploy
+opcache.preload=/app/config/preload.php
+opcache.preload_user=www-data
+
+; JIT (helps CPU-bound code)
+opcache.jit=tracing
+opcache.jit_buffer_size=64M
+
+; Filesystem caching
+realpath_cache_size=4096K
+realpath_cache_ttl=600
+
+; Check at runtime:
+;   php -r 'var_dump(opcache_get_status()["opcache_enabled"]);'
+;   memory_get_peak_usage(true), hrtime(true) for timing
+;   Profilers: Xdebug profile, Blackfire, Tideways, SPX</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Enough memory and file slots for the whole codebase</div>
+							<div class="explain-item"><code>validate_timestamps=0</code> skips file checks — reload on deploy</div>
+							<div class="explain-item">Preload script <code>opcache_compile_file()</code>s hot classes</div>
+							<div class="explain-item"><code>tracing</code> JIT mode suits most workloads</div>
+							<div class="explain-item">Bigger realpath cache cuts filesystem lookups</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Quick Wins Table | Opcache Functions Table | Measuring Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-quick-wins">
+						<h2 class="section-title">Quick Wins</h2>
+						<table>
+							<thead><tr><th>Action</th><th>Impact</th></tr></thead>
+							<tbody>
+								<tr><td>Enable OPcache</td><td class="desc">Huge</td></tr>
+								<tr><td>composer dump-autoload -o</td><td class="desc">Medium</td></tr>
+								<tr><td>Upgrade PHP version</td><td class="desc">Medium–large</td></tr>
+								<tr><td>Fix N+1 queries</td><td class="desc">Often largest</td></tr>
+								<tr><td>Cache expensive results</td><td class="desc">Large</td></tr>
+								<tr><td>JIT for CPU work</td><td class="desc">Situational</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-opcache-functions">
+						<h2 class="section-title">OPcache Functions</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>opcache_get_status()</td><td class="desc">Stats, hit rate</td></tr>
+								<tr><td>opcache_reset()</td><td class="desc">Clear all</td></tr>
+								<tr><td>opcache_invalidate($f)</td><td class="desc">Clear one file</td></tr>
+								<tr><td>opcache_compile_file($f)</td><td class="desc">Precompile</td></tr>
+								<tr><td>opcache_is_script_cached($f)</td><td class="desc">Check</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-measuring">
+						<h2 class="section-title">Measuring</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Measures</th></tr></thead>
+							<tbody>
+								<tr><td>hrtime(true)</td><td class="desc">Wall time (ns)</td></tr>
+								<tr><td>memory_get_usage()</td><td class="desc">Current memory</td></tr>
+								<tr><td>memory_get_peak_usage()</td><td class="desc">Peak memory</td></tr>
+								<tr><td>Xdebug profiler</td><td class="desc">Call graph</td></tr>
+								<tr><td>Blackfire / Tideways</td><td class="desc">Production profiling</td></tr>
+								<tr><td>ab / wrk / k6</td><td class="desc">Load testing</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Running production without OPcache</li>
+						<li class="note-item"><code>validate_timestamps=0</code> but no cache reset on deploy — old code runs</li>
+						<li class="note-item">Micro-optimising PHP while queries dominate</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Profile first, then optimise the hot path</li>
+						<li class="note-item">Keep PHP up to date — each release is faster</li>
+						<li class="note-item">Cache at the right layer (HTTP, app, DB)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">OPcache always on</li>
+						<li class="note-item">Reset on deploy</li>
+						<li class="note-item">Preload + JIT for extra speed</li>
+						<li class="note-item">Measure before optimising</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-106-cli-scripts.html" class="nav-link prev">CLI Scripts</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 108 Sheets</a>
+				<a href="php-108-memory-weak-lazy.html" class="nav-link next">Memory, Weak References &amp; Lazy Objects</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>
