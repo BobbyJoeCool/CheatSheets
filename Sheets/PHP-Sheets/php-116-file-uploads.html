@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 116: File Uploads</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s116">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 116</div>
+			<h1>File Uploads</h1>
+			<div class="sheet-desc">$_FILES · move_uploaded_file() · UPLOAD_ERR_* · upload_max_filesize · post_max_size · finfo MIME checks</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Receiving Files</h2>
+						<div class="description">Upload forms need <code>method="post"</code> and <code>enctype="multipart/form-data"</code>. PHP saves each file to a temporary path and describes it in <code>$_FILES</code>. Check the <code>error</code> code, verify size and real content type (with <code>finfo</code>, not the client's claim), generate your own filename, and move the file with <code>move_uploaded_file()</code> to a directory <strong>outside the web root</strong> or one that never executes PHP.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Temp files are deleted at the end of the request</li>
+						<li class="note-item"><code>upload_max_filesize</code> limits one file; <code>post_max_size</code> the whole body</li>
+						<li class="note-item">If the body exceeds <code>post_max_size</code>, <code>$_POST</code> and <code>$_FILES</code> are empty</li>
+						<li class="note-item"><code>name</code> and <code>type</code> come from the client — don't trust them</li>
+						<li class="note-item">Multiple files: <code>name="docs[]"</code> + <code>multiple</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Safe Upload Handler</h2>
+						<pre><code class="language-php">&lt;?php
+$f = $_FILES['avatar'] ?? null;
+if (!$f || $f['error'] !== UPLOAD_ERR_OK) {
+    $code = $f['error'] ?? 'none';
+    throw new RuntimeException("Upload failed: code $code");
+}
+if ($f['size'] &gt; 2 * 1024 * 1024) {
+    throw new RuntimeException('Max 2 MB');
+}
+
+$mime = (new finfo(FILEINFO_MIME_TYPE))-&gt;file($f['tmp_name']);
+$ext = match ($mime) {
+    'image/jpeg' =&gt; 'jpg',
+    'image/png'  =&gt; 'png',
+    'image/webp' =&gt; 'webp',
+    default      =&gt; throw new RuntimeException('Images only'),
+};
+
+$name = bin2hex(random_bytes(16)) . ".$ext";  // own name
+$dest = __DIR__ . '/../storage/avatars/' . $name;
+if (!move_uploaded_file($f['tmp_name'], $dest)) {
+    throw new RuntimeException('Could not save file');
+}
+?&gt;
+&lt;form method="post" enctype="multipart/form-data"&gt;
+  &lt;input type="file" name="avatar" accept="image/*"&gt;
+  &lt;button&gt;Upload&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Check <code>error</code> first</div>
+							<div class="explain-item">Enforce your own size limit</div>
+							<div class="explain-item"><code>finfo</code> inspects the actual bytes</div>
+							<div class="explain-item">Random filename avoids overwrites and traversal</div>
+							<div class="explain-item"><code>move_uploaded_file</code> only moves genuine uploads</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Files Entry Table | Error Codes Table | Config Limits Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-files-entry">
+						<h2 class="section-title">$_FILES Entry</h2>
+						<table>
+							<thead><tr><th>Key</th><th>Holds</th></tr></thead>
+							<tbody>
+								<tr><td>name</td><td class="desc">Client filename (untrusted)</td></tr>
+								<tr><td>full_path</td><td class="desc">Folder path (8.1)</td></tr>
+								<tr><td>type</td><td class="desc">Client MIME (untrusted)</td></tr>
+								<tr><td>tmp_name</td><td class="desc">Temp path on server</td></tr>
+								<tr><td>error</td><td class="desc">UPLOAD_ERR_* code</td></tr>
+								<tr><td>size</td><td class="desc">Bytes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-error-codes">
+						<h2 class="section-title">Error Codes</h2>
+						<table>
+							<thead><tr><th>Constant</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>UPLOAD_ERR_OK (0)</td><td class="desc">Success</td></tr>
+								<tr><td>UPLOAD_ERR_INI_SIZE (1)</td><td class="desc">&gt; upload_max_filesize</td></tr>
+								<tr><td>UPLOAD_ERR_FORM_SIZE (2)</td><td class="desc">&gt; MAX_FILE_SIZE field</td></tr>
+								<tr><td>UPLOAD_ERR_PARTIAL (3)</td><td class="desc">Partial upload</td></tr>
+								<tr><td>UPLOAD_ERR_NO_FILE (4)</td><td class="desc">Nothing sent</td></tr>
+								<tr><td>UPLOAD_ERR_NO_TMP_DIR (6)</td><td class="desc">Server misconfig</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-config-limits">
+						<h2 class="section-title">Config Limits</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Default</th></tr></thead>
+							<tbody>
+								<tr><td>file_uploads</td><td class="desc">On</td></tr>
+								<tr><td>upload_max_filesize</td><td class="desc">2M</td></tr>
+								<tr><td>post_max_size</td><td class="desc">8M</td></tr>
+								<tr><td>max_file_uploads</td><td class="desc">20</td></tr>
+								<tr><td>upload_tmp_dir</td><td class="desc">System temp</td></tr>
+								<tr><td>max_input_time</td><td class="desc">-1 / 60</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Trusting <code>$_FILES['x']['type']</code> or the extension</li>
+						<li class="note-item">Saving uploads in a public, PHP-executing folder</li>
+						<li class="note-item">Using the original filename on disk</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Verify content with <code>finfo</code> and re-encode images</li>
+						<li class="note-item">Store outside the web root; serve through a controller</li>
+						<li class="note-item">Use object storage (S3) for scale</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">multipart/form-data + POST</li>
+						<li class="note-item">Check <code>error</code> and size</li>
+						<li class="note-item"><code>finfo</code> for real MIME</li>
+						<li class="note-item">Random name + <code>move_uploaded_file</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-115-sessions.html" class="nav-link prev">Sessions</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-117-templating.html" class="nav-link next">Templating &amp; Views</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

@@ -1,11 +1,11 @@
 # PHP Reference — Outline
 
-Drafted from the Outline Guide (`CheatSheets/Outline_guide.md` in Google Drive). Once sheets are built, regenerate `manifest.json` from this outline and keep the two in sync when sheets are added, renamed or reordered.
+Drafted from the Outline Guide (`CheatSheets/Outline_guide.md` in Google Drive) and built into the sheets listed below. Keep this file and `manifest.json` in sync when sheets are added, renamed or reordered.
 
 ## Profile
 
 - **Collection section:** Web Technologies
-- **Status:** Planned
+- **Status:** In progress (all 133 sheets built and fit-tuned; awaiting review)
 - **Sheets:** 133 across 18 groups
 - **File prefix:** `php` (`php-##-[slug].html`)
 - **Folder:** `Sheets/PHP-Sheets/`
@@ -40,7 +40,7 @@ The guide's target for a general-purpose language is 80–110 sheets. The 14 sta
 | # | Filename | Sheet Title | Key Topics |
 |---|---|---|---|
 | 05 | `php-05-echo-print.html` | echo, print &amp; Output | echo · print · multiple args · short echo tag · PHP_EOL · output buffering ob_start() |
-| 06 | `php-06-dumping-values.html` | Dumping &amp; Inspecting Values | print_r() · var_dump() · var_export() · debug_zval_refcount · debug_print_backtrace() · error_log() |
+| 06 | `php-06-dumping-values.html` | Dumping &amp; Inspecting Values | print_r() · var_dump() · var_export() · debug_print_backtrace() · error_log() · json_encode() |
 | 07 | `php-07-comments-phpdoc.html` | Comments &amp; PHPDoc | // · # · /* */ · /** */ · @param · @return · @var · @throws |
 
 ## Group 3 — Variables & Data Types (08–15)
