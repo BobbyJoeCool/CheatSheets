@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 74: Magic Methods — Cloning &amp; Serialization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s74">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 74</div>
+			<h1>Magic Methods — Cloning &amp; Serialization</h1>
+			<div class="sheet-desc">__clone · __serialize · __unserialize · __sleep · __wakeup · __debugInfo · __set_state</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Lifecycle Hooks</h2>
+						<div class="description">These magic methods run at specific points in an object's life. <code>__clone()</code> runs on the <strong>copy</strong> after <code>clone</code>, letting you deep-copy nested objects. <code>__serialize()</code> / <code>__unserialize()</code> (7.4) control how <code>serialize()</code> stores the object and how it's rebuilt — they replace the older <code>__sleep()</code> / <code>__wakeup()</code>. <code>__debugInfo()</code> customises <code>var_dump()</code> output and <code>__set_state()</code> supports <code>var_export()</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>__clone</code> runs with <code>$this</code> = the new copy</li>
+						<li class="note-item">If both exist, <code>__serialize</code> wins over <code>__sleep</code></li>
+						<li class="note-item"><code>__unserialize</code> runs instead of the constructor</li>
+						<li class="note-item">Never <code>unserialize()</code> untrusted input (Sheet 104)</li>
+						<li class="note-item">Hide secrets from dumps with <code>__debugInfo()</code> or <code>#[\SensitiveParameter]</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">__clone, __serialize &amp; __debugInfo</h2>
+						<pre><code class="language-php">&lt;?php
+class Order
+{
+    public function __construct(
+        public array $items,
+        public DateTime $placed,
+        private string $apiKey,
+    ) {}
+
+    public function __clone(): void
+    { $this-&gt;placed = clone $this-&gt;placed; }      // deep copy
+
+    public function __serialize(): array
+    { return ['items' =&gt; $this-&gt;items, 'at' =&gt; $this-&gt;placed]; }
+
+    public function __unserialize(array $d): void
+    {
+        [$this-&gt;items, $this-&gt;placed] = [$d['items'], $d['at']];
+        $this-&gt;apiKey = '';                       // never stored
+    }
+
+    public function __debugInfo(): array
+    { return ['items' =&gt; $this-&gt;items, 'apiKey' =&gt; '***']; }
+}
+
+$a = new Order(['mug'], new DateTime(), 'secret');
+$b = clone $a;                        // $b-&gt;placed is its own
+$copy = unserialize(serialize($a));   // via __(un)serialize
+var_dump($a);                         // uses __debugInfo</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>clone</code> is shallow; <code>__clone</code> copies nested objects</div>
+							<div class="explain-item"><code>__serialize</code> returns a plain array to store</div>
+							<div class="explain-item">Secrets are left out of the serialised form</div>
+							<div class="explain-item"><code>__unserialize</code> rebuilds state (constructor not called)</div>
+							<div class="explain-item"><code>__debugInfo</code> masks sensitive fields in dumps</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Lifecycle Methods Table | Old Vs Table | Debug Output Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-lifecycle-methods">
+						<h2 class="section-title">Lifecycle Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Runs On</th></tr></thead>
+							<tbody>
+								<tr><td>__construct</td><td class="desc">new</td></tr>
+								<tr><td>__clone</td><td class="desc">clone (on the copy)</td></tr>
+								<tr><td>__serialize</td><td class="desc">serialize()</td></tr>
+								<tr><td>__unserialize</td><td class="desc">unserialize()</td></tr>
+								<tr><td>__destruct</td><td class="desc">Object freed</td></tr>
+								<tr><td>__set_state</td><td class="desc">var_export() output eval</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-old-vs">
+						<h2 class="section-title">Old vs New Serialization</h2>
+						<table>
+							<thead><tr><th>Old</th><th>New</th></tr></thead>
+							<tbody>
+								<tr><td>__sleep(): array of prop names</td><td class="desc">__serialize(): data array</td></tr>
+								<tr><td>__wakeup(): void</td><td class="desc">__unserialize(array $d)</td></tr>
+								<tr><td>Serializable interface</td><td class="desc">Deprecated (8.1)</td></tr>
+								<tr><td>Private props by name</td><td class="desc">Any shape you like</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-debug-output">
+						<h2 class="section-title">Debug Output</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Uses</th></tr></thead>
+							<tbody>
+								<tr><td>var_dump($o)</td><td class="desc">__debugInfo()</td></tr>
+								<tr><td>print_r($o)</td><td class="desc">__debugInfo()</td></tr>
+								<tr><td>var_export($o)</td><td class="desc">__set_state format</td></tr>
+								<tr><td>json_encode($o)</td><td class="desc">JsonSerializable</td></tr>
+								<tr><td>(string) $o</td><td class="desc">__toString()</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Shallow clones sharing mutable <code>DateTime</code> or collections</li>
+						<li class="note-item">Implementing the deprecated <code>Serializable</code> interface</li>
+						<li class="note-item">Leaking passwords via <code>var_dump</code> in logs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use immutable objects to avoid clone surprises</li>
+						<li class="note-item">Prefer JSON over <code>serialize()</code> for storage</li>
+						<li class="note-item">Mask secrets in <code>__debugInfo()</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>__clone</code> for deep copies</li>
+						<li class="note-item"><code>__serialize</code> / <code>__unserialize</code></li>
+						<li class="note-item"><code>__debugInfo</code> for dumps</li>
+						<li class="note-item">Avoid <code>Serializable</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-73-magic-methods-overloading.html" class="nav-link prev">Magic Methods — Property &amp; Call Overloading</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 84 Sheets</a>
+				<a href="php-75-cloning-comparison.html" class="nav-link next">Cloning &amp; Comparing Objects</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>
