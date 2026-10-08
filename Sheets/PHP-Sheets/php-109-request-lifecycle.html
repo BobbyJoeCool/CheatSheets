@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 109: The Request Lifecycle</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s109">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 109</div>
+			<h1>The Request Lifecycle</h1>
+			<div class="sheet-desc">share-nothing model · SAPI · php-fpm · nginx · Apache · front controller · FrankenPHP</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">From URL to Response</h2>
+						<div class="description">A browser request reaches a web server (nginx, Apache, Caddy), which passes PHP requests to <strong>PHP-FPM</strong> over FastCGI. A worker runs your script from the top, builds the response (headers + body) and then throws <strong>all state away</strong> — the <em>share-nothing</em> model. Modern apps route every request through one <strong>front controller</strong> (<code>public/index.php</code>) that bootstraps the app and dispatches to the right handler. Worker-mode runtimes (FrankenPHP, RoadRunner, Swoole) keep the app booted between requests.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Each request gets fresh globals, superglobals and memory</li>
+						<li class="note-item">Persistent data lives in sessions, databases or caches</li>
+						<li class="note-item">FPM pool size limits concurrent requests</li>
+						<li class="note-item">In worker mode, reset state between requests yourself</li>
+						<li class="note-item"><code>fastcgi_finish_request()</code> sends the response, then keeps working</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Front Controller + nginx</h2>
+						<pre><code class="language-php"># nginx: send everything that isn't a file to index.php
+server {
+    root /var/www/app/public;
+    index index.php;
+
+    location / {
+        try_files $uri /index.php$is_args$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+    }
+}
+
+&lt;?php // public/index.php — the front controller
+require __DIR__ . '/../vendor/autoload.php';
+
+$app = App\Kernel::boot(getenv('APP_ENV') ?: 'prod');
+$response = $app-&gt;handle(App\Http\Request::fromGlobals());
+$response-&gt;send();                    // headers, then body
+
+fastcgi_finish_request();             // FPM: client done
+$app-&gt;terminate();                    // slow cleanup after</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Document root is <code>public/</code>, never the project root</div>
+							<div class="explain-item"><code>try_files</code> routes unknown paths to index.php</div>
+							<div class="explain-item"><code>fastcgi_pass</code> hands PHP files to FPM</div>
+							<div class="explain-item">One entry point bootstraps and dispatches</div>
+							<div class="explain-item">Post-response work runs after the client has its answer</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Lifecycle Steps Table | Runtimes Table | Fpm Pool Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-lifecycle-steps">
+						<h2 class="section-title">Lifecycle Steps</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Happens</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc">Web server receives HTTP request</td></tr>
+								<tr><td>2</td><td class="desc">Passes to FPM worker (FastCGI)</td></tr>
+								<tr><td>3</td><td class="desc">PHP fills superglobals</td></tr>
+								<tr><td>4</td><td class="desc">Script runs: route, handle, render</td></tr>
+								<tr><td>5</td><td class="desc">Headers + body sent</td></tr>
+								<tr><td>6</td><td class="desc">State destroyed</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-runtimes">
+						<h2 class="section-title">Runtimes</h2>
+						<table>
+							<thead><tr><th>Runtime</th><th>Model</th></tr></thead>
+							<tbody>
+								<tr><td>PHP-FPM</td><td class="desc">Process pool, share-nothing</td></tr>
+								<tr><td>mod_php</td><td class="desc">Inside Apache process</td></tr>
+								<tr><td>FrankenPHP</td><td class="desc">Caddy + worker mode</td></tr>
+								<tr><td>RoadRunner</td><td class="desc">Go server, workers</td></tr>
+								<tr><td>Swoole</td><td class="desc">Coroutine server</td></tr>
+								<tr><td>php -S</td><td class="desc">Dev only</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-fpm-pool">
+						<h2 class="section-title">FPM Pool Settings</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Controls</th></tr></thead>
+							<tbody>
+								<tr><td>pm = dynamic</td><td class="desc">Spawn on demand</td></tr>
+								<tr><td>pm.max_children</td><td class="desc">Max workers</td></tr>
+								<tr><td>pm.start_servers</td><td class="desc">Initial workers</td></tr>
+								<tr><td>pm.max_requests</td><td class="desc">Recycle after N</td></tr>
+								<tr><td>request_terminate_timeout</td><td class="desc">Kill slow requests</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Pointing the web root at the project folder — exposes <code>.env</code> and <code>vendor/</code></li>
+						<li class="note-item">Expecting variables to persist between requests</li>
+						<li class="note-item">Leaking state across requests in worker mode</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use a single front controller</li>
+						<li class="note-item">Tune <code>pm.max_children</code> to available memory</li>
+						<li class="note-item">Offload slow work to queues</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Server → FPM → script → response</li>
+						<li class="note-item">Share-nothing per request</li>
+						<li class="note-item">Front controller pattern</li>
+						<li class="note-item">Worker modes keep the app booted</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-108-memory-weak-lazy.html" class="nav-link prev">Memory, Weak References &amp; Lazy Objects</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-110-superglobals.html" class="nav-link next">Superglobals</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

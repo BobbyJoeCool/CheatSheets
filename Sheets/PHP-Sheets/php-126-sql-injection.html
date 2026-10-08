@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 126: SQL Injection</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s126">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 126</div>
+			<h1>SQL Injection</h1>
+			<div class="sheet-desc">prepared statements · never interpolate · identifier allow-lists · LIKE wildcards · IN() lists · least privilege</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Keeping Input Out of Your SQL</h2>
+						<div class="description"><strong>SQL injection</strong> happens when user input is pasted into a query string, letting an attacker change the query — reading other users' data, bypassing logins or deleting tables. The fix is simple and absolute: pass <strong>every value</strong> through prepared-statement placeholders. Placeholders can't hold identifiers, so column names, sort directions and table names must come from an <strong>allow-list</strong> in your code.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Escaping functions are not a substitute for placeholders</li>
+						<li class="note-item">Second-order injection: data from your DB is still untrusted</li>
+						<li class="note-item">ORMs and builders are safe until you use their raw-SQL methods</li>
+						<li class="note-item">Give the app's DB user only the privileges it needs</li>
+						<li class="note-item">Log and alert on SQL syntax errors — they can signal probing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Vulnerable vs Safe</h2>
+						<pre><code class="language-php">&lt;?php
+// ❌ Vulnerable: input becomes SQL
+$id = $_GET['id'];                       // "1 OR 1=1"
+$pdo-&gt;query("SELECT * FROM users WHERE id = $id");
+
+// ✅ Safe: value travels separately
+$stmt = $pdo-&gt;prepare('SELECT * FROM users WHERE id = ?');
+$stmt-&gt;execute([$_GET['id']]);
+
+// ✅ Identifiers: allow-list, never bind or interpolate input
+$columns = ['name' =&gt; 'name', 'date' =&gt; 'created_at'];
+$col = $columns[$_GET['sort'] ?? ''] ?? 'name';
+$dir = strtoupper($_GET['dir'] ?? '') === 'DESC' ? 'DESC' : 'ASC';
+$stmt = $pdo-&gt;prepare("SELECT * FROM posts ORDER BY $col $dir LIMIT ?");
+$stmt-&gt;bindValue(1, 20, PDO::PARAM_INT);
+$stmt-&gt;execute();
+
+// ✅ LIKE: bind the pattern, escape wildcards in the term
+$term = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $_GET['q'] ?? '');
+$stmt = $pdo-&gt;prepare("SELECT * FROM posts WHERE title LIKE ? ESCAPE '!'");
+$stmt-&gt;execute(["%$term%"]);
+
+// ✅ IN list: one placeholder per value
+$ids = array_map('intval', (array) ($_GET['ids'] ?? []));
+$in  = implode(',', array_fill(0, max(1, count($ids)), '?'));
+$stmt = $pdo-&gt;prepare("SELECT * FROM tags WHERE id IN ($in)");
+$stmt-&gt;execute($ids ?: [0]);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Interpolated input can rewrite the WHERE clause</div>
+							<div class="explain-item">Placeholders keep data and code separate</div>
+							<div class="explain-item">Map user choices to known column names</div>
+							<div class="explain-item">Escape <code>%</code> and <code>_</code> so users can't widen LIKE searches</div>
+							<div class="explain-item">Generate placeholders for variable-length lists</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Attack Examples Table | Safe Techniques Table | Defence In Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-attack-examples">
+						<h2 class="section-title">Attack Examples</h2>
+						<table>
+							<thead><tr><th>Input</th><th>Effect if Interpolated</th></tr></thead>
+							<tbody>
+								<tr><td>1 OR 1=1</td><td class="desc">Returns every row</td></tr>
+								<tr><td>' OR '1'='1</td><td class="desc">Bypasses login</td></tr>
+								<tr><td>1; DROP TABLE users</td><td class="desc">Stacked query</td></tr>
+								<tr><td>1 UNION SELECT password …</td><td class="desc">Data theft</td></tr>
+								<tr><td>SLEEP(5)</td><td class="desc">Blind timing probe</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-safe-techniques">
+						<h2 class="section-title">Safe Techniques</h2>
+						<table>
+							<thead><tr><th>Situation</th><th>Technique</th></tr></thead>
+							<tbody>
+								<tr><td>Values</td><td class="desc">Placeholders</td></tr>
+								<tr><td>Column / table names</td><td class="desc">Allow-list map</td></tr>
+								<tr><td>ASC / DESC</td><td class="desc">Ternary to literal</td></tr>
+								<tr><td>LIKE</td><td class="desc">Bind + escape wildcards</td></tr>
+								<tr><td>IN (...)</td><td class="desc">Generated placeholders</td></tr>
+								<tr><td>Raw ORM SQL</td><td class="desc">Still bind values</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-defence-in">
+						<h2 class="section-title">Defence in Depth</h2>
+						<table>
+							<thead><tr><th>Layer</th><th>Benefit</th></tr></thead>
+							<tbody>
+								<tr><td>Least-privilege DB user</td><td class="desc">Limits damage</td></tr>
+								<tr><td>No stacked queries</td><td class="desc">Driver setting</td></tr>
+								<tr><td>Generic error pages</td><td class="desc">No SQL leaks</td></tr>
+								<tr><td>WAF / monitoring</td><td class="desc">Detects probing</td></tr>
+								<tr><td>Code review + SAST</td><td class="desc">Finds concatenation</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">"Sanitising" input instead of using placeholders</li>
+						<li class="note-item">Binding the sort column as a value — it sorts by a constant</li>
+						<li class="note-item">Trusting values because they came from your own database</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Grep for <code>query("</code> and <code>-&gt;query($</code> in reviews</li>
+						<li class="note-item">Use static analysis rules that flag string-built SQL</li>
+						<li class="note-item">Run the app with a restricted DB account</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Placeholders for every value</li>
+						<li class="note-item">Allow-list identifiers</li>
+						<li class="note-item">Escape LIKE wildcards</li>
+						<li class="note-item">Least privilege as backup</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-125-xss-output-escaping.html" class="nav-link prev">XSS &amp; Output Escaping</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-127-csrf-session-security.html" class="nav-link next">CSRF &amp; Session Security</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 124: ORMs &amp; Query Builders</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s124">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 124</div>
+			<h1>ORMs &amp; Query Builders</h1>
+			<div class="sheet-desc">Doctrine ORM · Doctrine DBAL · Eloquent · entities · migrations · N+1 queries</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Higher-Level Database Access</h2>
+						<div class="description">A <strong>query builder</strong> (Doctrine DBAL, Laravel's query builder) composes SQL with method calls and binds values for you. An <strong>ORM</strong> maps rows to objects. <strong>Eloquent</strong> (Laravel) uses <em>Active Record</em> — each model saves itself. <strong>Doctrine ORM</strong> (Symfony) uses <em>Data Mapper</em> — plain entities plus an <code>EntityManager</code> that tracks changes. Both include <strong>migrations</strong> for versioning the schema. Watch out for the <strong>N+1 query</strong> problem and use eager loading.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">ORMs still use prepared statements under the hood</li>
+						<li class="note-item">Raw SQL is fine for reports and complex queries</li>
+						<li class="note-item">Migrations belong in version control</li>
+						<li class="note-item">Log queries in development to spot N+1</li>
+						<li class="note-item">Eager loading: Eloquent <code>with()</code>, Doctrine fetch joins</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Eloquent, Doctrine, and the N+1 Fix</h2>
+						<pre><code class="language-php">&lt;?php
+// Eloquent (Active Record)
+class Post extends Illuminate\Database\Eloquent\Model
+{
+    protected $fillable = ['title', 'body'];
+    public function author()
+    { return $this-&gt;belongsTo(User::class); }
+}
+$post = Post::create(['title' =&gt; 'Hi', 'body' =&gt; '…']);
+$recent = Post::where('published', true)-&gt;latest()-&gt;take(10)-&gt;get();
+
+foreach (Post::all() as $p) echo $p-&gt;author-&gt;name;    // N+1!
+foreach (Post::with('author')-&gt;get() as $p) {         // 2 queries
+    echo $p-&gt;author-&gt;name;
+}
+
+// Doctrine ORM (Data Mapper, attributes)
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity]
+class Product
+{
+    #[ORM\Id, ORM\GeneratedValue, ORM\Column]
+    public ?int $id = null;
+    #[ORM\Column(length: 120)]
+    public string $name;
+}
+$product = new Product();
+$product-&gt;name = 'Mug';
+$em-&gt;persist($product);
+$em-&gt;flush();                                 // INSERT here
+$found = $em-&gt;getRepository(Product::class)
+    -&gt;findOneBy(['name' =&gt; 'Mug']);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Eloquent models map to tables by convention</div>
+							<div class="explain-item">Query methods chain and bind values</div>
+							<div class="explain-item">Lazy relation in a loop = one query per row</div>
+							<div class="explain-item"><code>with()</code> eager-loads in a single extra query</div>
+							<div class="explain-item">Doctrine tracks entities and writes on <code>flush()</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Patterns Table | Migrations Table | N 1 Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-patterns">
+						<h2 class="section-title">Patterns</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>Active Record</td><td class="desc">Eloquent: $post-&gt;save()</td></tr>
+								<tr><td>Data Mapper</td><td class="desc">Doctrine: $em-&gt;persist()</td></tr>
+								<tr><td>Query builder</td><td class="desc">DBAL, Laravel DB</td></tr>
+								<tr><td>Raw SQL</td><td class="desc">PDO prepared statements</td></tr>
+								<tr><td>Repository</td><td class="desc">Query methods per entity</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-migrations">
+						<h2 class="section-title">Migrations</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Command</th></tr></thead>
+							<tbody>
+								<tr><td>Laravel</td><td class="desc">php artisan migrate</td></tr>
+								<tr><td>Doctrine</td><td class="desc">bin/console doctrine:migrations:migrate</td></tr>
+								<tr><td>Phinx</td><td class="desc">vendor/bin/phinx migrate</td></tr>
+								<tr><td>Rollback</td><td class="desc">migrate:rollback / :prev</td></tr>
+								<tr><td>Generate</td><td class="desc">make:migration / diff</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-n-1">
+						<h2 class="section-title">N+1 Fixes</h2>
+						<table>
+							<thead><tr><th>ORM</th><th>Eager Load</th></tr></thead>
+							<tbody>
+								<tr><td>Eloquent</td><td class="desc">Post::with('author')</td></tr>
+								<tr><td>Eloquent nested</td><td class="desc">with('author.team')</td></tr>
+								<tr><td>Doctrine DQL</td><td class="desc">JOIN FETCH</td></tr>
+								<tr><td>Doctrine</td><td class="desc">fetch: 'EAGER' (careful)</td></tr>
+								<tr><td>Detect</td><td class="desc">Debugbar, query log</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Accessing relations inside loops without eager loading</li>
+						<li class="note-item">Mass assignment without <code>$fillable</code> guards</li>
+						<li class="note-item">Loading whole tables into objects for a count</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Enable query logging during development</li>
+						<li class="note-item">Use DTO/array hydration for read-heavy reports</li>
+						<li class="note-item">Keep migrations small and reversible</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Builders compose SQL</li>
+						<li class="note-item">Eloquent = Active Record</li>
+						<li class="note-item">Doctrine = Data Mapper</li>
+						<li class="note-item">Eager-load to avoid N+1</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-123-mysqli.html" class="nav-link prev">MySQLi</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-125-xss-output-escaping.html" class="nav-link next">XSS &amp; Output Escaping</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>
