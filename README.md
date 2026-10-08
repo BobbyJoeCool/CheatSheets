@@ -150,7 +150,7 @@ CheatSheets/
 | ✅ | Node.js | 68 | introduction & setup, modules & packages, event loop & async, process & environment, CLI tools, file system, buffers & streams, networking & HTTP, errors & debugging, testing, concurrency & performance, security, built-in utilities, web frameworks & libraries, deployment |
 | ✅ | Next.js | 58 | introduction & setup, routing, server & client components, data fetching, caching & rendering, mutations & server actions, route handlers & proxy, styling, optimizations, authentication & security, data, environment & i18n, testing & debugging, deployment & operations, Pages Router (legacy) |
 | ⬜ | Prisma | 69 | intro & setup, schema definition, client basics, CRUD, filtering & querying, relations & nested writes, aggregations, transactions, migrations, error handling, advanced patterns, performance, testing |
-| ⬜ | PHP | — | Planned |
+| 🚧 | PHP | 133 | In progress — introduction & setup, output & comments, variables & data types, strings, operators, control flow, error handling, functions, arrays & data structures, OOP (enums, readonly, property hooks, asymmetric visibility), files & I/O, modules & Composer, standard library, testing & tooling, advanced topics, web fundamentals, PDO, security, quick reference; targets PHP 8.0–8.5 |
 | ⬜ | Django | — | Planned |
 | ⬜ | Spring | — | Planned |
 

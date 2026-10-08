@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 125: XSS &amp; Output Escaping</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s125">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 125</div>
+			<h1>XSS &amp; Output Escaping</h1>
+			<div class="sheet-desc">htmlspecialchars() · ENT_QUOTES · context-aware escaping · urlencode() · JSON_HEX_TAG · Content-Security-Policy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Cross-Site Scripting</h2>
+						<div class="description"><strong>XSS</strong> happens when user-controlled text is output as HTML or JavaScript, letting an attacker run scripts in other users' browsers. The fix is <strong>escaping on output, for the right context</strong>: <code>htmlspecialchars()</code> for HTML text and attributes, <code>rawurlencode()</code> for URL parts, <code>json_encode()</code> with hex flags for data inside <code>&lt;script&gt;</code>. A <strong>Content-Security-Policy</strong> header is a strong second layer.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Escape at output time, not when saving input</li>
+						<li class="note-item">Default flags (8.1+): <code>ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML401</code></li>
+						<li class="note-item">Always quote HTML attributes</li>
+						<li class="note-item"><code>javascript:</code> URLs slip past HTML escaping — validate schemes</li>
+						<li class="note-item">Template engines with auto-escaping prevent most XSS</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Escape for Each Context</h2>
+						<pre><code class="language-php">&lt;?php
+$name = $_GET['name'] ?? '';        // e.g. &lt;script&gt;alert(1)&lt;/script&gt;
+$e = fn(string $s) =&gt; htmlspecialchars($s,
+    ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+?&gt;
+&lt;!-- HTML text --&gt;
+&lt;p&gt;Hello, &lt;?= $e($name) ?&gt;&lt;/p&gt;
+
+&lt;!-- Quoted attribute --&gt;
+&lt;input value="&lt;?= $e($name) ?&gt;"&gt;
+
+&lt;!-- URL parameter --&gt;
+&lt;a href="/search?q=&lt;?= rawurlencode($name) ?&gt;"&gt;Search&lt;/a&gt;
+
+&lt;!-- User-supplied link: allow-list the scheme --&gt;
+&lt;?php $url = $_GET['site'] ?? '';
+      $safe = preg_match('#^https?://#i', $url) ? $url : '#'; ?&gt;
+&lt;a href="&lt;?= $e($safe) ?&gt;"&gt;Website&lt;/a&gt;
+
+&lt;!-- Data for JavaScript --&gt;
+&lt;script&gt;
+  const user = &lt;?= json_encode(['name' =&gt; $name],
+      JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?&gt;;
+&lt;/script&gt;
+&lt;?php
+header("Content-Security-Policy: default-src 'self'; script-src 'self'");</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ENT_QUOTES</code> escapes both quote types</div>
+							<div class="explain-item">Same escaper works for text and quoted attributes</div>
+							<div class="explain-item">URL parts need URL encoding</div>
+							<div class="explain-item">Block <code>javascript:</code> by allowing only http(s)</div>
+							<div class="explain-item">JSON hex flags make data safe inside <code>&lt;script&gt;</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Context Escaper Table | Htmlspecialchars Converts Table | Defence Layers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-context-escaper">
+						<h2 class="section-title">Context → Escaper</h2>
+						<table>
+							<thead><tr><th>Output Context</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>HTML body text</td><td class="desc">htmlspecialchars</td></tr>
+								<tr><td>Quoted attribute</td><td class="desc">htmlspecialchars + ENT_QUOTES</td></tr>
+								<tr><td>URL query value</td><td class="desc">rawurlencode / http_build_query</td></tr>
+								<tr><td>href / src URL</td><td class="desc">Validate scheme, then escape</td></tr>
+								<tr><td>&lt;script&gt; data</td><td class="desc">json_encode + JSON_HEX_*</td></tr>
+								<tr><td>CSS</td><td class="desc">Allow-list values only</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-htmlspecialchars-converts">
+						<h2 class="section-title">htmlspecialchars Converts</h2>
+						<table>
+							<thead><tr><th>Char</th><th>Becomes</th></tr></thead>
+							<tbody>
+								<tr><td>&amp;</td><td class="desc">&amp;amp;</td></tr>
+								<tr><td>&lt;</td><td class="desc">&amp;lt;</td></tr>
+								<tr><td>&gt;</td><td class="desc">&amp;gt;</td></tr>
+								<tr><td>"</td><td class="desc">&amp;quot;</td></tr>
+								<tr><td>'</td><td class="desc">&amp;#039;</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-defence-layers">
+						<h2 class="section-title">Defence Layers</h2>
+						<table>
+							<thead><tr><th>Layer</th><th>Helps By</th></tr></thead>
+							<tbody>
+								<tr><td>Output escaping</td><td class="desc">Primary fix</td></tr>
+								<tr><td>Auto-escaping templates</td><td class="desc">Safe by default</td></tr>
+								<tr><td>CSP header</td><td class="desc">Blocks inline scripts</td></tr>
+								<tr><td>HttpOnly cookies</td><td class="desc">Protects session</td></tr>
+								<tr><td>Input validation</td><td class="desc">Reduces attack surface</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Escaping on input and then outputting raw elsewhere</li>
+						<li class="note-item">Unquoted attributes: <code>&lt;input value=&lt;?= $v ?&gt;&gt;</code></li>
+						<li class="note-item">Using <code>strip_tags()</code> as an XSS filter</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Escape every dynamic value in templates</li>
+						<li class="note-item">Add a strict CSP</li>
+						<li class="note-item">Use HTML Purifier if users may submit rich HTML</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Escape on output</li>
+						<li class="note-item">Match the context</li>
+						<li class="note-item"><code>htmlspecialchars</code> + <code>ENT_QUOTES</code></li>
+						<li class="note-item">CSP as backup</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-124-orms-query-builders.html" class="nav-link prev">ORMs &amp; Query Builders</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-126-sql-injection.html" class="nav-link next">SQL Injection</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

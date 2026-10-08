@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 130: Secure Configuration &amp; File Safety</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s130">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 130</div>
+			<h1>Secure Configuration &amp; File Safety</h1>
+			<div class="sheet-desc">display_errors=Off · expose_php · open_basedir · disable_functions · allow_url_include · LFI/RFI · upload directories</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Hardening the Environment</h2>
+						<div class="description">Many PHP breaches come from configuration, not code. In production, hide errors from visitors, stop advertising the PHP version, block remote file inclusion and keep secrets out of the web root. <strong>File inclusion</strong> bugs (LFI/RFI) let attackers run or read files when paths come from user input — never build <code>include</code> paths from requests. Keep PHP and dependencies patched and run <code>composer audit</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Only <code>public/</code> should be web-accessible</li>
+						<li class="note-item">Uploaded files must never be executable as PHP</li>
+						<li class="note-item"><code>open_basedir</code> limits which paths PHP can open</li>
+						<li class="note-item"><code>disable_functions</code> can block shell functions you don't use</li>
+						<li class="note-item">Use HTTPS everywhere with HSTS</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Production php.ini Hardening</h2>
+						<pre><code class="language-ini">; Errors: log, don't display
+display_errors = Off
+display_startup_errors = Off
+log_errors = On
+error_log = /var/log/php/error.log
+error_reporting = E_ALL
+
+; Don't advertise
+expose_php = Off
+
+; Remote code / file access
+allow_url_include = Off
+allow_url_fopen = Off          ; if you use an HTTP client instead
+
+; Limit the blast radius
+open_basedir = /var/www/app:/tmp
+disable_functions = exec,passthru,shell_exec,system,proc_open,popen
+
+; Sessions
+session.use_strict_mode = 1
+session.cookie_secure = 1
+session.cookie_httponly = 1
+session.cookie_samesite = Lax
+
+; Uploads
+file_uploads = On
+upload_max_filesize = 10M
+post_max_size = 12M</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Visitors see a generic page; details go to the log</div>
+							<div class="explain-item"><code>expose_php=Off</code> removes the X-Powered-By version header</div>
+							<div class="explain-item">No remote <code>include</code>, ever</div>
+							<div class="explain-item"><code>open_basedir</code> jails file access to app paths</div>
+							<div class="explain-item">Disable shell functions if the app doesn't need them</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: File Inclusion Table | Deployment Checklist Table | Security Headers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-file-inclusion">
+						<h2 class="section-title">File Inclusion Risks</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Problem</th></tr></thead>
+							<tbody>
+								<tr><td>include $_GET['page']</td><td class="desc">LFI / RFI</td></tr>
+								<tr><td>include "views/$p.php"</td><td class="desc">Traversal (../)</td></tr>
+								<tr><td>readfile($_GET['f'])</td><td class="desc">Arbitrary file read</td></tr>
+								<tr><td>Fix</td><td class="desc">Allow-list map: 'home' =&gt; 'home.php'</td></tr>
+								<tr><td>Fix</td><td class="desc">realpath() + base dir check</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-deployment-checklist">
+						<h2 class="section-title">Deployment Checklist</h2>
+						<table>
+							<thead><tr><th>Item</th><th>Check</th></tr></thead>
+							<tbody>
+								<tr><td>Web root</td><td class="desc">public/ only</td></tr>
+								<tr><td>.env / vendor</td><td class="desc">Not web-accessible</td></tr>
+								<tr><td>Upload dir</td><td class="desc">No PHP execution</td></tr>
+								<tr><td>Debug tools</td><td class="desc">Disabled (Xdebug, debug bars)</td></tr>
+								<tr><td>composer install</td><td class="desc">--no-dev -o</td></tr>
+								<tr><td>Dependencies</td><td class="desc">composer audit clean</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-security-headers">
+						<h2 class="section-title">Security Headers</h2>
+						<table>
+							<thead><tr><th>Header</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>Strict-Transport-Security</td><td class="desc">Force HTTPS</td></tr>
+								<tr><td>Content-Security-Policy</td><td class="desc">Limit script sources</td></tr>
+								<tr><td>X-Content-Type-Options: nosniff</td><td class="desc">No MIME sniffing</td></tr>
+								<tr><td>X-Frame-Options / frame-ancestors</td><td class="desc">Clickjacking</td></tr>
+								<tr><td>Referrer-Policy</td><td class="desc">Limit referrer leaks</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>display_errors=On</code> in production</li>
+						<li class="note-item">Project root as document root — <code>.env</code> downloadable</li>
+						<li class="note-item">Including files chosen by request parameters</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Start from <code>php.ini-production</code></li>
+						<li class="note-item">Serve uploads through a controller, from outside the web root</li>
+						<li class="note-item">Patch PHP and run <code>composer audit</code> regularly</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Log errors, don't display</li>
+						<li class="note-item">No remote include</li>
+						<li class="note-item">public/ is the only web root</li>
+						<li class="note-item">Patch and audit</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-129-cryptography.html" class="nav-link prev">Hashing, HMAC &amp; Encryption</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-131-version-feature-timeline.html" class="nav-link next">PHP 8.x Feature Timeline</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 127: CSRF &amp; Session Security</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s127">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 127</div>
+			<h1>CSRF &amp; Session Security</h1>
+			<div class="sheet-desc">CSRF tokens · random_bytes() · hash_equals() · SameSite · session fixation · session.cookie_secure</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Requests the User Didn't Mean to Send</h2>
+						<div class="description"><strong>Cross-Site Request Forgery</strong> tricks a logged-in user's browser into submitting a request to your site from another site — the browser attaches the session cookie automatically. Defend every state-changing request with a <strong>CSRF token</strong>: a random secret stored in the session, embedded in forms, and compared with <code>hash_equals()</code> on submit. <code>SameSite</code> cookies add a strong second layer. Protect the session itself against fixation and hijacking.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Only <code>POST</code>/<code>PUT</code>/<code>PATCH</code>/<code>DELETE</code> should change state</li>
+						<li class="note-item">One token per session is fine; per-form tokens are stricter</li>
+						<li class="note-item">Send the token in a header for AJAX (<code>X-CSRF-Token</code>)</li>
+						<li class="note-item">Regenerate the session ID at login and privilege changes</li>
+						<li class="note-item">Frameworks include CSRF middleware — use it</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Token Generation and Checking</h2>
+						<pre><code class="language-php">&lt;?php
+session_start();
+
+function csrfToken(): string
+{
+    return $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
+}
+
+function checkCsrf(): void
+{
+    $sent = $_POST['_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    $ok = is_string($sent)
+        &amp;&amp; hash_equals($_SESSION['csrf'] ?? '', $sent);
+    if (!$ok) {
+        http_response_code(403);
+        exit('Invalid CSRF token');
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    checkCsrf();
+    // … perform the change …
+}
+?&gt;
+&lt;form method="post" action="/account/delete"&gt;
+  &lt;input type="hidden" name="_token"
+         value="&lt;?= htmlspecialchars(csrfToken()) ?&gt;"&gt;
+  &lt;button&gt;Delete account&lt;/button&gt;
+&lt;/form&gt;
+&lt;meta name="csrf-token" content="&lt;?= htmlspecialchars(csrfToken()) ?&gt;"&gt;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>??=</code> creates the token once per session</div>
+							<div class="explain-item"><code>random_bytes(32)</code> = unpredictable secret</div>
+							<div class="explain-item">Accept the token from a form field or header</div>
+							<div class="explain-item"><code>hash_equals</code> compares in constant time</div>
+							<div class="explain-item">Meta tag lets JavaScript send the header</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Session Hardening Table | Csrf Defences Table | Secure Random Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-session-hardening">
+						<h2 class="section-title">Session Hardening</h2>
+						<table>
+							<thead><tr><th>Threat</th><th>Defence</th></tr></thead>
+							<tbody>
+								<tr><td>Fixation</td><td class="desc">session_regenerate_id(true) at login</td></tr>
+								<tr><td>Hijacking via XSS</td><td class="desc">HttpOnly cookie + CSP</td></tr>
+								<tr><td>Sniffing</td><td class="desc">Secure cookie + HTTPS + HSTS</td></tr>
+								<tr><td>Cross-site sends</td><td class="desc">SameSite=Lax/Strict</td></tr>
+								<tr><td>Unknown IDs</td><td class="desc">session.use_strict_mode=1</td></tr>
+								<tr><td>Idle sessions</td><td class="desc">Timeout + re-auth</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-csrf-defences">
+						<h2 class="section-title">CSRF Defences</h2>
+						<table>
+							<thead><tr><th>Defence</th><th>Strength</th></tr></thead>
+							<tbody>
+								<tr><td>Synchronizer token</td><td class="desc">Strong (standard)</td></tr>
+								<tr><td>SameSite cookies</td><td class="desc">Strong second layer</td></tr>
+								<tr><td>Origin / Referer check</td><td class="desc">Good supplement</td></tr>
+								<tr><td>Custom header (AJAX)</td><td class="desc">Good for APIs</td></tr>
+								<tr><td>GET for changes</td><td class="desc">Never</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-secure-random">
+						<h2 class="section-title">Secure Random</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>random_bytes($n)</td><td class="desc">Tokens, keys</td></tr>
+								<tr><td>bin2hex($bytes)</td><td class="desc">Hex string</td></tr>
+								<tr><td>random_int($a, $b)</td><td class="desc">Codes, PINs</td></tr>
+								<tr><td>uniqid()</td><td class="desc">Not secure — avoid</td></tr>
+								<tr><td>md5(time())</td><td class="desc">Not secure — avoid</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Comparing tokens with <code>==</code> / <code>===</code> — use <code>hash_equals()</code></li>
+						<li class="note-item">Changing data on GET requests</li>
+						<li class="note-item">Generating tokens with <code>uniqid()</code> or <code>rand()</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use your framework's CSRF protection</li>
+						<li class="note-item">Set SameSite=Lax on the session cookie</li>
+						<li class="note-item">Regenerate the session ID on login and logout</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Token in session + form</li>
+						<li class="note-item"><code>hash_equals()</code> to compare</li>
+						<li class="note-item">SameSite cookies</li>
+						<li class="note-item">Regenerate session IDs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-126-sql-injection.html" class="nav-link prev">SQL Injection</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-128-password-hashing.html" class="nav-link next">Password Hashing</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>
