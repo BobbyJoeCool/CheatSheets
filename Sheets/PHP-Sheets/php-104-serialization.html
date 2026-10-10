@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 104: Serialization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s104">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 104</div>
+			<h1>Serialization</h1>
+			<div class="sheet-desc">serialize() · unserialize() · allowed_classes · object injection risk · var_export() · igbinary</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Turning Values into Strings</h2>
+						<div class="description"><code>serialize()</code> converts almost any PHP value — including objects — into a string, and <code>unserialize()</code> rebuilds it. It's used for caches and sessions. The danger: <code>unserialize()</code> on <strong>untrusted input</strong> can instantiate arbitrary classes and trigger their magic methods (<strong>PHP object injection</strong>). For data that crosses trust boundaries, use <strong>JSON</strong>. If you must unserialize, restrict classes with <code>allowed_classes</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Closures and most resources can't be serialized</li>
+						<li class="note-item">Objects control their format with <code>__serialize()</code> (Sheet 74)</li>
+						<li class="note-item">Serialized data is PHP-specific and version-sensitive</li>
+						<li class="note-item"><code>igbinary</code> is a faster, smaller binary serializer extension</li>
+						<li class="note-item">Sign data (HMAC) if it must round-trip through a client</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">serialize, unserialize &amp; Safer Options</h2>
+						<pre><code class="language-php">&lt;?php
+$data = ['id' =&gt; 7, 'tags' =&gt; ['a', 'b'], 'ok' =&gt; true];
+$s = serialize($data);
+// a:3:{s:2:"id";i:7;s:4:"tags";a:2:{i:0;s:1:"a";i:1;s:1:"b";}s:2:"ok";b:1;}
+$back = unserialize($s);                     // same array
+
+// Untrusted input: never allow objects
+$value = unserialize($cookie, ['allowed_classes' =&gt; false]);
+
+// Or allow-list specific classes
+$cart = unserialize($cached, ['allowed_classes' =&gt; [Cart::class]]);
+
+// Prefer JSON across trust boundaries
+$json = json_encode($data, JSON_THROW_ON_ERROR);
+$data = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+
+// Integrity check when data leaves the server
+$payload = base64_encode($s);
+$sig = hash_hmac('sha256', $payload, $secretKey);
+if (!hash_equals($sig, $_COOKIE['sig'] ?? '')) {
+    throw new RuntimeException('Tampered');
+}
+
+var_export($data);       // PHP source code form</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">The format records type and length of each value</div>
+							<div class="explain-item"><code>allowed_classes =&gt; false</code> turns objects into <code>__PHP_Incomplete_Class</code></div>
+							<div class="explain-item">An allow-list limits which classes can be created</div>
+							<div class="explain-item">JSON can't create objects — safe by design</div>
+							<div class="explain-item">HMAC + <code>hash_equals</code> detects tampering</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Format Codes Table | Choosing A Table | Object Hooks Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-format-codes">
+						<h2 class="section-title">Format Codes</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Type</th></tr></thead>
+							<tbody>
+								<tr><td>i:7;</td><td class="desc">int</td></tr>
+								<tr><td>d:1.5;</td><td class="desc">float</td></tr>
+								<tr><td>s:3:"abc";</td><td class="desc">string (length)</td></tr>
+								<tr><td>b:1;</td><td class="desc">bool</td></tr>
+								<tr><td>N;</td><td class="desc">null</td></tr>
+								<tr><td>a:n:{…}</td><td class="desc">array</td></tr>
+								<tr><td>O:4:"User":…</td><td class="desc">object</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-choosing-a">
+						<h2 class="section-title">Choosing a Format</h2>
+						<table>
+							<thead><tr><th>Format</th><th>Use When</th></tr></thead>
+							<tbody>
+								<tr><td>JSON</td><td class="desc">APIs, untrusted data, other languages</td></tr>
+								<tr><td>serialize()</td><td class="desc">Trusted internal caches</td></tr>
+								<tr><td>igbinary</td><td class="desc">Large caches, speed</td></tr>
+								<tr><td>var_export()</td><td class="desc">Generating PHP config</td></tr>
+								<tr><td>MessagePack</td><td class="desc">Compact cross-language</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-object-hooks">
+						<h2 class="section-title">Object Hooks</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Role</th></tr></thead>
+							<tbody>
+								<tr><td>__serialize()</td><td class="desc">Data to store</td></tr>
+								<tr><td>__unserialize($d)</td><td class="desc">Rebuild</td></tr>
+								<tr><td>__sleep() / __wakeup()</td><td class="desc">Legacy</td></tr>
+								<tr><td>__destruct()</td><td class="desc">Gadget-chain risk</td></tr>
+								<tr><td>JsonSerializable</td><td class="desc">JSON instead</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>unserialize($_COOKIE[...])</code> — object injection vulnerability</li>
+						<li class="note-item">Serializing objects whose class may later be renamed</li>
+						<li class="note-item">Using serialize() for data shared with JavaScript</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use JSON by default</li>
+						<li class="note-item">Pass <code>allowed_classes</code> every time</li>
+						<li class="note-item">Sign anything that round-trips through users</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>serialize</code> / <code>unserialize</code></li>
+						<li class="note-item">Never unserialize untrusted data</li>
+						<li class="note-item"><code>allowed_classes</code></li>
+						<li class="note-item">Prefer JSON</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-103-attributes.html" class="nav-link prev">Attributes</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-105-fibers-async.html" class="nav-link next">Fibers &amp; Async PHP</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

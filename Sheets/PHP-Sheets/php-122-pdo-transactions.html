@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>PHP — Sheet 122: PDO — Transactions &amp; Errors</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/php-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s122">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 122</div>
+			<h1>PDO — Transactions &amp; Errors</h1>
+			<div class="sheet-desc">beginTransaction() · commit() · rollBack() · inTransaction() · PDOException · errorInfo</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">All or Nothing</h2>
+						<div class="description">A <strong>transaction</strong> groups several statements so they all succeed or none do. Call <code>beginTransaction()</code>, run your queries, then <code>commit()</code>; if anything throws, <code>rollBack()</code> undoes the changes. With <code>ERRMODE_EXCEPTION</code>, failures raise <code>PDOException</code>, whose <code>errorInfo</code> holds the SQLSTATE and driver codes — useful for handling duplicates or deadlocks specifically. Transactions also speed up bulk inserts.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">MySQL DDL statements (CREATE, ALTER) commit implicitly</li>
+						<li class="note-item">Only transactional engines (InnoDB) can roll back</li>
+						<li class="note-item">Nested <code>beginTransaction()</code> throws — use savepoints</li>
+						<li class="note-item">Keep transactions short to avoid lock contention</li>
+						<li class="note-item">Retry on deadlock (SQLSTATE 40001)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Transfer Money Safely</h2>
+						<pre><code class="language-php">&lt;?php
+function transfer(PDO $pdo, int $from, int $to, int $cents): void
+{
+    $pdo-&gt;beginTransaction();
+    try {
+        $debit = $pdo-&gt;prepare(
+            'UPDATE accounts SET balance = balance - ?
+             WHERE id = ? AND balance &gt;= ?');
+        $debit-&gt;execute([$cents, $from, $cents]);
+        if ($debit-&gt;rowCount() !== 1) {
+            throw new DomainException('Insufficient funds');
+        }
+        $pdo-&gt;prepare('UPDATE accounts
+             SET balance = balance + ? WHERE id = ?')
+            -&gt;execute([$cents, $to]);
+        $pdo-&gt;commit();
+    } catch (Throwable $e) {
+        if ($pdo-&gt;inTransaction()) $pdo-&gt;rollBack();
+        throw $e;
+    }
+}
+
+try {
+    $pdo-&gt;prepare('INSERT INTO users (email) VALUES (?)')
+        -&gt;execute([$email]);
+} catch (PDOException $e) {
+    if ($e-&gt;errorInfo[1] === 1062) {          // MySQL duplicate key
+        echo 'Email already registered';
+    } else {
+        throw $e;
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Start the transaction before the first write</div>
+							<div class="explain-item">Conditional UPDATE guards the balance atomically</div>
+							<div class="explain-item"><code>rowCount()</code> confirms the debit happened</div>
+							<div class="explain-item">Any exception → roll back, then rethrow</div>
+							<div class="explain-item"><code>errorInfo[1]</code> is the driver error code</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Transaction Methods Table | Pdoexception Details Table | Common Codes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-transaction-methods">
+						<h2 class="section-title">Transaction Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>beginTransaction()</td><td class="desc">Start</td></tr>
+								<tr><td>commit()</td><td class="desc">Save changes</td></tr>
+								<tr><td>rollBack()</td><td class="desc">Undo changes</td></tr>
+								<tr><td>inTransaction()</td><td class="desc">Active?</td></tr>
+								<tr><td>exec('SAVEPOINT s1')</td><td class="desc">Nested point</td></tr>
+								<tr><td>exec('ROLLBACK TO s1')</td><td class="desc">Partial undo</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pdoexception-details">
+						<h2 class="section-title">PDOException Details</h2>
+						<table>
+							<thead><tr><th>Property / Method</th><th>Holds</th></tr></thead>
+							<tbody>
+								<tr><td>getMessage()</td><td class="desc">Driver message</td></tr>
+								<tr><td>getCode()</td><td class="desc">SQLSTATE string</td></tr>
+								<tr><td>errorInfo[0]</td><td class="desc">SQLSTATE</td></tr>
+								<tr><td>errorInfo[1]</td><td class="desc">Driver error code</td></tr>
+								<tr><td>errorInfo[2]</td><td class="desc">Driver message</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-common-codes">
+						<h2 class="section-title">Common Codes</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>23000 / 1062</td><td class="desc">Duplicate key (MySQL)</td></tr>
+								<tr><td>23505</td><td class="desc">Unique violation (PostgreSQL)</td></tr>
+								<tr><td>40001</td><td class="desc">Serialization failure / deadlock</td></tr>
+								<tr><td>42S02</td><td class="desc">Table not found</td></tr>
+								<tr><td>HY000</td><td class="desc">General error</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Forgetting <code>rollBack()</code> on failure — connection stays in a transaction</li>
+						<li class="note-item">Long transactions that wait on HTTP calls</li>
+						<li class="note-item">Assuming MyISAM tables roll back</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Wrap multi-step writes in a helper like <code>transactional(fn)</code></li>
+						<li class="note-item">Use conditional updates to avoid race conditions</li>
+						<li class="note-item">Handle unique-key violations instead of pre-checking</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">begin → commit / rollBack</li>
+						<li class="note-item">Exceptions trigger rollback</li>
+						<li class="note-item"><code>errorInfo</code> codes</li>
+						<li class="note-item">Short transactions</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="php-121-pdo-fetching.html" class="nav-link prev">PDO — Fetching Results</a>
+				<a href="index.html" class="nav-toc">PHP Reference · 133 Sheets</a>
+				<a href="php-123-mysqli.html" class="nav-link next">MySQLi</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>
