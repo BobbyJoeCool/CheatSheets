@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 20: Soft, Polling &amp; Custom Assertions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Soft, Polling &amp; Custom Assertions</h1>
+			<div class="sheet-desc">expect.soft · expect.poll · expect.soft.poll · toPass() · expect.extend · custom message</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Beyond Basic Assertions</h2>
+						<div class="description"><strong>Soft assertions</strong> record a failure but let the test continue, so one run reports several problems. <code>expect.poll()</code> turns any async function into a retrying assertion, and <code>expect(fn).toPass()</code> retries a whole block until it stops throwing. <code>expect.extend()</code> adds custom matchers that show up in reports like built-ins.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Test still fails at the end if any soft assertion failed</li>
+							<li class="note-item"><code>expect.soft.poll()</code> combines both (1.61)</li>
+							<li class="note-item"><code>toPass</code> default timeout is 0 (unbounded until test timeout); set one</li>
+							<li class="note-item">Check <code>test.info().errors.length</code> to stop early after soft failures</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Examples</h2>
+						<pre class="language-typescript"><code class="language-typescript">await expect.soft(page.getByTestId('status')).toHaveText('Success');
+await expect.soft(page.getByTestId('eta')).toHaveText('2 days');
+expect(test.info().errors).toHaveLength(0);              // optional: stop here
+
+await expect.poll(async () =&gt; {
+  const res = await page.request.get('/api/jobs/42');
+  return (await res.json()).state;
+}, { message: 'job should finish', timeout: 30_000, intervals: [1_000, 2_000] })
+  .toBe('done');
+
+await expect(async () =&gt; {
+  const res = await page.request.get('/api/health');
+  expect(res.status()).toBe(200);
+}).toPass({ timeout: 20_000, intervals: [1_000] });
+
+// custom matcher
+expect.extend({
+  async toHaveAmount(locator: Locator, expected: number) {
+    const text = await locator.textContent();
+    const pass = Number(text?.replace(/[^\d.]/g, '')) === expected;
+    return { pass, message: () =&gt; `expected amount ${expected}, got ${text}` };
+  },
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>expect.soft</code> — keep going after failure</div>
+							<div class="explain-item"><code>expect.poll(fn)</code> — retry a value-producing function</div>
+							<div class="explain-item"><code>intervals</code> — polling back-off in ms</div>
+							<div class="explain-item"><code>toPass()</code> — retry a block of assertions</div>
+							<div class="explain-item"><code>expect.extend</code> — add <code>toHaveAmount</code> matcher</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Which Table | Poll Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-which">
+						<h2 class="section-title">Which Tool?</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Wait for UI state</td><td class="desc">await expect(locator)</td></tr>
+								<tr><td>Wait for backend value</td><td class="desc">expect.poll()</td></tr>
+								<tr><td>Retry several steps</td><td class="desc">expect(fn).toPass()</td></tr>
+								<tr><td>Report all mismatches</td><td class="desc">expect.soft()</td></tr>
+								<tr><td>Domain-specific check</td><td class="desc">expect.extend()</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-poll">
+						<h2 class="section-title">Poll / toPass Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>timeout</td><td class="desc">Give up after ms</td></tr>
+								<tr><td>intervals</td><td class="desc">Retry delays, last repeats</td></tr>
+								<tr><td>message</td><td class="desc">Shown on failure</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>toPass()</code> without a timeout; a never-passing block runs until the test timeout</li>
+							<li class="note-item">Wrapping <code>page.click()</code> inside <code>toPass</code> to "make it pass"; fix the locator or wait instead</li>
+							<li class="note-item">Thinking soft failures make a test pass; they still fail it at the end</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use soft assertions for page-content audits with many independent checks</li>
+							<li class="note-item">Prefer <code>expect.poll</code> over <code>waitForTimeout</code> loops for eventual consistency</li>
+							<li class="note-item">Export custom matchers from your fixtures file with <code>mergeExpects()</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>expect.soft()</code> — non-fatal checks</li>
+							<li class="note-item"><code>expect.poll()</code> — retry any async value</li>
+							<li class="note-item"><code>toPass()</code> — retry assertion blocks</li>
+							<li class="note-item"><code>expect.extend()</code> — custom matchers</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-19-page-generic-assertions.html">Page &amp; Generic Assertions</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-21-navigation.html">Navigation &amp; Load States</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

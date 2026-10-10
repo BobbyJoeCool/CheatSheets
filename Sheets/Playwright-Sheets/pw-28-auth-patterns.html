@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 28: Multi-Role &amp; Advanced Auth</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>Multi-Role &amp; Advanced Auth</h1>
+			<div class="sheet-desc">multiple roles · per-worker accounts · API login · sessionStorage · passkeys (context.credentials) · httpCredentials</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Beyond One User</h2>
+						<div class="description">Real apps need <strong>several roles</strong>, accounts that don't collide in parallel, and auth schemes beyond cookies. Save one state file per role and pick it per file or per context. For tests that mutate shared account data, use a <strong>worker-scoped</strong> fixture that logs in a distinct account per worker. Passkeys use the virtual WebAuthn authenticator <code>context.credentials</code> (1.61).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">HTTP Basic auth: <code>use: { httpCredentials: { username, password } }</code></li>
+							<li class="note-item">sessionStorage: read with <code>page.evaluate</code>, restore via <code>addInitScript</code></li>
+							<li class="note-item">Or use <code>page.sessionStorage</code> / <code>page.localStorage</code> APIs (1.61)</li>
+							<li class="note-item">Client certificates: <code>use: { clientCertificates: [...] }</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Patterns</h2>
+						<pre class="language-typescript"><code class="language-typescript">// 1. two roles in one test
+test('admin approves user request', async ({ browser }) =&gt; {
+  const admin = await browser.newContext({ storageState: '.auth/admin.json' });
+  const user = await browser.newContext({ storageState: '.auth/user.json' });
+  /* … drive both pages, then close both contexts … */
+});
+
+// 2. one account per parallel worker
+export const test = base.extend&lt;{}, { workerStorageState: string }&gt;({
+  storageState: ({ workerStorageState }, use) =&gt; use(workerStorageState),
+  workerStorageState: [async ({ browser }, use, { workerIndex }) =&gt; {
+    const file = `playwright/.auth/worker-${workerIndex}.json`;
+    const ctx = await browser.newContext({ storageState: undefined });
+    const res = await ctx.request.post('/api/login',
+      { data: { user: `qa${workerIndex}`, pass: process.env.E2E_PASS } });
+    await ctx.storageState({ path: file }); await ctx.close();
+    await use(file);
+  }, { scope: 'worker' }],
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">per-role state files — switch identity per context</div>
+							<div class="explain-item">override <code>storageState</code> fixture — inject worker file</div>
+							<div class="explain-item"><code>ctx.request</code> — API login shares cookies with ctx</div>
+							<div class="explain-item"><code>workerIndex</code> — unique account per worker</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Schemes Table | Roles Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-schemes">
+						<h2 class="section-title">Auth Schemes</h2>
+						<table>
+							<thead><tr><th>Scheme</th><th>Approach</th></tr></thead>
+							<tbody>
+								<tr><td>Cookie session</td><td class="desc">storageState file</td></tr>
+								<tr><td>Token in localStorage</td><td class="desc">storageState file</td></tr>
+								<tr><td>Token in sessionStorage</td><td class="desc">addInitScript restore</td></tr>
+								<tr><td>HTTP Basic</td><td class="desc">use.httpCredentials</td></tr>
+								<tr><td>Bearer API token</td><td class="desc">extraHTTPHeaders</td></tr>
+								<tr><td>Passkeys / WebAuthn</td><td class="desc">context.credentials (1.61)</td></tr>
+								<tr><td>mTLS</td><td class="desc">use.clientCertificates</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-roles">
+						<h2 class="section-title">Per-Role Selection</h2>
+						<table>
+							<thead><tr><th>Where</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>Whole project</td><td class="desc">use.storageState</td></tr>
+								<tr><td>One file</td><td class="desc">test.use({ storageState })</td></tr>
+								<tr><td>One context</td><td class="desc">browser.newContext({ storageState })</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Many parallel tests changing the same user's settings; use per-worker accounts</li>
+							<li class="note-item">Logging in through the UI inside the worker fixture; API login is faster and less flaky</li>
+							<li class="note-item">Assuming <code>storageState</code> captures sessionStorage; it doesn't</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep role files named by role (<code>admin.json</code>, <code>viewer.json</code>)</li>
+							<li class="note-item">Use <code>ctx.request</code> so API login cookies land in the browser context</li>
+							<li class="note-item">Seed test accounts in the setup project before workers start</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">one state file per role</li>
+							<li class="note-item">worker fixture — account per worker</li>
+							<li class="note-item"><code>httpCredentials</code> — Basic auth</li>
+							<li class="note-item"><code>context.credentials</code> — passkeys</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-27-auth-storage-state.html">Auth with storageState</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-29-route-mock-har.html">Routing, Mocking &amp; HAR</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

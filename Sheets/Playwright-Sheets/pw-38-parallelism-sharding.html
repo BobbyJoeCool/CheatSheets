@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 38: Parallelism &amp; Sharding</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>Parallelism &amp; Sharding</h1>
+			<div class="sheet-desc">workers · fullyParallel · --shard=1/4 · merge-reports · mergeFiles · describe.configure({ mode: &#x27;serial&#x27; })</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Running Tests in Parallel</h2>
+						<div class="description">Playwright runs test <strong>files</strong> in parallel across <strong>worker</strong> processes (default: half the CPU cores). With <code>fullyParallel: true</code>, individual tests in the same file are spread across workers too. <strong>Sharding</strong> splits the suite across machines with <code>--shard=x/n</code>; each shard writes a <strong>blob report</strong> that <code>merge-reports</code> combines into one HTML report.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Each worker is a separate Node process with its own browser</li>
+							<li class="note-item">Workers are restarted after a test failure</li>
+							<li class="note-item"><code>test.info().workerIndex</code> / <code>parallelIndex</code> identify workers</li>
+							<li class="note-item"><code>mode: 'serial'</code> skips remaining tests after a failure</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Configuration and Commands</h2>
+						<pre class="language-typescript"><code class="language-typescript">export default defineConfig({
+  fullyParallel: true,
+  workers: process.env.CI ? '50%' : undefined,     // number or % of cores
+  reporter: process.env.CI ? 'blob' : 'html',
+});
+
+// per file
+test.describe.configure({ mode: 'parallel' });     // tests in this file in parallel
+test.describe.configure({ mode: 'serial' });       // dependent steps, in order
+
+// shard across 4 CI machines
+// npx playwright test --shard=1/4    (…2/4, 3/4, 4/4)
+// → each writes blob-report/report-*.zip
+
+// combine on one machine
+// npx playwright merge-reports --reporter html ./all-blob-reports
+// html reporter option (1.62): [['html', { mergeFiles: true }]]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>fullyParallel</code> — parallelize inside files</div>
+							<div class="explain-item"><code>workers</code> — count or percentage</div>
+							<div class="explain-item"><code>mode: 'serial'</code> — ordered, shared failure</div>
+							<div class="explain-item"><code>--shard=i/n</code> — split run across machines</div>
+							<div class="explain-item"><code>merge-reports</code> — one report from all shards</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Modes Table | Flags Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-modes">
+						<h2 class="section-title">describe.configure modes</h2>
+						<table>
+							<thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+							<tbody>
+								<tr><td>default</td><td class="desc">Sequential in file, independent retries</td></tr>
+								<tr><td>parallel</td><td class="desc">Tests in file run concurrently</td></tr>
+								<tr><td>serial</td><td class="desc">In order; on failure skip the rest; retry group</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-flags">
+						<h2 class="section-title">CLI Flags</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>--workers=4 / -j 4</td><td class="desc">Worker count</td></tr>
+								<tr><td>--workers=1</td><td class="desc">Fully serial run</td></tr>
+								<tr><td>--shard=2/5</td><td class="desc">Run shard 2 of 5</td></tr>
+								<tr><td>--fully-parallel</td><td class="desc">Force fullyParallel</td></tr>
+								<tr><td>--max-failures=10 / -x</td><td class="desc">Stop early</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Tests sharing a user account or DB rows; they pass alone and fail in parallel</li>
+							<li class="note-item">Using <code>mode: 'serial'</code> to fix shared state; it hides the coupling and slows the suite</li>
+							<li class="note-item">Forgetting <code>fullyParallel</code> and wondering why shards are unbalanced (sharding splits by file otherwise)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use unique data per test (<code>Date.now()</code>, worker index) to stay parallel-safe</li>
+							<li class="note-item">Enable <code>fullyParallel</code> before sharding for even shard sizes</li>
+							<li class="note-item">Upload <code>blob-report</code> as a CI artifact from every shard, then merge</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>workers</code> — processes per machine</li>
+							<li class="note-item"><code>fullyParallel</code> — per-test distribution</li>
+							<li class="note-item"><code>--shard=i/n</code> — split across machines</li>
+							<li class="note-item"><code>merge-reports</code> — combine blob reports</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-37-config-file.html">playwright.config.ts</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-39-retries-flaky.html">Retries &amp; Flaky Tests</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

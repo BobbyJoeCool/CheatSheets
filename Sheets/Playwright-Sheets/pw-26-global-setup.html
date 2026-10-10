@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 26: Global Setup &amp; Project Dependencies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Global Setup &amp; Project Dependencies</h1>
+			<div class="sheet-desc">setup projects · dependencies · teardown · globalSetup · globalTeardown · test locks</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">One-Time Setup</h2>
+						<div class="description">The recommended way to run something once before tests (seed a DB, log in) is a <strong>setup project</strong>: a normal project whose tests do the setup, listed in other projects' <code>dependencies</code>. Setup tests show in reports, get traces, and can use fixtures. The older <code>globalSetup</code> file still works for plain scripts. <strong>Test locks</strong> (1.63) serialize tests that share an external resource.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Dependencies run first; if they fail, dependents are skipped</li>
+							<li class="note-item"><code>teardown</code> names a project that runs after all dependents finish</li>
+							<li class="note-item"><code>--no-deps</code> skips dependencies when iterating locally</li>
+							<li class="note-item"><code>globalSetup</code> gets no fixtures, traces or report entry</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">playwright.config.ts</h2>
+						<pre class="language-typescript"><code class="language-typescript">export default defineConfig({
+  projects: [
+    { name: 'setup db', testMatch: /global\.setup\.ts/, teardown: 'cleanup db'},
+    { name: 'cleanup db', testMatch: /global\.teardown\.ts/ },
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup db'],
+    },
+  ],
+});
+
+// tests/global.setup.ts
+import { test as setup } from '@playwright/test';
+setup('seed database', async ({ request }) =&gt; {
+  await request.post('/api/test/reset');
+});
+
+// test locks: never run these two at the same time (1.63)
+test('edits shared config', { lock: 'settings' }, async ({ page }) =&gt; {});
+test.describe.configure({ lock: 'settings' });             // whole file (1.64)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">setup project — matched by <code>testMatch</code></div>
+							<div class="explain-item"><code>dependencies</code> — run before this project</div>
+							<div class="explain-item"><code>teardown</code> — run after dependents finish</div>
+							<div class="explain-item"><code>{ lock }</code> — serialize tests sharing a resource</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Compare Table | Flags Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-compare">
+						<h2 class="section-title">Setup Project vs globalSetup</h2>
+						<table>
+							<thead><tr><th>Feature</th><th>Setup Project · globalSetup</th></tr></thead>
+							<tbody>
+								<tr><td>Fixtures (page, request)</td><td class="desc">Yes · No</td></tr>
+								<tr><td>HTML report + trace</td><td class="desc">Yes · No</td></tr>
+								<tr><td>Config use applied</td><td class="desc">Yes · Manual</td></tr>
+								<tr><td>Per-project setup</td><td class="desc">Yes · No (global)</td></tr>
+								<tr><td>Runs with --no-deps</td><td class="desc">Skipped · Always</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-flags">
+						<h2 class="section-title">Related Flags</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>--no-deps</td><td class="desc">Skip dependency projects</td></tr>
+								<tr><td>--project=setup</td><td class="desc">Run setup alone</td></tr>
+								<tr><td>--project=chromium</td><td class="desc">Pulls in its dependencies</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>beforeAll</code> for once-per-run work; it runs once <strong>per worker</strong></li>
+							<li class="note-item">Forgetting to add the setup file to <code>testMatch</code>; the default pattern doesn't match <code>*.setup.ts</code></li>
+							<li class="note-item">Teardown that depends on state from setup variables; projects run in separate processes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Put auth login in a setup project and save <code>storageState</code> (next sheet)</li>
+							<li class="note-item">Use <code>--no-deps</code> locally once setup data exists</li>
+							<li class="note-item">Use locks instead of <code>workers: 1</code> when only a few tests conflict</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">setup project + <code>dependencies</code> — run first</li>
+							<li class="note-item"><code>teardown</code> — run last</li>
+							<li class="note-item"><code>globalSetup</code> — legacy script hook</li>
+							<li class="note-item"><code>{ lock: 'name' }</code> — mutual exclusion</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-25-page-object-model.html">Page Object Model</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-27-auth-storage-state.html">Auth with storageState</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

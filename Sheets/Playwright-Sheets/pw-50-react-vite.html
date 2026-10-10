@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 50: React (Vite) Apps</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s50">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 50</div>
+			<h1>React (Vite) Apps</h1>
+			<div class="sheet-desc">npm run dev vs preview · port 5173 · data-testid strategy · React Router · mocking fetch · StrictMode double render</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Testing React SPAs</h2>
+						<div class="description">A Vite-based React app is a static bundle talking to APIs, which makes it ideal for Playwright: build once, serve with <code>vite preview</code>, and <strong>mock the API</strong> with <code>page.route()</code> for fast, deterministic UI tests. Client-side routing means URL changes aren't page loads, so assert with <code>toHaveURL</code> and visible content. React Testing Library habits (roles, labels) translate directly to Playwright locators.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>npm create vite@latest app -- --template react-ts</code></li>
+							<li class="note-item">Dev: 5173 · <code>vite preview</code>: 4173</li>
+							<li class="note-item">StrictMode double-invokes effects in dev only: duplicate requests</li>
+							<li class="note-item"><code>VITE_*</code> env vars are inlined at build time</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Config + Test</h2>
+						<pre class="language-typescript"><code class="language-typescript">// playwright.config.ts
+export default defineConfig({
+  use: { baseURL: 'http://localhost:4173' },
+  webServer: {
+    command: 'npm run build &amp;&amp; npm run preview -- --port 4173 --strictPort',
+    url: 'http://localhost:4173',
+    reuseExistingServer: !process.env.CI,
+  },
+});
+
+// tests/products.spec.ts
+test('lists products from the API', async ({ page }) =&gt; {
+  await page.route('**/api/products', (r) =&gt;
+    r.fulfill({ json: [{ id: 1, name: 'Mug', price: 9 }] }));
+  await page.goto('/products');                         // React Router route
+  await expect(page.getByRole('heading', { name: 'Products' })).toBeVisible();
+  await page.getByRole('link', { name: 'Mug' }).click();
+  await expect(page).toHaveURL('/products/1');          // client-side navigation
+  await expect(page.getByText('$9.00')).toBeVisible();
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>build &amp;&amp; preview</code> — test the production bundle</div>
+							<div class="explain-item"><code>--strictPort</code> — fail instead of picking another port</div>
+							<div class="explain-item"><code>page.route</code> — deterministic API data</div>
+							<div class="explain-item"><code>toHaveURL</code> — SPA route change</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Gotchas Table | Ids Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-gotchas">
+						<h2 class="section-title">React Gotchas</h2>
+						<table>
+							<thead><tr><th>Issue</th><th>Approach</th></tr></thead>
+							<tbody>
+								<tr><td>Suspense / lazy routes</td><td class="desc">Assert on content, not timing</td></tr>
+								<tr><td>Debounced inputs</td><td class="desc">expect auto-retries; no sleeps</td></tr>
+								<tr><td>Portals (modals, toasts)</td><td class="desc">getByRole('dialog') at page level</td></tr>
+								<tr><td>Virtualized lists</td><td class="desc">Scroll, then locate</td></tr>
+								<tr><td>Duplicate requests</td><td class="desc">Dev StrictMode; test the build</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-ids">
+						<h2 class="section-title">Test-ID Strategy</h2>
+						<table>
+							<thead><tr><th>Do</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>Prefer roles + labels</td><td class="desc">Accessible + stable</td></tr>
+								<tr><td>data-testid on icons/charts</td><td class="desc">No text to target</td></tr>
+								<tr><td>Strip test IDs? Usually no</td><td class="desc">Cheap, stable contract</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Testing against <code>vite dev</code> in CI; first-load module compilation slows tests</li>
+							<li class="note-item">Expecting <code>page.goto</code> to wait for React data fetching; assert the content instead</li>
+							<li class="note-item">Using <code>page.waitForLoadState('networkidle')</code> as a "React finished" signal</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Combine Playwright e2e with component tests (sheets 53–54) for UI states</li>
+							<li class="note-item">Mock only the backend boundary; keep routing and state real</li>
+							<li class="note-item">Use React Developer Tools in headed/debug mode to inspect state</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>build &amp;&amp; preview</code> — production-like server</li>
+							<li class="note-item"><code>page.route()</code> — mock the API</li>
+							<li class="note-item"><code>toHaveURL</code> — client routing</li>
+							<li class="note-item">roles first, <code>data-testid</code> for the rest</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-49-webserver.html">webServer &amp; baseURL</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-51-nextjs.html">Next.js Apps</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

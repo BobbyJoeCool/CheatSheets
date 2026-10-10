@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 63: GitHub Actions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s63">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 63</div>
+			<h1>GitHub Actions</h1>
+			<div class="sheet-desc">generated playwright.yml · install --with-deps · upload-artifact · sharded matrix · merge-reports job · caching</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Running in GitHub Actions</h2>
+						<div class="description"><code>npm init playwright</code> can generate <code>.github/workflows/playwright.yml</code>. The essentials: install dependencies, install browsers <strong>with OS deps</strong>, run tests, and <strong>always</strong> upload the report so failures can be inspected. For large suites, a matrix of shards writes <strong>blob reports</strong> that a final job merges into one HTML report.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>if: ${{ !cancelled() }}</code> uploads reports even when tests fail</li>
+							<li class="note-item">Set <code>CI=true</code> (Actions does) so config picks CI settings</li>
+							<li class="note-item">The <code>github</code> reporter adds failure annotations to PRs</li>
+							<li class="note-item">Alternatively run jobs in the Playwright container image</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">.github/workflows/playwright.yml (sharded)</h2>
+						<pre class="language-yaml"><code class="language-yaml">name: Playwright Tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy: { fail-fast: false, matrix: { shard: [1/4, 2/4, 3/4, 4/4] } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: lts/*, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps
+      - run: npx playwright test --shard=${{ matrix.shard }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: "blob-${{ strategy.job-index }}", path: blob-report }
+  merge:
+    if: ${{ !cancelled() }}
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with: { path: all-blob-reports, pattern: blob-*, merge-multiple: true }
+      - run: npx playwright merge-reports --reporter html ./all-blob-reports
+      - uses: actions/upload-artifact@v4
+        with: { name: html-report, path: playwright-report, retention-days: 14 }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">matrix <code>shard</code> — 4 parallel machines</div>
+							<div class="explain-item"><code>fail-fast: false</code> — let all shards finish</div>
+							<div class="explain-item"><code>--with-deps</code> — Linux packages for browsers</div>
+							<div class="explain-item">blob artifact per shard</div>
+							<div class="explain-item"><code>merge</code> job — one combined HTML report</div>
+							<div class="explain-item"><code>!cancelled()</code> — run even after failures</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Uploading <code>playwright-report</code> only on success; you lose the report when you need it most</li>
+							<li class="note-item">Sharding without <code>reporter: 'blob'</code> on CI; there's nothing to merge</li>
+							<li class="note-item">Caching <code>~/.cache/ms-playwright</code> with a key that ignores the Playwright version</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>reporter: process.env.CI ? 'blob' : 'html'</code> in config</li>
+							<li class="note-item">Run a quick <code>--only-changed=origin/main</code> job on PRs, full suite on main</li>
+							<li class="note-item">Download <code>html-report</code> and run <code>npx playwright show-report</code> locally</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">install <code>--with-deps</code> — CI browsers</li>
+							<li class="note-item">matrix <code>--shard</code> — parallel machines</li>
+							<li class="note-item">blob → <code>merge-reports</code> — one report</li>
+							<li class="note-item">upload artifacts with <code>!cancelled()</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-62-cross-language.html">Cross-Language API Map</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-64-docker-other-ci.html">Docker &amp; Other CI</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

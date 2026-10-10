@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 64: Docker &amp; Other CI</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s64">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 64</div>
+			<h1>Docker &amp; Other CI</h1>
+			<div class="sheet-desc">mcr.microsoft.com/playwright · --ipc=host · Azure Pipelines · GitLab CI · Jenkins · CI env var</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Containers and Other CI Systems</h2>
+						<div class="description">The official image <code>mcr.microsoft.com/playwright:v1.64.0-noble</code> contains browsers and all OS dependencies, so CI jobs and local runs render identically (important for screenshots). Match the image tag to your <code>@playwright/test</code> version. Any CI that can run a container or Node works: GitLab, Jenkins, Azure Pipelines, CircleCI and others follow the same install → test → publish-report pattern.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>--ipc=host</code> (Chromium shared memory) and <code>--init</code></li>
+							<li class="note-item">Image runs as root; for untrusted sites use a non-root user + seccomp</li>
+							<li class="note-item">Image has browsers but <strong>not</strong> your <code>@playwright/test</code>; still <code>npm ci</code></li>
+							<li class="note-item">Remote: <code>run-server</code> in Docker, connect with <code>PW_TEST_CONNECT_WS_ENDPOINT</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-docker">
+						<h2 class="section-title">Docker</h2>
+						<pre class="language-bash"><code class="language-bash">docker run -it --rm --ipc=host --init -v "$PWD":/work -w /work \
+  mcr.microsoft.com/playwright:v1.64.0-noble \
+  /bin/bash -c "npm ci &amp;&amp; npx playwright test"
+
+# browsers in Docker, tests on host (e.g. macOS screenshots that match Linux CI)
+docker run -p 3000:3000 --rm --init -it \
+  mcr.microsoft.com/playwright:v1.64.0-noble \
+  /bin/sh -c "npx -y playwright@1.64.0 run-server --port 3000 --host 0.0.0.0"
+PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3000/ npx playwright test</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>--ipc=host</code> — avoids Chromium OOM crashes</div>
+							<div class="explain-item"><code>-v $PWD</code> — mount the project</div>
+							<div class="explain-item"><code>run-server</code> — remote browser server</div>
+							<div class="explain-item"><code>PW_TEST_CONNECT_WS_ENDPOINT</code> — use it from the host</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Code | Explain -->
+			<div class="row row-code-explain" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-ci">
+						<h2 class="section-title">GitLab CI and Jenkins</h2>
+						<pre class="language-yaml"><code class="language-yaml"># .gitlab-ci.yml
+e2e:
+  image: mcr.microsoft.com/playwright:v1.64.0-noble
+  script: [npm ci, npx playwright test]
+  artifacts: { when: always, paths: [playwright-report/], expire_in: 1 week }
+
+# Jenkinsfile (declarative)
+# pipeline {
+#   agent { docker { image 'mcr.microsoft.com/playwright:v1.64.0-noble' } }
+#   stages { stage('e2e') { steps { sh 'npm ci'; sh 'npx playwright test' } } }
+# }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-explain" id="explain-ci">
+						<h2 class="section-title">CI Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>when: always</code> — keep reports on failure</div>
+							<div class="explain-item">Azure Pipelines: NodeTool → <code>npx playwright install --with-deps</code> → test → PublishTestResults (JUnit)</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Image tag v1.63 with <code>@playwright/test</code> 1.64; browser builds don't match and tests fail to launch</li>
+							<li class="note-item">Omitting <code>--ipc=host</code>; Chromium crashes under memory pressure</li>
+							<li class="note-item">Generating screenshot baselines on macOS, comparing in Linux containers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Pin the image digest or exact tag in CI</li>
+							<li class="note-item">Use the same image locally to update visual baselines</li>
+							<li class="note-item">Publish JUnit to your CI's test tab and the HTML report as an artifact</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>mcr.microsoft.com/playwright</code> — official image</li>
+							<li class="note-item"><code>--ipc=host --init</code> — recommended flags</li>
+							<li class="note-item"><code>run-server</code> — browsers in Docker, tests anywhere</li>
+							<li class="note-item">same pattern on any CI</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-63-github-actions.html">GitHub Actions</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-65-remote-browsers.html">Remote &amp; Cloud Browsers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

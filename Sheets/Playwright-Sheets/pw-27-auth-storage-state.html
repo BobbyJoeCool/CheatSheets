@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 27: Auth with storageState</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>Auth with storageState</h1>
+			<div class="sheet-desc">auth.setup.ts · storageState() · playwright/.auth · setStorageState() · reuse across projects</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Log In Once, Reuse Everywhere</h2>
+						<div class="description">Logging in through the UI in every test is slow. Instead, a <strong>setup project</strong> signs in once and saves cookies and local storage with <code>context.storageState({ path })</code>. Test projects load that file through <code>use.storageState</code>, so every test starts already authenticated. Since 1.59, <code>context.setStorageState()</code> can swap state into an existing context.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">State file = cookies + localStorage (+ IndexedDB if asked)</li>
+							<li class="note-item">sessionStorage is <strong>not</strong> saved; see next sheet</li>
+							<li class="note-item">Add <code>playwright/.auth</code> to <code>.gitignore</code></li>
+							<li class="note-item">Expired sessions: delete the file or re-run setup</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-setup">
+						<h2 class="section-title">tests/auth.setup.ts</h2>
+						<pre class="language-typescript"><code class="language-typescript">import { test as setup, expect } from '@playwright/test';
+const authFile = 'playwright/.auth/user.json';
+
+setup('authenticate', async ({ page }) =&gt; {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(process.env.E2E_USER!);
+  await page.getByLabel('Password').fill(process.env.E2E_PASS!);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('button', { name: 'Account' })).toBeVisible();
+  await page.context().storageState({ path: authFile, indexedDB: true });
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">wait for a logged-in signal before saving</div>
+							<div class="explain-item"><code>storageState({ path })</code> — write the file</div>
+							<div class="explain-item"><code>indexedDB: true</code> — for Firebase-style auth</div>
+							<div class="explain-item">credentials from env, never hard-coded</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Code | Explain -->
+			<div class="row row-code-explain" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-config">
+						<h2 class="section-title">playwright.config.ts</h2>
+						<pre class="language-typescript"><code class="language-typescript">projects: [
+  { name: 'setup', testMatch: /.*\.setup\.ts/ },
+  {
+    name: 'chromium',
+    use: {
+      ...devices['Desktop Chrome'],
+      storageState: 'playwright/.auth/user.json',
+    },
+    dependencies: ['setup'],
+  },
+],
+// opt a file out: test.use({ storageState: { cookies: [], origins: [] } });</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-explain" id="explain-config">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>storageState</code> in <code>use</code> — every test starts logged in</div>
+							<div class="explain-item"><code>dependencies</code> — setup runs first</div>
+							<div class="explain-item">empty state — test logged-out flows</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Saving state before the login redirect finishes; the file has no session cookie</li>
+							<li class="note-item">Committing <code>.auth/*.json</code>; it's a live session token</li>
+							<li class="note-item">Sharing one account across parallel tests that mutate server state; they collide</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Log in via API (<code>request.post('/api/login')</code>) in setup for speed</li>
+							<li class="note-item">Use <code>test.use({ storageState: … })</code> per file for different roles</li>
+							<li class="note-item">Regenerate state in CI on every run; it's fast and avoids expiry</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">setup project — log in once</li>
+							<li class="note-item"><code>storageState({ path })</code> — save session</li>
+							<li class="note-item"><code>use.storageState</code> — load for tests</li>
+							<li class="note-item">empty state — logged-out tests</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-26-global-setup.html">Global Setup &amp; Project Dependencies</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-28-auth-patterns.html">Multi-Role &amp; Advanced Auth</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

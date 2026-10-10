@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright — Sheet 39: Retries &amp; Flaky Tests</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pw-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s39">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 39</div>
+			<h1>Retries &amp; Flaky Tests</h1>
+			<div class="sheet-desc">retries · retryStrategy · testInfo.retry · --fail-on-flaky-tests · --repeat-each · --shuffle</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Handling Flakiness</h2>
+						<div class="description">With <code>retries &gt; 0</code>, a failed test is re-run in a fresh worker. A test that fails first and then passes is reported as <strong>flaky</strong>: green, but flagged. <code>retryStrategy</code> (1.62) chooses whether retries run immediately or <strong>isolated</strong> at the end, and <code>failOnFlakyTests</code> turns flaky results into a failing exit code. <code>--repeat-each</code> and <code>--shuffle</code> (1.64) help reproduce order- and timing-dependent bugs.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Retries restart the worker; <code>beforeAll</code> runs again</li>
+							<li class="note-item">Serial groups retry from the start of the group</li>
+							<li class="note-item"><code>testInfo.retry</code> is 0 on the first attempt</li>
+							<li class="note-item">Traces with <code>'on-first-retry'</code> capture the failing rerun</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Configuration</h2>
+						<pre class="language-typescript"><code class="language-typescript">export default defineConfig({
+  retries: process.env.CI ? 2 : 0,
+  retryStrategy: 'isolated',          // retries run last, one by one (1.62)
+  failOnFlakyTests: !!process.env.CI, // flaky = exit code 1
+  use: { trace: 'on-first-retry', video: 'retain-on-failure-and-retries' },
+});
+
+test('dashboard loads', async ({ page }, testInfo) =&gt; {
+  if (testInfo.retry) await page.context().clearCookies();   // extra cleanup on retry
+  await page.goto('/dashboard');
+});
+
+test.describe.configure({ retries: 3 });          // per-file override
+
+// reproduce flakiness locally
+// npx playwright test cart.spec.ts --repeat-each=20 --workers=4
+// npx playwright test --shuffle                 (random order, 1.64)
+// npx playwright test --shuffle=1234            (replay an order)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>retries</code> — attempts after the first</div>
+							<div class="explain-item"><code>retryStrategy: 'isolated'</code> — less interference</div>
+							<div class="explain-item"><code>failOnFlakyTests</code> — don't let flakes pass CI</div>
+							<div class="explain-item"><code>testInfo.retry</code> — branch on retry attempt</div>
+							<div class="explain-item"><code>--repeat-each</code> — stress one test</div>
+							<div class="explain-item"><code>--shuffle[=seed]</code> — find order dependencies</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Status Table | Causes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-status">
+						<h2 class="section-title">Result Status</h2>
+						<table>
+							<thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>passed</td><td class="desc">Passed first time</td></tr>
+								<tr><td>flaky</td><td class="desc">Failed, then passed on retry</td></tr>
+								<tr><td>failed</td><td class="desc">Failed every attempt</td></tr>
+								<tr><td>skipped</td><td class="desc">Not run</td></tr>
+								<tr><td>timedOut</td><td class="desc">Exceeded timeout</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-causes">
+						<h2 class="section-title">Common Flake Causes</h2>
+						<table>
+							<thead><tr><th>Cause</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>Fixed sleeps</td><td class="desc">Web-first assertions</td></tr>
+								<tr><td>Shared test data</td><td class="desc">Unique data per test</td></tr>
+								<tr><td>Animations</td><td class="desc">reducedMotion / disable</td></tr>
+								<tr><td>Order dependence</td><td class="desc">--shuffle, isolate state</td></tr>
+								<tr><td>Slow CI</td><td class="desc">Bigger timeouts on slow paths</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Treating retries as a fix; flaky tests still hide real race conditions</li>
+							<li class="note-item">Using <code>retries</code> without traces; you can't see what went wrong in the failed attempt</li>
+							<li class="note-item">Raising timeouts everywhere instead of finding the one slow wait</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Track flaky tests from the HTML/JSON report and fix the top offenders weekly</li>
+							<li class="note-item">Use <code>--repeat-each=20</code> locally before declaring a test fixed</li>
+							<li class="note-item">Set <code>video: 'retain-on-failure-and-retries'</code> (1.61) to see both attempts</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>retries</code> — re-run failures</li>
+							<li class="note-item"><code>flaky</code> — passed after retry</li>
+							<li class="note-item"><code>failOnFlakyTests</code> — strict CI</li>
+							<li class="note-item"><code>--repeat-each / --shuffle</code> — reproduce flakes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pw-38-parallelism-sharding.html">Parallelism &amp; Sharding</a>
+				<a class="nav-toc" href="index.html">Playwright Reference · 67 Sheets</a>
+				<a class="nav-link next" href="pw-40-reporters.html">Reporters</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>
