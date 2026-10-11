@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Bitwise — Sheet 12: Colors &amp; Packed Data</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/bit-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Colors &amp; Packed Data</h1>
+			<div class="sheet-desc"><code>0xRRGGBB</code> · <code>0xAARRGGBB</code> · extract channels · pack channels · RGB565 · <code>(a &lt;&lt; 32) | b</code> keys · fixed point Q16.16 · float bits</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Several Values, One Integer</h2>
+						<div class="description"><strong>Packing</strong> stores several small values side by side in one integer: shift each into its slot and OR them together; unpack with shift-then-mask. Colors are the everyday example. <code>0x3A7BD5</code> is three 8-bit channels in one 24-bit number, the same value CSS writes as <code>#3A7BD5</code>. The same trick builds hash keys from coordinates, squeezes colors into 16 bits, and stores fractions in integers.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Channel order is a convention: ARGB, RGBA, BGRA</li>
+							<li class="note-item">Alpha in the top byte makes a signed int negative</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Pack &amp; Unpack (pseudocode)</h2>
+						<pre><code class="language-clike">c ← 0x3A7BD5                           // #3A7BD5
+r ← (c &gt;&gt; 16) &amp; 0xFF                   // 0x3A = 58
+g ← (c &gt;&gt; 8) &amp; 0xFF                    // 0x7B = 123
+b ← c &amp; 0xFF                           // 0xD5 = 213
+packed ← (r &lt;&lt; 16) | (g &lt;&lt; 8) | b      // 0x3A7BD5 again
+argb   ← (0xFF &lt;&lt; 24) | packed         // opaque: 0xFF3A7BD5
+
+// RGB565: 5 bits red, 6 green, 5 blue
+rgb565 ← ((r &gt;&gt; 3) &lt;&lt; 11) | ((g &gt;&gt; 2) &lt;&lt; 5) | (b &gt;&gt; 3)   // 0x3BDA
+r5 ← (rgb565 &gt;&gt; 11) &amp; 0x1F
+r8 ← (r5 &lt;&lt; 3) | (r5 &gt;&gt; 2)             // 8 bits again: 57 (was 58)
+
+// Two 32-bit ints in one 64-bit key
+key ← (x &lt;&lt; 32) | (y &amp; 0xFFFFFFFF)     // mask y: negatives
+x2  ← key &gt;&gt; 32
+y2  ← key &amp; 0xFFFFFFFF</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>&amp; 0xFF</code> after the shift drops the channels above</div>
+							<div class="explain-item"><code>(r5 &lt;&lt; 3) | (r5 &gt;&gt; 2)</code> copies high bits down so 31 → 255, not 248</div>
+							<div class="explain-item">Mask y or a negative y smears ones over x</div>
+							<div class="explain-item"><strong>Morton (Z-order)</strong> codes interleave x and y bits so nearby points get nearby keys</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Formats Table | Fixed Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-formats">
+						<h2 class="section-title">Common Packed Layouts</h2>
+						<table>
+							<thead><tr><th>Format</th><th>Bit layout</th><th>Where</th></tr></thead>
+							<tbody>
+								<tr><td>ARGB8888</td><td class="desc">A 31–24 · R 23–16 · G 15–8 · B 7–0</td><td class="desc">Android, Java AWT, .NET</td></tr>
+								<tr><td>RGBA (bytes)</td><td class="desc">R, G, B, A in memory order</td><td class="desc">Canvas ImageData, WebGL, PNG</td></tr>
+								<tr><td>RGB565</td><td class="desc">R 15–11 · G 10–5 · B 4–0</td><td class="desc">small LCDs, embedded</td></tr>
+								<tr><td>Q16.16</td><td class="desc">integer 31–16 · fraction 15–0</td><td class="desc">DSP, fonts, old games</td></tr>
+								<tr><td>float32</td><td class="desc">sign 31 · exponent 30–23 · mantissa 22–0</td><td class="desc">IEEE-754</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-fixed">
+						<h2 class="section-title">Q16.16 Fixed Point</h2>
+						<table>
+							<thead><tr><th>Op</th><th>Expression</th></tr></thead>
+							<tbody>
+								<tr><td class="desc">to fixed</td><td class="kw">round(x × 65536)</td></tr>
+								<tr><td class="desc">to real</td><td class="kw">f / 65536</td></tr>
+								<tr><td class="desc">add</td><td class="kw">a + b</td></tr>
+								<tr><td class="desc">multiply</td><td class="kw">(a × b) &gt;&gt; 16 (64-bit product)</td></tr>
+								<tr><td class="desc">divide</td><td class="kw">(a &lt;&lt; 16) / b</td></tr>
+								<tr><td class="desc">1.5</td><td class="kw">0x0001_8000</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Float Table -->
+			<div class="row" id="row-4">
+				<div class="col" id="col-4-1">
+					<section id="tbl-float">
+						<h2 class="section-title">Float32 Bits (read with <code>std::bit_cast</code>, <code>Float.floatToIntBits</code>, <code>struct</code>, <code>DataView</code>)</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Bits (hex)</th><th>Sign (31)</th><th>Exponent (30–23)</th><th>Mantissa (22–0)</th></tr></thead>
+							<tbody>
+								<tr><td>1.5</td><td class="kw">0x3FC00000</td><td class="kw">0</td><td class="kw">127 (2⁰)</td><td class="kw">0x400000 (.5)</td></tr>
+								<tr><td>−2.0</td><td class="kw">0xC0000000</td><td class="kw">1</td><td class="kw">128 (2¹)</td><td class="kw">0</td></tr>
+								<tr><td>0.1</td><td class="kw">0x3DCCCCCD</td><td class="kw">0</td><td class="kw">123 (2⁻⁴)</td><td class="kw">0x4CCCCD (rounded)</td></tr>
+								<tr><td>+∞</td><td class="kw">0x7F800000</td><td class="kw">0</td><td class="kw">255</td><td class="kw">0</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 5: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-5">
+				<div class="col" id="col-5-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Java/C# int with alpha ≥ <code>0x80</code> is negative: <code>c &gt;&gt; 24</code> gives −1. Use <code>&gt;&gt;&gt; 24</code> or <code>&amp; 0xFF</code></li>
+							<li class="note-item">Mixing RGBA and ARGB: channels come out rotated</li>
+							<li class="note-item"><code>x &lt;&lt; 32</code> on a 32-bit x shifts by the width. Widen to 64 bits first</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-5-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Always <code>&amp; 0xFF</code> after shifting a channel down</li>
+							<li class="note-item">Name the layout in code (<code>ARGB8888</code>); the bits can't tell you</li>
+							<li class="note-item">x86 BMI2 <code>pdep</code> / <code>pext</code> build Morton codes in one instruction</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-5-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>(c &gt;&gt; 16) &amp; 0xFF</code> — red from <code>0xRRGGBB</code></li>
+							<li class="note-item"><code>(r &lt;&lt; 16) | (g &lt;&lt; 8) | b</code> — pack</li>
+							<li class="note-item">RGB565 — 5/6/5 bits in 16</li>
+							<li class="note-item"><code>(x &lt;&lt; 32) | y</code> — two ints, one key</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="bit-11-bitsets-subsets.html" class="nav-link prev">Bitsets &amp; Subset Enumeration</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Bitwise Reference · 23 Sheets</a>
+				<a href="bit-13-bytes-endianness.html" class="nav-link next">Bytes, Endianness &amp; Binary Formats</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
