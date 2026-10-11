@@ -121,7 +121,7 @@ CheatSheets/
 
 ## Collections
 
-✅ Complete · 🚧 In progress · ⬜ Coming soon / planned
+✅ Complete · 🚧 In progress · ⬜ Coming soon / planned (outline drafted in the Claude project)
 
 ### Concepts & Tools
 
@@ -147,8 +147,8 @@ CheatSheets/
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
 | ✅ | Python | 96 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & standard library, testing & logging, advanced topics, Tkinter GUI |
-| 🚧 | Tkinter | 62 | In progress — introduction & setup, windows, classic widgets, layout managers (pack, grid, place), variables & events, menus & dialogs, ttk themed widgets (styles, Notebook, Treeview), Canvas, colors, fonts & images, application patterns (timers, threading, validation, scrollable frames, architecture, DPI, testing, packaging), external libraries (sv-ttk, ttkbootstrap, CustomTkinter, Matplotlib), quick reference |
-| ⬜ | Django | — | Planned |
+| ✅ | Tkinter | 62 | introduction & setup, windows, classic widgets, layout managers (pack, grid, place), variables & events, menus & dialogs, ttk themed widgets (styles, Notebook, Treeview), Canvas, colors, fonts & images, application patterns (timers, threading, validation, scrollable frames, architecture, DPI, testing, packaging), external libraries (sv-ttk, ttkbootstrap, CustomTkinter, Matplotlib), quick reference |
+| ⬜ | Django | 68 | Outline drafted — Django 6.0: introduction & setup, URLs & routing, views (function & class-based), templates (incl. partials), models, migrations, QuerySets & the ORM, forms, admin, authentication & authorization, middleware, sessions, messages & signals, security (incl. CSP), testing, pagination, caching, email, background tasks, async, logging, i18n, Django REST Framework, deployment |
 
 ### Java
 
@@ -156,7 +156,7 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | Java | 134 | control flow, methods & functions, data structures, OOP, files & I/O, modules & packages, standard library, external libraries, concurrency, database, Swing, JavaFX |
 | ✅ | JSP | 32 | directives, implicit objects & scope, Expression Language, standard actions, JSTL (core, fmt, fn), custom tags & TLDs, integration & security |
-| ⬜ | Spring | — | Planned |
+| ⬜ | Spring | 67 | Outline drafted — Spring Boot 4.1 / Framework 7: introduction & setup, IoC & dependency injection, configuration & auto-configuration, AOP, Spring MVC REST APIs, Thymeleaf views, HTTP clients, JDBC & schema migrations, Spring Data JPA, Spring Security (JWT, OAuth2), testing, Actuator & observability, events, scheduling, async & virtual threads, caching, resilience, WebFlux, packaging & GraalVM native images |
 
 ### JavaScript / TypeScript
 
@@ -166,22 +166,23 @@ CheatSheets/
 | ✅ | React | 98 | introduction & setup, JSX, components & props, state, events, forms & Actions, refs & effects, context, custom hooks, concurrent features (Suspense, use, transitions, Activity, View Transitions), error handling, performance & React Compiler, TypeScript, styling, React Router, TanStack Query & SWR, Redux Toolkit & Zustand, Server Components & SSR, accessibility, testing, build & deploy, quick reference; every sheet adds Accessibility and Version Notes sections |
 | ✅ | Node.js | 68 | introduction & setup, modules & packages, event loop & async, process & environment, CLI tools, file system, buffers & streams, networking & HTTP, errors & debugging, testing, concurrency & performance, security, built-in utilities, web frameworks & libraries, deployment |
 | ✅ | Next.js | 58 | introduction & setup, routing, server & client components, data fetching, caching & rendering, mutations & server actions, route handlers & proxy, styling, optimizations, authentication & security, data, environment & i18n, testing & debugging, deployment & operations, Pages Router (legacy) |
+| ⬜ | React Native | 70 | Outline drafted — React Native 0.87 / Expo SDK 56: introduction & setup, React refresher, core components, styling & layout, navigation (Expo Router, React Navigation), platform-specific code & config, data, state & storage, animation & gestures, native code & the New Architecture, testing & debugging, EAS build, release & OTA updates, iOS, iPadOS / macOS / tvOS / visionOS, Android, Windows, web & other platforms |
 
 ### Web Design
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| 🚧 | HTML | 56 | In progress — introduction & document basics, comments & character references, head & metadata, page structure & semantics, text content, lists, links, images & graphics, audio/video & embeds, tables, forms & validation, details/dialog/popover, accessibility & ARIA, scripting & web components, quick reference; every sheet adds Accessibility and Pairing with CSS sections |
-| 🚧 | CSS | 77 | In progress — introduction & setup, cascade & inheritance (specificity, layers, nesting & @scope), selectors, values, units & functions, custom properties, color (oklch, color-mix, light-dark), box model & sizing, typography, backgrounds & visual effects, layout fundamentals, flexbox, grid, responsive design & print, transforms, transitions & animation (scroll-driven, view transitions), UI & interaction, organization, accessibility & quick reference; every sheet adds Accessibility and Browser Support sections |
+| ✅ | HTML | 56 | introduction & document basics, comments & character references, head & metadata, page structure & semantics, text content, lists, links, images & graphics, audio/video & embeds, tables, forms & validation, details/dialog/popover, accessibility & ARIA, scripting & web components, quick reference; every sheet adds Accessibility and Pairing with CSS sections |
+| ✅ | CSS | 77 | introduction & setup, cascade & inheritance (specificity, layers, nesting & @scope), selectors, values, units & functions, custom properties, color (oklch, color-mix, light-dark), box model & sizing, typography, backgrounds & visual effects, layout fundamentals, flexbox, grid, responsive design & print, transforms, transitions & animation (scroll-driven, view transitions), UI & interaction, organization, accessibility & quick reference; every sheet adds Accessibility and Browser Support sections |
 | ✅ | CSS Systems | 46 | utility-first (Tailwind, UnoCSS), component frameworks (Bootstrap, Bulma, Foundation), CSS-in-JS (Styled Components, CSS Modules), preprocessors (Sass/SCSS, PostCSS), design tokens & architecture (Open Props, ITCSS), comparisons & migration |
-| 🚧 | PHP | 133 | In progress — introduction & setup, output & comments, variables & data types, strings, operators, control flow, error handling, functions, arrays & data structures, OOP (enums, readonly, property hooks, asymmetric visibility), files & I/O, modules & Composer, standard library, testing & tooling, advanced topics, web fundamentals, PDO, security, quick reference; targets PHP 8.0–8.5 |
+| ✅ | PHP | 133 | introduction & setup, output & comments, variables & data types, strings, operators, control flow, error handling, functions, arrays & data structures, OOP (enums, readonly, property hooks, asymmetric visibility), files & I/O, modules & Composer, standard library, testing & tooling, advanced topics, web fundamentals, PDO, security, quick reference; targets PHP 8.0–8.5 |
 
 ### SQL & Tools
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
 | ✅ | SQL | 22 | SELECT, WHERE Operators, JOIN Types, Aggregate Functions, CASE Statement, String Functions, Date Functions, UNION / INTERSECT / EXCEPT, Subqueries, CTEs, Window Functions, NULL Handling, INSERT, UPDATE & DELETE, CREATE TABLE & Data Types, Constraints, Views, Transactions, Stored Procedures, Triggers, Indexes |
-| ⬜ | Prisma | 69 | intro & setup, schema definition, client basics, CRUD, filtering & querying, relations & nested writes, aggregations, transactions, migrations, error handling, advanced patterns, performance, testing |
+| ✅ | Prisma | 32 | Prisma 7: introduction & setup, schema definition (models, relations, enums, indexes), CRUD, filtering & pagination, relations & nested writes, aggregations, transactions, migrations, error handling, performance & pooling, soft deletes & auditing, $extends, TypeScript types, testing, debugging & Studio, raw SQL, special types, self-relations, validation, best practices, security, migration strategies |
 
 ### Markup & Notation
 
@@ -193,11 +194,17 @@ CheatSheets/
 | ✅ | XML | 10 | Elements & Attributes, Text, Data & Special Characters, Namespaces, DTD, XML Schema (XSD), XPath, XSLT, Parsing XML, Practical XML |
 | ✅ | YAML | 8 | Scalars & Data Types, Collections — Sequences & Mappings, String Styles & Multiline, Anchors, Aliases & Merges, Schema, Tags & Directives, Real-World YAML Patterns, Tooling, Validation & Language Integration |
 
-### Other Languages
+### C Family
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ⬜ | C++ | — | Planned |
-| ⬜ | C# | — | Planned |
-| ⬜ | Ruby | — | Planned |
-| ⬜ | Go | — | Planned |
+| ⬜ | C | 98 | Outline drafted — C17 with C23 tags: introduction & toolchain, output & comments, variables & data types, strings, operators, control flow, error handling (return codes, errno), functions, pointers, memory management, arrays & data structures, structs, unions & enums, files & I/O, preprocessor, headers & builds (Make, CMake), standard library, tools & libraries, advanced topics (UB, threads, atomics, signals, C23), quick reference |
+| ⬜ | C++ | 123 | Outline drafted — C++23 with C++26 notes: introduction & setup, I/O & comments, variables & data types, strings, operators, control flow, error handling (exceptions, optional, expected), functions & lambdas, STL containers, OOP (copy & move semantics), files & I/O, headers & modules, external libraries, concurrency & coroutines, pointers & references, memory management & smart pointers, templates & concepts, iterators, algorithms & ranges |
+| ⬜ | C# | 128 | Outline drafted — C# 14 / .NET 10 with C# 15 preview notes: introduction & setup, output, input & comments, variables & data types (nullability), strings, operators, control flow & pattern matching, error handling, methods, delegates & events, collections, OOP (records, structs, generics), files & I/O, namespaces, NuGet & BCL, testing & logging, async/await, threading & performance, LINQ, Entity Framework Core |
+
+### Languages
+
+| Status | Collection | Sheets | Notes |
+| :---: | :--- | :---: | :--- |
+| ⬜ | Go | 112 | Outline drafted — Go 1.27: introduction & toolchain, output & comments, variables & data types, strings, operators & pointers, control flow, errors as values, functions, data structures & iterators, types, methods, interfaces & generics, files & I/O, modules & standard library, external libraries, advanced topics, concurrency, testing & tooling, web & networking, quick reference |
+| ⬜ | Ruby | 113 | Outline drafted — Ruby 4.0: introduction & setup, output & comments, variables & data types, strings, operators, control flow & pattern matching, error handling, methods & blocks (procs, lambdas, closures), data structures, OOP & modules, files & I/O, gems & Bundler, testing & tooling, advanced topics (regex, threads, fibers, Ractors, RBS), Enumerable & enumerators, metaprogramming |
