@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Bitwise — Sheet 13: Bytes, Endianness &amp; Binary Formats</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/bit-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Bytes, Endianness &amp; Binary Formats</h1>
+			<div class="sheet-desc">big / little-endian · network order · byte n · byte swap · UTF-8 bits</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Which Byte Comes First?</h2>
+						<div class="description"><strong>Endianness</strong> is the order of a number's bytes in memory or in a file. <strong>Little-endian</strong> stores the least significant byte first (x86, ARM in practice). <strong>Big-endian</strong> stores the most significant byte first and is the <strong>network byte order</strong> of most protocols. Building a value from bytes with shifts works the same on every CPU, so it's the portable way to parse binary data.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>0x12345678</code> little: <code>78 56 34 12</code>; big: <code>12 34 56 78</code></li>
+							<li class="note-item">Only matters when bytes cross a boundary: files, sockets, raw memory</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Bytes ↔ Integers (pseudocode)</h2>
+						<pre><code class="language-clike">// Big-endian u32 from bytes b[0..3]
+v ← (b[0] &lt;&lt; 24) | (b[1] &lt;&lt; 16) | (b[2] &lt;&lt; 8) | b[3]
+// Little-endian u32 from the same bytes
+v ← b[0] | (b[1] &lt;&lt; 8) | (b[2] &lt;&lt; 16) | (b[3] &lt;&lt; 24)
+
+// Write v as big-endian bytes
+for i ← 0 to 3
+    out[i] ← (v &gt;&gt; (24 - 8 * i)) &amp; 0xFF
+
+byteN ← (v &gt;&gt; (8 * n)) &amp; 0xFF          // n = 0 is the lowest byte
+
+function bswap32(v)                    // reverse byte order
+    return ((v &amp; 0xFF) &lt;&lt; 24) | ((v &amp; 0xFF00) &lt;&lt; 8)
+         | ((v &gt;&gt; 8) &amp; 0xFF00) | ((v &gt;&gt; 24) &amp; 0xFF)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Shifts act on values, not memory, so this code works on any CPU</div>
+							<div class="explain-item">Java/C# <code>byte</code> is signed: use <code>b[i] &amp; 0xFF</code> before shifting</div>
+							<div class="explain-item"><code>b[0] &lt;&lt; 24</code> can hit the sign bit in Java/JS; use long or <code>&gt;&gt;&gt; 0</code></div>
+							<div class="explain-item">Built-ins: <code>htonl</code>/<code>ntohl</code>, <code>ByteBuffer</code>, <code>DataView</code>, <code>struct</code>, <code>binary.BigEndian</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Who Table | Utf8 Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-who">
+						<h2 class="section-title">Who Uses Which Order</h2>
+						<table>
+							<thead><tr><th>System / format</th><th>Order</th></tr></thead>
+							<tbody>
+								<tr><td>x86, x86-64, RISC-V</td><td class="desc">little</td></tr>
+								<tr><td>ARM (phones, Apple silicon)</td><td class="desc">little in practice</td></tr>
+								<tr><td>TCP/IP headers</td><td class="desc">big (network order)</td></tr>
+								<tr><td>JPEG, PNG, Java class files</td><td class="desc">big</td></tr>
+								<tr><td>BMP, WAV, ZIP, USB</td><td class="desc">little</td></tr>
+								<tr><td>UTF-16 text</td><td class="desc">either (BOM FE FF = big)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-utf8">
+						<h2 class="section-title">UTF-8 Lead Bits</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Meaning</th><th>Test</th></tr></thead>
+							<tbody>
+								<tr><td>0xxxxxxx</td><td class="desc">1-byte (ASCII)</td><td class="kw">b &lt; 0x80</td></tr>
+								<tr><td>110xxxxx</td><td class="desc">starts 2 bytes</td><td class="kw">(b &amp; 0xE0) == 0xC0</td></tr>
+								<tr><td>1110xxxx</td><td class="desc">starts 3 bytes</td><td class="kw">(b &amp; 0xF0) == 0xE0</td></tr>
+								<tr><td>11110xxx</td><td class="desc">starts 4 bytes</td><td class="kw">(b &amp; 0xF8) == 0xF0</td></tr>
+								<tr><td>10xxxxxx</td><td class="desc">continuation</td><td class="kw">(b &amp; 0xC0) == 0x80</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Readas Table | Ipv4 Table -->
+			<div class="row" id="row-4">
+				<div class="col" id="col-4-1">
+					<section id="tbl-readas">
+						<h2 class="section-title">Bytes 12 34 56 78 Read Both Ways</h2>
+						<table>
+							<thead><tr><th>Read as</th><th>Big-endian</th><th>Little-endian</th></tr></thead>
+							<tbody>
+								<tr><td>u16 (b[0..1])</td><td class="kw">0x1234</td><td class="kw">0x3412</td></tr>
+								<tr><td>u32 (b[0..3])</td><td class="kw">0x12345678</td><td class="kw">0x78563412</td></tr>
+								<tr><td>i16 of FF FE</td><td class="kw">0xFFFE = −2</td><td class="kw">0xFEFF = −257</td></tr>
+								<tr><td>u8 (b[0])</td><td class="kw">0x12</td><td class="kw">0x12</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section id="tbl-ipv4">
+						<h2 class="section-title">Header Bit Fields: IPv4 (bytes b0…b8)</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Expression</th></tr></thead>
+							<tbody>
+								<tr><td class="desc">version</td><td class="kw">b0 &gt;&gt; 4   (4)</td></tr>
+								<tr><td class="desc">header length</td><td class="kw">(b0 &amp; 0x0F) × 4 bytes</td></tr>
+								<tr><td class="desc">flags (DF, MF)</td><td class="kw">b6 &gt;&gt; 5</td></tr>
+								<tr><td class="desc">fragment offset</td><td class="kw">((b6 &amp; 0x1F) &lt;&lt; 8) | b7</td></tr>
+								<tr><td class="desc">TTL</td><td class="kw">b8</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 5: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-5">
+				<div class="col" id="col-5-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Casting a raw buffer to a struct and assuming file order = CPU order</li>
+							<li class="note-item">Skipping <code>&amp; 0xFF</code> on signed bytes (Java, C#, C <code>char</code>)</li>
+							<li class="note-item">Swapping twice: once by hand, once by <code>ntohl</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-5-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Python: <code>int.from_bytes(b, "big")</code>, <code>struct.unpack("&gt;I", b)</code></li>
+							<li class="note-item">JS: <code>new DataView(buf).getUint32(0)</code> is big-endian by default</li>
+							<li class="note-item">Java: <code>ByteBuffer.wrap(b)</code> then <code>.order(LITTLE_ENDIAN)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-5-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">little-endian — low byte first</li>
+							<li class="note-item">big-endian — high byte first (network)</li>
+							<li class="note-item"><code>(v &gt;&gt; 8n) &amp; 0xFF</code> — byte n</li>
+							<li class="note-item">shifts — portable parsing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="bit-12-colors-packed-data.html" class="nav-link prev">Colors &amp; Packed Data</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Bitwise Reference · 23 Sheets</a>
+				<a href="bit-14-ip-addresses-subnets.html" class="nav-link next">IP Addresses, Subnets &amp; CIDR</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

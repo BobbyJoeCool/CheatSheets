@@ -1,19 +1,26 @@
-# SQL — Outline
+# SQL Reference Guide Outline (22 sheets)
 
-Generated from `manifest.json`; keep the two in sync when sheets are added, renamed or reordered.
+## Metadata
 
-## Profile
+- **Group it belongs to:** SQL & Tools
+- **Folder Directory:** `Sheets/SQL-Sheets/sql-##-[slug].html`
+- **Groups:** 1
+- **Sheets:** 22
+- **Drafted Date:** 2026-06-12 (re-drafted after the sheets were live)
+- **Verified-Finalized Date:** 2026-06-12
 
-- **Collection section:** Languages
-- **Status:** Complete
-- **Sheets:** 22 across 1 group
-- **File prefix:** `sql` (`sql-##-[slug].html`)
-- **Folder:** `Sheets/SQL-Sheets/`
-- **Coverage:** SELECT, WHERE Operators, JOIN Types, Aggregate Functions, CASE Statement, String Functions, Date Functions, UNION / INTERSECT / EXCEPT, Subqueries, CTEs, Window Functions, NULL Handling, INSERT, UPDATE & DELETE, CREATE TABLE & Data Types, Constraints, Views, Transactions, Stored Procedures, Triggers, Indexes
+## Basic Information
 
----
+Core SQL: SELECT and statement order, WHERE operators, JOIN types, aggregates, CASE, string and date functions, set operations, subqueries, CTEs, window functions and NULL handling, then DML (INSERT, UPDATE, DELETE), DDL (CREATE TABLE, constraints, views, indexes), transactions, stored procedures and triggers.
 
-## All Sheets (01–22)
+## Differences in Layout from Basic Structure
+
+- Some sheets fold Mistakes + Tips + Summary into a column beside the tables row instead of a separate fourth row.
+- The set is small enough to be a single group.
+
+## Groups
+
+### Group 1: All Sheets (Sheets 01–22)
 
 | # | Filename | Sheet Title | Key Topics |
 |---|---|---|---|
@@ -29,10 +36,10 @@ Generated from `manifest.json`; keep the two in sync when sheets are added, rena
 | 10 | `sql-10-subqueries.html` | Subqueries | Scalar · IN · EXISTS · derived tables · correlated vs non-correlated · anti-join |
 | 11 | `sql-11-ctes.html` | CTEs (Common Table Expressions) | WITH clause · multiple CTEs · recursive CTEs · anchor member · CTE vs subquery |
 | 12 | `sql-12-window-functions.html` | Window Functions | ROW_NUMBER · RANK · DENSE_RANK · OVER · PARTITION BY · LAG · LEAD · window frames |
-| 13 | `sql-13-null-handling.html` | NULL Handling | IS NULL · IS NOT NULL · COALESCE · NULLIF · ISNULL · IFNULL · NULL in aggregates &amp; logic |
+| 13 | `sql-13-null-handling.html` | NULL Handling | IS NULL · IS NOT NULL · COALESCE · NULLIF · ISNULL · IFNULL · NULL in aggregates & logic |
 | 14 | `sql-14-insert.html` | INSERT | Single row · multiple rows · INSERT SELECT · DEFAULT · NULL · upsert · ON CONFLICT |
 | 15 | `sql-15-update-delete.html` | UPDATE and DELETE | UPDATE SET · UPDATE from another table · DELETE · TRUNCATE · safety patterns |
-| 16 | `sql-16-create-table-data-types.html` | CREATE TABLE &amp; Data Types | CREATE TABLE · ALTER TABLE · DROP TABLE · numeric · string · date · other types |
+| 16 | `sql-16-create-table-data-types.html` | CREATE TABLE & Data Types | CREATE TABLE · ALTER TABLE · DROP TABLE · numeric · string · date · other types |
 | 17 | `sql-17-constraints.html` | Constraints | PRIMARY KEY · FOREIGN KEY · NOT NULL · UNIQUE · DEFAULT · CHECK · ON DELETE CASCADE |
 | 18 | `sql-18-views.html` | Views | CREATE VIEW · DROP VIEW · updatable views · WITH CHECK OPTION · materialized views |
 | 19 | `sql-19-transactions.html` | Transactions | BEGIN · COMMIT · ROLLBACK · SAVEPOINT · isolation levels · auto-commit |

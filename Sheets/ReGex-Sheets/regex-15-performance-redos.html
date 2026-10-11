@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RegEx — Sheet 15: Performance &amp; Catastrophic Backtracking</title>
+<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+<link rel="stylesheet" href="../CSS/regex-cheatsheet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+</head>
+<body id="s15">
+<header class="page-header">
+<div class="sheet-number">Sheet 15</div>
+<h1>Performance &amp; Catastrophic Backtracking</h1>
+<div class="sheet-desc">ReDoS · (a+)+ · (a|a)* · atomic / possessive fixes · anchor &amp; fail fast · precompile · timeouts · RE2 / NonBacktracking</div>
+</header>
+<main>
+<!-- Row 1: Description | Notes -->
+<div class="row row-desc-notes" id="row-1">
+<div class="col" id="col-1-1">
+<section class="section-desc" id="desc">
+<h2 class="section-title">When a Regex Never Finishes</h2>
+<div class="description">A backtracking engine that fails a match must try <strong>every</strong> way the pattern could have split the text before giving up. When a pattern has <strong>nested or overlapping quantifiers</strong>, like <code>(a+)+</code> or <code>(\w|\d)*</code>, the number of ways grows exponentially with input length. A 30-character string can then take minutes. This is <strong>catastrophic backtracking</strong>, and when attackers can supply the input it's a denial-of-service bug called <strong>ReDoS</strong>. The fix is to make each character matchable in only one way.</div>
+</section>
+</div>
+<div class="col" id="col-1-2">
+<section class="section-notes" id="notes">
+<h2 class="section-title">Real Incidents</h2>
+<ul class="note-list">
+<li class="note-item">Stack Overflow, 2016: a whitespace-trim regex hit a post with ~20,000 spaces and took the site down</li>
+<li class="note-item">Cloudflare, 2019: <code>.*(?:.*=.*)</code> in a WAF rule pinned CPUs worldwide for 27 minutes</li>
+<li class="note-item">Go, Rust and RE2 are immune: they run in linear time</li>
+</ul>
+</section>
+</div>
+</div>
+<!-- end row-1 -->
+<!-- Row 2: Code | Explain -->
+<div class="row row-code-explain" id="row-2">
+<div class="col" id="col-2-1">
+<section class="section-code" id="code">
+<h2 class="section-title">Catastrophic Backtracking (Python)</h2>
+<pre><code class="language-python">import re, time
+evil = re.compile(r"^(a+)+$")
+for n in (20, 22, 24):
+    t = time.perf_counter(); evil.match("a" * n + "!")
+    print(n, round(time.perf_counter() - t, 2))
+# 20 0.08   22 0.19   24 0.85   &lt;- ~2x per extra character
+re.match(r"^a+$", "a" * 10_000 + "!")      # None
+re.match(r"^(?&gt;a+)+$", "a" * 10_000 + "!") # None
+re.match(r"^(a++)+$", "a" * 10_000 + "!")  # None
+# Python regex module: timeout as a safety net
+import regex
+regex.match(r"^(a|a)*$", "a" * 30 + "!", timeout=0.5)  # TimeoutError</code></pre>
+</section>
+</div>
+<div class="col" id="col-2-2">
+<section class="section-explain" id="explain">
+<h2 class="section-title">Code Explained</h2>
+<div class="section-body">
+<div class="explain-item"><code>(a+)+</code> — "aaaa" can split as 4, 3+1, 2+2, 1+1+1+1…: 2ⁿ⁻¹ ways</div>
+<div class="explain-item">The trailing <code>!</code> forces failure, so every split is tried</div>
+<div class="explain-item"><code>^a+$</code> — same strings, one way to match; instant</div>
+<div class="explain-item"><code>(?&gt;a+)</code> / <code>a++</code> — atomic / possessive: no re-splitting</div>
+<div class="explain-item"><code>timeout=</code> — the <code>regex</code> module raises instead of hanging</div>
+</div>
+</section>
+</div>
+</div>
+<!-- end row-2 -->
+<!-- Row 3: Fix Table | Defend Table -->
+<div class="row" id="row-3">
+<div class="col" id="col-3-1">
+<section id="tbl-fix">
+<h2 class="section-title">Dangerous Shape → Fix</h2>
+<table>
+<thead><tr><th>Dangerous</th><th>Why</th><th>Safer</th></tr></thead>
+<tbody>
+<tr><td>(a+)+</td><td class="desc">nested quantifier</td><td class="kw"><code>a+</code></td></tr>
+<tr><td>(\w|\d)+</td><td class="desc">overlapping alternatives</td><td class="kw"><code>\w+</code></td></tr>
+<tr><td>(.*,)*</td><td class="desc"><code>.*</code> can also eat commas</td><td class="kw"><code>(?:[^,]*,)*</code></td></tr>
+<tr><td>^(\w+\s?)*$</td><td class="desc">optional separator</td><td class="kw"><code>^\w+(?:\s\w+)*$</code></td></tr>
+<tr><td>(a|a)*</td><td class="desc">identical alternatives</td><td class="kw"><code>a*</code></td></tr>
+</tbody>
+</table>
+</section>
+</div>
+<div class="col" id="col-3-2">
+<section id="tbl-defend">
+<h2 class="section-title">Defenses by Language</h2>
+<table>
+<thead><tr><th>Language</th><th>Option</th></tr></thead>
+<tbody>
+<tr><td>.NET</td><td class="desc"><code>matchTimeout</code> arg; <code>RegexOptions.NonBacktracking</code> (.NET 7+)</td></tr>
+<tr><td>Python</td><td class="desc"><code>regex</code> module <code>timeout=</code>; bound input length</td></tr>
+<tr><td>Ruby 3.2+</td><td class="desc"><code>Regexp.timeout = 1.0</code>; built-in memoization</td></tr>
+<tr><td>Java</td><td class="desc">no timeout: run in a worker with <code>Future.get(timeout)</code></td></tr>
+<tr><td>JavaScript</td><td class="desc">no timeout: use the <code>re2</code> package or a worker</td></tr>
+<tr><td>PHP</td><td class="desc"><code>pcre.backtrack_limit</code>; <code>preg_*</code> then fails (<code>false</code> / <code>null</code>)</td></tr>
+<tr><td>Go, Rust</td><td class="desc">linear time by design</td></tr>
+</tbody>
+</table>
+</section>
+</div>
+</div>
+<!-- end row-3 -->
+<!-- Row 4: Mistakes | Tips | Summary -->
+<div class="row row-footer-trio" id="row-4">
+<div class="col" id="col-4-1">
+<section class="section-mistakes" id="mistakes">
+<h2 class="section-title">⚠ Common Mistakes</h2>
+<ul class="note-list">
+<li class="note-item">Testing only with matching input; ReDoS appears when the match <strong>fails</strong> near the end</li>
+<li class="note-item">Recompiling inside a loop: Java <code>String.matches()</code> compiles the pattern on every call</li>
+<li class="note-item">Starting a search pattern with <code>.*</code>: the engine already tries every position, so it's pure extra work</li>
+</ul>
+</section>
+</div>
+<div class="col" id="col-4-2">
+<section class="section-tips" id="tips">
+<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+<ul class="note-list">
+<li class="note-item">Make each character belong to exactly one quantifier; use tight classes like <code>[^,]*</code></li>
+<li class="note-item">Compile once (<code>re.compile</code>, <code>Pattern.compile</code>, a <code>static readonly Regex</code>) and reuse</li>
+<li class="note-item">Cap input length before matching untrusted text, and lint patterns with a ReDoS checker</li>
+</ul>
+</section>
+</div>
+<div class="col" id="col-4-3">
+<section class="section-summary" id="summary">
+<h2 class="section-title">Quick Summary</h2>
+<ul class="note-list">
+<li class="note-item"><code>(a+)+</code> — nested quantifiers = exponential</li>
+<li class="note-item"><code>(?&gt;…)</code> / <code>a++</code> — stop re-splitting</li>
+<li class="note-item">timeout / linear engine — safety net</li>
+<li class="note-item">precompile — pay the parse cost once</li>
+</ul>
+</section>
+</div>
+</div>
+<!-- end row-4 -->
+</main>
+<footer class="page-footer">
+<nav aria-label="Sheet navigation">
+<a href="regex-14-advanced-constructs.html" class="nav-link prev">Advanced Constructs</a>
+<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+<a href="index.html" class="nav-toc">RegEx Reference · 25 Sheets</a>
+<a href="regex-16-python-re-core.html" class="nav-link next">Python re — Core Functions</a>
+</nav>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>
