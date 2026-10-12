@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 55: CSRF, XSS &amp; Clickjacking</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s55">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 55</div>
+			<h1>CSRF, XSS &amp; Clickjacking</h1>
+			<div class="sheet-desc">{% csrf_token %} · CsrfViewMiddleware · @csrf_exempt · autoescape · mark_safe · X_FRAME_OPTIONS</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Built-in Protections</h2>
+						<div class="description">Django blocks three classic web attacks by default. <strong>CSRF</strong> protection rejects POST/PUT/DELETE requests that lack a secret token, so other sites can't submit forms as your users. <strong>XSS</strong> protection auto-escapes template output so user text can't inject scripts. <strong>Clickjacking</strong> protection sends <code>X-Frame-Options: DENY</code> so your pages can't be framed. The ORM's parameterized queries also prevent SQL injection.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Every POST form needs <code>{% csrf_token %}</code></li>
+						<li class="note-item">JavaScript requests send the token in the <code>X-CSRFToken</code> header</li>
+						<li class="note-item">Cross-origin HTTPS POSTs need the site in <code>CSRF_TRUSTED_ORIGINS</code></li>
+						<li class="note-item"><code>mark_safe</code> / <code>|safe</code> turn escaping off; never use them on user input</li>
+						<li class="note-item"><code>format_html()</code> escapes arguments while building HTML safely</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">CSRF in Forms and fetch()</h2>
+						<pre><code class="language-django">&lt;form method="post"&gt;{% csrf_token %} ... &lt;/form&gt;
+
+&lt;script&gt;
+  const token = document.querySelector("[name=csrfmiddlewaretoken]").value;
+  fetch("/api/like/", {method: "POST", headers: {"X-CSRFToken": token}});
+&lt;/script&gt;
+&lt;div hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'&gt; ... &lt;/div&gt;  {# htmx #}
+
+{{ comment.text }}                {# &lt;script&gt; becomes &amp;lt;script&amp;gt; #}</code></pre>
+					</section>
+					<section class="section-code" id="code-py">
+						<h2 class="section-title">Python Side</h2>
+						<pre><code class="language-python">from django.utils.html import format_html, escape
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.clickjacking import xframe_options_sameorigin
+
+format_html("&lt;b&gt;{}&lt;/b&gt;", user_input)          # input escaped
+escape("&lt;i&gt;hi&lt;/i&gt;")                           # '&amp;lt;i&amp;gt;hi&amp;lt;/i&amp;gt;'
+
+@csrf_exempt                                  # e.g. signed webhook only
+def stripe_webhook(request): ...
+
+@xframe_options_sameorigin                    # allow framing by own site
+def embed(request): ...
+
+X_FRAME_OPTIONS = "DENY"                      # settings (default)
+CSRF_TRUSTED_ORIGINS = ["https://app.example.com"]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">The token is tied to a cookie and checked by <code>CsrfViewMiddleware</code></div>
+							<div class="explain-item"><code>{{ csrf_token }}</code> gives the raw value for headers</div>
+							<div class="explain-item">Auto-escaping converts <code>&lt; &gt; &amp; ' "</code> to entities</div>
+							<div class="explain-item">Only exempt views that verify requests another way (signatures)</div>
+							<div class="explain-item">Trusted origins must include the scheme</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Attacks Table | Csrf Table | Escape Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-attacks">
+						<h2 class="section-title">Attack → Defense</h2>
+						<table>
+							<thead><tr><th>Attack</th><th>Django Defense</th></tr></thead>
+							<tbody>
+								<tr><td>CSRF</td><td class="desc">Token + middleware</td></tr>
+								<tr><td>XSS</td><td class="desc">Auto-escaping</td></tr>
+								<tr><td>SQL injection</td><td class="desc">Parameterized ORM</td></tr>
+								<tr><td>Clickjacking</td><td class="desc">X-Frame-Options</td></tr>
+								<tr><td>Host header</td><td class="desc"><code>ALLOWED_HOSTS</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-csrf">
+						<h2 class="section-title">CSRF Settings</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Default</th></tr></thead>
+							<tbody>
+								<tr><td>CSRF_COOKIE_SECURE</td><td class="desc">False</td></tr>
+								<tr><td>CSRF_COOKIE_HTTPONLY</td><td class="desc">False</td></tr>
+								<tr><td>CSRF_USE_SESSIONS</td><td class="desc">False</td></tr>
+								<tr><td>CSRF_TRUSTED_ORIGINS</td><td class="desc">[]</td></tr>
+								<tr><td>CSRF_FAILURE_VIEW</td><td class="desc">403 page</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-escape">
+						<h2 class="section-title">Escaping Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>escape()</td><td class="desc">Escape a string</td></tr>
+								<tr><td>format_html()</td><td class="desc">Safe HTML builder</td></tr>
+								<tr><td>mark_safe()</td><td class="desc">Trust a string</td></tr>
+								<tr><td>|escapejs</td><td class="desc">For JS strings</td></tr>
+								<tr><td>|json_script</td><td class="desc">Data to JS</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Adding <code>@csrf_exempt</code> to fix a 403 instead of sending the token</li>
+						<li class="note-item"><code>mark_safe(f"&lt;b&gt;{name}&lt;/b&gt;")</code>: user input becomes live HTML; use <code>format_html</code></li>
+						<li class="note-item">Putting <code>{{ data }}</code> inside <code>&lt;script&gt;</code>; escaping rules differ there, use <code>json_script</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Read the CSRF failure page in DEBUG; it explains the exact cause</li>
+						<li class="note-item">Add Content Security Policy (Sheet 56) as a second XSS layer</li>
+						<li class="note-item">Run <code>manage.py check --deploy</code> before every launch</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>{% csrf_token %}</code>: every POST form</li>
+						<li class="note-item"><code>X-CSRFToken</code>: AJAX header</li>
+						<li class="note-item">Auto-escape: XSS defense</li>
+						<li class="note-item"><code>X_FRAME_OPTIONS</code>: no framing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-54-signals.html" class="nav-link prev">Signals</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-56-content-security-policy.html" class="nav-link next">Content Security Policy</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-django.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

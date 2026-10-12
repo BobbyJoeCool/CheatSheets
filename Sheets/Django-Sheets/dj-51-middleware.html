@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 51: Middleware</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>Middleware</h1>
+			<div class="sheet-desc">MIDDLEWARE order · __init__(get_response) · __call__() · process_view() · process_exception() · async middleware</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Hooks Around Every Request</h2>
+						<div class="description"><strong>Middleware</strong> is a chain of callables that wrap every request and response. Requests flow <strong>down</strong> the <code>MIDDLEWARE</code> list to the view, and responses flow back <strong>up</strong> in reverse order. Each middleware can inspect or change the request, short-circuit with its own response, or modify the response. Built-in middleware handles security headers, sessions, CSRF, auth and messages.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Order matters: sessions before auth, auth before anything using <code>request.user</code></li>
+						<li class="note-item">Returning a response early skips the rest of the chain and the view</li>
+						<li class="note-item"><code>__init__</code> runs <strong>once</strong> at startup, not per request</li>
+						<li class="note-item">Raise <code>MiddlewareNotUsed</code> in <code>__init__</code> to disable conditionally</li>
+						<li class="note-item">Mark sync/async support with <code>sync_capable</code> / <code>async_capable</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Writing Middleware</h2>
+						<pre><code class="language-python">import time, logging
+log = logging.getLogger(__name__)
+
+class TimingMiddleware:
+    def __init__(self, get_response):          # once, at startup
+        self.get_response = get_response
+
+    def __call__(self, request):               # every request
+        start = time.perf_counter()
+        response = self.get_response(request)  # call next layer / view
+        ms = (time.perf_counter() - start) * 1000
+        response["Server-Timing"] = f"app;dur={ms:.1f}"
+        return response
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        request.view_name = view_func.__name__ # None = continue
+
+    def process_exception(self, request, exception):
+        log.exception("Unhandled error on %s", request.path)
+        return None                            # let Django handle it
+
+# settings.py
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    # ... sessions, common, csrf, auth, messages, clickjacking
+    "core.middleware.TimingMiddleware",            # yours, last
+]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Code before <code>get_response</code> runs on the way in</div>
+							<div class="explain-item">Code after it runs on the way out</div>
+							<div class="explain-item"><code>process_view</code> runs just before the view is called</div>
+							<div class="explain-item"><code>process_exception</code> runs only when the view raises</div>
+							<div class="explain-item">Returning <code>None</code> from hooks means "carry on"</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Builtin Table | Hooks Table | Newer Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-builtin">
+						<h2 class="section-title">Built-in (…Middleware)</h2>
+						<table>
+							<thead><tr><th>Name</th><th>Adds</th></tr></thead>
+							<tbody>
+								<tr><td>Security</td><td class="desc">HTTPS, HSTS</td></tr>
+								<tr><td>Session</td><td class="desc"><code>request.session</code></td></tr>
+								<tr><td>Common</td><td class="desc">APPEND_SLASH</td></tr>
+								<tr><td>CsrfView</td><td class="desc">CSRF checks</td></tr>
+								<tr><td>Authentication</td><td class="desc"><code>request.user</code></td></tr>
+								<tr><td>GZip</td><td class="desc">Compression</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-hooks">
+						<h2 class="section-title">Optional Hooks</h2>
+						<table>
+							<thead><tr><th>Hook</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>process_view</td><td class="desc">Before view</td></tr>
+								<tr><td>process_exception</td><td class="desc">View raised</td></tr>
+								<tr><td>process_template…</td><td class="desc">TemplateResponse</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-newer">
+						<h2 class="section-title">Newer Built-ins</h2>
+						<table>
+							<thead><tr><th>Middleware</th><th>Since</th></tr></thead>
+							<tbody>
+								<tr><td>LoginRequired…</td><td class="desc">5.1</td></tr>
+								<tr><td>ContentSecurityPolicy…</td><td class="desc">6.0</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Custom middleware using <code>request.user</code> placed above <code>AuthenticationMiddleware</code></li>
+						<li class="note-item">Heavy work in <code>__call__</code> (DB queries) that slows every single request</li>
+						<li class="note-item">Storing per-request data on <code>self</code>; one instance is shared by all requests</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Attach data to <code>request</code> (<code>request.tenant = ...</code>) for views to use</li>
+						<li class="note-item">Use a function-based middleware for tiny wrappers</li>
+						<li class="note-item">Check order with the debug toolbar or by logging in each layer</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>MIDDLEWARE</code>: ordered list</li>
+						<li class="note-item"><code>__call__</code>: wrap <code>get_response(request)</code></li>
+						<li class="note-item"><code>process_view</code> / <code>process_exception</code>: hooks</li>
+						<li class="note-item">Down for requests, up for responses</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-50-custom-user-model.html" class="nav-link prev">Custom User Model</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-52-sessions-cookies.html" class="nav-link next">Sessions &amp; Cookies</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

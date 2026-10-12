@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 63: Background Tasks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s63">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 63</div>
+			<h1>Background Tasks</h1>
+			<div class="sheet-desc">django.tasks · @task · enqueue() · TASKS setting · ImmediateBackend · task results</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Tasks Framework (Django 6.0)</h2>
+						<div class="description">Django 6.0 adds <code>django.tasks</code>, a standard API for defining work to run outside the request: decorate a function with <code>@task</code> and call <code>.enqueue()</code>. Django defines tasks and queues them through a configured <strong>backend</strong>, but <strong>does not ship a worker</strong>. The built-in backends are for development and testing; production needs a third-party backend and worker, such as the <code>django-tasks</code> package's database backend.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Arguments must be JSON-serializable (pass ids, not model objects)</li>
+						<li class="note-item">Built-in: <code>ImmediateBackend</code> (runs now) and <code>DummyBackend</code> (stores, never runs)</li>
+						<li class="note-item"><code>priority</code> ranges from -100 to 100</li>
+						<li class="note-item"><code>run_after</code> defers a task (backend must support it)</li>
+						<li class="note-item">Celery and RQ remain options for heavy workloads</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Define, Configure, Enqueue</h2>
+						<pre><code class="language-python"># settings.py
+TASKS = {
+    "default": {"BACKEND": "django.tasks.backends.immediate.ImmediateBackend"},
+}
+
+# orders/tasks.py
+from django.core.mail import send_mail
+from django.tasks import task
+
+@task(priority=10, queue_name="emails")
+def send_receipt(order_id):
+    order = Order.objects.get(pk=order_id)
+    send_mail(subject=f"Receipt #{order.pk}", message="Thanks!",
+              from_email=None, recipient_list=[order.email])
+    return order.pk
+
+# in a view
+from django.db import transaction
+transaction.on_commit(lambda: send_receipt.enqueue(order.pk))
+
+result = send_receipt.enqueue(order.pk)       # TaskResult
+result.id                                    # backend-specific id
+result.status                                # TaskResultStatus.READY
+result.refresh(); result.return_value        # after it finishes
+send_receipt.using(priority=50, run_after=timedelta(minutes=5)).enqueue(7)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@task</code> turns the function into a <code>Task</code> object</div>
+							<div class="explain-item"><code>enqueue()</code> returns a <code>TaskResult</code> right away</div>
+							<div class="explain-item"><code>on_commit</code> avoids queueing work for a rolled-back order</div>
+							<div class="explain-item"><code>return_value</code> raises <code>ValueError</code> until the task succeeds</div>
+							<div class="explain-item"><code>using()</code> returns a copy with new options</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Status Table | Result Table | Options Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-status">
+						<h2 class="section-title">TaskResultStatus</h2>
+						<table>
+							<thead><tr><th>Status</th><th>Means</th></tr></thead>
+							<tbody>
+								<tr><td>READY</td><td class="desc">Queued / retry</td></tr>
+								<tr><td>RUNNING</td><td class="desc">Executing</td></tr>
+								<tr><td>SUCCESSFUL</td><td class="desc">Done</td></tr>
+								<tr><td>FAILED</td><td class="desc">Raised / couldn't start</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-result">
+						<h2 class="section-title">TaskResult</h2>
+						<table>
+							<thead><tr><th>Attribute</th><th>Value</th></tr></thead>
+							<tbody>
+								<tr><td>id / status</td><td class="desc">Identity, state</td></tr>
+								<tr><td>return_value</td><td class="desc">Function result</td></tr>
+								<tr><td>errors</td><td class="desc">List of TaskError</td></tr>
+								<tr><td>attempts</td><td class="desc">Runs so far</td></tr>
+								<tr><td>enqueued_at / finished_at</td><td class="desc">Timestamps</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-options">
+						<h2 class="section-title">@task Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Default</th></tr></thead>
+							<tbody>
+								<tr><td>priority</td><td class="desc">0</td></tr>
+								<tr><td>queue_name</td><td class="desc">"default"</td></tr>
+								<tr><td>backend</td><td class="desc">"default"</td></tr>
+								<tr><td>takes_context</td><td class="desc">False</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Passing a model instance to <code>enqueue()</code>; arguments must survive a JSON round-trip</li>
+						<li class="note-item">Using <code>ImmediateBackend</code> in production; work still runs inside the request</li>
+						<li class="note-item">Expecting Django to start workers; you must run the backend's worker process</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Install <code>django-tasks</code> for a database backend and <code>db_worker</code> command</li>
+						<li class="note-item">Use <code>takes_context=True</code> to read <code>context.attempt</code> for retry logic</li>
+						<li class="note-item">Use <code>DummyBackend</code> in tests and assert on its <code>results</code> list</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@task</code>: define background work</li>
+						<li class="note-item"><code>.enqueue(*args)</code> → <code>TaskResult</code></li>
+						<li class="note-item"><code>TASKS</code>: backend config</li>
+						<li class="note-item">No built-in worker: add one</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-62-email.html" class="nav-link prev">Sending Email</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-64-async-views.html" class="nav-link next">Async Django</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

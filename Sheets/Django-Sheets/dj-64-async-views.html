@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 64: Async Django</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s64">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 64</div>
+			<h1>Async Django</h1>
+			<div class="sheet-desc">async def views · ASGI · sync_to_async · async_to_sync · async ORM (aget, async for) · async iteration</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Async Views and the ORM</h2>
+						<div class="description">Views can be <code>async def</code> coroutines. Under an <strong>ASGI</strong> server they run on the event loop, which helps when a view waits on several slow I/O calls at once (external APIs, streaming). The ORM offers async versions of query methods (prefix <code>a</code>) and <code>async for</code> iteration. Sync-only code must be wrapped with <code>sync_to_async</code>; calling async code from sync code uses <code>async_to_sync</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Under WSGI, async views still work but gain nothing</li>
+						<li class="note-item">Middleware that is sync-only forces a thread switch per request</li>
+						<li class="note-item">Transactions aren't async yet; wrap them in a sync function</li>
+						<li class="note-item">Lazy QuerySet methods (<code>filter</code>) have no <code>a</code> version; evaluation does</li>
+						<li class="note-item">Use <code>httpx.AsyncClient</code> for concurrent outbound HTTP</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Async View with Concurrent Calls</h2>
+						<pre><code class="language-python">import asyncio, httpx
+from asgiref.sync import sync_to_async, async_to_sync
+from django.http import JsonResponse
+
+async def dashboard(request):
+    async with httpx.AsyncClient(timeout=5) as client:
+        weather, news = await asyncio.gather(
+            client.get("https://api.example.com/weather"),
+            client.get("https://api.example.com/news"))
+    user = await request.auser()                     # async user lookup
+    post = await Post.objects.filter(author=user).afirst()
+    count = await Post.objects.acount()
+    titles = [p.title async for p in Post.objects.order_by("-id")[:5]]
+    return JsonResponse({"weather": weather.json(), "posts": count,
+                         "titles": titles})
+
+@sync_to_async
+def charge_card(order_id):                           # sync code w/ atomic
+    with transaction.atomic(): ...
+
+async def checkout(request, pk):
+    await charge_card(pk)
+
+async_to_sync(notify_channel)("orders", {"id": 7})  # from sync code</code></pre>
+					</section>
+					<section class="section-code" id="code-cmd">
+						<h2 class="section-title">Run under ASGI</h2>
+						<pre><code class="language-bash">uvicorn config.asgi:application --workers 4</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>asyncio.gather</code> runs both requests at the same time</div>
+							<div class="explain-item"><code>request.auser()</code> (5.0+) loads the user without blocking</div>
+							<div class="explain-item"><code>afirst</code>, <code>acount</code>, <code>aget</code>, <code>acreate</code> are awaitable</div>
+							<div class="explain-item"><code>async for</code> iterates a QuerySet asynchronously</div>
+							<div class="explain-item"><code>sync_to_async</code> runs blocking code in a thread</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Orm Table | When Table | Servers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-orm">
+						<h2 class="section-title">Async ORM Methods</h2>
+						<table>
+							<thead><tr><th>Sync</th><th>Async</th></tr></thead>
+							<tbody>
+								<tr><td>get()</td><td class="desc">aget()</td></tr>
+								<tr><td>create()</td><td class="desc">acreate()</td></tr>
+								<tr><td>count() / exists()</td><td class="desc">acount() / aexists()</td></tr>
+								<tr><td>first()</td><td class="desc">afirst()</td></tr>
+								<tr><td>save() / delete()</td><td class="desc">asave() / adelete()</td></tr>
+								<tr><td>for x in qs</td><td class="desc">async for x in qs</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-when">
+						<h2 class="section-title">When Async Helps</h2>
+						<table>
+							<thead><tr><th>Case</th><th>Benefit</th></tr></thead>
+							<tbody>
+								<tr><td>Many API calls</td><td class="desc">High</td></tr>
+								<tr><td>Streaming / SSE</td><td class="desc">High</td></tr>
+								<tr><td>WebSockets</td><td class="desc">Use Channels</td></tr>
+								<tr><td>CPU work</td><td class="desc">None</td></tr>
+								<tr><td>Plain CRUD</td><td class="desc">Little</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-servers">
+						<h2 class="section-title">ASGI Servers</h2>
+						<table>
+							<thead><tr><th>Server</th><th>Note</th></tr></thead>
+							<tbody>
+								<tr><td>Uvicorn</td><td class="desc">Fast, common</td></tr>
+								<tr><td>Daphne</td><td class="desc">Channels default</td></tr>
+								<tr><td>Hypercorn</td><td class="desc">HTTP/2, HTTP/3</td></tr>
+								<tr><td>Granian</td><td class="desc">Rust-based</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Calling sync ORM methods inside <code>async def</code>: <code>SynchronousOnlyOperation</code></li>
+						<li class="note-item">Using <code>requests</code> in an async view; it blocks the event loop, use <code>httpx</code></li>
+						<li class="note-item">Making every view async under WSGI and expecting a speedup</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Go async only for views that wait on I/O; keep the rest sync</li>
+						<li class="note-item">Use <code>StreamingHttpResponse</code> with an async generator for server-sent events</li>
+						<li class="note-item">Use Django Channels for WebSockets</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>async def view</code>: runs on the event loop</li>
+						<li class="note-item"><code>aget</code> / <code>acount</code> / <code>async for</code>: async ORM</li>
+						<li class="note-item"><code>sync_to_async</code>: call sync code</li>
+						<li class="note-item">ASGI server: Uvicorn, Daphne</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-63-background-tasks.html" class="nav-link prev">Background Tasks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-65-logging.html" class="nav-link next">Logging &amp; Debugging</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

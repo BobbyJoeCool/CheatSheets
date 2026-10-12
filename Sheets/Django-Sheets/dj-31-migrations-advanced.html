@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 31: Migrations — Data &amp; Advanced</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s31">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 31</div>
+			<h1>Migrations — Data &amp; Advanced</h1>
+			<div class="sheet-desc">RunPython · RunSQL · apps.get_model() · dependencies · squashmigrations · merge conflicts</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Beyond Auto-Generated Migrations</h2>
+						<div class="description"><strong>Data migrations</strong> change rows rather than schema, for example filling a new column from existing data. Create an empty migration and add <code>RunPython</code> (or <code>RunSQL</code>) with a forward and reverse function. Inside, always load models with <code>apps.get_model()</code> so you get the <strong>historical</strong> version matching that point in time. Over time, <code>squashmigrations</code> folds long histories into one file.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Historical models have fields but <strong>no custom methods</strong></li>
+						<li class="note-item">Give a reverse function, or <code>RunPython.noop</code>, so rollbacks work</li>
+						<li class="note-item">Two developers adding <code>0005_*</code> creates a conflict; fix with <code>--merge</code></li>
+						<li class="note-item"><code>atomic = False</code> lets big data migrations commit in batches</li>
+						<li class="note-item"><code>run_before</code> forces ordering against another app</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Data Migration</h2>
+						<pre><code class="language-python"># python manage.py makemigrations blog --empty --name fill_slugs
+from django.db import migrations
+from django.utils.text import slugify
+
+def fill_slugs(apps, schema_editor):
+    Post = apps.get_model("blog", "Post")      # historical model
+    for post in Post.objects.filter(slug="").iterator():
+        post.slug = slugify(post.title)
+        post.save(update_fields=["slug"])
+
+def clear_slugs(apps, schema_editor):
+    apps.get_model("blog", "Post").objects.update(slug="")
+
+class Migration(migrations.Migration):
+    dependencies = [("blog", "0004_post_slug")]
+    operations = [
+        migrations.RunPython(fill_slugs, clear_slugs),
+        migrations.RunSQL("UPDATE blog_post SET status = 'D' WHERE status = '';",
+                          reverse_sql=migrations.RunSQL.noop),
+    ]</code></pre>
+					</section>
+					<section class="section-code" id="code-cmd">
+						<h2 class="section-title">Housekeeping</h2>
+						<pre><code class="language-bash">python manage.py makemigrations --merge        # resolve 0005 conflict
+python manage.py squashmigrations blog 0001 0020</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>apps.get_model()</code> returns the model as of this migration</div>
+							<div class="explain-item"><code>.iterator()</code> streams rows instead of loading them all</div>
+							<div class="explain-item">The second function makes the migration reversible</div>
+							<div class="explain-item"><code>RunSQL</code> runs raw SQL with an optional <code>reverse_sql</code></div>
+							<div class="explain-item">Set <code>atomic = False</code> for SQL that can't run in a transaction</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Ops Table | Safe Table | Squash Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-ops">
+						<h2 class="section-title">Special Operations</h2>
+						<table>
+							<thead><tr><th>Operation</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>RunPython</td><td class="desc">Python data changes</td></tr>
+								<tr><td>RunSQL</td><td class="desc">Raw SQL</td></tr>
+								<tr><td>SeparateDatabaseAndState</td><td class="desc">Split DB vs state</td></tr>
+								<tr><td>AddIndexConcurrently</td><td class="desc">Postgres, no lock</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-safe">
+						<h2 class="section-title">Zero-Downtime Steps</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Deploy</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc">Add nullable column</td></tr>
+								<tr><td>2</td><td class="desc">Backfill (data migration)</td></tr>
+								<tr><td>3</td><td class="desc">Make it NOT NULL</td></tr>
+								<tr><td>4</td><td class="desc">Remove old column later</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-squash">
+						<h2 class="section-title">Squashing</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Action</th></tr></thead>
+							<tbody>
+								<tr><td>squash</td><td class="desc">Creates <code>0001_squashed_…</code></td></tr>
+								<tr><td>deploy</td><td class="desc">Both histories work</td></tr>
+								<tr><td>clean up</td><td class="desc">Delete old files</td></tr>
+								<tr><td>finish</td><td class="desc">Remove <code>replaces</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Importing models directly (<code>from blog.models import Post</code>) in a migration; it breaks once the model changes</li>
+						<li class="note-item">Calling custom model methods in <code>RunPython</code>; historical models don't have them</li>
+						<li class="note-item">No reverse function, so <code>migrate blog 0003</code> fails with <code>IrreversibleError</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Process large tables in batches with <code>iterator(chunk_size=2000)</code></li>
+						<li class="note-item">Test migrations both ways: <code>migrate</code> then <code>migrate app &lt;previous&gt;</code></li>
+						<li class="note-item">Use <code>RunPython.noop</code> when the reverse truly has nothing to undo</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>--empty</code>: start a data migration</li>
+						<li class="note-item"><code>RunPython(forward, reverse)</code>: data change</li>
+						<li class="note-item"><code>apps.get_model()</code>: historical model</li>
+						<li class="note-item"><code>squashmigrations</code> / <code>--merge</code>: housekeeping</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-30-migrations-basics.html" class="nav-link prev">Migrations — Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-32-queryset-basics.html" class="nav-link next">QuerySet Basics</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

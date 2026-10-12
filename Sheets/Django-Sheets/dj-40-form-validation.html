@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 40: Form Validation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s40">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 40</div>
+			<h1>Form Validation</h1>
+			<div class="sheet-desc">clean_&lt;field&gt;() · clean() · ValidationError · add_error() · validators · non_field_errors</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Validation Order</h2>
+						<div class="description">Validation runs in layers when you call <code>is_valid()</code>. First each field converts and checks its own value, plus any <code>validators</code>. Then each <code>clean_&lt;fieldname&gt;()</code> method runs for single-field rules and must <strong>return</strong> the cleaned value. Finally <code>clean()</code> runs for rules that involve several fields. Raise <code>ValidationError</code> to reject input, or call <code>add_error()</code> to attach a message to a specific field.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>clean_&lt;field&gt;</code> only runs if that field passed its own checks</li>
+						<li class="note-item">In <code>clean()</code>, fields that failed earlier are missing from <code>cleaned_data</code></li>
+						<li class="note-item">Errors raised in <code>clean()</code> become <strong>non-field errors</strong></li>
+						<li class="note-item">Give errors a <code>code</code> so tests and templates can check them</li>
+						<li class="note-item">Reusable validators are plain functions that raise <code>ValidationError</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Field and Form Validation</h2>
+						<pre><code class="language-python">from django import forms
+from django.core.exceptions import ValidationError
+
+def no_profanity(value):                                  # reusable validator
+    if "darn" in value.lower():
+        raise ValidationError("Please keep it clean.", code="profanity")
+
+class EventForm(forms.Form):
+    title = forms.CharField(validators=[no_profanity])
+    start = forms.DateField()
+    end = forms.DateField()
+
+    def clean_title(self):                                # one field
+        title = self.cleaned_data["title"].strip()
+        if Event.objects.filter(title__iexact=title).exists():
+            raise ValidationError("That title is taken.", code="duplicate")
+        return title                                      # must return!
+
+    def clean(self):                                      # several fields
+        cleaned = super().clean()
+        start, end = cleaned.get("start"), cleaned.get("end")
+        if start and end and end &lt; start:
+            self.add_error("end", "End must be after start.")
+        return cleaned</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Validators run during field cleaning, before <code>clean_&lt;field&gt;</code></div>
+							<div class="explain-item">Use <code>.get()</code> in <code>clean()</code>: earlier failures remove keys</div>
+							<div class="explain-item"><code>add_error("end", ...)</code> attaches to the <code>end</code> field</div>
+							<div class="explain-item"><code>add_error(None, ...)</code> adds a non-field error</div>
+							<div class="explain-item">Returning a modified value (<code>strip()</code>) changes <code>cleaned_data</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Order Table | Validators Table | Errors Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-order">
+						<h2 class="section-title">Order of Checks</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Method</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc"><code>field.to_python()</code></td></tr>
+								<tr><td>2</td><td class="desc"><code>field.validate()</code></td></tr>
+								<tr><td>3</td><td class="desc"><code>validators</code></td></tr>
+								<tr><td>4</td><td class="desc"><code>clean_&lt;field&gt;()</code></td></tr>
+								<tr><td>5</td><td class="desc"><code>clean()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-validators">
+						<h2 class="section-title">Built-in Validators</h2>
+						<table>
+							<thead><tr><th>Validator</th><th>Checks</th></tr></thead>
+							<tbody>
+								<tr><td>MinValueValidator</td><td class="desc">≥ n</td></tr>
+								<tr><td>MaxLengthValidator</td><td class="desc">len ≤ n</td></tr>
+								<tr><td>RegexValidator</td><td class="desc">Pattern</td></tr>
+								<tr><td>EmailValidator</td><td class="desc">Email</td></tr>
+								<tr><td>FileExtensionValidator</td><td class="desc">Extensions</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-errors">
+						<h2 class="section-title">Error Access</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>form.errors</td><td class="desc">ErrorDict</td></tr>
+								<tr><td>{{ form.non_field_errors }}</td><td class="desc">In templates</td></tr>
+								<tr><td>form.has_error("f")</td><td class="desc">bool</td></tr>
+								<tr><td>form.add_error(f, msg)</td><td class="desc">Attach error</td></tr>
+								<tr><td>field.errors</td><td class="desc">Field's list</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Forgetting <code>return</code> in <code>clean_&lt;field&gt;()</code>, which sets the value to <code>None</code></li>
+						<li class="note-item"><code>self.cleaned_data["start"]</code> in <code>clean()</code> when start failed: <code>KeyError</code></li>
+						<li class="note-item">Raising in <code>clean()</code> for a single-field problem; the error shows at the top, not by the field</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Put rules that also apply outside forms on the model's <code>clean()</code> instead</li>
+						<li class="note-item">Pass <code>params</code> to <code>ValidationError</code> for translatable messages: <code>"%(value)s is taken"</code></li>
+						<li class="note-item">Test validation by asserting on <code>form.errors</code> and <code>form.has_error("f", code=...)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>validators=[...]</code>: reusable checks</li>
+						<li class="note-item"><code>clean_&lt;field&gt;()</code>: one field, return value</li>
+						<li class="note-item"><code>clean()</code>: cross-field rules</li>
+						<li class="note-item"><code>add_error(field, msg)</code>: targeted errors</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-39-form-fields-widgets.html" class="nav-link prev">Form Fields &amp; Widgets</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-41-modelform.html" class="nav-link next">ModelForm</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 27: Model Meta Options</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>Model Meta Options</h1>
+			<div class="sheet-desc">class Meta · ordering · verbose_name_plural · constraints · UniqueConstraint · indexes · db_table</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Inner Meta Class</h2>
+						<div class="description">An inner <code>class Meta</code> holds model-level settings that aren't fields: default ordering, human-readable names, the table name, <strong>indexes</strong> and <strong>constraints</strong>. Constraints are enforced by the database and checked by <code>full_clean()</code>, so they catch bad data from any source. Changes to <code>Meta</code> usually need a migration.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>ordering</code> applies to every query unless overridden with <code>order_by()</code></li>
+						<li class="note-item"><code>UniqueConstraint</code> replaces the older <code>unique_together</code></li>
+						<li class="note-item"><code>CheckConstraint(condition=Q(...))</code> enforces rules in SQL (5.1+ uses <code>condition</code>)</li>
+						<li class="note-item">Conditional unique constraints use <code>condition=</code></li>
+						<li class="note-item">Read metadata at runtime through <code>Model._meta</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Meta in Practice</h2>
+						<pre><code class="language-python">from django.db import models
+from django.db.models import Q, F
+from django.db.models.functions import Lower
+
+class Booking(models.Model):
+    room = models.ForeignKey("Room", on_delete=models.CASCADE)
+    guest_email = models.EmailField()
+    start = models.DateField()
+    end = models.DateField()
+    cancelled = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-start", "room"]
+        verbose_name_plural = "bookings"
+        indexes = [
+            models.Index(fields=["room", "start"]),
+            models.Index(Lower("guest_email"), name="booking_email_lower"),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=Q(end__gt=F("start")),
+                                   name="booking_end_after_start"),
+            models.UniqueConstraint(fields=["room", "start"],
+                condition=Q(cancelled=False), name="one_active_booking"),
+        ]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>"-start"</code> sorts descending; ties broken by <code>room</code></div>
+							<div class="explain-item">Indexes on expressions need an explicit <code>name</code></div>
+							<div class="explain-item"><code>CheckConstraint</code> → <code>CHECK (end &gt; start)</code> in the database</div>
+							<div class="explain-item">Conditional unique: only one non-cancelled booking per room/day</div>
+							<div class="explain-item">Violations raise <code>IntegrityError</code> on save, <code>ValidationError</code> in forms</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Meta Table | Advanced Table | Constraints Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-meta">
+						<h2 class="section-title">Common Meta Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>ordering</td><td class="desc">Default sort</td></tr>
+								<tr><td>verbose_name(_plural)</td><td class="desc">Display names</td></tr>
+								<tr><td>db_table</td><td class="desc">Table name</td></tr>
+								<tr><td>indexes</td><td class="desc">Index list</td></tr>
+								<tr><td>constraints</td><td class="desc">Constraint list</td></tr>
+								<tr><td>get_latest_by</td><td class="desc">For <code>latest()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-advanced">
+						<h2 class="section-title">Advanced Meta</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>abstract</td><td class="desc">No table (Sheet 29)</td></tr>
+								<tr><td>proxy</td><td class="desc">Same table</td></tr>
+								<tr><td>managed</td><td class="desc">Skip migrations</td></tr>
+								<tr><td>permissions</td><td class="desc">Custom perms</td></tr>
+								<tr><td>default_related_name</td><td class="desc">Reverse name</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-constraints">
+						<h2 class="section-title">Constraint Classes</h2>
+						<table>
+							<thead><tr><th>Class</th><th>SQL</th></tr></thead>
+							<tbody>
+								<tr><td>UniqueConstraint</td><td class="desc">UNIQUE</td></tr>
+								<tr><td>CheckConstraint</td><td class="desc">CHECK</td></tr>
+								<tr><td>ExclusionConstraint</td><td class="desc">EXCLUDE (Postgres)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Heavy <code>ordering</code> on huge tables; every query sorts even when you don't need it</li>
+						<li class="note-item">Duplicate constraint names across models; names must be unique per database</li>
+						<li class="note-item">Using <code>unique_together</code> in new code; prefer <code>UniqueConstraint</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use <code>%(app_label)s_%(class)s</code> in names on abstract base classes</li>
+						<li class="note-item">Add indexes for columns you filter or sort by often; check with <code>.explain()</code></li>
+						<li class="note-item">Set <code>managed = False</code> for tables owned by another system</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>class Meta</code>: model-level settings</li>
+						<li class="note-item"><code>ordering</code>: default sort</li>
+						<li class="note-item"><code>indexes</code>: speed up lookups</li>
+						<li class="note-item"><code>constraints</code>: DB-enforced rules</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-26-m2m-onetoone.html" class="nav-link prev">Many-to-Many &amp; One-to-One</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-28-model-methods-managers.html" class="nav-link next">Model Methods &amp; Managers</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

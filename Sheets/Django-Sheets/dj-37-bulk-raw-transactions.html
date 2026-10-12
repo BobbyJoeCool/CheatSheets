@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 37: Bulk Ops, Raw SQL &amp; Transactions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>Bulk Ops, Raw SQL &amp; Transactions</h1>
+			<div class="sheet-desc">bulk_create() · bulk_update() · update_or_create() · raw() · connection.cursor() · transaction.atomic()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Writing Efficiently and Safely</h2>
+						<div class="description">Bulk methods write many rows in a few queries instead of one per object. When the ORM can't express a query, <code>raw()</code> maps SQL results back to models and <code>connection.cursor()</code> runs any SQL. <code>transaction.atomic()</code> groups writes so they all succeed or all roll back; use it for anything that must stay consistent, like moving money between accounts.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>bulk_create</code> skips <code>save()</code> and signals</li>
+						<li class="note-item"><code>update_conflicts=True</code> turns <code>bulk_create</code> into an upsert</li>
+						<li class="note-item">By default each query autocommits; <code>atomic</code> opens a transaction</li>
+						<li class="note-item">Nested <code>atomic</code> blocks create savepoints</li>
+						<li class="note-item"><code>on_commit()</code> runs code only after a successful commit</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Bulk, Raw and Atomic</h2>
+						<pre><code class="language-python">from django.db import connection, transaction
+
+Tag.objects.bulk_create([Tag(name=n) for n in names],
+                        batch_size=500, ignore_conflicts=True)
+Product.objects.bulk_create(rows, update_conflicts=True,
+    unique_fields=["sku"], update_fields=["price"])   # upsert
+for p in products: p.price *= 1.1
+Product.objects.bulk_update(products, ["price"], batch_size=500)
+obj, created = Product.objects.update_or_create(
+    sku="A1", defaults={"price": 9.99}, create_defaults={"stock": 0})
+
+Post.objects.raw("SELECT * FROM blog_post WHERE views &gt; %s", [100])
+with connection.cursor() as cur:
+    cur.execute("UPDATE blog_post SET views = 0 WHERE id = %s", [pk])
+    cur.execute("SELECT COUNT(*) FROM blog_post")
+    (count,) = cur.fetchone()
+
+@transaction.atomic
+def transfer(src, dst, amount):
+    src = Account.objects.select_for_update().get(pk=src.pk)  # row lock
+    src.balance -= amount; src.save()
+    dst.balance += amount; dst.save()
+    transaction.on_commit(lambda: send_receipt.enqueue(src.pk))
+
+with transaction.atomic():               # block form
+    order.save(); order.items.create(sku="A1")</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ignore_conflicts=True</code> skips duplicates silently</div>
+							<div class="explain-item"><code>update_or_create</code> 5.0+: <code>create_defaults</code> only used on insert</div>
+							<div class="explain-item">Always pass parameters as a list (<code>%s</code>), never f-strings</div>
+							<div class="explain-item"><code>select_for_update()</code> locks rows until the transaction ends</div>
+							<div class="explain-item">An exception inside <code>atomic</code> rolls back everything in it</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Bulk Table | Tx Table | Raw Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-bulk">
+						<h2 class="section-title">Bulk Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Signals?</th></tr></thead>
+							<tbody>
+								<tr><td>bulk_create</td><td class="desc">No</td></tr>
+								<tr><td>bulk_update</td><td class="desc">No</td></tr>
+								<tr><td>qs.update()</td><td class="desc">No</td></tr>
+								<tr><td>qs.delete()</td><td class="desc">Yes (per object)</td></tr>
+								<tr><td>in_bulk()</td><td class="desc">Read, dict</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-tx">
+						<h2 class="section-title">Transaction Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>atomic()</td><td class="desc">Decorator / block</td></tr>
+								<tr><td>on_commit(fn)</td><td class="desc">After commit</td></tr>
+								<tr><td>select_for_update()</td><td class="desc">Row lock</td></tr>
+								<tr><td>ATOMIC_REQUESTS</td><td class="desc">Wrap every view</td></tr>
+								<tr><td>set_rollback(True)</td><td class="desc">Force rollback</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-raw">
+						<h2 class="section-title">Raw SQL Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>raw(sql, params)</td><td class="desc">Model instances</td></tr>
+								<tr><td>cursor.execute</td><td class="desc">Rows (tuples)</td></tr>
+								<tr><td>RawSQL()</td><td class="desc">Expression in ORM</td></tr>
+								<tr><td>extra()</td><td class="desc">Legacy, avoid</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Building SQL with f-strings: SQL injection; pass <code>params</code> instead</li>
+						<li class="note-item">Catching exceptions <strong>inside</strong> <code>atomic</code> and continuing; the transaction is broken</li>
+						<li class="note-item">Sending emails inside a transaction that later rolls back; use <code>on_commit</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use <code>batch_size</code> for very large bulk writes to keep queries reasonable</li>
+						<li class="note-item">Enable <code>ATOMIC_REQUESTS</code> for simple apps that want one transaction per request</li>
+						<li class="note-item">Wrap data imports in one <code>atomic()</code> so a bad row leaves nothing half-done</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>bulk_create</code> / <code>bulk_update</code>: many rows, few queries</li>
+						<li class="note-item"><code>update_or_create</code>: upsert one row</li>
+						<li class="note-item"><code>raw()</code> / <code>cursor()</code>: SQL with params</li>
+						<li class="note-item"><code>transaction.atomic()</code>: all or nothing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-36-related-query-optimization.html" class="nav-link prev">Related Objects &amp; Query Optimization</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-38-form-basics.html" class="nav-link next">Form Basics</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

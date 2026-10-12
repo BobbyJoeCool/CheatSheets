@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 34: Q &amp; F Expressions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>Q &amp; F Expressions</h1>
+			<div class="sheet-desc">Q() · | &amp; ~ · F() · F() arithmetic · update(F()) · Value() · Case / When</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Complex Conditions and Column References</h2>
+						<div class="description"><code>Q</code> objects wrap lookups so they can be combined with <code>|</code> (OR), <code>&amp;</code> (AND) and <code>~</code> (NOT). <code>F</code> expressions refer to <strong>another column's value</strong> inside the database, so you can compare two fields or update a counter without reading it into Python first, which also avoids race conditions. <code>Case</code>/<code>When</code> builds SQL <code>CASE</code> expressions.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>Q</code> objects must come <strong>before</strong> keyword arguments in <code>filter()</code></li>
+						<li class="note-item"><code>F("views") + 1</code> runs as SQL: <code>views = views + 1</code></li>
+						<li class="note-item">After an <code>F()</code> update, call <code>refresh_from_db()</code> to see the new value</li>
+						<li class="note-item"><code>Value()</code> wraps a literal for use in expressions</li>
+						<li class="note-item">Expressions also work in <code>order_by()</code> and <code>annotate()</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Q, F, Case/When</h2>
+						<pre><code class="language-python">from django.db.models import Q, F, Value, Case, When, CharField
+from django.db.models.functions import Concat
+
+# OR / NOT
+Post.objects.filter(Q(status="P") | Q(author=request.user))
+Post.objects.filter(~Q(status="D"), views__gt=10)   # Q first
+q = Q()
+if term:  q &amp;= Q(title__icontains=term)              # build dynamically
+if tag:   q &amp;= Q(tags__name=tag)
+Post.objects.filter(q)
+
+# compare two columns
+Product.objects.filter(stock__lt=F("reorder_level"))
+Event.objects.filter(end__gt=F("start") + timedelta(hours=1))
+
+# atomic update, no race condition
+Post.objects.filter(pk=pk).update(views=F("views") + 1)
+post.views = F("views") + 1; post.save(update_fields=["views"])
+
+# CASE WHEN
+Order.objects.annotate(size=Case(
+    When(total__gte=500, then=Value("large")),
+    When(total__gte=100, then=Value("medium")),
+    default=Value("small"), output_field=CharField()))
+User.objects.annotate(full=Concat("first_name", Value(" "), "last_name"))
+Post.objects.order_by(F("pub_date").desc(nulls_last=True))</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Q() &amp;= ...</code> lets you add conditions only when inputs exist</div>
+							<div class="explain-item"><code>F("start") + timedelta</code> does date math in SQL</div>
+							<div class="explain-item"><code>update(views=F(...) + 1)</code> is safe under concurrent requests</div>
+							<div class="explain-item"><code>Case/When</code> evaluates conditions top to bottom</div>
+							<div class="explain-item"><code>nulls_last=True</code> controls where NULLs sort</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Q Table | F Table | Funcs Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-q">
+						<h2 class="section-title">Q Operators</h2>
+						<table>
+							<thead><tr><th>Operator</th><th>SQL</th></tr></thead>
+							<tbody>
+								<tr><td>Q(a) | Q(b)</td><td class="desc">a OR b</td></tr>
+								<tr><td>Q(a) &amp; Q(b)</td><td class="desc">a AND b</td></tr>
+								<tr><td>Q(a)</td><td class="desc">NOT a</td></tr>
+								<tr><td>Q(a) ^ Q(b)</td><td class="desc">XOR</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-f">
+						<h2 class="section-title">F Uses</h2>
+						<table>
+							<thead><tr><th>Use</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>Compare</td><td class="desc"><code>filter(a__gt=F("b"))</code></td></tr>
+								<tr><td>Update</td><td class="desc"><code>update(n=F("n")+1)</code></td></tr>
+								<tr><td>Annotate</td><td class="desc"><code>annotate(t=F("a")*F("b"))</code></td></tr>
+								<tr><td>Order</td><td class="desc"><code>F("x").asc()</code></td></tr>
+								<tr><td>Span</td><td class="desc"><code>F("author__name")</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-funcs">
+						<h2 class="section-title">Handy Functions</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>Coalesce</td><td class="desc">First non-null</td></tr>
+								<tr><td>Concat</td><td class="desc">Join strings</td></tr>
+								<tr><td>Lower / Upper</td><td class="desc">Case</td></tr>
+								<tr><td>Now</td><td class="desc">DB time</td></tr>
+								<tr><td>Greatest / Least</td><td class="desc">Max / min of args</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Putting a keyword arg before a <code>Q</code> in <code>filter()</code>: <code>SyntaxError</code></li>
+						<li class="note-item"><code>post.views += 1; post.save()</code> under load; two requests lose an increment, use <code>F()</code></li>
+						<li class="note-item">Reading <code>post.views</code> right after an <code>F()</code> save; it's an expression until refreshed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Build search filters with <code>q = Q()</code> and <code>&amp;=</code> / <code>|=</code></li>
+						<li class="note-item">Use <code>Coalesce("nickname", "username")</code> for fallbacks in SQL</li>
+						<li class="note-item">Mix <code>F()</code> with <code>ExpressionWrapper</code> when the output type differs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>Q(...) | Q(...)</code>: OR conditions</li>
+						<li class="note-item"><code>~Q(...)</code>: NOT</li>
+						<li class="note-item"><code>F("field")</code>: column reference in SQL</li>
+						<li class="note-item"><code>Case(When(...))</code>: conditional values</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-33-field-lookups.html" class="nav-link prev">Field Lookups</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-35-aggregation-annotation.html" class="nav-link next">Aggregation &amp; Annotation</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

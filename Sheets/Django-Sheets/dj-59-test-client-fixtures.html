@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 59: Test Client &amp; Fixtures</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s59">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 59</div>
+			<h1>Test Client &amp; Fixtures</h1>
+			<div class="sheet-desc">self.client · get() / post() · force_login() · assertRedirects · fixtures · RequestFactory · override_settings</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Testing Views End to End</h2>
+						<div class="description">The <strong>test client</strong> (<code>self.client</code>) acts like a browser without a server: it sends requests through URLs, middleware and views and returns the response with extra attributes such as <code>context</code> and <code>templates</code>. Log users in instantly with <code>force_login()</code>. <code>RequestFactory</code> builds bare requests to call a view directly. Fixtures, mocks and <code>override_settings</code> control the environment.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>response.context["form"]</code> lets you inspect template variables</li>
+						<li class="note-item"><code>follow=True</code> follows redirects and records <code>redirect_chain</code></li>
+						<li class="note-item">The test client skips CSRF checks by default</li>
+						<li class="note-item"><code>mail.outbox</code> collects emails sent during tests</li>
+						<li class="note-item"><code>captureOnCommitCallbacks</code> runs <code>on_commit</code> hooks in <code>TestCase</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Client Tests</h2>
+						<pre><code class="language-python">from django.core import mail
+from django.test import TestCase, RequestFactory, override_settings
+
+class PostViewTests(TestCase):
+    fixtures = ["users.json"]                     # loaded per test class
+
+    def setUp(self):
+        self.user = User.objects.get(username="ann")
+        self.client.force_login(self.user)
+    def test_create_redirects(self):
+        resp = self.client.post(reverse("blog:create"),
+                                {"title": "New", "body": "Text"})
+        post = Post.objects.get(title="New")
+        self.assertRedirects(resp, post.get_absolute_url())
+
+    def test_invalid_form(self):
+        resp = self.client.post(reverse("blog:create"), {"title": ""})
+        self.assertFormError(resp.context["form"], "title",
+                             "This field is required.")
+    @override_settings(DEFAULT_FROM_EMAIL="t@x.io")  # temp setting
+    def test_email(self):                         # locmem backend in tests
+        self.client.post(reverse("contact"), {"msg": "Hi"})
+        self.assertEqual(len(mail.outbox), 1)
+    def test_view_directly(self):
+        request = RequestFactory().get("/dash/")
+        request.user = self.user
+        self.assertEqual(dashboard(request).status_code, 200)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>force_login</code> skips the password check (fast)</div>
+							<div class="explain-item"><code>assertRedirects</code> also fetches the target and checks it loads</div>
+							<div class="explain-item"><code>post(url, data, content_type="application/json")</code> sends JSON</div>
+							<div class="explain-item"><code>resp.json()</code> parses a JSON response</div>
+							<div class="explain-item"><code>RequestFactory</code> skips middleware: set <code>request.user</code> yourself</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Client Table | Response Table | Fixtures Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-client">
+						<h2 class="section-title">Client Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>get(url, data)</td><td class="desc">GET with query</td></tr>
+								<tr><td>post(url, data)</td><td class="desc">Form POST</td></tr>
+								<tr><td>force_login(u)</td><td class="desc">Log in</td></tr>
+								<tr><td>logout()</td><td class="desc">Log out</td></tr>
+								<tr><td>cookies / session</td><td class="desc">State</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-response">
+						<h2 class="section-title">Response Extras</h2>
+						<table>
+							<thead><tr><th>Attribute</th><th>Holds</th></tr></thead>
+							<tbody>
+								<tr><td>status_code</td><td class="desc">int</td></tr>
+								<tr><td>context</td><td class="desc">Template context</td></tr>
+								<tr><td>templates</td><td class="desc">Templates used</td></tr>
+								<tr><td>redirect_chain</td><td class="desc">With <code>follow=True</code></td></tr>
+								<tr><td>json()</td><td class="desc">Parsed JSON</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-fixtures">
+						<h2 class="section-title">Test Data Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Notes</th></tr></thead>
+							<tbody>
+								<tr><td>fixtures = [...]</td><td class="desc">JSON/YAML files</td></tr>
+								<tr><td>setUpTestData</td><td class="desc">Python objects</td></tr>
+								<tr><td>factory_boy</td><td class="desc">Factories</td></tr>
+								<tr><td>model_bakery</td><td class="desc">Auto-fill models</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Relying on large JSON fixtures that break every time a model changes</li>
+						<li class="note-item">Using <code>RequestFactory</code> and expecting <code>request.user</code> or <code>session</code> to exist</li>
+						<li class="note-item">Comparing <code>resp.content</code> byte strings instead of using <code>assertContains</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Prefer factories over fixtures; they adapt to model changes</li>
+						<li class="note-item">Use <code>self.client.get(url, headers={"accept": "application/json"})</code> for header tests</li>
+						<li class="note-item">Use <code>freezegun</code> or <code>time-machine</code> to control <code>timezone.now()</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>self.client</code>: request through the stack</li>
+						<li class="note-item"><code>force_login()</code>: authenticate fast</li>
+						<li class="note-item"><code>assertRedirects</code> / <code>assertFormError</code></li>
+						<li class="note-item"><code>RequestFactory</code>: call views directly</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-58-testing-basics.html" class="nav-link prev">Testing Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-60-pagination.html" class="nav-link next">Pagination</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

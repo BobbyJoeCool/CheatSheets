@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 28: Model Methods &amp; Managers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>Model Methods &amp; Managers</h1>
+			<div class="sheet-desc">get_absolute_url() · clean() · @property · custom Manager · get_queryset() · custom QuerySet · as_manager()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Putting Logic on Models</h2>
+						<div class="description">Keep row-level logic on the model as <strong>methods</strong> and <strong>properties</strong>, and table-level logic (reusable filters) on a <strong>custom QuerySet</strong> exposed through a <strong>manager</strong>. <code>QuerySet.as_manager()</code> gives you chainable methods like <code>Post.objects.published().recent()</code>. <code>get_absolute_url()</code> and <code>clean()</code> are hooks Django itself calls.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>get_absolute_url()</code> is used by <code>redirect(obj)</code>, the admin "View on site" and generic views</li>
+						<li class="note-item"><code>clean()</code> runs in <code>full_clean()</code> and ModelForm validation, not on <code>save()</code></li>
+						<li class="note-item">The first manager defined becomes <code>_default_manager</code></li>
+						<li class="note-item">A manager that filters rows hides them from the admin too</li>
+						<li class="note-item">Methods on a QuerySet chain; methods on a Manager don't</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Methods, Properties, QuerySets</h2>
+						<pre><code class="language-python">from django.core.exceptions import ValidationError
+from django.urls import reverse
+from django.utils import timezone
+class PostQuerySet(models.QuerySet):
+    def published(self):
+        return self.filter(status="P", pub_date__lte=timezone.now())
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    status = models.CharField(max_length=1, default="D")
+    pub_date = models.DateTimeField(null=True, blank=True)
+    objects = PostQuerySet.as_manager()
+
+    def get_absolute_url(self):
+        return reverse("blog:detail", kwargs={"slug": self.slug})
+    @property
+    def is_live(self):
+        return self.status == "P" and self.pub_date &lt;= timezone.now()
+    def clean(self):
+        if self.status == "P" and not self.pub_date:
+            raise ValidationError({"pub_date": "Required to publish."})
+
+Post.objects.published().filter(author=user).order_by("-pub_date")</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">QuerySet methods return QuerySets, so they chain</div>
+							<div class="explain-item"><code>as_manager()</code> copies QuerySet methods onto <code>objects</code></div>
+							<div class="explain-item"><code>@property</code> reads like a field in templates: <code>{{ post.is_live }}</code></div>
+							<div class="explain-item">A dict in <code>ValidationError</code> attaches errors to specific fields</div>
+							<div class="explain-item"><code>get_absolute_url</code> keeps URL logic in one place</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Hooks Table | Mgr Table | Validate Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-hooks">
+						<h2 class="section-title">Hooks Django Calls</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Called By</th></tr></thead>
+							<tbody>
+								<tr><td>__str__()</td><td class="desc">Admin, shell, <code>{{ obj }}</code></td></tr>
+								<tr><td>get_absolute_url()</td><td class="desc"><code>redirect</code>, admin</td></tr>
+								<tr><td>clean()</td><td class="desc"><code>full_clean()</code>, forms</td></tr>
+								<tr><td>save() / delete()</td><td class="desc">Writes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-mgr">
+						<h2 class="section-title">Manager Patterns</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Code</th></tr></thead>
+							<tbody>
+								<tr><td>Chainable</td><td class="desc"><code>QS.as_manager()</code></td></tr>
+								<tr><td>Mixed</td><td class="desc"><code>from_queryset(QS)</code></td></tr>
+								<tr><td>Filtered</td><td class="desc">Override <code>get_queryset()</code></td></tr>
+								<tr><td>Second manager</td><td class="desc"><code>live = LiveManager()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-validate">
+						<h2 class="section-title">full_clean() Steps</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Checks</th></tr></thead>
+							<tbody>
+								<tr><td>clean_fields()</td><td class="desc">Each field</td></tr>
+								<tr><td>clean()</td><td class="desc">Cross-field</td></tr>
+								<tr><td>validate_unique()</td><td class="desc">Unique fields</td></tr>
+								<tr><td>validate_constraints()</td><td class="desc">Meta constraints</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Putting filters in views repeatedly instead of a QuerySet method</li>
+						<li class="note-item">Replacing <code>objects</code> with a filtering manager; the admin and related lookups then miss rows</li>
+						<li class="note-item">Expecting <code>save()</code> to call <code>clean()</code>; call <code>full_clean()</code> yourself if needed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Name QuerySet methods for business meaning: <code>.published()</code>, <code>.overdue()</code></li>
+						<li class="note-item">Use <code>cached_property</code> for expensive per-instance values</li>
+						<li class="note-item">Keep the unfiltered manager first, add filtered ones after it</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Model methods: row logic</li>
+						<li class="note-item"><code>QuerySet.as_manager()</code>: chainable filters</li>
+						<li class="note-item"><code>get_absolute_url()</code>: canonical URL</li>
+						<li class="note-item"><code>clean()</code>: cross-field validation</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-27-model-meta.html" class="nav-link prev">Model Meta Options</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-29-model-inheritance.html" class="nav-link next">Model Inheritance</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

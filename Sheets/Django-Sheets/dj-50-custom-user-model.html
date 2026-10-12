@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 50: Custom User Model</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s50">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 50</div>
+			<h1>Custom User Model</h1>
+			<div class="sheet-desc">AbstractUser · AbstractBaseUser · AUTH_USER_MODEL · get_user_model() · BaseUserManager · USERNAME_FIELD</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Start with a Custom User</h2>
+						<div class="description">Django's docs recommend creating a <strong>custom user model at the start of every project</strong>, even if it's identical to the default, because switching later means rewriting migrations. Subclass <code>AbstractUser</code> to keep everything and add fields, or <code>AbstractBaseUser</code> + <code>PermissionsMixin</code> to design the model from scratch (for example, email login with no username). Point <code>AUTH_USER_MODEL</code> at it before the first <code>migrate</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Set <code>AUTH_USER_MODEL = "accounts.User"</code> before the first migration</li>
+						<li class="note-item">Refer to it as <code>settings.AUTH_USER_MODEL</code> in ForeignKeys</li>
+						<li class="note-item">Use <code>get_user_model()</code> everywhere else</li>
+						<li class="note-item">Register it in admin with <code>UserAdmin</code> (or a subclass)</li>
+						<li class="note-item">Profile data unrelated to auth can live in a separate <code>Profile</code> model</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Email Login User</h2>
+						<pre><code class="language-python"># accounts/models.py
+from django.contrib.auth.models import AbstractUser, BaseUserManager
+
+class UserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra):
+        user = self.model(email=self.normalize_email(email), **extra)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+    def create_superuser(self, email, password, **extra):
+        extra.update(is_staff=True, is_superuser=True)
+        return self.create_user(email, password, **extra)
+
+class User(AbstractUser):
+    username = None                          # drop the username field
+    email = models.EmailField(unique=True)
+
+    USERNAME_FIELD = "email"                 # log in with email
+    REQUIRED_FIELDS = []                     # asked by createsuperuser
+    objects = UserManager()
+
+# settings.py
+AUTH_USER_MODEL = "accounts.User"
+
+# accounts/admin.py
+from django.contrib.auth.admin import UserAdmin
+admin.site.register(User, UserAdmin)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Setting <code>username = None</code> removes the inherited field</div>
+							<div class="explain-item"><code>USERNAME_FIELD</code> names the unique login field</div>
+							<div class="explain-item"><code>REQUIRED_FIELDS</code> excludes <code>USERNAME_FIELD</code> and password</div>
+							<div class="explain-item">A custom manager is needed once <code>username</code> is gone</div>
+							<div class="explain-item"><code>UserAdmin</code> may need <code>ordering</code>/<code>fieldsets</code> tweaks without <code>username</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Bases Table | Refs Table | Attrs Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-bases">
+						<h2 class="section-title">Base Classes</h2>
+						<table>
+							<thead><tr><th>Class</th><th>Includes</th></tr></thead>
+							<tbody>
+								<tr><td>AbstractUser</td><td class="desc">Full default user</td></tr>
+								<tr><td>AbstractBaseUser</td><td class="desc">Password + last_login</td></tr>
+								<tr><td>PermissionsMixin</td><td class="desc">Groups + perms</td></tr>
+								<tr><td>BaseUserManager</td><td class="desc">Manager helpers</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-refs">
+						<h2 class="section-title">Referring to the User</h2>
+						<table>
+							<thead><tr><th>Where</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>ForeignKey</td><td class="desc"><code>settings.AUTH_USER_MODEL</code></td></tr>
+								<tr><td>Code</td><td class="desc"><code>get_user_model()</code></td></tr>
+								<tr><td>Forms</td><td class="desc">Subclass with <code>model = User</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-attrs">
+						<h2 class="section-title">Required Attributes</h2>
+						<table>
+							<thead><tr><th>Attribute</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>USERNAME_FIELD</td><td class="desc">Login identifier</td></tr>
+								<tr><td>EMAIL_FIELD</td><td class="desc">Email field name</td></tr>
+								<tr><td>REQUIRED_FIELDS</td><td class="desc">createsuperuser prompts</td></tr>
+								<tr><td>is_active</td><td class="desc">Can log in</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Switching <code>AUTH_USER_MODEL</code> mid-project; existing migrations and FKs break</li>
+						<li class="note-item"><code>from django.contrib.auth.models import User</code> in your code; it ignores the custom model</li>
+						<li class="note-item">Forgetting to update <code>UserCreationForm</code>/<code>UserChangeForm</code> for the new model</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Even if unsure, create <code>class User(AbstractUser): pass</code> on day one</li>
+						<li class="note-item">Keep auth fields on <code>User</code>; put app-specific data on a <code>Profile</code></li>
+						<li class="note-item">Make email lookups case-insensitive with a <code>UniqueConstraint(Lower("email"))</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>AbstractUser</code>: extend the default</li>
+						<li class="note-item"><code>AUTH_USER_MODEL</code>: set before first migrate</li>
+						<li class="note-item"><code>get_user_model()</code>: get the class</li>
+						<li class="note-item"><code>USERNAME_FIELD</code>: login field</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-49-permissions-groups.html" class="nav-link prev">Permissions &amp; Groups</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-51-middleware.html" class="nav-link next">Middleware</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

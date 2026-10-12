@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 61: Caching</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s61">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 61</div>
+			<h1>Caching</h1>
+			<div class="sheet-desc">CACHES · cache.get() / set() · @cache_page · {% cache %} · per-site cache · Redis backend</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Caching at Every Level</h2>
+						<div class="description">Caching stores expensive results so later requests reuse them. Configure a backend in <code>CACHES</code> (Redis and Memcached for production, local memory for development). Then cache at the right granularity: whole views with <code>@cache_page</code>, template fragments with <code>{% cache %}</code>, or any value with the low-level <code>cache</code> API. The per-site cache wraps everything via middleware.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>LocMemCache</code> is per-process; it isn't shared between workers</li>
+						<li class="note-item">Redis backend is built in (4.0+): <code>django.core.cache.backends.redis.RedisCache</code></li>
+						<li class="note-item">Timeouts are seconds; <code>None</code> means forever, <code>0</code> means don't cache</li>
+						<li class="note-item">Cache keys vary by URL; use <code>vary_on_cookie</code> for per-user pages</li>
+						<li class="note-item">Async API: <code>await cache.aget()</code> / <code>aset()</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Configuration and APIs</h2>
+						<pre><code class="language-python">CACHES = {"default": {
+    "BACKEND": "django.core.cache.backends.redis.RedisCache",
+    "LOCATION": "redis://127.0.0.1:6379/1",
+    "TIMEOUT": 300,                                  # default 5 min
+}}
+
+from django.core.cache import cache
+cache.set("stats", compute_stats(), timeout=600)
+cache.get("stats")                                   # value or None
+cache.get_or_set("top", lambda: Post.objects.top()[:10], 3600)
+cache.add("lock:job", 1, 60)                         # only if missing
+cache.incr("hits")                                   # atomic +1
+cache.delete("stats"); cache.delete_many(["a", "b"])
+
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_cookie
+@cache_page(60 * 15)                                  # whole response
+@vary_on_cookie
+def dashboard(request): ...
+path("about/", cache_page(3600)(TemplateView.as_view(template_name="about.html")))</code></pre>
+					</section>
+					<section class="section-code" id="code-tpl">
+						<h2 class="section-title">Template Fragment</h2>
+						<pre><code class="language-django">{% load cache %}
+{% cache 600 sidebar request.user.pk %} ...expensive sidebar... {% endcache %}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>get_or_set</code> computes and stores only on a miss</div>
+							<div class="explain-item"><code>add</code> is a simple lock: fails if the key exists</div>
+							<div class="explain-item"><code>@cache_page</code> keys on the full URL</div>
+							<div class="explain-item"><code>vary_on_cookie</code> separates logged-in users</div>
+							<div class="explain-item">Fragment cache keys include the extra args (<code>user.pk</code>)</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Backends Table | Levels Table | Api Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-backends">
+						<h2 class="section-title">Backends</h2>
+						<table>
+							<thead><tr><th>Backend</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>RedisCache</td><td class="desc">Production</td></tr>
+								<tr><td>PyMemcacheCache</td><td class="desc">Production</td></tr>
+								<tr><td>LocMemCache</td><td class="desc">Dev, per process</td></tr>
+								<tr><td>DatabaseCache</td><td class="desc">No extra service</td></tr>
+								<tr><td>DummyCache</td><td class="desc">Disable caching</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-levels">
+						<h2 class="section-title">Granularity</h2>
+						<table>
+							<thead><tr><th>Level</th><th>Tool</th></tr></thead>
+							<tbody>
+								<tr><td>Site</td><td class="desc">Update/FetchFromCache MW</td></tr>
+								<tr><td>View</td><td class="desc"><code>@cache_page</code></td></tr>
+								<tr><td>Fragment</td><td class="desc"><code>{% cache %}</code></td></tr>
+								<tr><td>Value</td><td class="desc"><code>cache.get/set</code></td></tr>
+								<tr><td>Instance</td><td class="desc"><code>@cached_property</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-api">
+						<h2 class="section-title">cache API</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>get_many([..])</td><td class="desc">dict of hits</td></tr>
+								<tr><td>set_many({..})</td><td class="desc">Bulk set</td></tr>
+								<tr><td>touch(k, t)</td><td class="desc">New timeout</td></tr>
+								<tr><td>clear()</td><td class="desc">Wipe everything</td></tr>
+								<tr><td>caches["other"]</td><td class="desc">Pick a cache</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@cache_page</code> on views that show per-user data without <code>vary_on_cookie</code></li>
+						<li class="note-item">Caching a lazy QuerySet object; cache <code>list(qs)</code> or values instead</li>
+						<li class="note-item">Never invalidating; stale data persists until timeout, delete keys on save</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Delete related keys in <code>post_save</code> signals or model <code>save()</code></li>
+						<li class="note-item">Prefix keys with a version (<code>KEY_PREFIX</code>, <code>VERSION</code>) to bust everything on deploy</li>
+						<li class="note-item">Measure first; the slowest thing is often a missing <code>select_related</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>CACHES</code>: backend config</li>
+						<li class="note-item"><code>cache.get_or_set()</code>: value caching</li>
+						<li class="note-item"><code>@cache_page(s)</code>: view caching</li>
+						<li class="note-item"><code>{% cache s name %}</code>: fragments</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-60-pagination.html" class="nav-link prev">Pagination</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-62-email.html" class="nav-link next">Sending Email</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-django.min.js"></script>
+	</body>
+</html>

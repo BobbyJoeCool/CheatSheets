@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 54: Signals</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s54">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 54</div>
+			<h1>Signals</h1>
+			<div class="sheet-desc">post_save · pre_delete · @receiver · sender= · created flag · ready() registration · custom Signal</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Reacting to Events</h2>
+						<div class="description"><strong>Signals</strong> let decoupled code react when something happens elsewhere: a model is saved, a user logs in, a request finishes. A <strong>receiver</strong> function is connected to a signal, usually with <code>@receiver</code>, and is called synchronously by whoever sends it. Register receivers in your <code>AppConfig.ready()</code> so they're connected exactly once at startup.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Receivers run in the same thread and transaction as the sender</li>
+						<li class="note-item"><code>queryset.update()</code> and <code>bulk_create()</code> don't send model signals</li>
+						<li class="note-item">Pass <code>sender=</code> to listen to one model only</li>
+						<li class="note-item">Use <code>dispatch_uid</code> to avoid duplicate connections</li>
+						<li class="note-item">Prefer explicit calls when the code is in the same app</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Receivers and Registration</h2>
+						<pre><code class="language-python"># accounts/signals.py
+from django.conf import settings
+from django.db.models.signals import post_save, pre_delete
+from django.dispatch import receiver, Signal
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.create(user=instance)
+
+@receiver(pre_delete, sender=Document)
+def delete_file(sender, instance, **kwargs):
+    instance.file.delete(save=False)
+
+order_paid = Signal()                         # custom signal
+order_paid.send(sender=Order, order=order)    # send it
+
+# accounts/apps.py
+class AccountsConfig(AppConfig):
+    name = "accounts"
+    def ready(self):
+        from . import signals                 # connect receivers</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Receivers must accept <code>**kwargs</code> for future arguments</div>
+							<div class="explain-item"><code>created</code> is True only on the first save</div>
+							<div class="explain-item"><code>save=False</code> deletes the file without re-saving the row</div>
+							<div class="explain-item">Importing <code>signals</code> in <code>ready()</code> runs the decorators</div>
+							<div class="explain-item"><code>send()</code> returns a list of <code>(receiver, response)</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Model Table | Other Table | Api Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-model">
+						<h2 class="section-title">Model Signals</h2>
+						<table>
+							<thead><tr><th>Signal</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>pre_save / post_save</td><td class="desc">Around <code>save()</code></td></tr>
+								<tr><td>pre_delete / post_delete</td><td class="desc">Around delete</td></tr>
+								<tr><td>m2m_changed</td><td class="desc">M2M add/remove</td></tr>
+								<tr><td>pre_init / post_init</td><td class="desc">Instance created</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-other">
+						<h2 class="section-title">Other Signals</h2>
+						<table>
+							<thead><tr><th>Signal</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>request_started</td><td class="desc">Request begins</td></tr>
+								<tr><td>request_finished</td><td class="desc">Response sent</td></tr>
+								<tr><td>user_logged_in</td><td class="desc">After login</td></tr>
+								<tr><td>user_login_failed</td><td class="desc">Bad credentials</td></tr>
+								<tr><td>post_migrate</td><td class="desc">After migrate</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-api">
+						<h2 class="section-title">Signal API</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>connect(fn)</td><td class="desc">Register</td></tr>
+								<tr><td>disconnect(fn)</td><td class="desc">Unregister</td></tr>
+								<tr><td>send(sender, **kw)</td><td class="desc">Fire</td></tr>
+								<tr><td>send_robust()</td><td class="desc">Catch errors</td></tr>
+								<tr><td>asend()</td><td class="desc">Async fire</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Defining receivers in a module that's never imported, so they never fire</li>
+						<li class="note-item">Expecting <code>post_save</code> after <code>queryset.update()</code>; no signal is sent</li>
+						<li class="note-item">Doing slow work (emails, APIs) in a receiver; it blocks the request, enqueue a task instead</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use <code>transaction.on_commit</code> inside receivers for side effects</li>
+						<li class="note-item">Signals suit cross-app hooks; within an app, call the function directly</li>
+						<li class="note-item">Disconnect noisy receivers in tests with <code>post_save.disconnect</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@receiver(signal, sender=)</code>: listen</li>
+						<li class="note-item"><code>post_save(created=...)</code>: after save</li>
+						<li class="note-item"><code>AppConfig.ready()</code>: register once</li>
+						<li class="note-item"><code>Signal().send()</code>: custom events</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-53-messages.html" class="nav-link prev">Messages Framework</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-55-csrf-xss.html" class="nav-link next">CSRF, XSS &amp; Clickjacking</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

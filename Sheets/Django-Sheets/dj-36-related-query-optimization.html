@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 36: Related Objects &amp; Query Optimization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>Related Objects &amp; Query Optimization</h1>
+			<div class="sheet-desc">select_related() · prefetch_related() · Prefetch() · only() · defer() · N+1 problem · exists()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Avoiding the N+1 Problem</h2>
+						<div class="description">Accessing a related object in a loop runs <strong>one extra query per row</strong>: the N+1 problem. <code>select_related()</code> follows ForeignKey and one-to-one links with a SQL JOIN in the same query. <code>prefetch_related()</code> fetches many-to-many and reverse relations in <strong>one extra query</strong> and joins them in Python. <code>only()</code> and <code>defer()</code> limit which columns load. 6.1 adds <strong>fetch modes</strong> that can fix N+1 automatically.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>select_related</code>: FK / 1:1 forward (JOIN)</li>
+						<li class="note-item"><code>prefetch_related</code>: M2M and reverse FK (separate query)</li>
+						<li class="note-item"><code>Prefetch()</code> customizes the prefetched QuerySet</li>
+						<li class="note-item">Calling <code>.filter()</code> on a prefetched relation ignores the prefetch</li>
+						<li class="note-item">6.1: <code>fetch_mode(models.FETCH_PEERS)</code> batch-loads on first access</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Before and After</h2>
+						<pre><code class="language-python"># N+1: 1 query for posts + 1 per post for author
+for post in Post.objects.all():
+    print(post.author.name)
+
+# 1 query with a JOIN
+for post in Post.objects.select_related("author", "author__profile"):
+    print(post.author.name)
+
+# 2 queries total: posts, then all their tags
+posts = Post.objects.prefetch_related("tags")
+for p in posts:
+    print([t.name for t in p.tags.all()])
+
+from django.db.models import Prefetch
+Author.objects.prefetch_related(Prefetch("post_set",
+    queryset=Post.objects.filter(status="P").order_by("-created"),
+    to_attr="live_posts"))                # author.live_posts is a list
+
+Post.objects.only("id", "title")          # load just these columns
+Post.objects.defer("body")                # load all but body
+
+from django.db import models               # Django 6.1
+Book.objects.fetch_mode(models.FETCH_PEERS)   # auto batch-load
+Book.objects.fetch_mode(models.FETCH_RAISE)   # error on lazy load</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>author__profile</code> chains joins through two FKs</div>
+							<div class="explain-item">Prefetch results are cached on each object</div>
+							<div class="explain-item"><code>to_attr</code> stores filtered results as a plain list</div>
+							<div class="explain-item">Accessing a deferred field later triggers another query</div>
+							<div class="explain-item"><code>FETCH_RAISE</code> is useful in tests to catch N+1</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Choose Table | Fetch Table | Tools Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-choose">
+						<h2 class="section-title">Which One</h2>
+						<table>
+							<thead><tr><th>Relation</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>ForeignKey (forward)</td><td class="desc">select_related</td></tr>
+								<tr><td>OneToOne</td><td class="desc">select_related</td></tr>
+								<tr><td>Reverse FK</td><td class="desc">prefetch_related</td></tr>
+								<tr><td>ManyToMany</td><td class="desc">prefetch_related</td></tr>
+								<tr><td>Generic FK</td><td class="desc">prefetch_related</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-fetch">
+						<h2 class="section-title">Fetch Modes (6.1)</h2>
+						<table>
+							<thead><tr><th>Mode</th><th>On Lazy Access</th></tr></thead>
+							<tbody>
+								<tr><td>FETCH_ONE</td><td class="desc">One query (default)</td></tr>
+								<tr><td>FETCH_PEERS</td><td class="desc">Load for all peers</td></tr>
+								<tr><td>FETCH_RAISE</td><td class="desc">Raise an error</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-tools">
+						<h2 class="section-title">Finding Slow Queries</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Shows</th></tr></thead>
+							<tbody>
+								<tr><td>Debug Toolbar</td><td class="desc">Queries per page</td></tr>
+								<tr><td>connection.queries</td><td class="desc">SQL list (DEBUG)</td></tr>
+								<tr><td>assertNumQueries</td><td class="desc">Test guard</td></tr>
+								<tr><td>qs.explain()</td><td class="desc">Query plan</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>select_related("tags")</code> on an M2M: <code>FieldError</code>; use <code>prefetch_related</code></li>
+						<li class="note-item"><code>p.tags.filter(...)</code> inside the loop, which ignores the prefetch and queries again</li>
+						<li class="note-item">Using <code>only()</code> then touching other fields in templates, causing hidden extra queries</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Add <code>select_related</code> in list views' <code>get_queryset()</code> by default</li>
+						<li class="note-item">Guard key views with <code>assertNumQueries</code> in tests</li>
+						<li class="note-item">Use <code>exists()</code> / <code>count()</code> instead of loading rows just to check</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>select_related()</code>: JOIN for FK/1:1</li>
+						<li class="note-item"><code>prefetch_related()</code>: extra query for M2M/reverse</li>
+						<li class="note-item"><code>only()</code> / <code>defer()</code>: fewer columns</li>
+						<li class="note-item"><code>fetch_mode()</code> (6.1): auto N+1 handling</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-35-aggregation-annotation.html" class="nav-link prev">Aggregation &amp; Annotation</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-37-bulk-raw-transactions.html" class="nav-link next">Bulk Ops, Raw SQL &amp; Transactions</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

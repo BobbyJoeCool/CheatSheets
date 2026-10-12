@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 25: ForeignKey Relationships</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>ForeignKey Relationships</h1>
+			<div class="sheet-desc">ForeignKey · on_delete · CASCADE · PROTECT · SET_NULL · related_name · _set reverse access</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Many-to-One Links</h2>
+						<div class="description">A <code>ForeignKey</code> creates a <strong>many-to-one</strong> relationship: many comments belong to one post. The column stores the related row's primary key (<code>post_id</code>). <code>on_delete</code> is required and decides what happens to comments when their post is deleted. Django adds a <strong>reverse accessor</strong> on the other model, named <code>comment_set</code> by default or whatever <code>related_name</code> says.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Access the object with <code>c.post</code>; the raw id with <code>c.post_id</code> (no query)</li>
+						<li class="note-item">Refer to models by string (<code>"auth.User"</code>) to avoid circular imports</li>
+						<li class="note-item">Use <code>settings.AUTH_USER_MODEL</code> for links to users</li>
+						<li class="note-item">An index is created on every <code>ForeignKey</code> column automatically</li>
+						<li class="note-item">6.1: <code>DB_CASCADE</code> and friends let the database handle deletes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Defining and Following a ForeignKey</h2>
+						<pre><code class="language-python">from django.conf import settings
+from django.db import models
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+
+class Comment(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE,
+                             related_name="comments")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL,
+                               on_delete=models.SET_NULL, null=True)
+    category = models.ForeignKey("Category", on_delete=models.PROTECT)
+    text = models.TextField()
+
+c = Comment.objects.get(pk=1)
+c.post                       # &lt;Post: Hello&gt;   (1 query)
+c.post_id                    # 3               (no query)
+post = Post.objects.get(pk=3)
+post.comments.all()          # reverse: every comment on the post
+post.comments.create(text="Nice!", category=cat)
+post.delete()                # CASCADE deletes its comments too</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>related_name="comments"</code> replaces the default <code>comment_set</code></div>
+							<div class="explain-item"><code>SET_NULL</code> requires <code>null=True</code> on the field</div>
+							<div class="explain-item"><code>PROTECT</code> raises <code>ProtectedError</code> if a category is still in use</div>
+							<div class="explain-item"><code>filter(post__title=...)</code> follows the FK in a lookup (a JOIN)</div>
+							<div class="explain-item"><code>post.comments.create()</code> sets <code>post</code> for you</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: On Delete Table | Db Delete Table | Fk Opts Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-on-delete">
+						<h2 class="section-title">on_delete Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>When Parent Deleted</th></tr></thead>
+							<tbody>
+								<tr><td>CASCADE</td><td class="desc">Delete children</td></tr>
+								<tr><td>PROTECT</td><td class="desc">Block, <code>ProtectedError</code></td></tr>
+								<tr><td>RESTRICT</td><td class="desc">Block unless cascaded</td></tr>
+								<tr><td>SET_NULL</td><td class="desc">Set to NULL</td></tr>
+								<tr><td>SET_DEFAULT / SET()</td><td class="desc">Set a value</td></tr>
+								<tr><td>DO_NOTHING</td><td class="desc">DB decides (risky)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-db-delete">
+						<h2 class="section-title">DB-Level (6.1)</h2>
+						<table>
+							<thead><tr><th>Option</th><th>SQL</th></tr></thead>
+							<tbody>
+								<tr><td>DB_CASCADE</td><td class="desc"><code>ON DELETE CASCADE</code></td></tr>
+								<tr><td>DB_SET_NULL</td><td class="desc"><code>ON DELETE SET NULL</code></td></tr>
+								<tr><td>DB_SET_DEFAULT</td><td class="desc"><code>ON DELETE SET DEFAULT</code></td></tr>
+								<tr><td>Note</td><td class="desc">No <code>pre/post_delete</code> signals</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-fk-opts">
+						<h2 class="section-title">Other Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>related_name</td><td class="desc">Reverse name</td></tr>
+								<tr><td>related_query_name</td><td class="desc">Reverse lookup name</td></tr>
+								<tr><td>limit_choices_to</td><td class="desc">Filter form choices</td></tr>
+								<tr><td>to_field</td><td class="desc">Point at a non-pk field</td></tr>
+								<tr><td>db_constraint</td><td class="desc">Create FK constraint?</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>SET_NULL</code> without <code>null=True</code>: system check error</li>
+						<li class="note-item">Two FKs to the same model without <code>related_name</code>: reverse accessor clash</li>
+						<li class="note-item">Looping <code>for c in comments: c.post.title</code> without <code>select_related</code>, which is N+1 queries</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Default to <code>PROTECT</code> for lookup tables, <code>CASCADE</code> for owned children</li>
+						<li class="note-item">Use <code>c.post_id</code> when you only need the id</li>
+						<li class="note-item">Pick plural <code>related_name</code>s that read well: <code>post.comments</code>, <code>user.orders</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>ForeignKey(Model, on_delete=)</code>: many-to-one</li>
+						<li class="note-item"><code>obj.fk</code> / <code>obj.fk_id</code>: object / raw id</li>
+						<li class="note-item"><code>parent.related_name.all()</code>: reverse</li>
+						<li class="note-item"><code>CASCADE</code> / <code>PROTECT</code> / <code>SET_NULL</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-24-field-options.html" class="nav-link prev">Field Options</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-26-m2m-onetoone.html" class="nav-link next">Many-to-Many &amp; One-to-One</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

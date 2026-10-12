@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 47: Users &amp; Authentication</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s47">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 47</div>
+			<h1>Users &amp; Authentication</h1>
+			<div class="sheet-desc">User model · authenticate() · login() · logout() · request.user · is_authenticated · set_password()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Auth System</h2>
+						<div class="description"><code>django.contrib.auth</code> provides a <code>User</code> model, password hashing, sessions-based login and permissions. <code>authenticate()</code> checks credentials against the configured backends and returns a user or <code>None</code>. <code>login()</code> stores the user's id in the session, after which <code>AuthenticationMiddleware</code> puts that user on <code>request.user</code> for every request. <code>logout()</code> clears the session.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Passwords are stored hashed (PBKDF2 by default, Argon2 optional)</li>
+						<li class="note-item"><code>request.user</code> is an <code>AnonymousUser</code> when not logged in</li>
+						<li class="note-item"><code>login()</code> rotates the session key to stop session fixation</li>
+						<li class="note-item">Use <code>User.objects.create_user()</code> so the password is hashed</li>
+						<li class="note-item">Get the active user model with <code>get_user_model()</code> (Sheet 50)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Log In and Out by Hand</h2>
+						<pre><code class="language-python">from django.contrib.auth import authenticate, login, logout, get_user_model
+from django.contrib.auth.decorators import login_required
+
+User = get_user_model()
+u = User.objects.create_user("ann", "ann@example.com", "s3cret!pass")
+u.check_password("s3cret!pass")          # True
+u.set_password("new-pass-123"); u.save() # hashes it
+
+def login_view(request):
+    if request.method == "POST":
+        user = authenticate(request, username=request.POST["username"],
+                            password=request.POST["password"])
+        if user is not None:
+            login(request, user)         # session cookie set
+            return redirect(request.GET.get("next", "home"))
+    return render(request, "login.html")
+
+@login_required
+def dashboard(request):
+    return render(request, "dash.html", {"name": request.user.get_full_name()})</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>create_user</code> hashes the password; <code>create()</code> would store plain text</div>
+							<div class="explain-item"><code>authenticate</code> returns <code>None</code> for bad credentials or inactive users</div>
+							<div class="explain-item">Redirecting to raw <code>next</code> is unsafe; built-in <code>LoginView</code> validates it</div>
+							<div class="explain-item"><code>logout</code> must be POST when using the built-in <code>LogoutView</code></div>
+							<div class="explain-item">In templates, the <code>auth</code> context processor adds <code>user</code> and <code>perms</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: User Table | Funcs Table | Hashers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-user">
+						<h2 class="section-title">User Fields</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Type</th></tr></thead>
+							<tbody>
+								<tr><td>username</td><td class="desc">Unique, 150 chars</td></tr>
+								<tr><td>email</td><td class="desc">Optional</td></tr>
+								<tr><td>first_name / last_name</td><td class="desc">Text</td></tr>
+								<tr><td>is_active / is_staff</td><td class="desc">bool</td></tr>
+								<tr><td>last_login / date_joined</td><td class="desc">datetime</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-funcs">
+						<h2 class="section-title">Functions</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>authenticate()</td><td class="desc">Check credentials</td></tr>
+								<tr><td>login()</td><td class="desc">Start session</td></tr>
+								<tr><td>logout()</td><td class="desc">End session</td></tr>
+								<tr><td>alogin() etc.</td><td class="desc">Async versions</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-hashers">
+						<h2 class="section-title">Password Hashers</h2>
+						<table>
+							<thead><tr><th>Hasher</th><th>Notes</th></tr></thead>
+							<tbody>
+								<tr><td>PBKDF2</td><td class="desc">Default</td></tr>
+								<tr><td>Argon2</td><td class="desc">Recommended</td></tr>
+								<tr><td>Scrypt</td><td class="desc">Built in</td></tr>
+								<tr><td>BCryptSHA256</td><td class="desc">Needs bcrypt</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>User.objects.create(password="x")</code> stores an unhashed password that never matches</li>
+						<li class="note-item">Changing a password without <code>update_session_auth_hash</code>, logging the user out</li>
+						<li class="note-item">Redirecting to <code>next</code> without <code>url_has_allowed_host_and_scheme</code>: open redirect</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use the built-in auth views (Sheet 48) instead of hand-written login views</li>
+						<li class="note-item">Switch to Argon2 by listing it first in <code>PASSWORD_HASHERS</code></li>
+						<li class="note-item">Set <code>AUTH_PASSWORD_VALIDATORS</code> to enforce password strength</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>authenticate()</code> → user or None</li>
+						<li class="note-item"><code>login()</code> / <code>logout()</code>: session</li>
+						<li class="note-item"><code>request.user</code>: current user</li>
+						<li class="note-item"><code>create_user()</code> / <code>set_password()</code>: hashing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-46-admin-inlines-actions.html" class="nav-link prev">Inlines &amp; Custom Actions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-48-auth-views.html" class="nav-link next">Built-in Auth Views</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

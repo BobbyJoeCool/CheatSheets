@@ -148,7 +148,7 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | Python | 96 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & standard library, testing & logging, advanced topics, Tkinter GUI |
 | ✅ | Tkinter | 62 | introduction & setup, windows, classic widgets, layout managers (pack, grid, place), variables & events, menus & dialogs, ttk themed widgets (styles, Notebook, Treeview), Canvas, colors, fonts & images, application patterns (timers, threading, validation, scrollable frames, architecture, DPI, testing, packaging), external libraries (sv-ttk, ttkbootstrap, CustomTkinter, Matplotlib), quick reference |
-| 🚧| Django | 68 | Outline drafted — Django 6.0: introduction & setup, URLs & routing, views (function & class-based), templates (incl. partials), models, migrations, QuerySets & the ORM, forms, admin, authentication & authorization, middleware, sessions, messages & signals, security (incl. CSP), testing, pagination, caching, email, background tasks, async, logging, i18n, Django REST Framework, deployment |
+| ✅ | Django | 68 | Django 6.0: introduction & setup, URLs & routing, views (function & class-based), templates (incl. partials), models, migrations, QuerySets & the ORM, forms, admin, authentication & authorization, middleware, sessions, messages & signals, security (incl. CSP), testing, pagination, caching, email, background tasks, async, logging, i18n, Django REST Framework, deployment |
 
 ### Java
 

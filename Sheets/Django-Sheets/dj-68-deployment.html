@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 68: Deployment</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s68">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 68</div>
+			<h1>Deployment</h1>
+			<div class="sheet-desc">Gunicorn · Uvicorn · WSGI / ASGI · WhiteNoise · DEBUG=False · environment variables · reverse proxy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Running Django in Production</h2>
+						<div class="description">In production Django runs behind an application server: <strong>Gunicorn</strong> for WSGI, or <strong>Uvicorn</strong>/Daphne for ASGI. A reverse proxy (Nginx, Caddy or the platform's load balancer) handles TLS and slow clients. Static files are collected and served by WhiteNoise or a CDN. Configuration comes from <strong>environment variables</strong>, and each deploy runs migrations and <code>collectstatic</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Typical worker count: <code>2 × CPU cores + 1</code></li>
+						<li class="note-item">Run <code>migrate</code> once per deploy, not per worker</li>
+						<li class="note-item">Health check endpoint: a tiny view returning 200</li>
+						<li class="note-item">PaaS options: Fly.io, Render, Railway, Heroku; or a VPS with Docker</li>
+						<li class="note-item">Use PostgreSQL in production, not SQLite, for multi-user sites</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Deploy Steps</h2>
+						<pre><code class="language-bash">pip install -r requirements.txt
+python manage.py check --deploy
+python manage.py collectstatic --noinput
+python manage.py migrate --noinput
+gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+# or ASGI:
+gunicorn config.asgi:application -k uvicorn_worker.UvicornWorker</code></pre>
+					</section>
+					<section class="section-code" id="code-py">
+						<h2 class="section-title">WhiteNoise + Env Settings</h2>
+						<pre><code class="language-python">MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
+STORAGES["staticfiles"] = {"BACKEND":
+    "whitenoise.storage.CompressedManifestStaticFilesStorage"}
+DATABASES = {"default": dj_database_url.config(conn_max_age=600)}</code></pre>
+					</section>
+					<section class="section-code" id="code-docker">
+						<h2 class="section-title">Dockerfile</h2>
+						<pre><code class="language-docker">FROM python:3.13-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+RUN python manage.py collectstatic --noinput
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">WhiteNoise goes right after <code>SecurityMiddleware</code></div>
+							<div class="explain-item"><code>dj-database-url</code> reads <code>DATABASE_URL</code> from the environment</div>
+							<div class="explain-item"><code>conn_max_age</code> keeps DB connections open between requests</div>
+							<div class="explain-item"><code>uvicorn_worker</code> runs Uvicorn under Gunicorn's process manager</div>
+							<div class="explain-item">Build static files into the image; run migrations at release time</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Stack Table | Env Table | Checklist Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-stack">
+						<h2 class="section-title">Typical Stack</h2>
+						<table>
+							<thead><tr><th>Layer</th><th>Choice</th></tr></thead>
+							<tbody>
+								<tr><td>Proxy / TLS</td><td class="desc">Nginx, Caddy, LB</td></tr>
+								<tr><td>App server</td><td class="desc">Gunicorn / Uvicorn</td></tr>
+								<tr><td>Static</td><td class="desc">WhiteNoise / CDN</td></tr>
+								<tr><td>Database</td><td class="desc">PostgreSQL</td></tr>
+								<tr><td>Cache / queue</td><td class="desc">Redis</td></tr>
+								<tr><td>Errors</td><td class="desc">Sentry</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-env">
+						<h2 class="section-title">Environment Variables</h2>
+						<table>
+							<thead><tr><th>Variable</th><th>Feeds</th></tr></thead>
+							<tbody>
+								<tr><td>DJANGO_SECRET_KEY</td><td class="desc">SECRET_KEY</td></tr>
+								<tr><td>DATABASE_URL</td><td class="desc">DATABASES</td></tr>
+								<tr><td>DJANGO_ALLOWED_HOSTS</td><td class="desc">ALLOWED_HOSTS</td></tr>
+								<tr><td>REDIS_URL</td><td class="desc">CACHES</td></tr>
+								<tr><td>SENTRY_DSN</td><td class="desc">Error reporting</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-checklist">
+						<h2 class="section-title">Release Checklist</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Command</th></tr></thead>
+							<tbody>
+								<tr><td>Checks</td><td class="desc"><code>check --deploy</code></td></tr>
+								<tr><td>Static</td><td class="desc"><code>collectstatic</code></td></tr>
+								<tr><td>Schema</td><td class="desc"><code>migrate</code></td></tr>
+								<tr><td>Restart</td><td class="desc">Reload workers</td></tr>
+								<tr><td>Verify</td><td class="desc">Health check</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Running <code>runserver</code> in production; it isn't built for load or security</li>
+						<li class="note-item">Each container running <code>migrate</code> on start, causing race conditions</li>
+						<li class="note-item">Forgetting <code>CSRF_TRUSTED_ORIGINS</code> behind HTTPS, so every form POST fails</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Keep settings twelve-factor style: everything that varies comes from env</li>
+						<li class="note-item">Set <code>CONN_MAX_AGE</code> or use a pooler (PgBouncer, 5.1+ pool option)</li>
+						<li class="note-item">Automate deploys from CI so every release runs the same steps</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Gunicorn (WSGI) / Uvicorn (ASGI)</li>
+						<li class="note-item">WhiteNoise or CDN: static files</li>
+						<li class="note-item">Env vars: secrets and config</li>
+						<li class="note-item"><code>collectstatic</code> + <code>migrate</code> each deploy</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-67-drf-serializers-views.html" class="nav-link prev">Django REST Framework</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="index.html" class="nav-link next" style="visibility:hidden">—</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-docker.min.js"></script>
+	</body>
+</html>

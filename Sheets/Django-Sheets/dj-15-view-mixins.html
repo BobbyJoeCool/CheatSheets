@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Django — Sheet 15: View Mixins &amp; Decorators</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/django-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>View Mixins &amp; Decorators</h1>
+			<div class="sheet-desc">LoginRequiredMixin · PermissionRequiredMixin · UserPassesTestMixin · method_decorator · MRO order</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Reusing View Behavior</h2>
+						<div class="description"><strong>Mixins</strong> add behavior to class-based views through multiple inheritance, and <strong>decorators</strong> wrap function views. Auth mixins check access in <code>dispatch()</code> before the handler runs. Because Python resolves methods left to right (the MRO), access mixins must come <strong>before</strong> the view class. <code>method_decorator</code> lets you apply any function decorator to a CBV.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Order: <code>class V(LoginRequiredMixin, PermissionRequiredMixin, UpdateView)</code></li>
+						<li class="note-item">Anonymous users are redirected to <code>LOGIN_URL</code> with <code>?next=</code></li>
+						<li class="note-item">Logged-in users without permission get a 403</li>
+						<li class="note-item">Django 5.1+: <code>LoginRequiredMiddleware</code> + <code>@login_not_required</code> makes login the default</li>
+						<li class="note-item">Write your own mixin when several views share the same override</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Mixins and Decorators</h2>
+						<pre><code class="language-python">from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.mixins import (LoginRequiredMixin,
+    PermissionRequiredMixin, UserPassesTestMixin)
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+
+class ReportView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    permission_required = "reports.view_report"
+    raise_exception = True                     # 403 instead of redirect
+
+class PostEditView(UserPassesTestMixin, UpdateView):
+    model = Post
+    def test_func(self):
+        return self.get_object().author == self.request.user
+
+@method_decorator(cache_page(60 * 15), name="dispatch")
+class HomeView(TemplateView):
+    template_name = "home.html"
+
+class OwnerQuerysetMixin:                      # custom mixin
+    def get_queryset(self):
+        return super().get_queryset().filter(owner=self.request.user)
+
+@login_required
+@permission_required("reports.view_report", raise_exception=True)
+def report(request): ...</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>permission_required</code> is <code>"app_label.codename"</code></div>
+							<div class="explain-item"><code>raise_exception = True</code> returns 403 even for anonymous users</div>
+							<div class="explain-item"><code>test_func()</code> returns <code>True</code> to allow access</div>
+							<div class="explain-item"><code>method_decorator(dec, name="dispatch")</code> covers every method</div>
+							<div class="explain-item">Custom mixins call <code>super()</code> so they chain with the view</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Mixins Table | Opts Table | Decorators Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-mixins">
+						<h2 class="section-title">Auth Mixins</h2>
+						<table>
+							<thead><tr><th>Mixin</th><th>Checks</th></tr></thead>
+							<tbody>
+								<tr><td>LoginRequiredMixin</td><td class="desc">Logged in</td></tr>
+								<tr><td>PermissionRequiredMixin</td><td class="desc">Has permission(s)</td></tr>
+								<tr><td>UserPassesTestMixin</td><td class="desc"><code>test_func()</code></td></tr>
+								<tr><td>AccessMixin</td><td class="desc">Base for custom ones</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-opts">
+						<h2 class="section-title">AccessMixin Options</h2>
+						<table>
+							<thead><tr><th>Attribute</th><th>Default</th></tr></thead>
+							<tbody>
+								<tr><td>login_url</td><td class="desc"><code>LOGIN_URL</code></td></tr>
+								<tr><td>redirect_field_name</td><td class="desc">next</td></tr>
+								<tr><td>raise_exception</td><td class="desc"><code>False</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-decorators">
+						<h2 class="section-title">FBV Decorators</h2>
+						<table>
+							<thead><tr><th>Decorator</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>@login_required</td><td class="desc">Redirect if anonymous</td></tr>
+								<tr><td>@permission_required</td><td class="desc">Perm check</td></tr>
+								<tr><td>@user_passes_test(fn)</td><td class="desc">Custom check</td></tr>
+								<tr><td>@cache_page(s)</td><td class="desc">Cache response</td></tr>
+								<tr><td>@csrf_exempt</td><td class="desc">Skip CSRF</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Putting <code>LoginRequiredMixin</code> after the view class; the view's <code>dispatch</code> runs first</li>
+						<li class="note-item"><code>test_func</code> calling <code>get_object()</code> on a CreateView, where there is no object yet</li>
+						<li class="note-item">Decorating a CBV class directly with <code>@login_required</code>; use <code>method_decorator</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Combine mixins into one base class (<code>StaffOnlyMixin</code>) to keep views short</li>
+						<li class="note-item">Prefer permission checks over <code>is_staff</code> checks for fine-grained access</li>
+						<li class="note-item">Use <code>LoginRequiredMiddleware</code> for sites where nearly every page needs login</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Mixins go <strong>left</strong> of the view class</li>
+						<li class="note-item"><code>LoginRequiredMixin</code>: auth gate</li>
+						<li class="note-item"><code>UserPassesTestMixin.test_func()</code>: custom rule</li>
+						<li class="note-item"><code>method_decorator</code>: FBV decorator on a CBV</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="dj-14-generic-editing-views.html" class="nav-link prev">Generic Views — Editing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Django Reference · 68 Sheets</a>
+				<a href="dj-16-template-basics.html" class="nav-link next">Template Basics &amp; Configuration</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>
