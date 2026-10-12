@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 35: Schema Init &amp; Migrations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>Schema Init &amp; Migrations</h1>
+			<div class="sheet-desc">schema.sql · data.sql · spring.sql.init.mode · Flyway · V1__init.sql · Liquibase · ddl-auto</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Creating and Evolving the Schema</h2>
+						<div class="description">For anything beyond a demo, manage the schema with a <strong>migration tool</strong>. <strong>Flyway</strong> runs versioned SQL files from <code>db/migration</code> in order and records each one in <code>flyway_schema_history</code>, so every environment ends up identical. <strong>Liquibase</strong> does the same with XML/YAML/SQL changelogs. For quick prototypes, <code>schema.sql</code> / <code>data.sql</code> or Hibernate's <strong><code>ddl-auto</code></strong> can create tables.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Boot 4: add <code>spring-boot-starter-flyway</code> (or <code>-liquibase</code>)</li>
+						<li class="note-item">Migrations run at startup, <strong>before</strong> JPA starts</li>
+						<li class="note-item">Never edit an applied migration; add a new one</li>
+						<li class="note-item"><code>ddl-auto=validate</code> checks entities against the real schema</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Flyway Migration Files</h2>
+						<pre><code class="language-sql">-- src/main/resources/db/migration/V1__create_customer.sql
+CREATE TABLE customer (
+    id         BIGSERIAL PRIMARY KEY,
+    name       VARCHAR(80)  NOT NULL,
+    email      VARCHAR(120) NOT NULL UNIQUE,
+    created_at TIMESTAMP    NOT NULL DEFAULT now()
+);
+
+-- V2__add_customer_phone.sql
+ALTER TABLE customer ADD COLUMN phone VARCHAR(20);
+
+-- R__customer_view.sql   (repeatable: re-runs when it changes)
+CREATE OR REPLACE VIEW active_customer AS SELECT * FROM customer;</code></pre>
+					</section>
+					<section class="section-code" id="code-props">
+						<h2 class="section-title">application.yml</h2>
+						<pre><code class="language-yaml">spring:
+  flyway:
+    locations: classpath:db/migration
+    baseline-on-migrate: true      # adopt an existing database
+  jpa.hibernate.ddl-auto: validate   # never let Hibernate change prod</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>V1__</code> / <code>V2__</code>: version, <strong>two</strong> underscores, description</div>
+							<div class="explain-item">Flyway runs pending versions in order, once each</div>
+							<div class="explain-item"><code>R__</code> files re-run whenever their checksum changes</div>
+							<div class="explain-item"><code>validate</code> fails startup if an entity doesn't match a table</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Ddl Table | Sqlinit Table | Flyway Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-ddl">
+						<h2 class="section-title">ddl-auto Values</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>none</td><td class="desc">Nothing (prod default)</td></tr>
+								<tr><td>validate</td><td class="desc">Check, don't change</td></tr>
+								<tr><td>update</td><td class="desc">Add missing columns</td></tr>
+								<tr><td>create</td><td class="desc">Drop + create</td></tr>
+								<tr><td>create-drop</td><td class="desc">…and drop on exit</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sqlinit">
+						<h2 class="section-title">Script Init</h2>
+						<table>
+							<thead><tr><th>Property</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>sql.init.mode</td><td class="desc"><code>always</code> / <code>never</code></td></tr>
+								<tr><td>schema.sql</td><td class="desc">DDL at startup</td></tr>
+								<tr><td>data.sql</td><td class="desc">Seed rows</td></tr>
+								<tr><td>…defer-datasource…</td><td class="desc">Run after JPA</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-flyway">
+						<h2 class="section-title">spring.flyway.*</h2>
+						<table>
+							<thead><tr><th>Property</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>enabled</td><td class="desc">Turn on/off</td></tr>
+								<tr><td>locations</td><td class="desc">Script folders</td></tr>
+								<tr><td>baseline-version</td><td class="desc">Start version</td></tr>
+								<tr><td>clean-disabled</td><td class="desc">Block <code>clean</code></td></tr>
+								<tr><td>validate-on-migrate</td><td class="desc">Checksum check</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Editing <code>V1__…sql</code> after it ran; checksum mismatch fails every startup</li>
+						<li class="note-item"><code>ddl-auto=update</code> in production; it never drops or renames safely</li>
+						<li class="note-item">Mixing Flyway with <code>schema.sql</code>; both try to create the same tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Test migrations against the real database with Testcontainers</li>
+						<li class="note-item">Name files by intent: <code>V7__add_order_status_index.sql</code></li>
+						<li class="note-item">Keep data fixes in migrations too, so every environment gets them</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>V#__desc.sql</code>: versioned migration</li>
+						<li class="note-item"><code>starter-flyway</code>: runs at startup</li>
+						<li class="note-item"><code>ddl-auto=validate</code>: check only</li>
+						<li class="note-item"><code>schema.sql</code> / <code>data.sql</code>: prototypes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-34-jdbcclient.html" class="nav-link prev">JdbcClient &amp; JdbcTemplate</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-36-jpa-entities.html" class="nav-link next">JPA Entities</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

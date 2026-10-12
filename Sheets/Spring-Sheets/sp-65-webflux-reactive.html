@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 65: WebFlux &amp; Reactive Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s65">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 65</div>
+			<h1>WebFlux &amp; Reactive Basics</h1>
+			<div class="sheet-desc">Mono · Flux · map() · flatMap() · subscribe() · reactive @RestController · RouterFunction · when to use</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Reactive Web with WebFlux</h2>
+						<div class="description"><strong>Spring WebFlux</strong> is the non-blocking alternative to Spring MVC, running on <strong>Netty</strong> by default. Handlers return <strong><code>Mono&lt;T&gt;</code></strong> (0–1 item) or <strong><code>Flux&lt;T&gt;</code></strong> (0–N items) from <strong>Project Reactor</strong>, and nothing runs until the framework <strong>subscribes</strong>. Use it for streaming and very high concurrency with reactive drivers; with virtual threads, Spring MVC now covers most other cases.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Add <code>spring-boot-starter-webflux</code> (not together with webmvc as server)</li>
+						<li class="note-item">Every layer must be non-blocking: R2DBC, reactive Mongo/Redis</li>
+						<li class="note-item">Same annotations as MVC: <code>@RestController</code>, <code>@GetMapping</code></li>
+						<li class="note-item">Or use functional <code>RouterFunction</code> endpoints</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Annotated and Functional Endpoints</h2>
+						<pre><code class="language-java">@RestController
+@RequestMapping("/api/products")
+class ProductController {
+    private final ProductRepository repo;          // ReactiveCrudRepository
+
+    @GetMapping("/{id}")
+    Mono&lt;Product&gt; get(@PathVariable String id) {
+        return repo.findById(id)
+            .switchIfEmpty(Mono.error(new ProductNotFound(id)));
+    }
+
+    @GetMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    Flux&lt;Product&gt; stream() {                         // server-sent events
+        return repo.findAll().delayElements(Duration.ofMillis(100));
+    }
+
+    @PostMapping
+    Mono&lt;Product&gt; create(@RequestBody Mono&lt;Product&gt; body) {
+        return body.map(Product::normalize).flatMap(repo::save);
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>switchIfEmpty</code> turns an empty <code>Mono</code> into an error (404)</div>
+							<div class="explain-item"><code>TEXT_EVENT_STREAM</code> streams items as they arrive</div>
+							<div class="explain-item"><code>flatMap</code> chains another async call (the save)</div>
+							<div class="explain-item"><code>RouterFunction</code> beans are the annotation-free alternative</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Ops Table | Vs Table | Create Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-ops">
+						<h2 class="section-title">Reactor Operators</h2>
+						<table>
+							<thead><tr><th>Operator</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>map</td><td class="desc">Transform sync</td></tr>
+								<tr><td>flatMap</td><td class="desc">Transform async</td></tr>
+								<tr><td>filter</td><td class="desc">Keep matching</td></tr>
+								<tr><td>zip</td><td class="desc">Combine sources</td></tr>
+								<tr><td>onErrorResume</td><td class="desc">Fallback</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-vs">
+						<h2 class="section-title">MVC vs WebFlux</h2>
+						<table>
+							<thead><tr><th>Aspect</th><th>MVC / WebFlux</th></tr></thead>
+							<tbody>
+								<tr><td>Server</td><td class="desc">Tomcat / Netty</td></tr>
+								<tr><td>Model</td><td class="desc">Blocking / Non-blocking</td></tr>
+								<tr><td>Data</td><td class="desc">JDBC, JPA / R2DBC</td></tr>
+								<tr><td>Testing</td><td class="desc">MockMvc / WebTestClient</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-create">
+						<h2 class="section-title">Creating Publishers</h2>
+						<table>
+							<thead><tr><th>Factory</th><th>Emits</th></tr></thead>
+							<tbody>
+								<tr><td>Mono.just(x)</td><td class="desc">One value</td></tr>
+								<tr><td>Mono.empty()</td><td class="desc">Nothing</td></tr>
+								<tr><td>Flux.fromIterable</td><td class="desc">List items</td></tr>
+								<tr><td>Flux.interval(d)</td><td class="desc">Ticks</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Calling JDBC/JPA or <code>block()</code> inside a WebFlux handler; it stalls the event loop</li>
+						<li class="note-item">Building a <code>Mono</code> and never returning or subscribing to it</li>
+						<li class="note-item">Choosing WebFlux for a CRUD app that virtual threads would serve fine</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use <code>publishOn(Schedulers.boundedElastic())</code> for unavoidable blocking calls</li>
+						<li class="note-item">Test with <code>WebTestClient</code> and Reactor's <code>StepVerifier</code></li>
+						<li class="note-item">Turn on <code>BlockHound</code> in tests to catch blocking calls</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>Mono</code> (0–1) · <code>Flux</code> (0–N)</li>
+						<li class="note-item">Same annotations, reactive types</li>
+						<li class="note-item">Non-blocking end to end</li>
+						<li class="note-item">Lazy: runs on subscribe</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-64-resilience.html" class="nav-link prev">Retry &amp; Resilience</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-66-packaging-containers.html" class="nav-link next">Packaging &amp; Containers</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

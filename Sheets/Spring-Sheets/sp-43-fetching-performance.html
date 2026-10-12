@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 43: Fetching &amp; N+1 Problems</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s43">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 43</div>
+			<h1>Fetching &amp; N+1 Problems</h1>
+			<div class="sheet-desc">lazy loading · LazyInitializationException · JOIN FETCH · @EntityGraph · open-in-view · spring.jpa.show-sql</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Loading Data Efficiently</h2>
+						<div class="description">Lazy relations load on first access, which triggers the <strong>N+1 problem</strong>: one query for the list plus one per row. Accessing them <strong>after</strong> the transaction ends throws <strong><code>LazyInitializationException</code></strong>. Fix both by fetching what you need up front with <strong><code>JOIN FETCH</code></strong>, an <strong><code>@EntityGraph</code></strong>, or a projection, and watch the SQL Hibernate generates.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Boot's <code>open-in-view</code> is <strong>on</strong> by default and hides lazy errors</li>
+						<li class="note-item">Set <code>spring.jpa.open-in-view=false</code> to catch them early</li>
+						<li class="note-item">Batch fetching loads lazy collections in groups</li>
+						<li class="note-item">Count queries with <code>show-sql</code> or Hibernate statistics</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Fixing N+1</h2>
+						<pre><code class="language-java">// ❌ N+1: 1 query for orders + 1 per order for its customer
+repo.findAll().forEach(o -&gt; System.out.println(o.getCustomer().getName()));
+
+interface OrderRepository extends JpaRepository&lt;Order, Long&gt; {
+
+    @Query("select o from Order o join fetch o.customer where o.status = :s")
+    List&lt;Order&gt; withCustomer(Status s);                 // ✅ one query
+
+    @EntityGraph(attributePaths = {"customer", "lines"})
+    List&lt;Order&gt; findByStatus(Status s);                 // ✅ graph fetch
+
+    @EntityGraph(attributePaths = "lines")
+    Optional&lt;Order&gt; findWithLinesById(long id);
+}</code></pre>
+					</section>
+					<section class="section-code" id="code-props">
+						<h2 class="section-title">Diagnose and Tune</h2>
+						<pre><code class="language-yaml">spring.jpa:
+  open-in-view: false
+  show-sql: true                           # print SQL (dev only)
+  properties.hibernate:
+    format_sql: true
+    default_batch_fetch_size: 50           # IN (…) for lazy loads
+    generate_statistics: true</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>join fetch</code> loads orders and customers in a single SELECT</div>
+							<div class="explain-item"><code>@EntityGraph</code> does the same without writing JPQL</div>
+							<div class="explain-item">Fetching two collections at once causes a cartesian product</div>
+							<div class="explain-item"><code>default_batch_fetch_size</code> turns N queries into N/50</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Fix Table | Errors Table | Logging Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-fix">
+						<h2 class="section-title">Fetching Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>JOIN FETCH</td><td class="desc">Custom JPQL</td></tr>
+								<tr><td>@EntityGraph</td><td class="desc">Derived queries</td></tr>
+								<tr><td>Projection / DTO</td><td class="desc">Read-only lists</td></tr>
+								<tr><td>Batch size</td><td class="desc">Global safety net</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-errors">
+						<h2 class="section-title">Symptoms</h2>
+						<table>
+							<thead><tr><th>Symptom</th><th>Cause</th></tr></thead>
+							<tbody>
+								<tr><td>Many similar SELECTs</td><td class="desc">N+1</td></tr>
+								<tr><td>LazyInitialization…</td><td class="desc">Tx closed</td></tr>
+								<tr><td>Duplicate parents</td><td class="desc">Fetch join list</td></tr>
+								<tr><td>MultipleBagFetch…</td><td class="desc">2 List fetches</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-logging">
+						<h2 class="section-title">Logging SQL</h2>
+						<table>
+							<thead><tr><th>Logger</th><th>Shows</th></tr></thead>
+							<tbody>
+								<tr><td>org.hibernate.SQL</td><td class="desc">Statements</td></tr>
+								<tr><td>…orm.jdbc.bind</td><td class="desc">Bound values</td></tr>
+								<tr><td>…stat</td><td class="desc">Statistics</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Switching relations to EAGER to silence <code>LazyInitializationException</code></li>
+						<li class="note-item">Fetch-joining two <code>List</code> collections → <code>MultipleBagFetchException</code></li>
+						<li class="note-item">Leaving <code>open-in-view</code> on so views fire queries during rendering</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Assert query counts in tests (e.g. Hibernate statistics)</li>
+						<li class="note-item">Use <code>Set</code> for one of two collections you must fetch together</li>
+						<li class="note-item">Fetch for the use case: different repository methods per screen</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">N+1: one query per row</li>
+						<li class="note-item"><code>join fetch</code> / <code>@EntityGraph</code></li>
+						<li class="note-item"><code>open-in-view=false</code></li>
+						<li class="note-item"><code>default_batch_fetch_size</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-42-transactions.html" class="nav-link prev">Transactions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-44-auditing-specifications.html" class="nav-link next">Auditing &amp; Specifications</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

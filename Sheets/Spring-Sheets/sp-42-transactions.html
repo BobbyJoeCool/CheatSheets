@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 42: Transactions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s42">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 42</div>
+			<h1>Transactions</h1>
+			<div class="sheet-desc">@Transactional · propagation · isolation · readOnly · rollbackFor · self-invocation pitfall · TransactionTemplate</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Transactions</h2>
+						<div class="description"><strong><code>@Transactional</code></strong> on a public bean method runs it in a database transaction: it <strong>commits</strong> when the method returns and <strong>rolls back</strong> on a <code>RuntimeException</code>. It works through an AOP proxy, so it only applies to calls <strong>from another bean</strong>. Put it on service methods that change data; use <code>readOnly = true</code> for queries.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Checked exceptions <strong>don't</strong> roll back by default</li>
+						<li class="note-item">Default propagation <code>REQUIRED</code> joins an existing transaction</li>
+						<li class="note-item">Inside a transaction, loaded entities are <strong>auto-saved</strong> on commit</li>
+						<li class="note-item">Spring's <code>@Transactional</code> has more options than Jakarta's</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Declarative and Programmatic</h2>
+						<pre><code class="language-java">@Service
+@Transactional(readOnly = true)                 // default for the class
+class TransferService {
+
+    @Transactional                              // read-write, overrides
+    public void transfer(long from, long to, BigDecimal amount) {
+        Account a = accounts.findById(from).orElseThrow();
+        Account b = accounts.findById(to).orElseThrow();
+        a.withdraw(amount);                     // dirty checking:
+        b.deposit(amount);                      // no save() needed
+    }                                           // commit here
+
+    @Transactional(rollbackFor = IOException.class, timeout = 10)
+    public void importFile(Path p) throws IOException { … }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void audit(String msg) { … }         // own tx, commits alone
+
+    public Balance balance(long id) { … }       // read-only from class
+}
+
+// programmatic
+transactionTemplate.executeWithoutResult(status -&gt; {
+    repo.save(order);
+    if (!stock.reserve(order)) status.setRollbackOnly();
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">A <code>RuntimeException</code> from <code>withdraw</code> rolls back both changes</div>
+							<div class="explain-item"><code>rollbackFor</code> adds checked exceptions to the rollback rule</div>
+							<div class="explain-item"><code>REQUIRES_NEW</code> suspends the outer transaction</div>
+							<div class="explain-item"><code>TransactionTemplate</code> gives fine-grained control in code</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Prop Table | Attrs Table | Pitfalls Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-prop">
+						<h2 class="section-title">Propagation</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Behavior</th></tr></thead>
+							<tbody>
+								<tr><td>REQUIRED</td><td class="desc">Join or start (default)</td></tr>
+								<tr><td>REQUIRES_NEW</td><td class="desc">Always a new tx</td></tr>
+								<tr><td>SUPPORTS</td><td class="desc">Join if present</td></tr>
+								<tr><td>MANDATORY</td><td class="desc">Error if none</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-attrs">
+						<h2 class="section-title">@Transactional Attributes</h2>
+						<table>
+							<thead><tr><th>Attribute</th><th>Sets</th></tr></thead>
+							<tbody>
+								<tr><td>readOnly</td><td class="desc">Optimize reads</td></tr>
+								<tr><td>rollbackFor</td><td class="desc">Extra rollback types</td></tr>
+								<tr><td>noRollbackFor</td><td class="desc">Commit anyway</td></tr>
+								<tr><td>timeout</td><td class="desc">Seconds</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-pitfalls">
+						<h2 class="section-title">Why It Didn't Work</h2>
+						<table>
+							<thead><tr><th>Cause</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>this.method()</td><td class="desc">Call via another bean</td></tr>
+								<tr><td>private method</td><td class="desc">Make it public</td></tr>
+								<tr><td>Checked exception</td><td class="desc"><code>rollbackFor</code></td></tr>
+								<tr><td>Caught exception</td><td class="desc">Rethrow it</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Catching the exception inside the method; the transaction commits</li>
+						<li class="note-item"><code>@Transactional</code> on controllers; keep transactions in the service layer</li>
+						<li class="note-item">Calling a remote API inside a transaction, holding a DB connection</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Class-level <code>readOnly = true</code>, method-level <code>@Transactional</code> for writes</li>
+						<li class="note-item">Set the <code>…transaction</code> logger to <code>DEBUG</code> to see tx boundaries</li>
+						<li class="note-item">Use <code>@TransactionalEventListener</code> for work after commit (Sheet 60)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@Transactional</code>: commit / rollback</li>
+						<li class="note-item">Runtime exceptions roll back</li>
+						<li class="note-item"><code>readOnly = true</code>: queries</li>
+						<li class="note-item">Proxy-based: no self-calls</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-41-paging-sorting.html" class="nav-link prev">Paging &amp; Sorting</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-43-fetching-performance.html" class="nav-link next">Fetching &amp; N+1 Problems</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

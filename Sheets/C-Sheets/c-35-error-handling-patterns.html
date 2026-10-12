@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 35: Error Handling Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>Error Handling Patterns</h1>
+			<div class="sheet-desc">goto cleanup · reverse-order cleanup · out-parameters for results · status enum returns · setjmp / longjmp · [[nodiscard]] (C23)</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Structuring Error Handling</h2>
+						<div class="description">Without exceptions or destructors, C code handles errors with patterns. The most common is <strong>single-exit cleanup</strong>: on failure, <code>goto</code> a label that releases resources in reverse order of acquisition. Return a <strong>status code</strong> and pass results through <strong>out-parameters</strong>. <code>setjmp</code>/<code>longjmp</code> can unwind several call levels at once, but skip all cleanup in between.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">The Linux kernel uses <code>goto</code> cleanup widely</li>
+							<li class="note-item"><code>free(NULL)</code> is a no-op, which simplifies cleanup</li>
+							<li class="note-item"><code>longjmp</code> doesn't free memory or close files</li>
+							<li class="note-item"><code>[[nodiscard]]</code> (C23) warns if a status is ignored</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">goto Cleanup</h2>
+						<pre class="language-c"><code class="language-c">typedef enum { OK = 0, ERR_IO, ERR_NOMEM } status;
+
+[[nodiscard]] status load(const char *path, char **out) {
+    status rc = ERR_IO;
+    char *buf = NULL;
+    FILE *f = fopen(path, "rb");
+    if (!f) goto done;
+
+    buf = malloc(4096);
+    if (!buf) { rc = ERR_NOMEM; goto close_file; }
+    if (fread(buf, 1, 4096, f) == 0) goto free_buf;
+
+    *out = buf;                 // success: hand ownership out
+    buf = NULL;
+    rc = OK;
+free_buf:   free(buf);
+close_file: fclose(f);
+done:       return rc;
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>status</code> enum — one return type for all errors</div>
+							<div class="explain-item">Labels in reverse order — undo only what succeeded</div>
+							<div class="explain-item"><code>*out = buf; buf = NULL;</code> — transfer ownership, skip free</div>
+							<div class="explain-item"><code>[[nodiscard]]</code> — caller must use the result</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Patterns | setjmp / longjmp Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-patterns">
+						<h2 class="section-title">Patterns</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Shape</th></tr></thead>
+							<tbody>
+								<tr><td>status + out-param</td><td class="desc"><code>int parse(const char *s, int *out)</code></td></tr>
+								<tr><td>NULL on failure</td><td class="desc"><code>Foo *foo_new(void)</code></td></tr>
+								<tr><td>error struct</td><td class="desc"><code>bool f(..., Error *err)</code></td></tr>
+								<tr><td>goto cleanup</td><td class="desc">labels release in reverse order</td></tr>
+								<tr><td>setjmp/longjmp</td><td class="desc">non-local exit (parsers, interpreters)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-longjmp">
+						<h2 class="section-title">setjmp / longjmp</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>jmp_buf env;</td><td class="desc">saved context</td></tr>
+								<tr><td>if (setjmp(env) == 0)</td><td class="desc">first return: 0</td></tr>
+								<tr><td>longjmp(env, 1);</td><td class="desc">jump back; <code>setjmp</code> returns 1</td></tr>
+								<tr><td>locals changed after setjmp</td><td class="desc">must be <code>volatile</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Freeing on some error paths but not others; one cleanup block avoids leaks</li>
+							<li class="note-item">Using <code>longjmp</code> across functions that hold <code>malloc</code>ed memory or open files; they leak</li>
+							<li class="note-item">Returning <code>-1</code> from one function and <code>0</code>-for-error from another in the same API</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Initialize every resource to <code>NULL</code> at the top so cleanup can run unconditionally</li>
+							<li class="note-item">Document which out-parameters are set on failure (ideally: none)</li>
+							<li class="note-item">Provide <code>const char *status_str(status s)</code> for readable messages</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>goto cleanup</code> — single exit, reverse-order release</li>
+							<li class="note-item">Status return + out-params</li>
+							<li class="note-item"><code>setjmp</code>/<code>longjmp</code> — unwind, no cleanup</li>
+							<li class="note-item">Be consistent across your API</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-34-assert-static-assert.html" class="nav-link prev">assert, static_assert &amp; exit</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-36-functions-basics.html" class="nav-link next">Defining &amp; Calling Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+	</body>
+</html>

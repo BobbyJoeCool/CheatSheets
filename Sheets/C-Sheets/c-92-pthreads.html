@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 92: POSIX Threads</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s92">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 92</div>
+			<h1>POSIX Threads</h1>
+			<div class="sheet-desc">pthread_create / pthread_join · pthread_mutex_t · condition variables · pthread_detach · read-write locks · -pthread</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">POSIX Threads</h2>
+						<div class="description"><strong>pthreads</strong> is the threading API on Linux, macOS and other Unix systems. It mirrors C11 threads with more features: attributes for stack size and detach state, read-write locks, barriers and thread cancellation. Thread functions take and return <code>void *</code>. Compile and link with <code>-pthread</code>. Most pthread functions <strong>return</strong> an error number instead of setting <code>errno</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Always wait on a condvar inside a <code>while</code> loop</li>
+							<li class="note-item">Spurious wakeups are allowed</li>
+							<li class="note-item">Lock order must be consistent to avoid deadlock</li>
+							<li class="note-item">Windows: use C11 threads or Win32 APIs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Producer / Consumer</h2>
+						<pre class="language-c"><code class="language-c">#include &lt;pthread.h&gt;
+static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  ready = PTHREAD_COND_INITIALIZER;
+static int queue_len = 0;
+void *producer(void *arg) {
+    pthread_mutex_lock(&amp;m);
+    queue_len++;
+    pthread_cond_signal(&amp;ready);        // wake a waiter
+    pthread_mutex_unlock(&amp;m);
+    return NULL;
+}
+void *consumer(void *arg) {
+    pthread_mutex_lock(&amp;m);
+    while (queue_len == 0)              // loop: spurious wakeups
+        pthread_cond_wait(&amp;ready, &amp;m);  // unlocks m while waiting
+    queue_len--;
+    pthread_mutex_unlock(&amp;m);
+    return NULL;
+}
+pthread_t p, c;
+pthread_create(&amp;c, NULL, consumer, NULL);
+pthread_create(&amp;p, NULL, producer, NULL);
+pthread_join(p, NULL);  pthread_join(c, NULL);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>PTHREAD_MUTEX_INITIALIZER</code> — static init, no <code>init</code> call</div>
+							<div class="explain-item"><code>pthread_cond_signal</code> — wake one waiting thread</div>
+							<div class="explain-item"><code>while (cond) pthread_cond_wait(...)</code> — the only correct pattern</div>
+							<div class="explain-item"><code>pthread_cond_wait</code> — atomically unlocks, sleeps, relocks</div>
+							<div class="explain-item"><code>pthread_create(&amp;t, attr, fn, arg)</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Core API | pthreads ↔ C11 Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-api">
+						<h2 class="section-title">Core API</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>pthread_create / join</td><td class="desc">start / wait</td></tr>
+								<tr><td>pthread_detach</td><td class="desc">auto-cleanup on exit</td></tr>
+								<tr><td>pthread_mutex_lock / unlock</td><td class="desc">mutex</td></tr>
+								<tr><td>pthread_cond_wait / signal</td><td class="desc">condition variable</td></tr>
+								<tr><td>pthread_rwlock_rdlock / wrlock</td><td class="desc">many readers, one writer</td></tr>
+								<tr><td>pthread_once</td><td class="desc">one-time init</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-c11">
+						<h2 class="section-title">pthreads ↔ C11</h2>
+						<table>
+							<thead><tr><th>pthreads</th><th>C11</th></tr></thead>
+							<tbody>
+								<tr><td>pthread_t</td><td class="desc"><code>thrd_t</code></td></tr>
+								<tr><td>pthread_mutex_t</td><td class="desc"><code>mtx_t</code></td></tr>
+								<tr><td>pthread_cond_t</td><td class="desc"><code>cnd_t</code></td></tr>
+								<tr><td>pthread_key_t</td><td class="desc"><code>tss_t</code> / <code>thread_local</code></td></tr>
+								<tr><td>void *(*)(void *)</td><td class="desc"><code>int (*)(void *)</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>if</code> instead of <code>while</code> around <code>pthread_cond_wait</code></li>
+							<li class="note-item">Checking <code>errno</code> after a pthread call; the error is the return value</li>
+							<li class="note-item">Locking two mutexes in different orders in different threads: deadlock</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Compile and link with <code>-pthread</code>, not just <code>-lpthread</code></li>
+							<li class="note-item">Keep critical sections short; never call slow I/O while holding a lock</li>
+							<li class="note-item">Run under ThreadSanitizer (<code>-fsanitize=thread</code>) in CI</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>pthread_create</code> / <code>pthread_join</code></li>
+							<li class="note-item">mutex + condvar in a <code>while</code> loop</li>
+							<li class="note-item">Errors are return values</li>
+							<li class="note-item">Build with <code>-pthread</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-91-c11-threads.html" class="nav-link prev">C11 Threads</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-93-atomics.html" class="nav-link next">Atomics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+	</body>
+</html>

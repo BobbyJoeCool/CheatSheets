@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 40: @Query &amp; Projections</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s40">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 40</div>
+			<h1>@Query &amp; Projections</h1>
+			<div class="sheet-desc">@Query JPQL · nativeQuery · named params · @Modifying · interface projections · DTO / record projections</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Writing Your Own Queries</h2>
+						<div class="description"><strong><code>@Query</code></strong> puts JPQL (or native SQL with <code>nativeQuery = true</code>) on a repository method. Bind values with <strong>named parameters</strong> (<code>:email</code>). Add <strong><code>@Modifying</code></strong> for <code>UPDATE</code> / <code>DELETE</code>. Return <strong>projections</strong> to fetch only the columns you need: an interface with getters, or a <strong>record</strong> (DTO) built by the query.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">JPQL uses entity and field names, not tables and columns</li>
+						<li class="note-item">Queries are validated at startup (JPQL only)</li>
+						<li class="note-item"><code>@Modifying</code> bypasses the persistence context; set <code>clearAutomatically</code></li>
+						<li class="note-item">Record projections are matched by constructor parameter names</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">JPQL, Native and Projections</h2>
+						<pre><code class="language-java">interface OrderRepository extends JpaRepository&lt;Order, Long&gt; {
+
+    @Query("""
+        select o from Order o
+        where o.customer.email = :email and o.total &gt; :min""")
+    List&lt;Order&gt; bigOrders(String email, BigDecimal min);
+
+    @Query(value = "select * from orders where created_at &gt; :since",
+           nativeQuery = true)
+    List&lt;Order&gt; since(Instant since);
+
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("update Order o set o.status = :to where o.status = :from")
+    int moveAll(Status from, Status to);                 // rows updated
+
+    // interface projection
+    interface OrderSummary { Long getId(); BigDecimal getTotal(); }
+    List&lt;OrderSummary&gt; findByStatus(Status s);
+
+    // record (DTO) projection
+    record CustomerTotal(String email, BigDecimal total) { }
+    @Query("select new com.example.CustomerTotal(c.email, sum(o.total)) " +
+           "from Order o join o.customer c group by c.email")
+    List&lt;CustomerTotal&gt; totals();
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Named params bind by parameter name (<code>-parameters</code> flag)</div>
+							<div class="explain-item"><code>@Modifying</code> methods return affected-row count</div>
+							<div class="explain-item">Interface projection: only <code>id</code>, <code>total</code> are selected</div>
+							<div class="explain-item"><code>new …CustomerTotal(…)</code>: JPQL constructor expression</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Jpql Table | Params Table | Proj Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-jpql">
+						<h2 class="section-title">JPQL Building Blocks</h2>
+						<table>
+							<thead><tr><th>Clause</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>select</td><td class="desc"><code>select o from Order o</code></td></tr>
+								<tr><td>join</td><td class="desc"><code>join o.customer c</code></td></tr>
+								<tr><td>join fetch</td><td class="desc">Load relation now</td></tr>
+								<tr><td>where</td><td class="desc"><code>o.total &gt; :min</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-params">
+						<h2 class="section-title">Parameters</h2>
+						<table>
+							<thead><tr><th>Syntax</th><th>Binds</th></tr></thead>
+							<tbody>
+								<tr><td>:name</td><td class="desc">By name</td></tr>
+								<tr><td>?1</td><td class="desc">By position</td></tr>
+								<tr><td>:#{#c.id}</td><td class="desc">SpEL</td></tr>
+								<tr><td>Collection</td><td class="desc"><code>in :ids</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-proj">
+						<h2 class="section-title">Projection Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Fetches</th></tr></thead>
+							<tbody>
+								<tr><td>Interface</td><td class="desc">Getters only</td></tr>
+								<tr><td>Record / DTO</td><td class="desc">Constructor args</td></tr>
+								<tr><td>Dynamic &lt;T&gt;</td><td class="desc"><code>Class&lt;T&gt; type</code> param</td></tr>
+								<tr><td>Entity</td><td class="desc">Everything</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Table/column names in JPQL; it expects entity/field names</li>
+						<li class="note-item"><code>@Modifying</code> without a transaction → <code>TransactionRequiredException</code></li>
+						<li class="note-item">Native queries tied to one database, then switching to H2 for tests</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use text blocks (<code>"""…"""</code>) for long queries</li>
+						<li class="note-item">Return projections for list screens; load entities only to change them</li>
+						<li class="note-item">Name the parameters exactly like the <code>:placeholders</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@Query("jpql")</code>: custom query</li>
+						<li class="note-item"><code>nativeQuery = true</code>: raw SQL</li>
+						<li class="note-item"><code>@Modifying</code>: update / delete</li>
+						<li class="note-item">Projections: fetch less</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-39-derived-queries.html" class="nav-link prev">Derived Query Methods</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-41-paging-sorting.html" class="nav-link next">Paging &amp; Sorting</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

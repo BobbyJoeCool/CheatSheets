@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 62: @Async &amp; Virtual Threads</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s62">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 62</div>
+			<h1>@Async &amp; Virtual Threads</h1>
+			<div class="sheet-desc">@EnableAsync · @Async · CompletableFuture · TaskExecutor · spring.threads.virtual.enabled · exception handling</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Async Work and Virtual Threads</h2>
+						<div class="description"><strong><code>@Async</code></strong> runs a method on a <strong>task executor</strong> instead of the caller's thread; it returns <code>void</code> or a <strong><code>CompletableFuture</code></strong>. Enable it with <strong><code>@EnableAsync</code></strong>. On Java 21+, setting <strong><code>spring.threads.virtual.enabled=true</code></strong> switches Tomcat, <code>@Async</code>, <code>@Scheduled</code> and other executors to <strong>virtual threads</strong>, so blocking code scales without reactive APIs.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Boot's executor is <code>applicationTaskExecutor</code></li>
+						<li class="note-item"><code>@Async</code> works through a proxy: no self-calls</li>
+						<li class="note-item">Exceptions from <code>void</code> methods go to an <code>AsyncUncaughtExceptionHandler</code></li>
+						<li class="note-item">Security and MDC context don't cross threads by default</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">@Async and Futures</h2>
+						<pre><code class="language-java">@Configuration
+@EnableAsync
+class AsyncConfig { }
+
+@Service
+class ReportService {
+
+    @Async
+    public CompletableFuture&lt;Report&gt; build(long id) {
+        return CompletableFuture.completedFuture(generate(id));   // slow work
+    }
+
+    @Async
+    public void emailLater(String to) { mail.send(to); }         // fire &amp; forget
+}
+
+// caller: run three in parallel, then wait for all
+var a = reports.build(1);
+var b = reports.build(2);
+var c = reports.build(3);
+CompletableFuture.allOf(a, b, c).join();
+List&lt;Report&gt; all = Stream.of(a, b, c).map(CompletableFuture::join).toList();</code></pre>
+					</section>
+					<section class="section-code" id="code-props">
+						<h2 class="section-title">Turn On Virtual Threads</h2>
+						<pre><code class="language-properties">spring.threads.virtual.enabled=true     # Java 21+</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Each <code>build()</code> call returns immediately with a future</div>
+							<div class="explain-item"><code>allOf(...).join()</code> waits until all three finish</div>
+							<div class="explain-item">Return <code>CompletableFuture</code> so callers see exceptions</div>
+							<div class="explain-item">With virtual threads, <code>@Async</code> uses a new virtual thread per task</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Returns Table | Props Table | Vthreads Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-returns">
+						<h2 class="section-title">@Async Return Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Caller Gets</th></tr></thead>
+							<tbody>
+								<tr><td>void</td><td class="desc">Nothing</td></tr>
+								<tr><td>CompletableFuture&lt;T&gt;</td><td class="desc">Result later</td></tr>
+								<tr><td>Future&lt;T&gt;</td><td class="desc">Older API</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-props">
+						<h2 class="section-title">spring.task.execution.*</h2>
+						<table>
+							<thead><tr><th>Property</th><th>Sets</th></tr></thead>
+							<tbody>
+								<tr><td>pool.core-size</td><td class="desc">Base threads</td></tr>
+								<tr><td>pool.max-size</td><td class="desc">Max threads</td></tr>
+								<tr><td>pool.queue-capacity</td><td class="desc">Queue size</td></tr>
+								<tr><td>thread-name-prefix</td><td class="desc">Thread names</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-vthreads">
+						<h2 class="section-title">Virtual Threads</h2>
+						<table>
+							<thead><tr><th>Good For</th><th>Watch Out</th></tr></thead>
+							<tbody>
+								<tr><td>Blocking I/O</td><td class="desc">CPU-heavy work</td></tr>
+								<tr><td>Many requests</td><td class="desc"><code>synchronized</code> pinning</td></tr>
+								<tr><td>Simple code</td><td class="desc">Unbounded concurrency</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Calling an <code>@Async</code> method from the same class; it runs synchronously</li>
+						<li class="note-item"><code>void</code> async methods that fail silently; return a future or add a handler</li>
+						<li class="note-item">Unlimited parallel calls to a downstream service on virtual threads</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Cap concurrency with <code>@ConcurrencyLimit</code> (Sheet 64)</li>
+						<li class="note-item">Copy MDC/security context with a <code>TaskDecorator</code></li>
+						<li class="note-item">Use <code>@Async("executorName")</code> to pick a dedicated pool</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@EnableAsync</code> + <code>@Async</code></li>
+						<li class="note-item"><code>CompletableFuture&lt;T&gt;</code>: async result</li>
+						<li class="note-item"><code>virtual.enabled=true</code>: Java 21+</li>
+						<li class="note-item">Proxy rules: no self-calls</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-61-scheduling.html" class="nav-link prev">Scheduling</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-63-caching.html" class="nav-link next">Caching</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-properties.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 41: Paging &amp; Sorting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s41">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 41</div>
+			<h1>Paging &amp; Sorting</h1>
+			<div class="sheet-desc">Pageable · PageRequest.of() · Sort · Page&lt;T&gt; · Slice · Window / ScrollPosition · ?page=&amp;size=&amp;sort=</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Paging Through Results</h2>
+						<div class="description">Pass a <strong><code>Pageable</code></strong> to a repository method and get a <strong><code>Page&lt;T&gt;</code></strong> (content + total count), a <strong><code>Slice&lt;T&gt;</code></strong> (content + has-next, no count) or a <strong><code>Window&lt;T&gt;</code></strong> for <strong>keyset scrolling</strong>. Build one with <code>PageRequest.of(page, size, sort)</code>. In controllers, Spring binds <code>?page=&amp;size=&amp;sort=</code> straight into a <code>Pageable</code> parameter.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Pages are <strong>zero-based</strong>: <code>page=0</code> is the first page</li>
+						<li class="note-item"><code>Page</code> runs an extra <code>count(*)</code> query; <code>Slice</code> doesn't</li>
+						<li class="note-item">Keyset scrolling stays fast on deep pages</li>
+						<li class="note-item">Cap page size with <code>spring.data.web.pageable.max-page-size</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Repository and Controller</h2>
+						<pre><code class="language-java">interface ProductRepository extends JpaRepository&lt;Product, Long&gt; {
+    Page&lt;Product&gt; findByCategory(String category, Pageable pageable);
+    Slice&lt;Product&gt; findByActiveTrue(Pageable pageable);
+    Window&lt;Product&gt; findTop20ByOrderByIdAsc(ScrollPosition position);
+}
+
+@GetMapping("/products")                    // ?page=2&amp;size=20&amp;sort=price,desc
+PagedModel&lt;Product&gt; list(@RequestParam String category,
+        @PageableDefault(size = 20, sort = "name") Pageable pageable) {
+    return new PagedModel&lt;&gt;(repo.findByCategory(category, pageable));
+}
+
+// building one yourself
+Pageable p = PageRequest.of(0, 50, Sort.by("price").descending()
+                                        .and(Sort.by("name")));
+
+// keyset scrolling
+Window&lt;Product&gt; w = repo.findTop20ByOrderByIdAsc(ScrollPosition.keyset());
+while (!w.isEmpty()) {
+    w.forEach(this::export);
+    if (!w.hasNext()) break;
+    w = repo.findTop20ByOrderByIdAsc(w.positionAt(w.size() - 1));
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@PageableDefault</code> applies when the request has no params</div>
+							<div class="explain-item"><code>PagedModel</code> gives stable JSON instead of serializing <code>PageImpl</code></div>
+							<div class="explain-item"><code>Sort.by(…).descending().and(…)</code> chains sort orders</div>
+							<div class="explain-item"><code>positionAt()</code> remembers where the last window ended</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Types Table | Page Table | Web Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-types">
+						<h2 class="section-title">Result Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Gives</th></tr></thead>
+							<tbody>
+								<tr><td>Page&lt;T&gt;</td><td class="desc">Content + totals</td></tr>
+								<tr><td>Slice&lt;T&gt;</td><td class="desc">Content + hasNext</td></tr>
+								<tr><td>Window&lt;T&gt;</td><td class="desc">Keyset / offset scroll</td></tr>
+								<tr><td>List&lt;T&gt;</td><td class="desc">Just content</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-page">
+						<h2 class="section-title">Page Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>getContent()</td><td class="desc"><code>List&lt;T&gt;</code></td></tr>
+								<tr><td>getTotalElements()</td><td class="desc">Row count</td></tr>
+								<tr><td>getTotalPages()</td><td class="desc">Page count</td></tr>
+								<tr><td>hasNext()</td><td class="desc"><code>boolean</code></td></tr>
+								<tr><td>map(fn)</td><td class="desc"><code>Page&lt;R&gt;</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-web">
+						<h2 class="section-title">Request Params</h2>
+						<table>
+							<thead><tr><th>Param</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>page</td><td class="desc"><code>page=0</code></td></tr>
+								<tr><td>size</td><td class="desc"><code>size=20</code></td></tr>
+								<tr><td>sort</td><td class="desc"><code>sort=price,desc</code></td></tr>
+								<tr><td>sort (repeat)</td><td class="desc"><code>&amp;sort=name</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Assuming <code>page=1</code> is the first page; it's the second</li>
+						<li class="note-item">Returning <code>Page&lt;Entity&gt;</code> directly; JSON shape and lazy fields cause trouble</li>
+						<li class="note-item">Deep offset pages on huge tables; use keyset scrolling</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use <code>Slice</code> for infinite scroll; skip the count query</li>
+						<li class="note-item">Set <code>spring.data.web.pageable.one-indexed-parameters=true</code> for 1-based APIs</li>
+						<li class="note-item">Map pages to DTOs: <code>page.map(ProductView::from)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>Pageable</code> param → <code>Page&lt;T&gt;</code></li>
+						<li class="note-item"><code>PageRequest.of(page, size, sort)</code></li>
+						<li class="note-item"><code>Slice</code>: no count query</li>
+						<li class="note-item"><code>Window</code> + <code>ScrollPosition</code>: keyset</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-40-custom-queries.html" class="nav-link prev">@Query &amp; Projections</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-42-transactions.html" class="nav-link next">Transactions</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

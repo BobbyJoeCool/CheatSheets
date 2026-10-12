@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 49: Pointer Pitfalls</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s49">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 49</div>
+			<h1>Pointer Pitfalls</h1>
+			<div class="sheet-desc">dangling pointers · wild pointers · NULL deref · use-after-free · double free · strict aliasing · out-of-bounds</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Pointer Bugs</h2>
+						<div class="description">Pointer bugs compile cleanly and often seem to work, then crash or corrupt data later. The main families are pointers to memory that's gone (<strong>dangling</strong>, <strong>use-after-free</strong>), pointers that were never valid (<strong>wild</strong>, <strong>NULL</strong>), accessing outside an object (<strong>out-of-bounds</strong>), freeing incorrectly (<strong>double free</strong>, freeing non-heap memory), and reading memory through the wrong type (<strong>strict aliasing</strong>).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Detect with</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>-fsanitize=address</code> — most of these at runtime</li>
+							<li class="note-item"><code>-Wall -Wextra</code> — some at compile time</li>
+							<li class="note-item">Valgrind (Linux) — no rebuild needed</li>
+							<li class="note-item"><code>clang --analyze</code> / <code>gcc -fanalyzer</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Spot the Bug</h2>
+						<pre class="language-c"><code class="language-c">int *p = malloc(4 * sizeof *p);
+free(p);
+p[0] = 1;                  // use-after-free
+free(p);                   // double free
+
+int *q;                    // wild: uninitialized
+*q = 3;
+
+int a[4];
+a[4] = 0;                  // out of bounds (valid: 0..3)
+
+char *s = get_name();      // may return NULL
+printf("%zu\n", strlen(s)); // NULL deref if it did
+
+int *dangle(void) { int x = 1; return &amp;x; }   // dangling
+
+float f = 1.0f;
+int bits = *(int *)&amp;f;     // strict aliasing violation
+int ok;  memcpy(&amp;ok, &amp;f, sizeof ok);           // correct way</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">After <code>free</code>, set <code>p = NULL</code> to make reuse crash predictably</div>
+							<div class="explain-item"><code>a[4]</code> — one past the end; writes over a neighbor</div>
+							<div class="explain-item">Check returns that may be <code>NULL</code></div>
+							<div class="explain-item"><code>return &amp;x</code> — <code>x</code> dies at return</div>
+							<div class="explain-item"><code>memcpy</code> — the legal way to reinterpret bytes</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Bug Families | ASan Report Names Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-bugs">
+						<h2 class="section-title">Bug Families</h2>
+						<table>
+							<thead><tr><th>Bug</th><th>Typical cause</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>use-after-free</td><td class="desc">pointer kept after <code>free</code></td><td class="desc"><code>p = NULL</code> after free</td></tr>
+								<tr><td>double free</td><td class="desc">two owners free it</td><td class="desc">single clear owner</td></tr>
+								<tr><td>dangling</td><td class="desc">address of a local returned</td><td class="desc">heap or caller buffer</td></tr>
+								<tr><td>out-of-bounds</td><td class="desc"><code>&lt;=</code> loop, bad length</td><td class="desc">half-open ranges, <code>size_t</code></td></tr>
+								<tr><td>NULL deref</td><td class="desc">unchecked <code>malloc</code>/lookup</td><td class="desc">check before use</td></tr>
+								<tr><td>wild pointer</td><td class="desc">uninitialized</td><td class="desc">initialize to <code>NULL</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-asan">
+						<h2 class="section-title">ASan Report Names</h2>
+						<table>
+							<thead><tr><th>Message</th><th>Bug</th></tr></thead>
+							<tbody>
+								<tr><td>heap-use-after-free</td><td class="desc">use-after-free</td></tr>
+								<tr><td>heap-buffer-overflow</td><td class="desc">out-of-bounds (heap)</td></tr>
+								<tr><td>stack-buffer-overflow</td><td class="desc">out-of-bounds (stack)</td></tr>
+								<tr><td>attempting double-free</td><td class="desc">double free</td></tr>
+								<tr><td>SEGV on unknown address 0x0</td><td class="desc">NULL deref</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">"It works on my machine": UB can pass tests and fail in production or after a compiler upgrade</li>
+							<li class="note-item">Freeing memory you didn't <code>malloc</code> (stack arrays, string literals, <code>p + 1</code>)</li>
+							<li class="note-item">Type punning through pointer casts instead of <code>memcpy</code> or a <code>union</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Run every test suite under ASan + UBSan at least in CI</li>
+							<li class="note-item">Decide and document who owns each pointer</li>
+							<li class="note-item">Keep pointer lifetimes short and scopes small</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Dangling / use-after-free — memory gone</li>
+							<li class="note-item">Wild / NULL — never valid</li>
+							<li class="note-item">Out-of-bounds — past the object</li>
+							<li class="note-item">ASan catches most at runtime</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-48-const-void-pointers.html" class="nav-link prev">const &amp; void Pointers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-50-malloc-free.html" class="nav-link next">malloc &amp; free</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+	</body>
+</html>

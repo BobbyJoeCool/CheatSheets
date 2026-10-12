@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 94: Signals &amp; Processes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s94">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 94</div>
+			<h1>Signals &amp; Processes</h1>
+			<div class="sheet-desc">signal / sigaction (POSIX) · SIGINT / SIGTERM · volatile sig_atomic_t · raise · fork / exec / waitpid · exit status</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Signals &amp; Processes</h2>
+						<div class="description">A <strong>signal</strong> is an asynchronous notification sent to a process: <code>SIGINT</code> on Ctrl-C, <code>SIGTERM</code> to request shutdown, <code>SIGSEGV</code> on a bad memory access. Standard C offers <code>signal</code> and <code>raise</code>; POSIX adds the more reliable <code>sigaction</code>. Handlers may only do very little: set a <code>volatile sig_atomic_t</code> flag and return. POSIX also creates processes with <code>fork</code>, <code>exec*</code> and <code>waitpid</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Only async-signal-safe functions in handlers</li>
+							<li class="note-item"><code>printf</code> and <code>malloc</code> are <strong>not</strong> signal-safe</li>
+							<li class="note-item"><code>SIGKILL</code> / <code>SIGSTOP</code> can't be caught</li>
+							<li class="note-item"><code>fork</code> duplicates the process; <code>exec</code> replaces it</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Graceful Shutdown &amp; Child Process</h2>
+						<pre class="language-c"><code class="language-c">#include &lt;signal.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/wait.h&gt;
+
+static volatile sig_atomic_t stop = 0;
+static void on_sigint(int sig) { (void)sig; stop = 1; }   // just set a flag
+
+struct sigaction sa = {0};
+sa.sa_handler = on_sigint;
+sigaction(SIGINT, &amp;sa, NULL);           // POSIX; signal() is simpler
+while (!stop) do_work();
+puts("shutting down");                  // safe here, not in handler
+
+pid_t pid = fork();
+if (pid == 0) {                         // child
+    execlp("ls", "ls", "-l", (char *)NULL);
+    _exit(127);                         // only reached if exec failed
+}
+int status;
+waitpid(pid, &amp;status, 0);               // parent waits
+if (WIFEXITED(status)) printf("exit %d\n", WEXITSTATUS(status));</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>volatile sig_atomic_t</code> — the only portable handler-shared type</div>
+							<div class="explain-item"><code>sigaction</code> — well-defined semantics across systems</div>
+							<div class="explain-item">Main loop checks the flag and cleans up normally</div>
+							<div class="explain-item"><code>fork</code> returns 0 in the child, child's pid in the parent</div>
+							<div class="explain-item"><code>WEXITSTATUS</code> — child's exit code</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Common Signals | Process Calls (POSIX) Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-signals">
+						<h2 class="section-title">Common Signals</h2>
+						<table>
+							<thead><tr><th>Signal</th><th>Default</th><th>Cause</th></tr></thead>
+							<tbody>
+								<tr><td>SIGINT</td><td class="desc">terminate</td><td class="desc">Ctrl-C</td></tr>
+								<tr><td>SIGTERM</td><td class="desc">terminate</td><td class="desc"><code>kill pid</code></td></tr>
+								<tr><td>SIGSEGV</td><td class="desc">core dump</td><td class="desc">invalid memory access</td></tr>
+								<tr><td>SIGABRT</td><td class="desc">core dump</td><td class="desc"><code>abort()</code> / failed <code>assert</code></td></tr>
+								<tr><td>SIGPIPE</td><td class="desc">terminate</td><td class="desc">write to closed pipe/socket</td></tr>
+								<tr><td>SIGCHLD</td><td class="desc">ignore</td><td class="desc">child exited</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-proc">
+						<h2 class="section-title">Process Calls (POSIX)</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>fork()</td><td class="desc">clone the process</td></tr>
+								<tr><td>execvp(file, argv)</td><td class="desc">replace with a program</td></tr>
+								<tr><td>waitpid(pid, &amp;st, 0)</td><td class="desc">wait for a child</td></tr>
+								<tr><td>kill(pid, sig)</td><td class="desc">send a signal</td></tr>
+								<tr><td>getpid() / getppid()</td><td class="desc">own / parent id</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>printf</code>, <code>malloc</code> or <code>exit</code> inside a signal handler; use a flag (or <code>_exit</code>/<code>write</code>)</li>
+							<li class="note-item">Not reaping children with <code>waitpid</code>; they linger as zombies</li>
+							<li class="note-item">Ignoring <code>SIGPIPE</code> in network code, so a closed socket kills the program</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>posix_spawn</code> for simple "run this program" cases</li>
+							<li class="note-item"><code>signal(SIGPIPE, SIG_IGN)</code> and handle <code>EPIPE</code> instead</li>
+							<li class="note-item">For complex signal handling, use <code>signalfd</code> (Linux) or a self-pipe</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Handlers: set a <code>sig_atomic_t</code> flag only</li>
+							<li class="note-item"><code>sigaction</code> over <code>signal</code></li>
+							<li class="note-item"><code>fork</code> + <code>exec</code> + <code>waitpid</code></li>
+							<li class="note-item"><code>SIGKILL</code> can't be caught</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-93-atomics.html" class="nav-link prev">Atomics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-95-generic-programming.html" class="nav-link next">Generic Programming</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+	</body>
+</html>

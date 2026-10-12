@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 10: Resolving Ambiguity</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s10">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>Resolving Ambiguity</h1>
+			<div class="sheet-desc">@Qualifier · @Primary · @Fallback · bean name matching · NoUniqueBeanDefinitionException · custom qualifiers</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">When Several Beans Match</h2>
+						<div class="description">Injection is by <strong>type</strong>. When two beans share a type, Spring needs a tie-breaker or startup fails with <code>NoUniqueBeanDefinitionException</code>. Mark the default with <strong><code>@Primary</code></strong>, pick one explicitly with <strong><code>@Qualifier</code></strong>, demote a bean with <strong><code>@Fallback</code></strong> (6.2+), or let the <strong>parameter name</strong> match the bean name.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Resolution order: <code>@Qualifier</code> → <code>@Primary</code> → non-<code>@Fallback</code> → name</li>
+						<li class="note-item"><code>@Qualifier</code> on the bean and on the injection point must match</li>
+						<li class="note-item">Parameter-name matching needs the <code>-parameters</code> compiler flag (Boot sets it)</li>
+						<li class="note-item"><code>List&lt;T&gt;</code> injection sidesteps the problem by taking all of them</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Three Ways to Choose</h2>
+						<pre><code class="language-java">interface Notifier { void send(String msg); }
+
+@Component @Primary                         // default choice
+class EmailNotifier implements Notifier { /* ... */ }
+
+@Component @Qualifier("sms")                // tagged
+class SmsNotifier implements Notifier { /* ... */ }
+
+@Component @Fallback                        // used only if nothing else
+class LogNotifier implements Notifier { /* ... */ }
+
+@Service
+class AlertService {
+    AlertService(Notifier main,                       // EmailNotifier
+                 @Qualifier("sms") Notifier urgent,   // SmsNotifier
+                 Notifier logNotifier) {              // by name
+    }
+}</code></pre>
+					</section>
+					<section class="section-code" id="code-custom">
+						<h2 class="section-title">Custom Qualifier Annotation</h2>
+						<pre><code class="language-java">@Qualifier @Retention(RUNTIME) @Target({TYPE, PARAMETER, METHOD})
+@interface Urgent { }        // then: @Urgent Notifier n</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>main</code> gets the <code>@Primary</code> bean</div>
+							<div class="explain-item"><code>@Qualifier("sms")</code> matches the bean tagged <code>sms</code> (or named <code>sms</code>)</div>
+							<div class="explain-item"><code>logNotifier</code> matches the bean <strong>name</strong> of <code>LogNotifier</code></div>
+							<div class="explain-item">A custom qualifier is type-safe; no typo-prone strings</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Annotations Table | Errors Table | Where Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-annotations">
+						<h2 class="section-title">Tie-Breakers</h2>
+						<table>
+							<thead><tr><th>Annotation</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>@Primary</td><td class="desc">Default when ambiguous</td></tr>
+								<tr><td>@Qualifier("x")</td><td class="desc">Select by tag/name</td></tr>
+								<tr><td>@Fallback</td><td class="desc">Lowest priority (6.2)</td></tr>
+								<tr><td>@Priority(n)</td><td class="desc">Lower n wins</td></tr>
+								<tr><td>@Order(n)</td><td class="desc">Order in <code>List&lt;T&gt;</code> only</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-errors">
+						<h2 class="section-title">Errors You'll See</h2>
+						<table>
+							<thead><tr><th>Exception</th><th>Cause</th></tr></thead>
+							<tbody>
+								<tr><td>NoUniqueBean…</td><td class="desc">2+ beans, no winner</td></tr>
+								<tr><td>NoSuchBean…</td><td class="desc">No bean of that type</td></tr>
+								<tr><td>UnsatisfiedDep…</td><td class="desc">Wrapper for the above</td></tr>
+								<tr><td>BeanCurrentlyIn…</td><td class="desc">Circular dependency</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-where">
+						<h2 class="section-title">@Qualifier Placement</h2>
+						<table>
+							<thead><tr><th>On</th><th>Means</th></tr></thead>
+							<tbody>
+								<tr><td>Class</td><td class="desc">Tag this bean</td></tr>
+								<tr><td>@Bean method</td><td class="desc">Tag that bean</td></tr>
+								<tr><td>Constructor param</td><td class="desc">Want that tag</td></tr>
+								<tr><td>Field</td><td class="desc">Want that tag</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Two <code>@Primary</code> beans of one type; you're back to ambiguity</li>
+						<li class="note-item">Using <code>@Order</code> to pick a single bean; it only sorts collections</li>
+						<li class="note-item">Relying on parameter names, then renaming a bean in a refactor</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Prefer one <code>@Primary</code> + <code>@Qualifier</code> for the exceptions</li>
+						<li class="note-item">Use custom qualifier annotations in larger codebases</li>
+						<li class="note-item">Use <code>@Fallback</code> for library defaults that apps may override</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@Primary</code>: default bean</li>
+						<li class="note-item"><code>@Qualifier</code>: pick explicitly</li>
+						<li class="note-item"><code>@Fallback</code>: only if nothing else</li>
+						<li class="note-item">Param name = bean name: last resort</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-09-configuration-bean.html" class="nav-link prev">@Configuration &amp; @Bean</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-11-bean-scopes.html" class="nav-link next">Bean Scopes</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

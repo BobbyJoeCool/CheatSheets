@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 30: RestClient</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>RestClient</h1>
+			<div class="sheet-desc">RestClient.builder() · get().uri() · retrieve() · body() · toEntity() · onStatus() · RestClient.Builder bean</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Calling HTTP APIs</h2>
+						<div class="description"><strong><code>RestClient</code></strong> is Spring's synchronous HTTP client with a fluent API. Inject Boot's pre-configured <strong><code>RestClient.Builder</code></strong>, set a base URL and default headers, and build one client per remote service. Each call chains <strong>method → URI → headers/body → <code>retrieve()</code> → <code>body()</code></strong>; 4xx/5xx responses throw unless handled by <strong><code>onStatus()</code></strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">The builder is a <strong>prototype</strong> bean: each injection is a fresh copy</li>
+						<li class="note-item"><code>RestTemplate</code> still works but is in maintenance mode</li>
+						<li class="note-item">Global timeouts: <code>spring.http.clients.connect-timeout</code> / <code>read-timeout</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Client for One Service</h2>
+						<pre><code class="language-java">@Component
+class GitHubClient {
+    private final RestClient http;
+
+    GitHubClient(RestClient.Builder builder) {
+        this.http = builder.baseUrl("https://api.github.com")
+            .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
+            .build();
+    }
+
+    Repo repo(String owner, String name) {
+        return http.get()
+            .uri("/repos/{owner}/{name}", owner, name)       // URI vars
+            .retrieve()
+            .onStatus(s -&gt; s.value() == 404,
+                      (req, res) -&gt; { throw new RepoNotFound(name); })
+            .body(Repo.class);                             // JSON → record
+    }
+
+    ResponseEntity&lt;Void&gt; star(String owner, String name, String token) {
+        return http.put().uri("/user/starred/{o}/{n}", owner, name)
+            .headers(h -&gt; h.setBearerAuth(token))
+            .retrieve().toBodilessEntity();               // status only
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>{owner}</code> and <code>{name}</code> are filled and URL-encoded in order</div>
+							<div class="explain-item"><code>onStatus</code> maps a status to your own exception</div>
+							<div class="explain-item"><code>body(Repo.class)</code> reads JSON with Boot's <code>JsonMapper</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Chain Table | Results Table | Builder Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-chain">
+						<h2 class="section-title">Request Chain</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Methods</th></tr></thead>
+							<tbody>
+								<tr><td>Method</td><td class="desc"><code>get()</code> <code>post()</code> <code>put()</code> …</td></tr>
+								<tr><td>URI</td><td class="desc"><code>uri(t, vars…)</code></td></tr>
+								<tr><td>Body</td><td class="desc"><code>body(obj)</code>, <code>header()</code></td></tr>
+								<tr><td>Send</td><td class="desc"><code>retrieve()</code> / <code>exchange()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-results">
+						<h2 class="section-title">After retrieve()</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>body(T.class)</td><td class="desc">Body only</td></tr>
+								<tr><td>toEntity(T.class)</td><td class="desc"><code>ResponseEntity&lt;T&gt;</code></td></tr>
+								<tr><td>toBodilessEntity</td><td class="desc">Status + headers</td></tr>
+								<tr><td>onStatus(…)</td><td class="desc">Custom errors</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-builder">
+						<h2 class="section-title">Builder Options</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Sets</th></tr></thead>
+							<tbody>
+								<tr><td>baseUrl</td><td class="desc">Common prefix</td></tr>
+								<tr><td>defaultHeader</td><td class="desc">Every request</td></tr>
+								<tr><td>requestInterceptor</td><td class="desc">Wrap each call</td></tr>
+								<tr><td>apiVersionInserter</td><td class="desc">Version header</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Building a new <code>RestClient</code> per call; build once and reuse (it's thread-safe)</li>
+						<li class="note-item">Concatenating query strings by hand; use URI variables or <code>uriBuilder</code></li>
+						<li class="note-item">No timeouts set; a slow server can block request threads</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use HTTP interface clients for many endpoints (Sheet 31)</li>
+						<li class="note-item">Use <code>builder.clone()</code> to derive a second client from one builder</li>
+						<li class="note-item">Log calls with a <code>requestInterceptor</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>RestClient.Builder</code>: inject, then build</li>
+						<li class="note-item"><code>get().uri().retrieve().body()</code></li>
+						<li class="note-item"><code>onStatus()</code>: map errors</li>
+						<li class="note-item"><code>toEntity()</code>: status + headers too</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-29-thymeleaf-forms-static.html" class="nav-link prev">Thymeleaf Forms &amp; Static Resources</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-31-http-interface-clients.html" class="nav-link next">HTTP Interface Clients</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

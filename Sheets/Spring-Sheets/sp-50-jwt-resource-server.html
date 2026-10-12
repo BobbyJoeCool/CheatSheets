@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 50: JWT Resource Server</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s50">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 50</div>
+			<h1>JWT Resource Server</h1>
+			<div class="sheet-desc">oauth2ResourceServer() · jwt() · issuer-uri · JwtDecoder · JwtAuthenticationConverter · scopes / authorities</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Protecting APIs with JWTs</h2>
+						<div class="description">As an <strong>OAuth2 resource server</strong>, your API accepts <strong>bearer tokens</strong> (usually JWTs) issued by an authorization server such as Keycloak, Auth0, Okta or Spring Authorization Server. Set the <strong><code>issuer-uri</code></strong> and Boot fetches the signing keys, validates each token's signature, expiry and issuer, and turns its <strong>scopes</strong> into authorities.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Add <code>spring-boot-starter-security-oauth2-resource-server</code></li>
+						<li class="note-item">Scopes become <code>SCOPE_read</code>, <code>SCOPE_write</code> authorities</li>
+						<li class="note-item">The token's <code>sub</code> claim becomes <code>authentication.getName()</code></li>
+						<li class="note-item">No sessions: every request carries its own token</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Resource Server Setup</h2>
+						<pre><code class="language-java">@Bean
+SecurityFilterChain api(HttpSecurity http) throws Exception {
+    http
+        .authorizeHttpRequests(a -&gt; a
+            .requestMatchers(GET, "/api/**").hasAuthority("SCOPE_read")
+            .requestMatchers("/api/**").hasAuthority("SCOPE_write")
+            .anyRequest().authenticated())
+        .oauth2ResourceServer(o -&gt; o.jwt(Customizer.withDefaults()))
+        .sessionManagement(s -&gt; s.sessionCreationPolicy(STATELESS));
+    return http.build();
+}
+
+@GetMapping("/api/me")
+Map&lt;String, Object&gt; me(@AuthenticationPrincipal Jwt jwt) {
+    return Map.of("sub", jwt.getSubject(),
+                  "email", jwt.getClaimAsString("email"));
+}</code></pre>
+					</section>
+					<section class="section-code" id="code-yaml">
+						<h2 class="section-title">application.yml</h2>
+						<pre><code class="language-yaml">spring.security.oauth2.resourceserver.jwt:
+  issuer-uri: https://auth.example.com/realms/shop
+  audiences: shop-api</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Boot reads <code>/.well-known/openid-configuration</code> from the issuer</div>
+							<div class="explain-item"><code>audiences</code> rejects tokens meant for other APIs</div>
+							<div class="explain-item"><code>@AuthenticationPrincipal Jwt</code> gives access to every claim</div>
+							<div class="explain-item">Map a <code>roles</code> claim with a <code>JwtAuthenticationConverter</code> bean</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Props Table | Claims Table | Errors Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-props">
+						<h2 class="section-title">jwt.* Properties</h2>
+						<table>
+							<thead><tr><th>Property</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>issuer-uri</td><td class="desc">Discover keys + validate</td></tr>
+								<tr><td>jwk-set-uri</td><td class="desc">Keys URL only</td></tr>
+								<tr><td>audiences</td><td class="desc">Expected <code>aud</code></td></tr>
+								<tr><td>public-key-location</td><td class="desc">Static RSA key</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-claims">
+						<h2 class="section-title">Common Claims</h2>
+						<table>
+							<thead><tr><th>Claim</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>sub</td><td class="desc">User id</td></tr>
+								<tr><td>iss</td><td class="desc">Issuer</td></tr>
+								<tr><td>aud</td><td class="desc">Intended API</td></tr>
+								<tr><td>exp</td><td class="desc">Expiry</td></tr>
+								<tr><td>scope / scp</td><td class="desc">Granted scopes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-errors">
+						<h2 class="section-title">Token Errors</h2>
+						<table>
+							<thead><tr><th>Problem</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>No token</td><td class="desc">401</td></tr>
+								<tr><td>Expired / bad sig</td><td class="desc">401 + <code>WWW-Authenticate</code></td></tr>
+								<tr><td>Missing scope</td><td class="desc">403</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Validating JWTs by hand instead of using the resource server support</li>
+						<li class="note-item">Putting sensitive data in JWT claims; anyone can decode them</li>
+						<li class="note-item">Accepting any audience, so tokens for other apps work on yours</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use opaque tokens (<code>opaquetoken</code>) when you need instant revocation</li>
+						<li class="note-item">Test with <code>jwt()</code> from <code>spring-security-test</code> (Sheet 55)</li>
+						<li class="note-item">Run Keycloak in Docker Compose for local development</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>oauth2ResourceServer().jwt()</code></li>
+						<li class="note-item"><code>issuer-uri</code>: keys + validation</li>
+						<li class="note-item">Scopes → <code>SCOPE_*</code> authorities</li>
+						<li class="note-item"><code>@AuthenticationPrincipal Jwt</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-49-sessions-csrf.html" class="nav-link prev">Form Login, Sessions &amp; CSRF</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-51-oauth2-login.html" class="nav-link next">OAuth2 Login &amp; Client</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React Native — Sheet 29: Key-Value &amp; Secure Storage</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>Key-Value &amp; Secure Storage</h1>
+			<div class="sheet-desc">AsyncStorage · react-native-mmkv · expo-secure-store · Keychain / Keystore · expo-file-system · what not to store</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Saving Data on the Device</h2>
+					<div class="description">There's no <code>localStorage</code> on native. <strong>AsyncStorage</strong> is the basic async key-value store. <strong>MMKV</strong> is a much faster synchronous store backed by memory-mapped files. Anything sensitive (tokens, passwords) belongs in <strong><code>expo-secure-store</code></strong>, which uses the iOS Keychain and Android Keystore-backed encryption. Files and blobs go through <code>expo-file-system</code>.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Limits and Behavior</h2>
+					<ul class="note-list">
+						<li class="note-item">AsyncStorage and MMKV store strings; JSON-encode objects</li>
+						<li class="note-item">SecureStore values ~2 KB; meant for small secrets</li>
+						<li class="note-item">Data is deleted when the app is uninstalled (Keychain may persist on iOS)</li>
+						<li class="note-item">All of these are unencrypted except SecureStore (MMKV can encrypt)</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + iOS + Android -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Three Stores Side by Side</h2>
+					<pre><code class="language-tsx">// AsyncStorage — async, simple
+import AsyncStorage from '@react-native-async-storage/async-storage'
+await AsyncStorage.setItem('settings', JSON.stringify({ units: 'metric' }))
+const raw = await AsyncStorage.getItem('settings')   // string | null
+const settings = raw ? JSON.parse(raw) : defaults
+await AsyncStorage.removeItem('settings')
+
+// MMKV — synchronous, fast
+import { createMMKV } from 'react-native-mmkv'
+const storage = createMMKV({ id: 'app' })
+storage.set('onboarded', true)
+storage.getBoolean('onboarded')                     // true
+storage.set('user', JSON.stringify(user))
+const [name, setName] = useMMKVString('name')       // reactive hook
+
+// SecureStore — Keychain / Keystore
+import * as SecureStore from 'expo-secure-store'
+await SecureStore.setItemAsync('token', jwt, {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK })
+const token = await SecureStore.getItemAsync('token')
+await SecureStore.deleteItemAsync('token')</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>JSON.stringify</code> / <code>parse</code> — store objects as strings</div>
+						<div class="explain-item"><code>createMMKV</code> — MMKV v4 API (<code>new MMKV</code> in v2/v3)</div>
+						<div class="explain-item"><code>getBoolean</code> / <code>getNumber</code> — typed MMKV getters</div>
+						<div class="explain-item"><code>useMMKVString</code> — re-renders when the key changes</div>
+						<div class="explain-item"><code>keychainAccessible</code> — when iOS can read the item</div>
+					</div>
+				</section>
+				<section class="section-notes section-ios" id="ios">
+					<h2 class="section-title">iOS</h2>
+					<ul class="note-list">
+						<li class="note-item">SecureStore uses the Keychain — items can survive uninstall</li>
+						<li class="note-item"><code>keychainAccessible</code> controls access while locked</li>
+						<li class="note-item">Documents files are backed up to iCloud by default</li>
+					</ul>
+				</section>
+				<section class="section-notes section-android" id="android">
+					<h2 class="section-title">Android</h2>
+					<ul class="note-list">
+						<li class="note-item">SecureStore uses Keystore-encrypted storage</li>
+						<li class="note-item">Auto Backup can restore app data after reinstall</li>
+						<li class="note-item">Set <code>allowBackup</code> false or exclude secrets from backup</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Compare Table | What Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-compare">
+					<h2 class="section-title">Storage Options</h2>
+					<table>
+						<thead><tr><th>Store</th><th>Sync?</th><th>Encrypted</th></tr></thead>
+						<tbody>
+							<tr><td>AsyncStorage</td><td class="desc">Async</td><td class="center">✖</td></tr>
+							<tr><td>MMKV</td><td class="desc">Sync</td><td class="desc">Optional key</td></tr>
+							<tr><td>SecureStore</td><td class="desc">Async</td><td class="center">✔</td></tr>
+							<tr><td>expo-sqlite / kv-store</td><td class="desc">Both</td><td class="desc">✖ (SQLCipher option)</td></tr>
+							<tr><td>File system</td><td class="desc">Async</td><td class="center">✖</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-what">
+					<h2 class="section-title">What Goes Where</h2>
+					<table>
+						<thead><tr><th>Data</th><th>Store</th></tr></thead>
+						<tbody>
+							<tr><td>Auth / refresh tokens</td><td class="desc">SecureStore</td></tr>
+							<tr><td>Feature flags, UI prefs</td><td class="desc">MMKV / AsyncStorage</td></tr>
+							<tr><td>Persisted Zustand store</td><td class="desc">MMKV / AsyncStorage</td></tr>
+							<tr><td>Images, downloads</td><td class="desc"><code>expo-file-system</code></td></tr>
+							<tr><td>Large structured data</td><td class="desc">SQLite</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Storing tokens in AsyncStorage; a rooted or backed-up device exposes them in plain text</li>
+						<li class="note-item">Forgetting <code>await</code> on AsyncStorage calls and reading before the write finishes</li>
+						<li class="note-item">Putting large blobs in SecureStore; it has size limits and is slow</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Wrap storage access in a small typed module so keys aren't magic strings</li>
+						<li class="note-item">Clear SecureStore on first launch after reinstall if you don't want iOS Keychain items to survive</li>
+						<li class="note-item">Use <code>expo-sqlite/kv-store</code> as a drop-in AsyncStorage API backed by SQLite</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">AsyncStorage — simple async KV</li>
+						<li class="note-item">MMKV — fast sync KV</li>
+						<li class="note-item">SecureStore — secrets only</li>
+						<li class="note-item">JSON — serialize objects</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rn-28-state-management.html" class="nav-link prev">State Management Libraries</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">React Native Reference · 70 Sheets</a>
+				<a href="rn-30-local-databases.html" class="nav-link next">Local Databases &amp; Offline</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

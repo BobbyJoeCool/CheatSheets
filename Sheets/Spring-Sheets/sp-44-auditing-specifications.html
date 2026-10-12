@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 44: Auditing &amp; Specifications</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s44">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 44</div>
+			<h1>Auditing &amp; Specifications</h1>
+			<div class="sheet-desc">@EnableJpaAuditing · @CreatedDate · @LastModifiedDate · @CreatedBy · AuditorAware · Specification · Example queries</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Auditing and Dynamic Queries</h2>
+						<div class="description"><strong>Auditing</strong> records who created or changed an entity and when: annotate fields with <strong><code>@CreatedDate</code></strong>, <strong><code>@CreatedBy</code></strong> and friends, then turn it on with <strong><code>@EnableJpaAuditing</code></strong>. <strong>Specifications</strong> build <code>WHERE</code> clauses at runtime from optional filters, ideal for search screens.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>AuditorAware</code> supplies the current user (e.g. from Spring Security)</li>
+						<li class="note-item">A <code>@MappedSuperclass</code> base entity shares audit fields</li>
+						<li class="note-item">Repository must extend <code>JpaSpecificationExecutor&lt;T&gt;</code></li>
+						<li class="note-item">Query by Example: <code>repo.findAll(Example.of(probe))</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Auditing</h2>
+						<pre><code class="language-java">@MappedSuperclass
+@EntityListeners(AuditingEntityListener.class)
+abstract class Audited {
+    @CreatedDate        Instant createdAt;
+    @LastModifiedDate   Instant updatedAt;
+    @CreatedBy          String createdBy;
+}
+
+@Configuration @EnableJpaAuditing
+class AuditConfig {
+    @Bean AuditorAware&lt;String&gt; auditor() {      // current user
+        return () -&gt; Optional.of(currentUser.name());
+    }
+}</code></pre>
+					</section>
+					<section class="section-code" id="code-spec">
+						<h2 class="section-title">Specifications</h2>
+						<pre><code class="language-java">static Specification&lt;Product&gt; nameLike(String q) {
+    return (root, query, cb) -&gt; q == null ? null
+        : cb.like(cb.lower(root.get("name")), "%" + q.toLowerCase() + "%");
+}
+static Specification&lt;Product&gt; maxPrice(BigDecimal max) {
+    return (root, query, cb) -&gt; max == null ? null : cb.le(root.get("price"), max);
+}
+
+repo.findAll(nameLike(q).and(maxPrice(max)), pageable);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Auditing fields are set on insert and update automatically</div>
+							<div class="explain-item"><code>AuditorAware</code> returns the username, or empty for system jobs</div>
+							<div class="explain-item">A spec returning <code>null</code> is ignored, so filters are optional</div>
+							<div class="explain-item"><code>and()</code> / <code>or()</code> combine specs; paging still works</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Audit Table | Cb Table | Spec Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-audit">
+						<h2 class="section-title">Audit Annotations</h2>
+						<table>
+							<thead><tr><th>Annotation</th><th>Set On</th></tr></thead>
+							<tbody>
+								<tr><td>@CreatedDate</td><td class="desc">Insert</td></tr>
+								<tr><td>@LastModifiedDate</td><td class="desc">Insert + update</td></tr>
+								<tr><td>@CreatedBy</td><td class="desc">Insert (user)</td></tr>
+								<tr><td>@LastModifiedBy</td><td class="desc">Update (user)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-cb">
+						<h2 class="section-title">CriteriaBuilder</h2>
+						<table>
+							<thead><tr><th>Method</th><th>SQL</th></tr></thead>
+							<tbody>
+								<tr><td>cb.equal</td><td class="desc"><code>=</code></td></tr>
+								<tr><td>cb.like</td><td class="desc"><code>LIKE</code></td></tr>
+								<tr><td>cb.le / ge</td><td class="desc"><code>&lt;=</code> / <code>&gt;=</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-spec">
+						<h2 class="section-title">Specification API</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>where(spec)</td><td class="desc">Start a chain</td></tr>
+								<tr><td>and / or</td><td class="desc">Combine</td></tr>
+								<tr><td>not(spec)</td><td class="desc">Negate</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Forgetting the <code>AuditingEntityListener</code>; audit fields stay <code>null</code></li>
+						<li class="note-item">Using field-name strings that drift from the entity; use the JPA metamodel</li>
+						<li class="note-item">Specs that join collections without <code>query.distinct(true)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Generate the metamodel (<code>Product_.price</code>) for type-safe specs</li>
+						<li class="note-item">Use Querydsl if you prefer a fluent, typed query API</li>
+						<li class="note-item">Inject <code>Clock</code> via a <code>DateTimeProvider</code> to test audit times</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@EnableJpaAuditing</code>: turn on</li>
+						<li class="note-item"><code>@CreatedDate</code> / <code>@CreatedBy</code></li>
+						<li class="note-item"><code>Specification</code>: dynamic <code>WHERE</code></li>
+						<li class="note-item"><code>JpaSpecificationExecutor</code>: run them</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-43-fetching-performance.html" class="nav-link prev">Fetching &amp; N+1 Problems</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-45-security-architecture.html" class="nav-link next">Security Architecture</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

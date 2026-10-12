@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 67: GraalVM Native Images</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s67">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 67</div>
+			<h1>GraalVM Native Images</h1>
+			<div class="sheet-desc">native-maven-plugin · nativeCompile · AOT processing · RuntimeHints · reflection config · startup / memory tradeoffs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Native Executables</h2>
+						<div class="description"><strong>GraalVM Native Image</strong> compiles the app ahead of time into a standalone executable that starts in milliseconds and uses far less memory, at the cost of long builds and a <strong>closed world</strong>: everything reachable must be known at build time. Spring's <strong>AOT processing</strong> generates the bean setup in advance; you add <strong>runtime hints</strong> for reflection, resources or proxies Spring can't detect.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Boot 4 needs <strong>GraalVM 25</strong> or later</li>
+						<li class="note-item">Profiles and <code>@Conditional</code> beans are fixed at build time</li>
+						<li class="note-item">Run tests natively with <code>-PnativeTest</code> / <code>nativeTest</code></li>
+						<li class="note-item">Buildpacks can build a native image without local GraalVM</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Build Commands</h2>
+						<pre><code class="language-bash">./mvnw -Pnative native:compile          # target/shop (executable)
+./gradlew nativeCompile                 # build/native/nativeCompile/shop
+./mvnw -Pnative spring-boot:build-image # native container image
+./target/shop                           # starts in ~50 ms</code></pre>
+					</section>
+					<section class="section-code" id="code-hints">
+						<h2 class="section-title">Runtime Hints</h2>
+						<pre><code class="language-java">@Configuration
+@ImportRuntimeHints(ShopHints.class)
+@RegisterReflectionForBinding(LegacyDto.class)   // JSON via reflection
+class NativeConfig { }
+
+class ShopHints implements RuntimeHintsRegistrar {
+    @Override
+    public void registerHints(RuntimeHints hints, ClassLoader cl) {
+        hints.resources().registerPattern("templates/*.txt");
+        hints.reflection().registerType(PluginImpl.class,
+            MemberCategory.INVOKE_PUBLIC_CONSTRUCTORS);
+        hints.proxies().registerJdkProxy(Auditor.class);
+    }
+}</code></pre>
+					</section>
+					<section class="section-code" id="code-gradle">
+						<h2 class="section-title">Gradle Plugin</h2>
+						<pre><code class="language-kotlin">plugins { id("org.graalvm.buildtools.native") }   // version: use Initializr's</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Maven's <code>native</code> profile comes from <code>spring-boot-starter-parent</code></div>
+							<div class="explain-item"><code>@RegisterReflectionForBinding</code> covers Jackson-bound types</div>
+							<div class="explain-item">Resource patterns include files read with <code>getResource()</code></div>
+							<div class="explain-item">Missing hints fail at <strong>runtime</strong>, so test the native binary</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tradeoffs Table | Hints Table | Fit Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-tradeoffs">
+						<h2 class="section-title">JVM vs Native</h2>
+						<table>
+							<thead><tr><th>Aspect</th><th>JVM / Native</th></tr></thead>
+							<tbody>
+								<tr><td>Startup</td><td class="desc">Seconds / ms</td></tr>
+								<tr><td>Memory</td><td class="desc">Higher / lower</td></tr>
+								<tr><td>Build time</td><td class="desc">Fast / minutes</td></tr>
+								<tr><td>Peak throughput</td><td class="desc">Higher / lower</td></tr>
+								<tr><td>Reflection</td><td class="desc">Free / needs hints</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-hints">
+						<h2 class="section-title">Hint Types</h2>
+						<table>
+							<thead><tr><th>API</th><th>Covers</th></tr></thead>
+							<tbody>
+								<tr><td>reflection()</td><td class="desc">Classes, methods</td></tr>
+								<tr><td>resources()</td><td class="desc">Classpath files</td></tr>
+								<tr><td>serialization()</td><td class="desc">Java serialization</td></tr>
+								<tr><td>proxies()</td><td class="desc">JDK proxies</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-fit">
+						<h2 class="section-title">Good Fit?</h2>
+						<table>
+							<thead><tr><th>Workload</th><th>Native?</th></tr></thead>
+							<tbody>
+								<tr><td>Serverless / CLI</td><td class="desc">Yes</td></tr>
+								<tr><td>Scale-to-zero</td><td class="desc">Yes</td></tr>
+								<tr><td>Long-running, hot</td><td class="desc">JVM often wins</td></tr>
+								<tr><td>Heavy reflection libs</td><td class="desc">Painful</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Testing only on the JVM; reflection gaps show up only in the native binary</li>
+						<li class="note-item">Choosing beans with runtime profiles; native fixes them at build time</li>
+						<li class="note-item">Expecting native to be faster at peak load; the JIT often wins there</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Run the GraalVM tracing agent to discover needed hints</li>
+						<li class="note-item">Build native images in CI; they take minutes and lots of RAM</li>
+						<li class="note-item">Try Java 25's AOT cache first if you only need faster startup</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>native:compile</code> / <code>nativeCompile</code></li>
+						<li class="note-item">AOT: beans prepared at build time</li>
+						<li class="note-item"><code>RuntimeHintsRegistrar</code>: extra hints</li>
+						<li class="note-item">Fast start, closed world</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-66-packaging-containers.html" class="nav-link prev">Packaging &amp; Containers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="index.html" class="nav-link next" style="visibility:hidden">—</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

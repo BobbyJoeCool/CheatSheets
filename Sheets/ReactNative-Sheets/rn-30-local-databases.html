@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React Native — Sheet 30: Local Databases &amp; Offline</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>Local Databases &amp; Offline</h1>
+			<div class="sheet-desc">expo-sqlite · op-sqlite · Drizzle · WatermelonDB · sync strategies · migrations</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Structured Data on the Device</h2>
+					<div class="description">For relational data, search, or offline-first apps, use <strong>SQLite</strong>. <code>expo-sqlite</code> offers async and sync APIs, prepared statements, and a React hook for live queries. <code>op-sqlite</code> is a fast JSI alternative. Layer <strong>Drizzle ORM</strong> on top for typed queries and migrations, or use <strong>WatermelonDB</strong> / <strong>Legend State</strong> / <strong>PowerSync</strong> when you need sync with a backend.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Offline-First Basics</h2>
+					<ul class="note-list">
+						<li class="note-item">Read from the local DB; sync in the background</li>
+						<li class="note-item">Queue writes while offline, replay when online</li>
+						<li class="note-item">Track <code>updated_at</code> / version columns for conflicts</li>
+						<li class="note-item">Run migrations on launch before rendering data</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + iOS + Android -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">expo-sqlite + Drizzle</h2>
+					<pre><code class="language-tsx">import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite'
+
+&lt;SQLiteProvider databaseName="app.db" onInit={migrate}&gt;
+  &lt;App /&gt;
+&lt;/SQLiteProvider&gt;
+
+async function migrate(db: SQLiteDatabase) {
+  await db.execAsync(`
+    PRAGMA journal_mode = WAL;
+    CREATE TABLE IF NOT EXISTS todos (
+      id INTEGER PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL, done INTEGER DEFAULT 0);`)
+}
+
+function Todos() {
+  const db = useSQLiteContext()
+  const add = (t: string) =&gt;
+    db.runAsync('INSERT INTO todos (title) VALUES (?)', t)
+  const load = () =&gt;
+    db.getAllAsync&lt;Todo&gt;('SELECT * FROM todos WHERE done = ?', 0)
+}
+
+// Drizzle on top
+import { drizzle } from 'drizzle-orm/expo-sqlite'
+const orm = drizzle(db)
+const open = await orm.select().from(todos).where(eq(todos.done, false))</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>SQLiteProvider</code> — opens the DB once for the tree</div>
+						<div class="explain-item"><code>onInit</code> — run schema setup / migrations</div>
+						<div class="explain-item"><code>WAL</code> — faster concurrent reads and writes</div>
+						<div class="explain-item"><code>?</code> placeholders — never build SQL with string concat</div>
+						<div class="explain-item">Drizzle — typed schema, <code>useLiveQuery</code>, migrations</div>
+					</div>
+				</section>
+				<section class="section-notes section-ios" id="ios">
+					<h2 class="section-title">iOS</h2>
+					<ul class="note-list">
+						<li class="note-item">The DB file lives in the app sandbox</li>
+						<li class="note-item">Find it: <code>xcrun simctl get_app_container booted &lt;id&gt; data</code></li>
+						<li class="note-item">Included in iCloud backups unless excluded</li>
+					</ul>
+				</section>
+				<section class="section-notes section-android" id="android">
+					<h2 class="section-title">Android</h2>
+					<ul class="note-list">
+						<li class="note-item">The DB lives under the app's private <code>files/</code> dir</li>
+						<li class="note-item">Pull it: <code>adb exec-out run-as &lt;pkg&gt; cat &lt;path&gt;</code></li>
+						<li class="note-item">Auto Backup may restore an older DB — migrations must cope</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Api Table | Libs Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-api">
+					<h2 class="section-title">expo-sqlite Methods</h2>
+					<table>
+						<thead><tr><th>Method</th><th>Returns</th></tr></thead>
+						<tbody>
+							<tr><td><code>execAsync(sql)</code></td><td class="desc">Run statements, no results</td></tr>
+							<tr><td><code>runAsync(sql, …params)</code></td><td class="desc"><code>{ lastInsertRowId, changes }</code></td></tr>
+							<tr><td><code>getFirstAsync&lt;T&gt;()</code></td><td class="desc">First row or null</td></tr>
+							<tr><td><code>getAllAsync&lt;T&gt;()</code></td><td class="desc">All rows</td></tr>
+							<tr><td><code>getEachAsync&lt;T&gt;()</code></td><td class="desc">Async iterator</td></tr>
+							<tr><td><code>withTransactionAsync(fn)</code></td><td class="desc">Transaction</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-libs">
+					<h2 class="section-title">Options</h2>
+					<table>
+						<thead><tr><th>Library</th><th>Strength</th></tr></thead>
+						<tbody>
+							<tr><td>expo-sqlite</td><td class="desc">Built into Expo, sync &amp; async APIs</td></tr>
+							<tr><td>op-sqlite</td><td class="desc">JSI speed, SQLCipher, vector ext.</td></tr>
+							<tr><td>Drizzle ORM</td><td class="desc">Typed queries, migrations</td></tr>
+							<tr><td>WatermelonDB</td><td class="desc">Lazy loading, sync protocol</td></tr>
+							<tr><td>PowerSync / ElectricSQL</td><td class="desc">Postgres ↔ SQLite sync</td></tr>
+							<tr><td>Realm (Atlas Device SDK)</td><td class="desc">Deprecated; plan a migration</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Building queries with template strings from user input; SQL injection works on-device too</li>
+						<li class="note-item">Running schema changes without a version check; reinstalls work but updates crash</li>
+						<li class="note-item">Doing large reads on the JS thread in a loop instead of one query with <code>WHERE</code> / <code>LIMIT</code></li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Store a <code>PRAGMA user_version</code> and migrate step by step</li>
+						<li class="note-item">Use transactions for batch inserts; they're dramatically faster</li>
+						<li class="note-item">Inspect the DB with the Expo DevTools plugin or by pulling the file from the simulator</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">SQLite — structured local data</li>
+						<li class="note-item"><code>runAsync</code> / <code>getAllAsync</code> — write / read</li>
+						<li class="note-item">Drizzle — typed ORM layer</li>
+						<li class="note-item">Sync libraries — offline-first apps</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rn-29-local-storage.html" class="nav-link prev">Key-Value &amp; Secure Storage</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">React Native Reference · 70 Sheets</a>
+				<a href="rn-31-animated-api.html" class="nav-link next">Animated API</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

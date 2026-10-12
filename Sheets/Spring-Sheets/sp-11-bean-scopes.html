@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 11: Bean Scopes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Bean Scopes</h1>
+			<div class="sheet-desc">singleton · prototype · request · session · @Scope · scoped proxies · @Lazy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">How Long a Bean Lives</h2>
+						<div class="description">A bean's <strong>scope</strong> decides how many instances exist. The default, <strong>singleton</strong>, means one instance per container, shared by everyone, so it must be <strong>stateless or thread-safe</strong>. <strong>Prototype</strong> creates a new instance every time it's requested. Web apps add <strong>request</strong>, <strong>session</strong> and <strong>application</strong> scopes, tied to the HTTP lifecycle.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Singletons are created at startup; prototypes on demand</li>
+						<li class="note-item">Spring does <strong>not</strong> call destroy methods on prototypes</li>
+						<li class="note-item">A prototype injected into a singleton is created <strong>once</strong></li>
+						<li class="note-item">Use a <strong>scoped proxy</strong> or <code>ObjectProvider</code> to get fresh instances</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Declaring Scopes</h2>
+						<pre><code class="language-java">@Component                                     // singleton (default)
+class PriceCalculator { }
+
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE) // new each lookup
+class ReportBuilder { }
+
+@Component
+@RequestScope                                   // one per HTTP request
+class RequestContext { String traceId; }
+
+@Service
+class ReportService {
+    private final ObjectProvider&lt;ReportBuilder&gt; builders;
+    private final RequestContext ctx;             // proxy → current request
+
+    ReportService(ObjectProvider&lt;ReportBuilder&gt; builders, RequestContext ctx) {
+        this.builders = builders;
+        this.ctx = ctx;
+    }
+    Report build() { return builders.getObject().with(ctx.traceId).build(); }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>builders.getObject()</code> returns a <strong>new</strong> <code>ReportBuilder</code> each call</div>
+							<div class="explain-item"><code>@RequestScope</code> creates a proxy, so a singleton can hold it</div>
+							<div class="explain-item">The proxy forwards to the bean of the <strong>current</strong> request</div>
+							<div class="explain-item">Using request scope outside a request throws <code>IllegalStateException</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Scopes Table | Annot Table | Proxy Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-scopes">
+						<h2 class="section-title">Built-in Scopes</h2>
+						<table>
+							<thead><tr><th>Scope</th><th>Instances</th></tr></thead>
+							<tbody>
+								<tr><td>singleton</td><td class="desc">One per container</td></tr>
+								<tr><td>prototype</td><td class="desc">New per lookup</td></tr>
+								<tr><td>request</td><td class="desc">One per HTTP request</td></tr>
+								<tr><td>session</td><td class="desc">One per HTTP session</td></tr>
+								<tr><td>application</td><td class="desc">One per ServletContext</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-annot">
+						<h2 class="section-title">Shortcut Annotations</h2>
+						<table>
+							<thead><tr><th>Annotation</th><th>Equals</th></tr></thead>
+							<tbody>
+								<tr><td>@RequestScope</td><td class="desc">request + proxy</td></tr>
+								<tr><td>@SessionScope</td><td class="desc">session + proxy</td></tr>
+								<tr><td>@ApplicationScope</td><td class="desc">application + proxy</td></tr>
+								<tr><td>@Lazy</td><td class="desc">Create on first use</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-proxy">
+						<h2 class="section-title">proxyMode</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Proxy Type</th></tr></thead>
+							<tbody>
+								<tr><td>DEFAULT / NO</td><td class="desc">None</td></tr>
+								<tr><td>TARGET_CLASS</td><td class="desc">CGLIB subclass</td></tr>
+								<tr><td>INTERFACES</td><td class="desc">JDK interface proxy</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Keeping per-user data in a field of a singleton; all users share it</li>
+						<li class="note-item">Expecting a prototype field in a singleton to change on each call</li>
+						<li class="note-item">Using <code>@SessionScope</code> beans in stateless JWT APIs where no session exists</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Default to stateless singletons; pass state as method arguments</li>
+						<li class="note-item">Use <code>ObjectProvider&lt;T&gt;</code> to get a fresh prototype on demand</li>
+						<li class="note-item"><code>@Lazy</code> on an injection point delays creation of expensive beans</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>singleton</code>: one shared instance</li>
+						<li class="note-item"><code>prototype</code>: new per lookup</li>
+						<li class="note-item"><code>@RequestScope</code>: per request, proxied</li>
+						<li class="note-item"><code>ObjectProvider</code>: fresh instances</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-10-qualifiers-primary.html" class="nav-link prev">Resolving Ambiguity</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-12-bean-lifecycle.html" class="nav-link next">Bean Lifecycle &amp; Callbacks</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React Native — Sheet 60: Android Push Notifications</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s60">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 60</div>
+			<h1>Android Push Notifications</h1>
+			<div class="sheet-desc">Firebase Cloud Messaging · google-services.json · notification channels · expo-notifications · data vs notification messages · Doze</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Push on Android</h2>
+					<div class="description">Android pushes go through <strong>Firebase Cloud Messaging (FCM)</strong>. Add your app to a Firebase project, download <code>google-services.json</code>, and give your server (or EAS) an <strong>FCM v1 service account key</strong>. On Android 13+ you must request <code>POST_NOTIFICATIONS</code>. Every notification belongs to a <strong>channel</strong> (Android 8+) that controls sound and importance, and that users can mute individually.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Requirements</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>google-services.json</code> in config (<code>android.googleServicesFile</code>)</li>
+						<li class="note-item">FCM v1 service account JSON uploaded to EAS for Expo Push</li>
+						<li class="note-item">Channel created before the first notification</li>
+						<li class="note-item">Device must have Google Play services (not some Chinese OEMs)</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + iOS + Android -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Channel, Permission, Token</h2>
+					<pre><code class="language-tsx">import * as Notifications from 'expo-notifications'
+
+async function setupAndroidPush() {
+  await Notifications.setNotificationChannelAsync('orders', {
+    name: 'Order updates',
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: 'default',
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#7e57c2',
+  })
+  const { status } = await Notifications.requestPermissionsAsync() // 13+
+  if (status !== 'granted') return null
+  const { data: fcmToken } = await Notifications.getDevicePushTokenAsync()
+  return fcmToken
+}
+
+// app.json
+// "android": { "googleServicesFile": "./google-services.json" },
+// "plugins": [["expo-notifications", {
+//    "icon": "./assets/notification-icon.png", "color": "#7e57c2",
+//    "defaultChannel": "orders" }]]
+
+// Server → FCM v1 (HTTP)
+// POST https://fcm.googleapis.com/v1/projects/&lt;id&gt;/messages:send
+// { "message": { "token": "&lt;fcmToken&gt;",
+//   "notification": { "title": "Shipped", "body": "Order #42" },
+//   "android": { "notification": { "channel_id": "orders" } },
+//   "data": { "url": "/orders/42" } } }</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>setNotificationChannelAsync</code> — idempotent; call on startup</div>
+						<div class="explain-item"><code>importance: HIGH</code> — heads-up banner</div>
+						<div class="explain-item">Device token — raw FCM token for your server</div>
+						<div class="explain-item">Notification icon — white silhouette PNG</div>
+						<div class="explain-item"><code>channel_id</code> — must match an existing channel</div>
+					</div>
+				</section>
+				<section class="section-notes section-ios" id="ios">
+					<h2 class="section-title">iOS</h2>
+					<ul class="note-list">
+						<li class="note-item">APNs key instead of FCM — no channels</li>
+						<li class="note-item">A permission prompt is always required</li>
+						<li class="note-item">Silent pushes are throttled by iOS</li>
+					</ul>
+				</section>
+				<section class="section-notes section-android" id="android">
+					<h2 class="section-title">Android</h2>
+					<ul class="note-list">
+						<li class="note-item">Heads-up banners need a high-importance channel</li>
+						<li class="note-item">Data-only messages need a background handler</li>
+						<li class="note-item">Small icon: white on transparent</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Msg Table | Importance Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-msg">
+					<h2 class="section-title">Message Types</h2>
+					<table>
+						<thead><tr><th>Type</th><th>Behavior</th></tr></thead>
+						<tbody>
+							<tr><td><code>notification</code></td><td class="desc">System shows it when app is backgrounded</td></tr>
+							<tr><td><code>data</code> only</td><td class="desc">Delivered to app code; you display it</td></tr>
+							<tr><td>Both</td><td class="desc">Shown by system; data on tap</td></tr>
+							<tr><td>High priority</td><td class="desc">Wakes device from Doze (use sparingly)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-importance">
+					<h2 class="section-title">Channel Importance</h2>
+					<table>
+						<thead><tr><th>Level</th><th>Effect</th></tr></thead>
+						<tbody>
+							<tr><td><code>MAX</code> / <code>HIGH</code></td><td class="desc">Sound + heads-up banner</td></tr>
+							<tr><td><code>DEFAULT</code></td><td class="desc">Sound, no banner</td></tr>
+							<tr><td><code>LOW</code></td><td class="desc">No sound</td></tr>
+							<tr><td><code>MIN</code></td><td class="desc">Silent, shade only</td></tr>
+							<tr><td>Note</td><td class="desc">Users can override; you can't raise it later</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Not creating a channel; on Android 8+ the notification is silently dropped</li>
+						<li class="note-item">Using a full-color icon; Android renders it as a white blob, use a transparent silhouette</li>
+						<li class="note-item">Changing a channel's importance in code after creation; Android ignores it, create a new channel ID</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Create channels per category (orders, chat, marketing) so users mute only what they want</li>
+						<li class="note-item">Use data messages + local notifications when you need custom display logic</li>
+						<li class="note-item">Test background and killed states; delivery differs from foreground</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">FCM — Android push transport</li>
+						<li class="note-item"><code>google-services.json</code> — Firebase config</li>
+						<li class="note-item">Channels — required, user-controlled</li>
+						<li class="note-item"><code>POST_NOTIFICATIONS</code> — Android 13+</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rn-59-android-ui-conventions.html" class="nav-link prev">Android UI Conventions &amp; APIs</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">React Native Reference · 70 Sheets</a>
+				<a href="rn-61-android-build-config.html" class="nav-link next" title="Build Types, Flavors &amp; SDK Levels">Build Types &amp; Flavors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

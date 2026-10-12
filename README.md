@@ -148,7 +148,7 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | Python | 96 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & standard library, testing & logging, advanced topics, Tkinter GUI |
 | ✅ | Tkinter | 62 | introduction & setup, windows, classic widgets, layout managers (pack, grid, place), variables & events, menus & dialogs, ttk themed widgets (styles, Notebook, Treeview), Canvas, colors, fonts & images, application patterns (timers, threading, validation, scrollable frames, architecture, DPI, testing, packaging), external libraries (sv-ttk, ttkbootstrap, CustomTkinter, Matplotlib), quick reference |
-| ⬜ | Django | 68 | Outline drafted — Django 6.0: introduction & setup, URLs & routing, views (function & class-based), templates (incl. partials), models, migrations, QuerySets & the ORM, forms, admin, authentication & authorization, middleware, sessions, messages & signals, security (incl. CSP), testing, pagination, caching, email, background tasks, async, logging, i18n, Django REST Framework, deployment |
+| 🚧| Django | 68 | Outline drafted — Django 6.0: introduction & setup, URLs & routing, views (function & class-based), templates (incl. partials), models, migrations, QuerySets & the ORM, forms, admin, authentication & authorization, middleware, sessions, messages & signals, security (incl. CSP), testing, pagination, caching, email, background tasks, async, logging, i18n, Django REST Framework, deployment |
 
 ### Java
 
@@ -156,7 +156,7 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | Java | 134 | control flow, methods & functions, data structures, OOP, files & I/O, modules & packages, standard library, external libraries, concurrency, database, Swing, JavaFX |
 | ✅ | JSP | 32 | directives, implicit objects & scope, Expression Language, standard actions, JSTL (core, fmt, fn), custom tags & TLDs, integration & security |
-| ⬜ | Spring | 67 | Outline drafted — Spring Boot 4.1 / Framework 7: introduction & setup, IoC & dependency injection, configuration & auto-configuration, AOP, Spring MVC REST APIs, Thymeleaf views, HTTP clients, JDBC & schema migrations, Spring Data JPA, Spring Security (JWT, OAuth2), testing, Actuator & observability, events, scheduling, async & virtual threads, caching, resilience, WebFlux, packaging & GraalVM native images |
+| ✅ | Spring | 67 | Spring Boot 4.1 / Framework 7: introduction & setup, IoC & dependency injection, configuration & auto-configuration, AOP, Spring MVC REST APIs, Thymeleaf views, HTTP clients, JDBC & schema migrations, Spring Data JPA, Spring Security (JWT, OAuth2), testing, Actuator & observability, events, scheduling, async & virtual threads, caching, resilience, WebFlux, packaging & GraalVM native images |
 
 ### JavaScript / TypeScript
 
@@ -166,7 +166,7 @@ CheatSheets/
 | ✅ | React | 98 | introduction & setup, JSX, components & props, state, events, forms & Actions, refs & effects, context, custom hooks, concurrent features (Suspense, use, transitions, Activity, View Transitions), error handling, performance & React Compiler, TypeScript, styling, React Router, TanStack Query & SWR, Redux Toolkit & Zustand, Server Components & SSR, accessibility, testing, build & deploy, quick reference; every sheet adds Accessibility and Version Notes sections |
 | ✅ | Node.js | 68 | introduction & setup, modules & packages, event loop & async, process & environment, CLI tools, file system, buffers & streams, networking & HTTP, errors & debugging, testing, concurrency & performance, security, built-in utilities, web frameworks & libraries, deployment |
 | ✅ | Next.js | 58 | introduction & setup, routing, server & client components, data fetching, caching & rendering, mutations & server actions, route handlers & proxy, styling, optimizations, authentication & security, data, environment & i18n, testing & debugging, deployment & operations, Pages Router (legacy) |
-| ⬜ | React Native | 70 | Outline drafted — React Native 0.87 / Expo SDK 56: introduction & setup, React refresher, core components, styling & layout, navigation (Expo Router, React Navigation), platform-specific code & config, data, state & storage, animation & gestures, native code & the New Architecture, testing & debugging, EAS build, release & OTA updates, iOS, iPadOS / macOS / tvOS / visionOS, Android, Windows, web & other platforms |
+| ✅ | React Native | 70 | React Native 0.87 / Expo SDK 57–58: introduction & setup, React refresher, core components, styling & layout, navigation (Expo Router, React Navigation, deep links), platform-specific code & config, data, state & storage, animation & gestures (Reanimated 4, Gesture Handler 3), native code (TurboModules, Fabric, Expo Modules), testing & debugging, EAS build, submit & OTA updates, Apple: iOS, Apple: iPadOS / macOS / tvOS / visionOS, Android, Windows, web & other platforms; every sheet adds iOS and Android sections |
 
 ### Web Design
 
@@ -198,9 +198,9 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ⬜ | C | 98 | Outline drafted — C17 with C23 tags: introduction & toolchain, output & comments, variables & data types, strings, operators, control flow, error handling (return codes, errno), functions, pointers, memory management, arrays & data structures, structs, unions & enums, files & I/O, preprocessor, headers & builds (Make, CMake), standard library, tools & libraries, advanced topics (UB, threads, atomics, signals, C23), quick reference |
-| ⬜ | C++ | 123 | Outline drafted — C++23 with C++26 notes: introduction & setup, I/O & comments, variables & data types, strings, operators, control flow, error handling (exceptions, optional, expected), functions & lambdas, STL containers, OOP (copy & move semantics), files & I/O, headers & modules, external libraries, concurrency & coroutines, pointers & references, memory management & smart pointers, templates & concepts, iterators, algorithms & ranges |
-| ⬜ | C# | 128 | Outline drafted — C# 14 / .NET 10 with C# 15 preview notes: introduction & setup, output, input & comments, variables & data types (nullability), strings, operators, control flow & pattern matching, error handling, methods, delegates & events, collections, OOP (records, structs, generics), files & I/O, namespaces, NuGet & BCL, testing & logging, async/await, threading & performance, LINQ, Entity Framework Core |
+| 🚧| C | 98 | Outline drafted — C17 with C23 tags: introduction & toolchain, output & comments, variables & data types, strings, operators, control flow, error handling (return codes, errno), functions, pointers, memory management, arrays & data structures, structs, unions & enums, files & I/O, preprocessor, headers & builds (Make, CMake), standard library, tools & libraries, advanced topics (UB, threads, atomics, signals, C23), quick reference |
+| 🚧| C++ | 123 | Outline drafted — C++23 with C++26 notes: introduction & setup, I/O & comments, variables & data types, strings, operators, control flow, error handling (exceptions, optional, expected), functions & lambdas, STL containers, OOP (copy & move semantics), files & I/O, headers & modules, external libraries, concurrency & coroutines, pointers & references, memory management & smart pointers, templates & concepts, iterators, algorithms & ranges |
+| 🚧| C# | 128 | Outline drafted — C# 14 / .NET 10 with C# 15 preview notes: introduction & setup, output, input & comments, variables & data types (nullability), strings, operators, control flow & pattern matching, error handling, methods, delegates & events, collections, OOP (records, structs, generics), files & I/O, namespaces, NuGet & BCL, testing & logging, async/await, threading & performance, LINQ, Entity Framework Core |
 
 ### Languages
 

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 51: calloc, realloc &amp; Aligned Allocation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>calloc, realloc &amp; Aligned Allocation</h1>
+			<div class="sheet-desc">calloc (zeroed) · realloc growth · temp-pointer pattern · realloc(NULL, n) · aligned_alloc · free_sized (C23) · overflow in n * size</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Zeroed, Resized &amp; Aligned Memory</h2>
+						<div class="description"><code>calloc(n, size)</code> allocates an array and sets every byte to zero; it also checks <code>n * size</code> for overflow. <code>realloc(p, size)</code> grows or shrinks a block, possibly moving it, and returns the new address. If it fails it returns <code>NULL</code> and <strong>leaves the old block untouched</strong>, so assign the result to a temporary first. <code>aligned_alloc</code> returns memory with a stricter alignment.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>realloc(NULL, n)</code> acts like <code>malloc(n)</code></li>
+							<li class="note-item"><code>realloc(p, 0)</code> is UB in C23; avoid it</li>
+							<li class="note-item">Growing by ×2 (or ×1.5) keeps appends O(1) amortized</li>
+							<li class="note-item"><code>free_sized(p, n)</code> (C23) — free with known size</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">calloc &amp; Safe realloc</h2>
+						<pre class="language-c"><code class="language-c">int *counts = calloc(256, sizeof *counts);   // 256 zeros
+if (!counts) return -1;
+
+size_t cap = 16, len = 0;
+int *items = malloc(cap * sizeof *items);
+
+if (len == cap) {
+    if (cap &gt; SIZE_MAX / 2 / sizeof *items) return -1;  // overflow check
+    size_t new_cap = cap * 2;
+    int *tmp = realloc(items, new_cap * sizeof *items);
+    if (!tmp) { free(items); return -1; }    // old block still valid
+    items = tmp;
+    cap = new_cap;
+}
+items[len++] = 42;
+
+void *buf = aligned_alloc(64, 4096);   // size must be multiple of 64
+free(buf);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>calloc</code> — zero-filled, overflow-checked size</div>
+							<div class="explain-item"><code>SIZE_MAX / 2 / sizeof</code> — make sure the new size fits</div>
+							<div class="explain-item"><code>tmp = realloc(...)</code> — never assign straight to <code>items</code></div>
+							<div class="explain-item"><code>items = tmp</code> — the block may have moved</div>
+							<div class="explain-item"><code>aligned_alloc(64, ...)</code> — cache-line aligned</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: realloc Outcomes | malloc vs calloc Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-realloc">
+						<h2 class="section-title">realloc Outcomes</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>realloc(p, bigger)</td><td class="desc">may move; new bytes uninitialized</td></tr>
+								<tr><td>realloc(p, smaller)</td><td class="desc">usually same address</td></tr>
+								<tr><td>realloc(NULL, n)</td><td class="desc">like <code>malloc(n)</code></td></tr>
+								<tr><td>failure</td><td class="desc">returns <code>NULL</code>, <code>p</code> still valid</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-compare">
+						<h2 class="section-title">malloc vs calloc</h2>
+						<table>
+							<thead><tr><th></th><th>malloc</th><th>calloc</th></tr></thead>
+							<tbody>
+								<tr><td>arguments</td><td class="desc">total bytes</td><td class="desc">count, size</td></tr>
+								<tr><td>contents</td><td class="desc">indeterminate</td><td class="desc">all zero</td></tr>
+								<tr><td>overflow check</td><td class="desc">no</td><td class="desc">yes</td></tr>
+								<tr><td>speed</td><td class="desc">fastest</td><td class="desc">often free for fresh pages</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>p = realloc(p, n);</code> — on failure <code>p</code> becomes <code>NULL</code> and the old block leaks</li>
+							<li class="note-item">Keeping other pointers into a block after <code>realloc</code> moved it; they now dangle</li>
+							<li class="note-item">Assuming <code>calloc</code> zero means <code>0.0</code> / <code>NULL</code> for every type; true on all mainstream platforms, not guaranteed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Wrap growth logic in one function (<code>vec_reserve</code>) and reuse it</li>
+							<li class="note-item">Store indexes, not pointers, into arrays that may be <code>realloc</code>ed</li>
+							<li class="note-item">Use <code>calloc</code> for arrays of counters and structs you want zeroed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>calloc(n, size)</code> — zeroed array</li>
+							<li class="note-item"><code>tmp = realloc(p, n)</code> — safe resize</li>
+							<li class="note-item">Blocks may move on <code>realloc</code></li>
+							<li class="note-item"><code>aligned_alloc</code> — custom alignment</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-50-malloc-free.html" class="nav-link prev">malloc &amp; free</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-52-memory-functions.html" class="nav-link next">Memory Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+	</body>
+</html>

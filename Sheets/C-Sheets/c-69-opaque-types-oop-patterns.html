@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 69: Opaque Types &amp; OOP Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s69">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 69</div>
+			<h1>Opaque Types &amp; OOP Patterns</h1>
+			<div class="sheet-desc">struct Foo; opaque pointer · create / destroy functions · encapsulation via .c files · vtable of function pointers · "inheritance" via first member · container_of</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Objects in C</h2>
+						<div class="description">C has no classes, but the same ideas work with conventions. An <strong>opaque type</strong> declares <code>struct Foo;</code> in the header and defines it only in the <code>.c</code> file, so users can hold <code>Foo *</code> but can't touch its fields: real encapsulation. <strong>Create/destroy</strong> functions stand in for constructors and destructors. A struct of <strong>function pointers</strong> (a vtable) gives polymorphism, and embedding a base struct as the first member gives simple inheritance.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Pointer to struct = pointer to its first member</li>
+							<li class="note-item"><code>container_of</code> recovers the outer struct from a member</li>
+							<li class="note-item">Name functions <code>type_verb</code>: <code>stack_push</code></li>
+							<li class="note-item">GObject and the Linux kernel use these patterns</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Opaque Type + vtable</h2>
+						<pre class="language-c"><code class="language-c">/* shape.h */
+typedef struct Shape Shape;                 // forward declaration
+typedef struct {
+    double (*area)(const Shape *);
+    void   (*destroy)(Shape *);
+} ShapeOps;
+struct Shape { const ShapeOps *ops; };      // "base class"
+/* circle.c */
+typedef struct { Shape base; double r; } Circle;   // hidden in .c
+static double circle_area(const Shape *s) {
+    const Circle *c = (const Circle *)s;    // downcast
+    return 3.14159 * c-&gt;r * c-&gt;r;
+}
+static void circle_destroy(Shape *s) { free(s); }
+static const ShapeOps CIRCLE_OPS = { circle_area, circle_destroy };
+
+Shape *circle_new(double r) {
+    Circle *c = malloc(sizeof *c);
+    if (c) *c = (Circle){ .base.ops = &amp;CIRCLE_OPS, .r = r };
+    return (Shape *)c;
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Circle</code> — defined only in <code>circle.c</code>; users hold <code>Shape *</code></div>
+							<div class="explain-item"><code>ShapeOps</code> — table of "virtual" functions</div>
+							<div class="explain-item"><code>Shape base</code> first — <code>Circle *</code> ↔ <code>Shape *</code> cast is valid</div>
+							<div class="explain-item"><code>static</code> functions — private to <code>circle.c</code></div>
+							<div class="explain-item"><code>circle_new</code> — the constructor</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: OOP Concept → C Pattern | container_of Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-map">
+						<h2 class="section-title">OOP Concept → C Pattern</h2>
+						<table>
+							<thead><tr><th>Concept</th><th>C pattern</th></tr></thead>
+							<tbody>
+								<tr><td>class</td><td class="desc"><code>struct</code> + functions taking <code>T *</code></td></tr>
+								<tr><td>private fields</td><td class="desc">opaque <code>struct T;</code> in header</td></tr>
+								<tr><td>constructor / destructor</td><td class="desc"><code>t_new()</code> / <code>t_free()</code></td></tr>
+								<tr><td>method</td><td class="desc"><code>t_verb(T *self, ...)</code></td></tr>
+								<tr><td>virtual method</td><td class="desc">function pointer in an ops table</td></tr>
+								<tr><td>inheritance</td><td class="desc">base struct as first member</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-container">
+						<h2 class="section-title">container_of</h2>
+						<table>
+							<thead><tr><th>Piece</th><th>Code</th></tr></thead>
+							<tbody>
+								<tr><td>macro</td><td class="desc"><code>#define container_of(p, T, m) \</code></td></tr>
+								<tr><td></td><td class="desc"><code>  ((T *)((char *)(p) - offsetof(T, m)))</code></td></tr>
+								<tr><td>use</td><td class="desc"><code>Circle *c = container_of(s, Circle, base);</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Putting the base struct anywhere but first and then casting <code>Derived *</code> ↔ <code>Base *</code></li>
+							<li class="note-item">Exposing the struct definition in the header "for convenience"; users start depending on fields</li>
+							<li class="note-item">Forgetting to call the destroy function, or calling <code>free</code> directly on an object with owned resources</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Accept <code>NULL</code> in destroy functions, like <code>free</code> does</li>
+							<li class="note-item">Make ops tables <code>static const</code> so there's one shared copy</li>
+							<li class="note-item">Keep the public header minimal: typedef + function prototypes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Opaque <code>struct T;</code> — encapsulation</li>
+							<li class="note-item"><code>t_new</code> / <code>t_free</code> — lifecycle</li>
+							<li class="note-item">Ops table — polymorphism</li>
+							<li class="note-item">Base-first struct — inheritance</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-68-bit-fields.html" class="nav-link prev">Bit-Fields</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-70-console-input.html" class="nav-link next">Console Input</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 54: Memory Debugging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s54">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 54</div>
+			<h1>Memory Debugging</h1>
+			<div class="sheet-desc">AddressSanitizer · UBSan · Valgrind (Linux) · leaks (macOS) · MallocStackLogging · ownership conventions · common leak patterns</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Finding Memory Bugs</h2>
+						<div class="description">Memory bugs are easiest to catch with tools. <strong>AddressSanitizer</strong> (ASan) instruments the build and reports overflows, use-after-free and leaks with stack traces. <strong>UBSan</strong> catches undefined behavior such as signed overflow. <strong>Valgrind</strong> runs an unmodified binary under a checker on Linux. On macOS, <code>leaks</code> and Xcode Instruments check a running process.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">ASan slows code ~2× and uses ~3× memory</li>
+							<li class="note-item">Valgrind slows code 20–50×</li>
+							<li class="note-item">LeakSanitizer is built into ASan on Linux</li>
+							<li class="note-item">Apple clang's ASan has no leak checker; use <code>leaks</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Running the Tools</h2>
+						<pre class="language-bash"><code class="language-bash"># AddressSanitizer + UBSan
+cc -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
+   main.c -o app
+./app
+
+# Valgrind (Linux)
+cc -g -O0 main.c -o app
+valgrind --leak-check=full --track-origins=yes ./app
+
+# macOS: leaks tool
+MallocStackLogging=1 leaks --atExit -- ./app
+
+# Static analysis
+gcc -fanalyzer main.c
+clang --analyze main.c</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-fno-omit-frame-pointer</code> — better stack traces</div>
+							<div class="explain-item"><code>--leak-check=full</code> — list each leaked block</div>
+							<div class="explain-item"><code>--track-origins=yes</code> — where uninitialized values came from</div>
+							<div class="explain-item"><code>leaks --atExit</code> — report leaks when the program ends</div>
+							<div class="explain-item"><code>-fanalyzer</code> — compile-time path analysis (GCC 10+)</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tools | Ownership Rules of Thumb Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-tools">
+						<h2 class="section-title">Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Platform</th><th>Finds</th></tr></thead>
+							<tbody>
+								<tr><td>ASan</td><td class="desc">GCC/Clang, all</td><td class="desc">overflows, UAF, double free, leaks</td></tr>
+								<tr><td>UBSan</td><td class="desc">GCC/Clang, all</td><td class="desc">UB: overflow, shifts, alignment</td></tr>
+								<tr><td>MSan</td><td class="desc">Clang, Linux</td><td class="desc">uninitialized reads</td></tr>
+								<tr><td>Valgrind</td><td class="desc">Linux</td><td class="desc">leaks, invalid access, uninit</td></tr>
+								<tr><td>leaks / Instruments</td><td class="desc">macOS</td><td class="desc">leaks in a running process</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-ownership">
+						<h2 class="section-title">Ownership Rules of Thumb</h2>
+						<table>
+							<thead><tr><th>Rule</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>creator documents who frees</td><td class="desc"><code>/* caller frees */</code></td></tr>
+								<tr><td>pair names</td><td class="desc"><code>x_create</code> / <code>x_destroy</code></td></tr>
+								<tr><td>borrowed pointers aren't freed</td><td class="desc"><code>getenv</code>, <code>strerror</code></td></tr>
+								<tr><td>transfer = set source to NULL</td><td class="desc"><code>*out = p; p = NULL;</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Running ASan builds with Valgrind; use one or the other</li>
+							<li class="note-item">Ignoring "still reachable" leaks forever; they hide real ones in long-running programs</li>
+							<li class="note-item">Debugging a crash at <code>-O2</code> without <code>-g</code>; the stack trace is unreadable</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Make an ASan+UBSan build target and run tests with it in CI</li>
+							<li class="note-item">Use <code>ASAN_OPTIONS=abort_on_error=1</code> to get a core dump / debugger stop</li>
+							<li class="note-item">Fix the <strong>first</strong> error reported; later ones are often consequences</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">ASan — memory errors, fast</li>
+							<li class="note-item">UBSan — undefined behavior</li>
+							<li class="note-item">Valgrind — Linux, no rebuild</li>
+							<li class="note-item"><code>leaks</code> — macOS</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-53-memory-layout.html" class="nav-link prev">Memory Layout</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-55-arrays-basics.html" class="nav-link next">Array Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

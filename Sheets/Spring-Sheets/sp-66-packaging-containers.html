@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 66: Packaging &amp; Containers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s66">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 66</div>
+			<h1>Packaging &amp; Containers</h1>
+			<div class="sheet-desc">executable jar · layered jars · bootBuildImage · spring-boot:build-image · Dockerfile · server.port · graceful shutdown</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Shipping the App</h2>
+						<div class="description">The Boot plugin builds an <strong>executable jar</strong> you run with <code>java -jar</code>. For containers, <strong><code>build-image</code></strong> / <strong><code>bootBuildImage</code></strong> creates an OCI image with <strong>Cloud Native Buildpacks</strong> (no Dockerfile needed), or you write a Dockerfile that uses Boot's <strong>layered</strong> jar so dependency layers are cached between builds. Shutdown is <strong>graceful</strong> by default: in-flight requests finish first.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Configure via env vars: <code>SPRING_PROFILES_ACTIVE</code>, <code>SERVER_PORT</code></li>
+						<li class="note-item">Buildpacks pick a JRE and tune memory for the container</li>
+						<li class="note-item">Layers: dependencies → loader → snapshot deps → application</li>
+						<li class="note-item"><code>server.shutdown=immediate</code> turns graceful shutdown off</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Build Commands</h2>
+						<pre><code class="language-bash">./mvnw spring-boot:build-image -Dspring-boot.build-image.imageName=shop:1.4
+./gradlew bootBuildImage --imageName=shop:1.4
+docker run -p 8080:8080 -e SPRING_PROFILES_ACTIVE=prod shop:1.4</code></pre>
+					</section>
+					<section class="section-code" id="code-docker">
+						<h2 class="section-title">Dockerfile with Layers</h2>
+						<pre><code class="language-bash">FROM eclipse-temurin:25-jre AS build
+WORKDIR /app
+COPY target/shop.jar app.jar
+RUN java -Djarmode=tools -jar app.jar extract --layers --launcher
+
+FROM eclipse-temurin:25-jre
+WORKDIR /app
+COPY --from=build /app/app/dependencies/ ./
+COPY --from=build /app/app/spring-boot-loader/ ./
+COPY --from=build /app/app/snapshot-dependencies/ ./
+COPY --from=build /app/app/application/ ./
+ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>imageName</code> tags the image; push it to any registry</div>
+							<div class="explain-item"><code>extract --layers</code> splits the jar into cacheable folders</div>
+							<div class="explain-item">Code changes rebuild only the small <code>application</code> layer</div>
+							<div class="explain-item"><code>JarLauncher</code> starts the app from the extracted layout</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Props Table | K8s Table | Jvm Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-props">
+						<h2 class="section-title">Deployment Properties</h2>
+						<table>
+							<thead><tr><th>Property</th><th>Sets</th></tr></thead>
+							<tbody>
+								<tr><td>server.port</td><td class="desc">HTTP port</td></tr>
+								<tr><td>server.shutdown</td><td class="desc"><code>graceful</code> (default)</td></tr>
+								<tr><td>…shutdown-phase</td><td class="desc">Grace period</td></tr>
+								<tr><td>…forward-headers…</td><td class="desc">Behind a proxy</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-k8s">
+						<h2 class="section-title">Kubernetes</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Value</th></tr></thead>
+							<tbody>
+								<tr><td>livenessProbe</td><td class="desc"><code>…/liveness</code></td></tr>
+								<tr><td>readinessProbe</td><td class="desc"><code>…/readiness</code></td></tr>
+								<tr><td>preStop sleep</td><td class="desc">Drain traffic</td></tr>
+								<tr><td>Config</td><td class="desc">ConfigMap → env vars</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-jvm">
+						<h2 class="section-title">JVM Flags</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>-XX:MaxRAMPercentage=75</td><td class="desc">Heap vs container</td></tr>
+								<tr><td>-XX:+UseZGC</td><td class="desc">Low-pause GC</td></tr>
+								<tr><td>-Xss512k</td><td class="desc">Smaller stacks</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Fixed <code>-Xmx</code> larger than the container limit; the pod gets OOM-killed</li>
+						<li class="note-item">Copying the fat jar as a single layer; every build re-uploads everything</li>
+						<li class="note-item">Baking secrets into the image instead of injecting env vars</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use buildpacks unless you need full control of the Dockerfile</li>
+						<li class="note-item">Run as a non-root user in custom images</li>
+						<li class="note-item">Use CDS or AOT cache (Java 25) to cut startup time</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>java -jar</code>: run anywhere</li>
+						<li class="note-item"><code>bootBuildImage</code>: OCI image</li>
+						<li class="note-item"><code>extract --layers</code>: Docker caching</li>
+						<li class="note-item">Graceful shutdown by default</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-65-webflux-reactive.html" class="nav-link prev">WebFlux &amp; Reactive Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-67-graalvm-native.html" class="nav-link next">GraalVM Native Images</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

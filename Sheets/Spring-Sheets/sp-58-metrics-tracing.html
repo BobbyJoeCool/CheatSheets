@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 58: Metrics &amp; Tracing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s58">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 58</div>
+			<h1>Metrics &amp; Tracing</h1>
+			<div class="sheet-desc">Micrometer · MeterRegistry · Counter · Timer · @Observed · Prometheus endpoint · OpenTelemetry</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Measuring the App</h2>
+						<div class="description">Boot instruments the app with <strong>Micrometer</strong>: HTTP requests, JVM, connection pools and caches are measured automatically. Add a registry (e.g. <strong>Prometheus</strong>) to export them. Record your own <strong>counters</strong>, <strong>timers</strong> and <strong>gauges</strong> with a <code>MeterRegistry</code>, or annotate code with <strong><code>@Observed</code></strong> to get a metric *and* a trace span. Tracing exports to <strong>OpenTelemetry</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Prometheus: add <code>micrometer-registry-prometheus</code></li>
+						<li class="note-item">Tracing: <code>spring-boot-starter-opentelemetry</code> (Boot 4)</li>
+						<li class="note-item">Trace and span ids are added to log lines automatically</li>
+						<li class="note-item">Tag cardinality must stay low: no user ids in tags</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Custom Metrics</h2>
+						<pre><code class="language-java">@Service
+class CheckoutService {
+    private final Counter orders;
+    private final Timer payment;
+
+    CheckoutService(MeterRegistry registry) {
+        this.orders = Counter.builder("shop.orders")
+            .tag("channel", "web").register(registry);
+        this.payment = registry.timer("shop.payment.time");
+        Gauge.builder("shop.cart.open", carts, CartStore::size).register(registry);
+    }
+
+    void checkout(Cart cart) {
+        payment.record(() -&gt; gateway.charge(cart));
+        orders.increment();
+    }
+
+    @Observed(name = "shop.lookup")              // metric + span
+    Product lookup(String sku) { … }
+}</code></pre>
+					</section>
+					<section class="section-code" id="code-yaml">
+						<h2 class="section-title">application.yml</h2>
+						<pre><code class="language-yaml">management:
+  endpoints.web.exposure.include: prometheus
+  tracing.sampling.probability: 0.1     # trace 10% of requests</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Meter names use dots; Prometheus shows <code>shop_orders_total</code></div>
+							<div class="explain-item"><code>timer.record(…)</code> times the lambda</div>
+							<div class="explain-item">Gauges sample a value when scraped</div>
+							<div class="explain-item">Turn <code>@Observed</code> on with <code>…observations.annotations.enabled</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Meters Table | Auto Table | View Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-meters">
+						<h2 class="section-title">Meter Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Measures</th></tr></thead>
+							<tbody>
+								<tr><td>Counter</td><td class="desc">Count up only</td></tr>
+								<tr><td>Timer</td><td class="desc">Duration + count</td></tr>
+								<tr><td>Gauge</td><td class="desc">Current value</td></tr>
+								<tr><td>DistributionSummary</td><td class="desc">Sizes, amounts</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-auto">
+						<h2 class="section-title">Built-in Metrics</h2>
+						<table>
+							<thead><tr><th>Name</th><th>Covers</th></tr></thead>
+							<tbody>
+								<tr><td>http.server.requests</td><td class="desc">MVC requests</td></tr>
+								<tr><td>jvm.memory.used</td><td class="desc">Heap / non-heap</td></tr>
+								<tr><td>hikaricp.connections</td><td class="desc">DB pool</td></tr>
+								<tr><td>cache.gets</td><td class="desc">Cache hits</td></tr>
+								<tr><td>process.cpu.usage</td><td class="desc">CPU</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-view">
+						<h2 class="section-title">Inspect</h2>
+						<table>
+							<thead><tr><th>URL</th><th>Shows</th></tr></thead>
+							<tbody>
+								<tr><td>/actuator/metrics</td><td class="desc">Meter names</td></tr>
+								<tr><td>…/metrics/{name}</td><td class="desc">Values + tags</td></tr>
+								<tr><td>/actuator/prometheus</td><td class="desc">Scrape format</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Tagging with unbounded values (user id, URL with ids); memory explodes</li>
+						<li class="note-item">Sampling 100% of traces in production</li>
+						<li class="note-item">Creating meters inside hot methods instead of once</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Tag all meters with the app name via <code>…metrics.tags.application</code></li>
+						<li class="note-item">Use Grafana dashboards for JVM and HTTP metrics</li>
+						<li class="note-item">Prefer <code>@Observed</code> / <code>Observation</code> for code you want traced</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Micrometer: metrics facade</li>
+						<li class="note-item"><code>MeterRegistry</code>: create meters</li>
+						<li class="note-item"><code>@Observed</code>: metric + trace</li>
+						<li class="note-item"><code>/actuator/prometheus</code>: export</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-57-actuator.html" class="nav-link prev">Actuator Endpoints</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-59-logging.html" class="nav-link next">Logging</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

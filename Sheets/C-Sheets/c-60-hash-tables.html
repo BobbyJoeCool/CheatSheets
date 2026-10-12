@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 60: Hash Tables</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s60">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 60</div>
+			<h1>Hash Tables</h1>
+			<div class="sheet-desc">hash functions (djb2, FNV-1a) · buckets &amp; chaining · open addressing · load factor · resize &amp; rehash · string keys &amp; ownership</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Hash Tables</h2>
+						<div class="description">A <strong>hash table</strong> maps keys to values with average O(1) lookup. A <strong>hash function</strong> turns the key into an index into an array of <strong>buckets</strong>. Collisions are handled by <strong>chaining</strong> (each bucket holds a linked list) or <strong>open addressing</strong> (probe for the next free slot). When the <strong>load factor</strong> (entries / buckets) gets too high, the table grows and rehashes every entry.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">C has no standard hash table</li>
+							<li class="note-item">POSIX <code>hsearch</code> exists but is limited (one global table)</li>
+							<li class="note-item">Keep load ≤ ~0.75 (chaining) or ≤ ~0.5–0.7 (open addressing)</li>
+							<li class="note-item">Decide who owns key strings</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Chained Hash Map (string → int)</h2>
+						<pre class="language-c"><code class="language-c">typedef struct E { char *key; int val; struct E *next; } Entry;
+typedef struct { Entry **buckets; size_t nbuckets, count; } Map;
+
+static uint64_t fnv1a(const char *s) {          // FNV-1a hash
+    uint64_t h = 14695981039346656037u;
+    while (*s) { h ^= (unsigned char)*s++; h *= 1099511628211u; }
+    return h;
+}
+int *map_get(Map *m, const char *key) {
+    Entry *e = m-&gt;buckets[fnv1a(key) % m-&gt;nbuckets];
+    for (; e; e = e-&gt;next)
+        if (strcmp(e-&gt;key, key) == 0) return &amp;e-&gt;val;
+    return NULL;
+}
+int map_put(Map *m, const char *key, int val) {  // key is new
+    Entry *e = malloc(sizeof *e);
+    if (!e || !(e-&gt;key = strdup(key))) { free(e); return -1; }
+    size_t i = fnv1a(key) % m-&gt;nbuckets;
+    e-&gt;val = val; e-&gt;next = m-&gt;buckets[i]; m-&gt;buckets[i] = e;
+    m-&gt;count++;                 // grow when count &gt; 0.75 * nbuckets
+    return 0;
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>fnv1a</code> — simple, decent-quality string hash</div>
+							<div class="explain-item"><code>% nbuckets</code> — map hash to a bucket</div>
+							<div class="explain-item">Chain walk with <code>strcmp</code> — handle collisions</div>
+							<div class="explain-item"><code>strdup(key)</code> — the map owns its own key copy</div>
+							<div class="explain-item">Update existing keys via <code>map_get</code>; it returns <code>int *</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Collision Strategies | Hash Functions Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-strategy">
+						<h2 class="section-title">Collision Strategies</h2>
+						<table>
+							<thead><tr><th>Strategy</th><th>Pros</th><th>Cons</th></tr></thead>
+							<tbody>
+								<tr><td>chaining</td><td class="desc">simple; deletes easy</td><td class="desc">pointer chasing</td></tr>
+								<tr><td>linear probing</td><td class="desc">cache-friendly</td><td class="desc">clustering; deletes need tombstones</td></tr>
+								<tr><td>Robin Hood</td><td class="desc">even probe lengths</td><td class="desc">more complex</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-hashes">
+						<h2 class="section-title">Hash Functions</h2>
+						<table>
+							<thead><tr><th>Name</th><th>Notes</th></tr></thead>
+							<tbody>
+								<tr><td>djb2</td><td class="desc"><code>h = h * 33 + c</code>; tiny, OK quality</td></tr>
+								<tr><td>FNV-1a</td><td class="desc">simple, good for short keys</td></tr>
+								<tr><td>xxHash / wyhash</td><td class="desc">fast, high quality</td></tr>
+								<tr><td>SipHash</td><td class="desc">resists hash-flooding attacks</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Storing the caller's key pointer instead of a copy; the key changes or is freed later</li>
+							<li class="note-item">Never resizing: chains grow long and lookups become O(n)</li>
+							<li class="note-item">Using <code>%</code> with a poor hash and a power-of-two table size; low bits collide</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use an existing library for production (khash, uthash, stb_ds)</li>
+							<li class="note-item">Use SipHash or a random seed when keys come from untrusted input</li>
+							<li class="note-item">Keep bucket count a power of two and mix the hash, or use a prime with <code>%</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">hash(key) → bucket index</li>
+							<li class="note-item">Chaining or open addressing</li>
+							<li class="note-item">Resize when load factor is high</li>
+							<li class="note-item">Own (copy) your keys</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-59-stacks-queues.html" class="nav-link prev">Stacks, Queues &amp; Ring Buffers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-61-trees-heaps.html" class="nav-link next">Trees &amp; Heaps</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+	</body>
+</html>

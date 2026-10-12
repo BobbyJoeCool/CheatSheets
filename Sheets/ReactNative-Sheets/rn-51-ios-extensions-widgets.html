@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React Native — Sheet 51: iOS Extensions, Widgets &amp; Live Activities</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>iOS Extensions, Widgets &amp; Live Activities</h1>
+			<div class="sheet-desc">app extensions · WidgetKit · Live Activities · App Groups · App Clips · expo-widgets</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Beyond the Main App</h2>
+					<div class="description">Widgets, Live Activities, share extensions, and App Clips are separate <strong>targets</strong> written in Swift/SwiftUI that ship inside your app. They can't run React Native directly, so they share data with the app through an <strong>App Group</strong> container. Expo's <code>expo-widgets</code> (iOS widgets stable since SDK 56) and the <code>@bacons/apple-targets</code> plugin generate these targets from config so CNG doesn't wipe them.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">How Data Flows</h2>
+					<ul class="note-list">
+						<li class="note-item">App writes to shared <code>UserDefaults(suiteName:)</code> / files</li>
+						<li class="note-item">Widget reads on its timeline and renders SwiftUI</li>
+						<li class="note-item"><code>WidgetCenter.shared.reloadAllTimelines()</code> refreshes</li>
+						<li class="note-item">Live Activities update locally or via ActivityKit push</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + iOS + Android -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Widget + Shared Data</h2>
+					<pre><code class="language-swift">// targets/widget/Widget.swift (SwiftUI, WidgetKit)
+struct Entry: TimelineEntry { let date: Date; let steps: Int }
+
+struct Provider: TimelineProvider {
+  func placeholder(in: Context) -&gt; Entry { Entry(date: .now, steps: 0) }
+  func getSnapshot(in: Context, completion: @escaping (Entry) -&gt; Void) {
+    completion(load()) }
+  func getTimeline(in: Context,
+      completion: @escaping (Timeline&lt;Entry&gt;) -&gt; Void) {
+    completion(Timeline(entries: [load()], policy: .after(.now + 900))) }
+  func load() -&gt; Entry {
+    let d = UserDefaults(suiteName: "group.com.acme.myapp")
+    return Entry(date: .now, steps: d?.integer(forKey: "steps") ?? 0)
+  }
+}
+
+@main struct StepsWidget: Widget {
+  var body: some WidgetConfiguration {
+    StaticConfiguration(kind: "Steps", provider: Provider()) { e in
+      Text("\(e.steps) steps").font(.title)
+    }.supportedFamilies([.systemSmall, .accessoryCircular])
+  }
+}</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">From React Native</h2>
+					<div class="section-body">
+						<div class="explain-item">Write shared data to the App Group from JS with <code>expo-widgets</code> or a small native module</div>
+						<div class="explain-item">Then call <code>WidgetCenter.shared.reloadAllTimelines()</code> natively</div>
+						<div class="explain-item"><code>@bacons/apple-targets</code> — targets live in <code>targets/*/</code> with <code>expo-target.config.js</code></div>
+						<div class="explain-item">Set <code>appleTeamId</code> in the plugin options</div>
+						<div class="explain-item">Both app and widget list <code>group.com.acme.myapp</code> in entitlements</div>
+					</div>
+				</section>
+				<section class="section-notes section-ios" id="ios">
+					<h2 class="section-title">iOS</h2>
+					<ul class="note-list">
+						<li class="note-item">Extensions are separate targets — add via a config plugin</li>
+						<li class="note-item">Share data through an App Group (<code>group.com.example</code>)</li>
+						<li class="note-item">Widgets have tight memory limits</li>
+					</ul>
+				</section>
+				<section class="section-notes section-android" id="android">
+					<h2 class="section-title">Android</h2>
+					<ul class="note-list">
+						<li class="note-item">Home-screen widgets use AppWidgetProvider / Glance</li>
+						<li class="note-item"><code>react-native-android-widget</code> renders widgets from JS</li>
+						<li class="note-item"><code>updatePeriodMillis</code> minimum is 30 minutes</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Targets Table | Rules Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-targets">
+					<h2 class="section-title">Extension Types</h2>
+					<table>
+						<thead><tr><th>Target</th><th>Purpose</th></tr></thead>
+						<tbody>
+							<tr><td>Widget (WidgetKit)</td><td class="desc">Home / Lock Screen glanceable info</td></tr>
+							<tr><td>Live Activity</td><td class="desc">Lock Screen + Dynamic Island live status</td></tr>
+							<tr><td>Share extension</td><td class="desc">Receive content from other apps</td></tr>
+							<tr><td>Notification Service</td><td class="desc">Modify pushes (images)</td></tr>
+							<tr><td>App Clip</td><td class="desc">Small, size-limited instant experience</td></tr>
+							<tr><td>App Intents</td><td class="desc">Siri, Shortcuts, Spotlight actions</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-rules">
+					<h2 class="section-title">Constraints</h2>
+					<table>
+						<thead><tr><th>Rule</th><th>Detail</th></tr></thead>
+						<tbody>
+							<tr><td>No RN runtime</td><td class="desc">Write SwiftUI / Swift</td></tr>
+							<tr><td>Shared data</td><td class="desc">App Group on app and extension</td></tr>
+							<tr><td>Memory limits</td><td class="desc">Widgets ~30 MB</td></tr>
+							<tr><td>Refresh budget</td><td class="desc">Timelines, not live polling</td></tr>
+							<tr><td>Bundle ID</td><td class="desc"><code>com.acme.myapp.widget</code> (child of app)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Adding a target in Xcode inside a CNG project; <code>prebuild</code> deletes it, so generate it from config</li>
+						<li class="note-item">Mismatched App Group IDs between app and extension; the widget reads nothing</li>
+						<li class="note-item">Expecting a widget to refresh every second; WidgetKit budgets updates</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Keep widget data small and pre-formatted so the extension stays lightweight</li>
+						<li class="note-item">Use Live Activities for deliveries, timers, and scores instead of frequent pushes</li>
+						<li class="note-item">Try <code>expo-widgets</code> first; drop to <code>@bacons/apple-targets</code> for other extension types</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Extensions — separate Swift targets</li>
+						<li class="note-item">App Group — shared storage</li>
+						<li class="note-item">WidgetKit / ActivityKit — widgets &amp; live status</li>
+						<li class="note-item">Config plugins — keep targets in CNG</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rn-50-ios-app-store-release.html" class="nav-link prev">App Store &amp; TestFlight Release</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">React Native Reference · 70 Sheets</a>
+				<a href="rn-52-ipados.html" class="nav-link next">iPadOS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>

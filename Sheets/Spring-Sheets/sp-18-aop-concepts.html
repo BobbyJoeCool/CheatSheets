@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 18: AOP Concepts &amp; Proxies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>AOP Concepts &amp; Proxies</h1>
+			<div class="sheet-desc">aspect · join point · pointcut · advice · JDK vs CGLIB proxies · self-invocation pitfall</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Cross-Cutting Concerns</h2>
+						<div class="description"><strong>Aspect-oriented programming</strong> moves code that cuts across many classes (logging, timing, security, transactions) into one <strong>aspect</strong>. Spring AOP works with <strong>proxies</strong>: callers get a proxy object that runs the <strong>advice</strong> and then calls the real bean. <code>@Transactional</code>, <code>@Cacheable</code>, <code>@Async</code> and method security are all built this way.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Spring AOP intercepts <strong>public method calls on beans</strong> only</li>
+						<li class="note-item">Default proxy type in Boot: <strong>CGLIB</strong> subclass (even with interfaces)</li>
+						<li class="note-item"><code>final</code> classes or methods can't be proxied by CGLIB</li>
+						<li class="note-item">Full AspectJ (compile-time weaving) can do more but is rarely needed</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Proxies and the Self-Invocation Trap</h2>
+						<pre><code class="language-java">@Service
+class OrderService {
+
+    @Transactional
+    public void placeOrder(Order o) { save(o); }
+
+    public void importAll(List&lt;Order&gt; orders) {
+        orders.forEach(this::placeOrder);    // ❌ this.placeOrder skips the proxy
+    }                                        //    → no transaction!
+}
+
+@Service
+class ImportService {
+    private final OrderService orders;       // injected = the proxy
+    ImportService(OrderService orders) { this.orders = orders; }
+
+    public void importAll(List&lt;Order&gt; list) {
+        list.forEach(orders::placeOrder);    // ✅ goes through the proxy
+    }
+}</code></pre>
+					</section>
+					<section class="section-code" id="code-check">
+						<h2 class="section-title">Is It a Proxy?</h2>
+						<pre><code class="language-java">AopUtils.isAopProxy(orderService);          // true
+orderService.getClass();                    // OrderService$$SpringCGLIB$$0</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Callers hold the <strong>proxy</strong>; <code>this</code> inside the bean is the <strong>target</strong></div>
+							<div class="explain-item">Calls on <code>this</code> bypass all advice: transactions, caching, security</div>
+							<div class="explain-item">Fix: move the method to another bean and inject it</div>
+							<div class="explain-item">The CGLIB class name gives the proxy away in stack traces</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Terms Table | Proxy Table | Builtin Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-terms">
+						<h2 class="section-title">AOP Terms</h2>
+						<table>
+							<thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>Aspect</td><td class="desc">Module of advice</td></tr>
+								<tr><td>Join point</td><td class="desc">A method execution</td></tr>
+								<tr><td>Pointcut</td><td class="desc">Which join points</td></tr>
+								<tr><td>Advice</td><td class="desc">Code to run there</td></tr>
+								<tr><td>Weaving</td><td class="desc">Linking it in (proxy)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-proxy">
+						<h2 class="section-title">Proxy Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Works By</th></tr></thead>
+							<tbody>
+								<tr><td>CGLIB</td><td class="desc">Subclassing the bean</td></tr>
+								<tr><td>JDK dynamic</td><td class="desc">Implementing interfaces</td></tr>
+								<tr><td>AspectJ weaving</td><td class="desc">Bytecode at build/load</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-builtin">
+						<h2 class="section-title">Built on AOP</h2>
+						<table>
+							<thead><tr><th>Annotation</th><th>Advice Does</th></tr></thead>
+							<tbody>
+								<tr><td>@Transactional</td><td class="desc">Begin / commit</td></tr>
+								<tr><td>@Cacheable</td><td class="desc">Return cached value</td></tr>
+								<tr><td>@Async</td><td class="desc">Run on executor</td></tr>
+								<tr><td>@PreAuthorize</td><td class="desc">Check access</td></tr>
+								<tr><td>@Retryable</td><td class="desc">Retry on failure</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Calling an annotated method on <code>this</code> and wondering why it has no effect</li>
+						<li class="note-item">Putting <code>@Transactional</code> on <code>private</code> methods; proxies can't intercept them</li>
+						<li class="note-item">Making a bean class <code>final</code> (or a Kotlin class without <code>open</code>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Annotate <strong>public</strong> service methods called from other beans</li>
+						<li class="note-item">Split a bean when it needs to call its own advised method</li>
+						<li class="note-item">Check <code>AopUtils.isAopProxy()</code> when an annotation seems ignored</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item">Aspect: cross-cutting module</li>
+						<li class="note-item">Proxy: wraps the bean, runs advice</li>
+						<li class="note-item">Self-invocation: bypasses the proxy</li>
+						<li class="note-item">CGLIB: Boot's default proxy</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-17-auto-configuration.html" class="nav-link prev">Auto-Configuration &amp; Conditionals</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-19-aop-advice-pointcuts.html" class="nav-link next">Advice &amp; Pointcut Expressions</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

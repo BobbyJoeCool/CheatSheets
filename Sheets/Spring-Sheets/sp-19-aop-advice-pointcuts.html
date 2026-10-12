@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 19: Advice &amp; Pointcut Expressions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Advice &amp; Pointcut Expressions</h1>
+			<div class="sheet-desc">@Aspect · @Before · @AfterReturning · @Around · ProceedingJoinPoint · execution() · @annotation()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Writing an Aspect</h2>
+						<div class="description">An <strong><code>@Aspect</code></strong> class (also a <code>@Component</code>) holds <strong>advice</strong> methods. Each advice names a <strong>pointcut</strong>: an expression that selects methods by signature (<code>execution(...)</code>), by annotation (<code>@annotation(...)</code>) or by package (<code>within(...)</code>). <strong><code>@Around</code></strong> is the most flexible: it gets a <code>ProceedingJoinPoint</code> and decides when to call <code>proceed()</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Needs <code>spring-boot-starter-aspectj</code> (renamed from <code>starter-aop</code> in Boot 4)</li>
+						<li class="note-item">Advice on the same join point is ordered with <code>@Order</code> on the aspect</li>
+						<li class="note-item">Prefer <strong>annotation-based</strong> pointcuts; they're explicit</li>
+						<li class="note-item">Always return the result of <code>proceed()</code> from <code>@Around</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Timing Every @Timed Method</h2>
+						<pre><code class="language-java">@Aspect @Component
+class TimingAspect {
+    private static final Logger log = LoggerFactory.getLogger(TimingAspect.class);
+
+    @Around("@annotation(com.example.Timed)")
+    Object time(ProceedingJoinPoint pjp) throws Throwable {
+        long start = System.nanoTime();
+        try {
+            return pjp.proceed();                       // call the real method
+        } finally {
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            log.info("{} took {} ms", pjp.getSignature().toShortString(), ms);
+        }
+    }
+
+    @Pointcut("within(com.example..service..*)")
+    void services() { }
+
+    @AfterThrowing(pointcut = "services()", throwing = "ex")
+    void logError(JoinPoint jp, Exception ex) { log.warn("{} failed", jp, ex); }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@annotation(...)</code> matches methods carrying <code>@Timed</code>, a plain marker annotation</div>
+							<div class="explain-item"><code>finally</code> logs the time even when the method throws</div>
+							<div class="explain-item"><code>@Pointcut</code> names a reusable expression: <code>services()</code></div>
+							<div class="explain-item"><code>throwing = "ex"</code> binds the exception to the parameter</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Advice Table | Pointcuts Table | Jp Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-advice">
+						<h2 class="section-title">Advice Types</h2>
+						<table>
+							<thead><tr><th>Annotation</th><th>Runs</th></tr></thead>
+							<tbody>
+								<tr><td>@Before</td><td class="desc">Before the call</td></tr>
+								<tr><td>@AfterReturning</td><td class="desc">After success</td></tr>
+								<tr><td>@AfterThrowing</td><td class="desc">After an exception</td></tr>
+								<tr><td>@After</td><td class="desc">Always (finally)</td></tr>
+								<tr><td>@Around</td><td class="desc">Wraps the call</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pointcuts">
+						<h2 class="section-title">Pointcut Designators</h2>
+						<table>
+							<thead><tr><th>Expression</th><th>Matches</th></tr></thead>
+							<tbody>
+								<tr><td>execution(* *..Svc.*(..))</td><td class="desc">By signature</td></tr>
+								<tr><td>within(com.x..*)</td><td class="desc">Types in package</td></tr>
+								<tr><td>@annotation(Ann)</td><td class="desc">Annotated method</td></tr>
+								<tr><td>@within(Ann)</td><td class="desc">Annotated class</td></tr>
+								<tr><td>bean(*Service)</td><td class="desc">Bean name</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-jp">
+						<h2 class="section-title">JoinPoint API</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>getSignature()</td><td class="desc">Method signature</td></tr>
+								<tr><td>getArgs()</td><td class="desc">Arguments</td></tr>
+								<tr><td>getTarget()</td><td class="desc">Real bean</td></tr>
+								<tr><td>proceed()</td><td class="desc">Result (<code>@Around</code>)</td></tr>
+								<tr><td>proceed(args)</td><td class="desc">With new args</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Forgetting <code>@Component</code> on the aspect; it's never registered</li>
+						<li class="note-item">Not returning <code>pjp.proceed()</code> in <code>@Around</code>, so callers get <code>null</code></li>
+						<li class="note-item">Over-broad <code>execution(* *(..))</code> pointcuts that advise Spring's own beans</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Use a marker annotation (<code>@Timed</code>, <code>@Audited</code>) as the pointcut</li>
+						<li class="note-item">Use Micrometer's <code>@Observed</code> for timing instead of hand-made aspects</li>
+						<li class="note-item">Keep advice short; it runs on every matching call</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@Aspect @Component</code>: the aspect</li>
+						<li class="note-item"><code>@Around</code> + <code>proceed()</code>: wrap a call</li>
+						<li class="note-item"><code>@annotation(X)</code>: match by annotation</li>
+						<li class="note-item"><code>@Pointcut</code>: reusable expression</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-18-aop-concepts.html" class="nav-link prev">AOP Concepts &amp; Proxies</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-20-controllers-mappings.html" class="nav-link next">Controllers &amp; Request Mappings</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

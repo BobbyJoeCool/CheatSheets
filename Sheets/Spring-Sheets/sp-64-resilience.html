@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Spring — Sheet 64: Retry &amp; Resilience</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/spring-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s64">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 64</div>
+			<h1>Retry &amp; Resilience</h1>
+			<div class="sheet-desc">@EnableResilientMethods · @Retryable · maxRetries · backoff · @ConcurrencyLimit · RetryTemplate</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Retries and Concurrency Limits</h2>
+						<div class="description"><strong>Spring Framework 7</strong> brings resilience into the core: <strong><code>@Retryable</code></strong> re-runs a method when it throws, with configurable back-off and jitter, and <strong><code>@ConcurrencyLimit</code></strong> caps how many callers run a method at once. Turn both on with <strong><code>@EnableResilientMethods</code></strong>. For code-level control, <strong><code>RetryTemplate</code></strong> with a <code>RetryPolicy</code> does the same programmatically.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+						<li class="note-item">Annotations live in <code>org.springframework.resilience</code></li>
+						<li class="note-item">Defaults: any exception, <code>maxRetries = 3</code>, 1 s delay</li>
+						<li class="note-item">Total attempts = 1 + <code>maxRetries</code></li>
+						<li class="note-item">Replaces the separate Spring Retry project for most uses</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Annotations</h2>
+						<pre><code class="language-java">@Configuration @EnableResilientMethods class ResilienceConfig { }
+
+@Service
+class InventoryClient {
+
+    @Retryable(includes = ResourceAccessException.class,
+               maxRetries = 4, delay = 200, multiplier = 2,
+               maxDelay = 2000, jitter = 50)
+    public Stock check(String sku) {
+        return http.get().uri("/stock/{sku}", sku).retrieve().body(Stock.class);
+    }
+
+    @ConcurrencyLimit(10)              // at most 10 calls in flight
+    public Report heavyReport() { … }
+}</code></pre>
+					</section>
+					<section class="section-code" id="code-tpl">
+						<h2 class="section-title">RetryTemplate</h2>
+						<pre><code class="language-java">var policy = RetryPolicy.builder()
+    .includes(IOException.class)
+    .maxRetries(3)
+    .delay(Duration.ofMillis(100))
+    .multiplier(2)
+    .build();
+
+var template = new RetryTemplate(policy);
+String body = template.invoke(() -&gt; download(url));   // rethrows last error</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Delays grow 200, 400, 800, 1600 ms, capped at 2 s</div>
+							<div class="explain-item">Only <code>ResourceAccessException</code> (I/O errors) is retried</div>
+							<div class="explain-item"><code>@ConcurrencyLimit</code> makes extra callers wait</div>
+							<div class="explain-item"><code>execute()</code> instead of <code>invoke()</code> throws <code>RetryException</code> with all attempts</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Retry Table | When Table | Other Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-retry">
+						<h2 class="section-title">@Retryable Attributes</h2>
+						<table>
+							<thead><tr><th>Attribute</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>includes / value</td><td class="desc">Retry these</td></tr>
+								<tr><td>excludes</td><td class="desc">Never retry these</td></tr>
+								<tr><td>maxRetries</td><td class="desc">Extra attempts</td></tr>
+								<tr><td>delay / maxDelay</td><td class="desc">Back-off (ms)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-when">
+						<h2 class="section-title">Retry When…</h2>
+						<table>
+							<thead><tr><th>Error</th><th>Retry?</th></tr></thead>
+							<tbody>
+								<tr><td>Timeout / 503</td><td class="desc">Yes</td></tr>
+								<tr><td>Connection reset</td><td class="desc">Yes</td></tr>
+								<tr><td>400 / validation</td><td class="desc">No</td></tr>
+								<tr><td>Non-idempotent POST</td><td class="desc">Careful</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-other">
+						<h2 class="section-title">Related Options</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>RetryTemplate</td><td class="desc">Programmatic</td></tr>
+								<tr><td>MethodRetryEvent</td><td class="desc">Log each failure</td></tr>
+								<tr><td>Resilience4j</td><td class="desc">Circuit breakers</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+						<li class="note-item">Retrying everything, including bad requests that will never succeed</li>
+						<li class="note-item">Retrying non-idempotent operations and charging a card twice</li>
+						<li class="note-item">Calling the <code>@Retryable</code> method from the same class; no retries happen</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+						<li class="note-item">Always set timeouts before adding retries</li>
+						<li class="note-item">Add jitter so many clients don't retry in lockstep</li>
+						<li class="note-item">Use <code>@ConcurrencyLimit</code> to protect downstream services on virtual threads</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+						<li class="note-item"><code>@EnableResilientMethods</code></li>
+						<li class="note-item"><code>@Retryable(maxRetries, delay…)</code></li>
+						<li class="note-item"><code>@ConcurrencyLimit(n)</code></li>
+						<li class="note-item"><code>RetryTemplate</code> + <code>RetryPolicy</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sp-63-caching.html" class="nav-link prev">Caching</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Spring Reference · 67 Sheets</a>
+				<a href="sp-65-webflux-reactive.html" class="nav-link next">WebFlux &amp; Reactive Basics</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C — Sheet 90: Undefined Behavior</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/c-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s90">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 90</div>
+			<h1>Undefined Behavior</h1>
+			<div class="sheet-desc">UB vs unspecified vs implementation-defined · signed overflow · out-of-bounds · uninitialized reads · strict aliasing · how optimizers exploit UB · UBSan</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Undefined Behavior</h2>
+						<div class="description"><strong>Undefined behavior</strong> (UB) means the standard places no requirements on what happens. The program might crash, appear to work, or behave differently at <code>-O2</code>. Optimizers <strong>assume UB never happens</strong> and transform code on that basis, so a signed-overflow check or a null check placed after a dereference can be deleted. It's different from <strong>implementation-defined</strong> (documented choice) and <strong>unspecified</strong> (one of several outcomes) behavior.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">UB anywhere can affect code before it executes</li>
+							<li class="note-item">"It works" proves nothing about UB</li>
+							<li class="note-item">UBSan catches many cases at runtime</li>
+							<li class="note-item">C23 Annex J lists ~200 UB cases</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">UB the Optimizer Exploits</h2>
+						<pre class="language-c"><code class="language-c">int will_overflow(int x) {
+    return x + 1 &lt; x;          // "always false" → compiled to: return 0
+}
+
+int get(int *p) {
+    int v = *p;                // deref: compiler now assumes p != NULL
+    if (p == NULL) return -1;  // check may be removed
+    return v;
+}
+
+int table[4];
+bool exists(int v) {
+    for (int i = 0; i &lt;= 4; i++)   // reads table[4]: UB
+        if (table[i] == v) return true;
+    return false;              // may be optimized to "return true"
+}
+
+int x;  printf("%d\n", x);     // uninitialized read
+int s = 1 &lt;&lt; 32;               // shift ≥ width
+float f = 1.5f; int bits = *(int *)&amp;f;   // strict aliasing</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>x + 1 &lt; x</code> — signed overflow "can't happen", so it's false</div>
+							<div class="explain-item">Deref before check — the null check is dead code to the compiler</div>
+							<div class="explain-item"><code>i &lt;= 4</code> — out-of-bounds lets the compiler assume the loop exits early</div>
+							<div class="explain-item">Uninitialized reads, big shifts, type-punned pointers — all UB</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Three Kinds of Looseness | Common UB Tables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-kinds">
+						<h2 class="section-title">Three Kinds of Looseness</h2>
+						<table>
+							<thead><tr><th>Kind</th><th>Meaning</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>undefined</td><td class="desc">no rules at all</td><td class="desc">signed overflow</td></tr>
+								<tr><td>unspecified</td><td class="desc">one of several outcomes</td><td class="desc">argument evaluation order</td></tr>
+								<tr><td>implementation-defined</td><td class="desc">compiler documents it</td><td class="desc"><code>char</code> signedness, <code>&gt;&gt;</code> on negatives</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-common">
+						<h2 class="section-title">Common UB</h2>
+						<table>
+							<thead><tr><th>Case</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>signed overflow</td><td class="desc">check first / <code>ckd_add</code></td></tr>
+								<tr><td>out-of-bounds access</td><td class="desc">check indexes</td></tr>
+								<tr><td>NULL / dangling deref</td><td class="desc">check, set to NULL</td></tr>
+								<tr><td>uninitialized read</td><td class="desc">initialize</td></tr>
+								<tr><td>shift ≥ width / negative</td><td class="desc">unsigned, range check</td></tr>
+								<tr><td><code>i = i++</code></td><td class="desc">split statements</td></tr>
+								<tr><td>strict aliasing</td><td class="desc"><code>memcpy</code> / union</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Testing for overflow with <code>a + b &lt; a</code> after the fact</li>
+							<li class="note-item">Assuming <code>-O0</code> behavior is "the real" behavior; optimized builds may differ legally</li>
+							<li class="note-item">Reasoning about UB in terms of what the hardware does</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Build tests with <code>-fsanitize=undefined,address</code></li>
+							<li class="note-item">Use <code>-fno-strict-aliasing</code> / <code>-fwrapv</code> only as a last resort for legacy code</li>
+							<li class="note-item">Read John Regehr's and the LLVM blog posts on UB for intuition</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">UB — no guarantees at all</li>
+							<li class="note-item">Optimizers assume it never happens</li>
+							<li class="note-item">Unspecified / impl-defined are milder</li>
+							<li class="note-item">UBSan + warnings catch much of it</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="c-89-popular-libraries.html" class="nav-link prev">Popular C Libraries</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C Reference · 98 Sheets</a>
+				<a href="c-91-c11-threads.html" class="nav-link next">C11 Threads</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+	</body>
+</html>

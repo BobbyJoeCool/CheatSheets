@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React Native — Sheet 48: iOS Push Notifications</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s48">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 48</div>
+			<h1>iOS Push Notifications</h1>
+			<div class="sheet-desc">APNs · push key (.p8) · expo-notifications · device tokens · provisional authorization · notification service extension</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Push on iOS</h2>
+					<div class="description">iOS pushes go through <strong>Apple Push Notification service (APNs)</strong>. Your app asks permission, receives a <strong>device token</strong>, and your server sends payloads to APNs using a <strong>.p8 auth key</strong> from your Apple Developer account. <code>expo-notifications</code> handles permission, tokens, and listeners; with the <strong>Expo Push Service</strong> you send one API call and Expo forwards to APNs and FCM. Pushes need a real device or a simulator <code>simctl push</code>.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Requirements</h2>
+					<ul class="note-list">
+						<li class="note-item">Push Notifications capability + <code>aps-environment</code> entitlement</li>
+						<li class="note-item">APNs key (.p8) uploaded to EAS or your push provider</li>
+						<li class="note-item">Paid Apple Developer Program membership</li>
+						<li class="note-item">Silent pushes need <code>remote-notification</code> background mode</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + iOS + Android -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Register and Listen</h2>
+					<pre><code class="language-tsx">import * as Notifications from 'expo-notifications'
+import Constants from 'expo-constants'
+
+Notifications.setNotificationHandler({
+  handleNotification: async () =&gt; ({
+    shouldShowBanner: true, shouldShowList: true,
+    shouldPlaySound: true, shouldSetBadge: false }),
+})
+
+async function registerForPush() {
+  const { status } = await Notifications.requestPermissionsAsync({
+    ios: { allowAlert: true, allowBadge: true, allowSound: true,
+           allowProvisional: false } })
+  if (status !== 'granted') return null
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId
+  const { data: expoToken } =
+    await Notifications.getExpoPushTokenAsync({ projectId })
+  const { data: apnsToken } = await Notifications.getDevicePushTokenAsync()
+  return { expoToken, apnsToken }        // send to your server
+}
+
+useEffect(() =&gt; {
+  const sub = Notifications.addNotificationResponseReceivedListener(r =&gt; {
+    router.push(r.notification.request.content.data.url as string)
+  })
+  return () =&gt; sub.remove()
+}, [])</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>setNotificationHandler</code> — show banners while app is open</div>
+						<div class="explain-item"><code>allowProvisional</code> — quiet delivery without a prompt</div>
+						<div class="explain-item">Expo token — use with Expo Push Service</div>
+						<div class="explain-item">Device token — raw APNs token for your own server</div>
+						<div class="explain-item">Response listener — user tapped a notification</div>
+					</div>
+				</section>
+				<section class="section-notes section-ios" id="ios">
+					<h2 class="section-title">iOS</h2>
+					<ul class="note-list">
+						<li class="note-item">Test payloads: <code>xcrun simctl push booted &lt;bundleId&gt; file.apns</code></li>
+						<li class="note-item">Provisional authorization delivers quietly without a prompt</li>
+						<li class="note-item">Foreground banners need <code>setNotificationHandler</code></li>
+					</ul>
+				</section>
+				<section class="section-notes section-android" id="android">
+					<h2 class="section-title">Android</h2>
+					<ul class="note-list">
+						<li class="note-item">FCM tokens instead of APNs</li>
+						<li class="note-item">Android 13+: <code>POST_NOTIFICATIONS</code> runtime permission</li>
+						<li class="note-item">Channels required; small icon must be white-on-transparent</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Payload Table | Ext Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-payload">
+					<h2 class="section-title">APNs Payload Keys</h2>
+					<table>
+						<thead><tr><th>Key</th><th>Effect</th></tr></thead>
+						<tbody>
+							<tr><td><code>aps.alert</code></td><td class="desc">Title / subtitle / body</td></tr>
+							<tr><td><code>aps.badge</code></td><td class="desc">App icon badge number</td></tr>
+							<tr><td><code>aps.sound</code></td><td class="desc"><code>default</code> or file name</td></tr>
+							<tr><td><code>aps.content-available: 1</code></td><td class="desc">Silent / background push</td></tr>
+							<tr><td><code>aps.mutable-content: 1</code></td><td class="desc">Lets a service extension modify it</td></tr>
+							<tr><td><code>aps.interruption-level</code></td><td class="desc"><code>passive</code> · <code>active</code> · <code>time-sensitive</code> · <code>critical</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-ext">
+					<h2 class="section-title">Going Further</h2>
+					<table>
+						<thead><tr><th>Feature</th><th>How</th></tr></thead>
+						<tbody>
+							<tr><td>Images in notifications</td><td class="desc">Notification Service Extension</td></tr>
+							<tr><td>Custom UI</td><td class="desc">Notification Content Extension</td></tr>
+							<tr><td>Action buttons</td><td class="desc"><code>setNotificationCategoryAsync</code></td></tr>
+							<tr><td>Live updates</td><td class="desc">Live Activities (ActivityKit push)</td></tr>
+							<tr><td>Local notifications</td><td class="desc"><code>scheduleNotificationAsync</code></td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Testing remote push on an old simulator setup and assuming it's broken; use a device or <code>simctl push</code></li>
+						<li class="note-item">Mixing sandbox and production APNs environments; dev builds use sandbox tokens</li>
+						<li class="note-item">Asking for push permission on first launch before the user sees any value</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Use provisional authorization to deliver quietly and earn a later full opt-in</li>
+						<li class="note-item">Store tokens server-side per device and refresh them on every launch</li>
+						<li class="note-item">Upload your .p8 key once with <code>eas credentials</code>; it works for all your apps</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">APNs — Apple's push service</li>
+						<li class="note-item"><code>.p8</code> key — server auth</li>
+						<li class="note-item"><code>expo-notifications</code> — permissions &amp; tokens</li>
+						<li class="note-item">Service extension — rich notifications</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rn-47-ios-ui-conventions.html" class="nav-link prev">iOS UI Conventions &amp; APIs</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">React Native Reference · 70 Sheets</a>
+				<a href="rn-49-ios-signing-provisioning.html" class="nav-link next">iOS Code Signing &amp; Provisioning</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+	</body>
+</html>

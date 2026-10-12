@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>React Native — Sheet 62: Android App Signing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s62">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 62</div>
+			<h1>Android App Signing</h1>
+			<div class="sheet-desc">upload keystore · keytool · signingConfigs · Play App Signing · SHA-1 / SHA-256 fingerprints · EAS credentials</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Signing for Release</h2>
+					<div class="description">Every APK/AAB is signed. With <strong>Play App Signing</strong> (required for new apps), Google holds the final <strong>app signing key</strong> and you sign uploads with your own <strong>upload key</strong>. If you lose the upload key, Google can reset it; if you lost the old self-managed key, you couldn't update the app. Debug builds use a shared debug keystore. EAS can generate and store the upload keystore for you.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Two Keys</h2>
+					<ul class="note-list">
+						<li class="note-item">Upload key — yours, signs what you upload</li>
+						<li class="note-item">App signing key — Google's, signs what users install</li>
+						<li class="note-item">Fingerprints of <strong>both</strong> go into Firebase, Maps, App Links</li>
+						<li class="note-item">Never commit keystores or passwords</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + iOS + Android -->
+			<div class="row row-code-explain" id="row-2">
+			<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Create and Configure an Upload Key</h2>
+					<pre><code class="language-bash">keytool -genkeypair -v -storetype PKCS12 \
+  -keystore my-upload-key.keystore -alias my-key-alias \
+  -keyalg RSA -keysize 2048 -validity 10000
+mv my-upload-key.keystore android/app/
+
+# ~/.gradle/gradle.properties (outside the repo)
+MYAPP_UPLOAD_STORE_FILE=my-upload-key.keystore
+MYAPP_UPLOAD_KEY_ALIAS=my-key-alias
+MYAPP_UPLOAD_STORE_PASSWORD=*****
+MYAPP_UPLOAD_KEY_PASSWORD=*****
+
+# android/app/build.gradle
+# signingConfigs { release {
+#   storeFile file(MYAPP_UPLOAD_STORE_FILE)
+#   storePassword MYAPP_UPLOAD_STORE_PASSWORD
+#   keyAlias MYAPP_UPLOAD_KEY_ALIAS
+#   keyPassword MYAPP_UPLOAD_KEY_PASSWORD } }
+
+cd android &amp;&amp; ./gradlew signingReport      # SHA-1 / SHA-256 of all keys
+keytool -list -v -keystore android/app/my-upload-key.keystore
+
+eas credentials -p android                 # EAS-managed keystore</code></pre>
+				</section>
+			</div>
+			<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Notes</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>PKCS12</code> — modern keystore format</div>
+						<div class="explain-item"><code>-validity 10000</code> — ~27 years</div>
+						<div class="explain-item">Global <code>gradle.properties</code> — keeps secrets out of git</div>
+						<div class="explain-item"><code>signingReport</code> — fingerprints for debug and release</div>
+						<div class="explain-item"><code>eas credentials</code> — download a backup of the keystore</div>
+					</div>
+				</section>
+				<section class="section-notes section-ios" id="ios">
+					<h2 class="section-title">iOS</h2>
+					<ul class="note-list">
+						<li class="note-item">Certificate + provisioning profile per Apple team</li>
+						<li class="note-item">No fingerprints — the Team ID goes in the AASA file</li>
+						<li class="note-item">EAS can generate and store everything</li>
+					</ul>
+				</section>
+				<section class="section-notes section-android" id="android">
+					<h2 class="section-title">Android</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>keytool -genkeypair -v -storetype PKCS12 -keystore upload.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000</code></li>
+						<li class="note-item">Keep passwords in <code>~/.gradle/gradle.properties</code></li>
+						<li class="note-item"><code>./gradlew signingReport</code> prints SHA-1 / SHA-256</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 3: Where Table | Loss Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-where">
+					<h2 class="section-title">Where Fingerprints Go</h2>
+					<table>
+						<thead><tr><th>Service</th><th>Needs</th></tr></thead>
+						<tbody>
+							<tr><td>Firebase / Google Sign-In</td><td class="desc">SHA-1 + SHA-256 (debug, upload, app signing)</td></tr>
+							<tr><td>App Links <code>assetlinks.json</code></td><td class="desc">SHA-256 of app signing key</td></tr>
+							<tr><td>Google Maps API key</td><td class="desc">SHA-1 restriction</td></tr>
+							<tr><td>Play Console</td><td class="desc">Shows app signing + upload certs</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-loss">
+					<h2 class="section-title">If Something Goes Wrong</h2>
+					<table>
+						<thead><tr><th>Situation</th><th>Fix</th></tr></thead>
+						<tbody>
+							<tr><td>Lost upload key</td><td class="desc">Request upload key reset in Play Console</td></tr>
+							<tr><td>Leaked upload key</td><td class="desc">Reset upload key</td></tr>
+							<tr><td>Wrong key on upload</td><td class="desc">Play rejects; sign with registered upload key</td></tr>
+							<tr><td>Signature mismatch installing</td><td class="desc">Uninstall old build first</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+			<div class="col" id="col-4-1">
+				<section class="section-mistakes" id="mistakes">
+					<h2 class="section-title">⚠ Common Mistakes</h2>
+					<ul class="note-list">
+						<li class="note-item">Committing the keystore and passwords to git; anyone with them can sign updates as you</li>
+						<li class="note-item">Adding only the debug SHA-1 to Firebase; Google Sign-In fails in Play builds</li>
+						<li class="note-item">Not backing up the upload keystore outside your laptop or CI</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-2">
+				<section class="section-tips" id="tips">
+					<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+					<ul class="note-list">
+						<li class="note-item">Store keystores in a password manager or let EAS manage them</li>
+						<li class="note-item">Use separate debug keystores per developer only if a service requires it; otherwise share the default</li>
+						<li class="note-item">Copy fingerprints from Play Console → App integrity for the app signing key</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-4-3">
+				<section class="section-summary" id="summary">
+					<h2 class="section-title">Quick Summary</h2>
+					<ul class="note-list">
+						<li class="note-item">Upload key — you sign uploads</li>
+						<li class="note-item">Play App Signing — Google signs installs</li>
+						<li class="note-item"><code>keytool</code> / <code>signingReport</code> — create &amp; inspect</li>
+						<li class="note-item">Keep secrets out of git</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rn-61-android-build-config.html" class="nav-link prev">Build Types, Flavors &amp; SDK Levels</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">React Native Reference · 70 Sheets</a>
+				<a href="rn-63-google-play-release.html" class="nav-link next">Google Play Release</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>
