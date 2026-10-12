@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 116: Span, Memory &amp; Performance</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s116">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 116</div>
+			<h1>Span, Memory &amp; Performance</h1>
+			<div class="sheet-desc">Span&lt;T&gt; · Memory&lt;T&gt; · stackalloc · ArrayPool&lt;T&gt; · implicit span conversions (C# 14) · BenchmarkDotNet</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Zero-Copy and Low-Allocation Code</h2>
+						<div class="description"><strong><code>Span&lt;T&gt;</code></strong> and <strong><code>ReadOnlySpan&lt;T&gt;</code></strong> are views over contiguous memory — arrays, strings, stack memory or native buffers — that slice without copying. Because they're <code>ref struct</code>s they live only on the stack; <strong><code>Memory&lt;T&gt;</code></strong> is the heap-storable counterpart for async code. <strong><code>stackalloc</code></strong> and <strong><code>ArrayPool&lt;T&gt;</code></strong> avoid GC allocations, and <strong>C# 14</strong> adds implicit conversions to spans.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Spans can't be fields of classes, captured, or used across <code>await</code></li>
+							<li class="note-item"><code>stackalloc</code> is for small buffers (≈ &lt; 1 KB)</li>
+							<li class="note-item">Always <code>Return</code> rented arrays to the pool</li>
+							<li class="note-item">Measure with BenchmarkDotNet before optimizing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Span, stackalloc, ArrayPool</h2>
+						<pre><code class="language-csharp">static int SumDigits(ReadOnlySpan&lt;char&gt; text)  // accepts string, char[], slices
+{
+    int sum = 0;
+    foreach (char c in text) if (char.IsAsciiDigit(c)) sum += c - '0';
+    return sum;
+}
+Console.WriteLine(SumDigits("a1b2c3"));             // 6 (string → span)
+Console.WriteLine(SumDigits("x9y9z9".AsSpan(1, 3))); // 9 (slice, no copy)
+
+Span&lt;char&gt; buf = stackalloc char[32];               // stack memory, no GC
+Guid.NewGuid().TryFormat(buf, out int written, "N"); // no string allocated
+
+byte[] rented = ArrayPool&lt;byte&gt;.Shared.Rent(16_384); // reuse big buffers
+try { int n = await stream.ReadAsync(rented.AsMemory(0, 16_384)); }
+finally { ArrayPool&lt;byte&gt;.Shared.Return(rented); }
+
+Memory&lt;byte&gt; mem = rented.AsMemory();            // OK in async methods / fields
+Span&lt;byte&gt; view = mem.Span[..10];                   // get a span when needed</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ReadOnlySpan&lt;char&gt;</code> — one API for many sources</div>
+							<div class="explain-item">C# 14 — arrays convert to spans implicitly (e.g. span extension methods)</div>
+							<div class="explain-item"><code>AsSpan(start, len)</code> — zero-copy slice</div>
+							<div class="explain-item"><code>stackalloc</code> — temporary stack buffer</div>
+							<div class="explain-item"><code>ArrayPool&lt;T&gt;.Shared</code> — rent/return large arrays</div>
+							<div class="explain-item"><code>Memory&lt;T&gt;</code> — span-like, but storable and async-friendly</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Types Table | Code -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-types">
+						<h2 class="section-title">Memory Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Lives</th><th>Async OK</th></tr></thead>
+							<tbody>
+								<tr><td>Span&lt;T&gt;</td><td class="desc">Stack only</td><td class="desc">No</td></tr>
+								<tr><td>ReadOnlySpan&lt;T&gt;</td><td class="desc">Stack only</td><td class="desc">No</td></tr>
+								<tr><td>Memory&lt;T&gt;</td><td class="desc">Heap / field</td><td class="desc">Yes</td></tr>
+								<tr><td>ReadOnlyMemory&lt;T&gt;</td><td class="desc">Heap / field</td><td class="desc">Yes</td></tr>
+								<tr><td>T[]</td><td class="desc">Heap</td><td class="desc">Yes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-code" id="code-bench">
+						<h2 class="section-title">BenchmarkDotNet</h2>
+						<pre><code class="language-csharp">[MemoryDiagnoser]
+public class ParseBench
+{
+    [Benchmark] public int Sub() =&gt;
+        int.Parse(s.Substring(0, 4));
+    [Benchmark] public int Span() =&gt;
+        int.Parse(s.AsSpan(0, 4));
+}
+// BenchmarkRunner.Run&lt;ParseBench&gt;();  (Release build)</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Large <code>stackalloc</code> buffers — can overflow the stack; fall back to <code>ArrayPool</code> above a size limit</li>
+							<li class="note-item">Using a rented array after returning it — another caller may be writing to it</li>
+							<li class="note-item">Optimizing without measuring — spans add complexity; benchmark first</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Accept <code>ReadOnlySpan&lt;T&gt;</code> in parsing helpers</li>
+							<li class="note-item">Use <code>string.Create</code> / <code>TryFormat</code> to build strings without temporaries</li>
+							<li class="note-item">Add <code>[MemoryDiagnoser]</code> to see allocations per call</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Span&lt;T&gt;</code> — stack-only view</li>
+							<li class="note-item"><code>Memory&lt;T&gt;</code> — async-safe view</li>
+							<li class="note-item"><code>stackalloc</code> / <code>ArrayPool</code> — avoid GC</li>
+							<li class="note-item">Benchmark with BenchmarkDotNet</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-115-parallel-channels.html" class="nav-link prev">Parallelism &amp; Channels</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<a href="cs-117-garbage-collection.html" class="nav-link next">Garbage Collection &amp; Finalizers</a>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>

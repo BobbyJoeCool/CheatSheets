@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 072: Concurrent Collections</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s072">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 072</div>
+			<h1>Concurrent Collections</h1>
+			<div class="sheet-desc">ConcurrentDictionary · GetOrAdd · AddOrUpdate · ConcurrentQueue · ConcurrentBag · BlockingCollection</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Thread-Safe Collections</h2>
+						<div class="description"><code>System.Collections.Concurrent</code> provides collections that many threads can use at once without external locks. <strong><code>ConcurrentDictionary</code></strong> offers atomic helpers like <code>GetOrAdd</code> and <code>AddOrUpdate</code>. <strong><code>ConcurrentQueue</code>/<code>ConcurrentStack</code>/<code>ConcurrentBag</code></strong> support lock-free producer/consumer work, and <strong><code>BlockingCollection</code></strong> adds blocking and bounding.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Individual operations are atomic; sequences of them aren't</li>
+							<li class="note-item"><code>GetOrAdd</code> factories may run more than once</li>
+							<li class="note-item"><code>ConcurrentBag</code> is unordered, best when the same thread adds and takes</li>
+							<li class="note-item">For async pipelines prefer <code>Channel&lt;T&gt;</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Concurrent Collections</h2>
+						<pre><code class="language-csharp">var cache = new ConcurrentDictionary&lt;string, int&gt;();
+int len = cache.GetOrAdd("hello", key =&gt; key.Length);     // 5
+cache.AddOrUpdate("hits", 1, (key, old) =&gt; old + 1);      // add or increment
+cache.TryUpdate("hits", 10, comparisonValue: 2);          // CAS-style update
+
+var lazy = new ConcurrentDictionary&lt;string, Lazy&lt;Data&gt;&gt;();
+Data d = lazy.GetOrAdd("k", k =&gt; new Lazy&lt;Data&gt;(() =&gt; Load(k))).Value;
+
+var queue = new ConcurrentQueue&lt;int&gt;();
+Parallel.For(0, 100, i =&gt; queue.Enqueue(i));
+while (queue.TryDequeue(out int item)) Process(item);
+
+using var work = new BlockingCollection&lt;string&gt;(boundedCapacity: 10);
+var consumer = Task.Run(() =&gt;
+    { foreach (var job in work.GetConsumingEnumerable()) Handle(job); });
+work.Add("job1"); work.Add("job2");
+work.CompleteAdding();                     // consumer loop ends
+await consumer;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>GetOrAdd</code> — return existing or add new atomically</div>
+							<div class="explain-item"><code>AddOrUpdate</code> — insert or transform the old value</div>
+							<div class="explain-item"><code>TryUpdate(k, new, expected)</code> — compare-and-swap</div>
+							<div class="explain-item"><code>Lazy&lt;T&gt;</code> values — guarantee the factory runs once</div>
+							<div class="explain-item"><code>TryDequeue</code> — drain safely</div>
+							<div class="explain-item"><code>GetConsumingEnumerable</code> + <code>CompleteAdding</code> — producer/consumer</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Types Table | Pitfalls Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-types">
+						<h2 class="section-title">Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Order</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>ConcurrentDictionary&lt;K,V&gt;</td><td class="desc">—</td><td class="desc">Shared caches, counters</td></tr>
+								<tr><td>ConcurrentQueue&lt;T&gt;</td><td class="desc">FIFO</td><td class="desc">Work items</td></tr>
+								<tr><td>ConcurrentStack&lt;T&gt;</td><td class="desc">LIFO</td><td class="desc">Object pools</td></tr>
+								<tr><td>ConcurrentBag&lt;T&gt;</td><td class="desc">None</td><td class="desc">Same-thread add/take</td></tr>
+								<tr><td>BlockingCollection&lt;T&gt;</td><td class="desc">Wraps one</td><td class="desc">Bounded, blocking sync</td></tr>
+								<tr><td>Channel&lt;T&gt;</td><td class="desc">FIFO</td><td class="desc">Async producer/consumer</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pitfalls">
+						<h2 class="section-title">Atomic vs Not</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Atomic?</th></tr></thead>
+							<tbody>
+								<tr><td>d.GetOrAdd(k, f)</td><td class="desc">Yes (f may run twice)</td></tr>
+								<tr><td>d.AddOrUpdate(k, a, u)</td><td class="desc">Yes</td></tr>
+								<tr><td>if (!d.ContainsKey(k)) d[k] = v</td><td class="desc">No — race</td></tr>
+								<tr><td>d[k] = d[k] + 1</td><td class="desc">No — lost updates</td></tr>
+								<tr><td>d.Count</td><td class="desc">Takes all locks; slow</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Check-then-act sequences (<code>ContainsKey</code> then add) — another thread can slip in; use <code>GetOrAdd</code>/<code>TryAdd</code></li>
+							<li class="note-item">Expensive or side-effecting <code>GetOrAdd</code> factories — they can run more than once; wrap in <code>Lazy&lt;T&gt;</code></li>
+							<li class="note-item">Polling <code>Count</code> in hot loops — it's expensive; track counts separately</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>AddOrUpdate</code> for counters, or <code>Interlocked</code> on a field</li>
+							<li class="note-item">Use <code>Channel&lt;T&gt;</code> instead of <code>BlockingCollection</code> in async code</li>
+							<li class="note-item">Prefer immutable data + swapping references for read-mostly state</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ConcurrentDictionary</code> — <code>GetOrAdd</code> / <code>AddOrUpdate</code></li>
+							<li class="note-item"><code>ConcurrentQueue</code> / <code>Stack</code> / <code>Bag</code></li>
+							<li class="note-item"><code>BlockingCollection</code> — bounded blocking pipeline</li>
+							<li class="note-item">Single operations are atomic, sequences aren't</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-071-immutable-frozen.html" class="nav-link prev">Immutable &amp; Frozen Collections</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<a href="cs-073-collection-interfaces.html" class="nav-link next">Collection Interfaces</a>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>

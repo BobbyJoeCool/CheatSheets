@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 048: using &amp; IDisposable</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s048">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 048</div>
+			<h1>using &amp; IDisposable</h1>
+			<div class="sheet-desc">using statement · using declaration · IDisposable · Dispose pattern · IAsyncDisposable · await using</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Deterministic Cleanup</h2>
+						<div class="description">The garbage collector frees memory, but <strong>unmanaged resources</strong> (files, sockets, DB connections) should be released promptly. Types holding them implement <code>IDisposable</code>. The <code>using</code> statement or declaration calls <code>Dispose()</code> automatically, even when an exception is thrown. Async resources use <code>IAsyncDisposable</code> with <code>await using</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>using</code> compiles to <code>try</code>/<code>finally</code> + <code>Dispose()</code></li>
+							<li class="note-item">Declarations dispose at the end of the enclosing scope</li>
+							<li class="note-item">Multiple <code>using</code>s dispose in <strong>reverse</strong> order</li>
+							<li class="note-item"><code>Dispose()</code> should be safe to call more than once</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">using &amp; IDisposable</h2>
+						<pre><code class="language-csharp">using (var reader = new StreamReader("in.txt"))     // statement form
+    Console.WriteLine(reader.ReadLine());           // Dispose() after
+
+using var input = File.OpenRead("a.bin");           // declaration (C# 8)
+using var output = File.Create("b.bin");            // disposed first…
+input.CopyTo(output);                               // …at end of scope
+
+await using var conn = new SqlConnection(cs);       // IAsyncDisposable
+
+public sealed class TempFile : IDisposable
+{
+    public string Path { get; } = System.IO.Path.GetTempFileName();
+    private bool _disposed;
+    public void Dispose()
+    {
+        if (_disposed) return;                      // idempotent
+        File.Delete(Path); _disposed = true;
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>using (…) { }</code> — dispose at the closing brace</div>
+							<div class="explain-item"><code>using var</code> — dispose at the end of the method</div>
+							<div class="explain-item">Reverse order — last created, first disposed</div>
+							<div class="explain-item"><code>await using</code> — calls <code>DisposeAsync()</code></div>
+							<div class="explain-item">Sealed class — simple <code>Dispose</code> without the full pattern</div>
+							<div class="explain-item"><code>_disposed</code> flag — safe repeated calls</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Types Table | Code -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-types">
+						<h2 class="section-title">Common Disposables</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Releases</th></tr></thead>
+							<tbody>
+								<tr><td>FileStream / StreamReader</td><td class="desc">File handle</td></tr>
+								<tr><td>SqlConnection / DbContext</td><td class="desc">DB connection</td></tr>
+								<tr><td>HttpResponseMessage</td><td class="desc">Network stream</td></tr>
+								<tr><td>CancellationTokenSource</td><td class="desc">Timer / registrations</td></tr>
+								<tr><td>Timer</td><td class="desc">Callback scheduling</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-code" id="code-pattern">
+						<h2 class="section-title">Full Dispose Pattern (unsealed)</h2>
+						<pre><code class="language-csharp">protected virtual void Dispose(bool disposing)
+{
+    if (_disposed) return;
+    if (disposing) _stream.Dispose();  // managed
+    _disposed = true;
+}
+public void Dispose()
+    { Dispose(true); GC.SuppressFinalize(this); }</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting to dispose — file locks and connection-pool exhaustion follow</li>
+							<li class="note-item">Disposing an object you didn't create (e.g. an injected <code>HttpClient</code>) — the owner disposes</li>
+							<li class="note-item">Using <code>using</code> on <code>HttpClient</code> per request — exhausts sockets; reuse one or use <code>IHttpClientFactory</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer <code>using var</code> declarations to cut nesting</li>
+							<li class="note-item">Seal classes when possible so a simple <code>Dispose()</code> is enough</li>
+							<li class="note-item">Guard members with <code>ObjectDisposedException.ThrowIf</code> after disposal</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>IDisposable</code> — explicit cleanup contract</li>
+							<li class="note-item"><code>using</code> — automatic <code>Dispose()</code></li>
+							<li class="note-item"><code>await using</code> — async cleanup</li>
+							<li class="note-item">Dispose is idempotent and reverse-ordered</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-047-custom-exceptions.html" class="nav-link prev">Custom Exceptions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<a href="cs-049-methods-basics.html" class="nav-link next">Defining &amp; Calling Methods</a>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>

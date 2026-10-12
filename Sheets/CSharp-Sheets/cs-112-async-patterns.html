@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 112: async / await — Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s112">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 112</div>
+			<h1>async / await — Patterns</h1>
+			<div class="sheet-desc">Task.WhenAll · Task.WhenAny · Task.WhenEach · CancellationToken · Task.Run · WaitAsync timeouts</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Coordinating Tasks</h2>
+						<div class="description">Real programs run several async operations at once and need to <strong>combine</strong>, <strong>race</strong>, <strong>cancel</strong> and <strong>time out</strong> them. <code>Task.WhenAll</code> waits for everything, <code>Task.WhenAny</code> for the first, and <code>Task.WhenEach</code> (.NET 9) yields tasks <strong>as they complete</strong>. <strong><code>CancellationToken</code></strong> is the cooperative way to stop work, and <code>WaitAsync</code> adds a timeout to any task.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>WhenAll</code> throws the first exception at <code>await</code></li>
+							<li class="note-item">Cancellation is cooperative — code must check the token</li>
+							<li class="note-item"><code>Task.Run</code> offloads CPU work to the thread pool</li>
+							<li class="note-item"><code>CancellationTokenSource</code> must be disposed</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Combining &amp; Cancelling</h2>
+						<pre><code class="language-csharp">using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+CancellationToken ct = cts.Token;
+
+string[] urls = ["https://a.com", "https://b.com", "https://c.com"];
+var downloads = urls.Select(u =&gt; http.GetStringAsync(u, ct)).ToArray();
+
+string[] pages = await Task.WhenAll(downloads);          // all, in parallel
+
+Task&lt;string&gt; first = await Task.WhenAny(downloads);      // fastest one
+
+await foreach (Task&lt;string&gt; done in Task.WhenEach(downloads))   // .NET 9
+    Console.WriteLine($"finished: {(await done).Length}");
+
+int hash = await Task.Run(() =&gt; ExpensiveHash(data), ct); // CPU work off-thread
+
+try { await SlowOpAsync().WaitAsync(TimeSpan.FromSeconds(2)); }  // timeout
+catch (TimeoutException) { Console.WriteLine("too slow"); }
+
+var opts = new ParallelOptions { MaxDegreeOfParallelism = 2 };   // throttled
+await Parallel.ForEachAsync(urls, opts,
+    async (u, tok) =&gt; await http.GetStringAsync(u, tok));</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>CancellationTokenSource(timeout)</code> — auto-cancel</div>
+							<div class="explain-item">Start all tasks first, then <code>WhenAll</code></div>
+							<div class="explain-item"><code>WhenAny</code> — returns the completed task</div>
+							<div class="explain-item"><code>WhenEach</code> — process results in completion order</div>
+							<div class="explain-item"><code>Task.Run</code> — CPU-bound work</div>
+							<div class="explain-item"><code>WaitAsync</code> — timeout without cancelling the work itself</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Combinators Table | Cancel Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-combinators">
+						<h2 class="section-title">Combinators</h2>
+						<table>
+							<thead><tr><th>API</th><th>Completes When</th></tr></thead>
+							<tbody>
+								<tr><td>Task.WhenAll(ts)</td><td class="desc">All done (or one faults)</td></tr>
+								<tr><td>Task.WhenAny(ts)</td><td class="desc">First done</td></tr>
+								<tr><td>Task.WhenEach(ts)</td><td class="desc">Yields each as done</td></tr>
+								<tr><td>Task.Delay(t, ct)</td><td class="desc">Timer elapses</td></tr>
+								<tr><td>task.WaitAsync(t)</td><td class="desc">Task done or timeout</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-cancel">
+						<h2 class="section-title">Cancellation Toolkit</h2>
+						<table>
+							<thead><tr><th>API</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>ct.ThrowIfCancellationRequested()</td><td class="desc">Check in loops</td></tr>
+								<tr><td>cts.Cancel() / CancelAfter(t)</td><td class="desc">Trigger</td></tr>
+								<tr><td>CreateLinkedTokenSource(a, b)</td><td class="desc">Combine tokens</td></tr>
+								<tr><td>ct.Register(callback)</td><td class="desc">React to cancel</td></tr>
+								<tr><td>OperationCanceledException</td><td class="desc">Thrown on cancel</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Awaiting tasks one by one in a loop when they're independent — serial instead of parallel</li>
+							<li class="note-item">Firing thousands of requests with <code>WhenAll</code> — throttle with <code>Parallel.ForEachAsync</code> or <code>SemaphoreSlim</code></li>
+							<li class="note-item">Accepting a <code>CancellationToken</code> but never passing it down</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Make <code>CancellationToken ct = default</code> the last parameter</li>
+							<li class="note-item">Use <code>WhenEach</code> to show progress as results arrive</li>
+							<li class="note-item">Inspect <code>task.Exception</code> after <code>WhenAll</code> to see every failure</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>WhenAll</code> / <code>WhenAny</code> / <code>WhenEach</code></li>
+							<li class="note-item"><code>CancellationToken</code> — cooperative cancel</li>
+							<li class="note-item"><code>Task.Run</code> — CPU-bound offload</li>
+							<li class="note-item"><code>WaitAsync</code> — timeouts</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-111-async-basics.html" class="nav-link prev">async / await — Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<a href="cs-113-async-pitfalls.html" class="nav-link next">async / await — Pitfalls</a>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>

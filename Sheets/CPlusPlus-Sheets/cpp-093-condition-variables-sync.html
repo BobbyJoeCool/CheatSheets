@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 093: Condition Variables &amp; Sync Primitives</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s093">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 093</div>
+			<h1>Condition Variables &amp; Sync Primitives</h1>
+			<div class="sheet-desc">std::condition_variable · wait with predicate · notify_one / all · std::latch · std::barrier · std::counting_semaphore</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Waiting for Events</h2>
+						<div class="description">A <strong>condition variable</strong> lets threads sleep until another thread signals that some condition may now be true, which is the basis of producer/consumer queues. Always wait <strong>with a predicate</strong> to handle spurious wakeups. C++20 added simpler one-purpose primitives: <code>std::latch</code> (count down once), <code>std::barrier</code> (reusable phase sync), and <code>std::counting_semaphore</code> (limit concurrent access).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>wait</code> requires a <code>std::unique_lock</code>, not <code>scoped_lock</code></li>
+							<li class="note-item">Modify the shared state <strong>while holding</strong> the mutex, then notify</li>
+							<li class="note-item"><code>notify_one</code> wakes one waiter, <code>notify_all</code> wakes all</li>
+							<li class="note-item"><code>std::condition_variable_any</code> works with <code>stop_token</code> (C++20)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Producer / Consumer Queue</h2>
+						<pre><code class="language-cpp">#include &lt;condition_variable&gt;
+#include &lt;queue&gt;
+template &lt;class T&gt; class BlockingQueue {
+public:
+    void push(T v) {
+        { std::scoped_lock lock{m_}; q_.push(std::move(v)); }
+        cv_.notify_one();                        // wake one consumer
+    }
+    T pop() {
+        std::unique_lock lock{m_};
+        cv_.wait(lock, [&amp;] { return !q_.empty(); });   // predicate wait
+        T v = std::move(q_.front()); q_.pop();
+        return v;
+    }
+private:
+    std::mutex m_;
+    std::condition_variable cv_;
+    std::queue&lt;T&gt; q_;
+};
+std::latch ready{3};           // 3 workers count down
+ready.count_down();            // in each worker; main calls ready.wait()</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">push — modify under the lock, notify after releasing it</div>
+							<div class="explain-item"><code>cv_.wait(lock, pred)</code> — sleeps until <code>pred()</code> is true</div>
+							<div class="explain-item">the predicate loop handles spurious wakeups</div>
+							<div class="explain-item"><code>unique_lock</code> — <code>wait</code> unlocks while sleeping and relocks on wake</div>
+							<div class="explain-item"><code>std::latch</code> — one-shot countdown (C++20)</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Primitives Table | Condition Variable Api Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-primitives">
+						<h2 class="section-title">Primitives</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>condition_variable</td><td class="desc">wait for a condition</td></tr>
+								<tr><td>std::latch</td><td class="desc">one-time countdown</td></tr>
+								<tr><td>std::barrier</td><td class="desc">reusable phase sync</td></tr>
+								<tr><td>std::counting_semaphore&lt;N&gt;</td><td class="desc">limit concurrency to N</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-condition-variable-api">
+						<h2 class="section-title">condition_variable API</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>wait(lock, pred)</td><td class="desc">block until pred true</td></tr>
+								<tr><td>wait_for(lock, dur, pred)</td><td class="desc">with timeout</td></tr>
+								<tr><td>notify_one()</td><td class="desc">wake one waiter</td></tr>
+								<tr><td>notify_all()</td><td class="desc">wake all waiters</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>wait(lock)</code> without a predicate; spurious wakeups and missed notifications cause bugs</li>
+							<li class="note-item">Changing the condition without holding the mutex, then notifying; the waiter can miss it</li>
+							<li class="note-item">Using <code>notify_one</code> when several different conditions share one condition variable</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer <code>std::latch</code> / <code>std::barrier</code> / semaphores when they fit; they're harder to misuse</li>
+							<li class="note-item">Use <code>std::counting_semaphore</code> to cap parallel downloads or DB connections</li>
+							<li class="note-item">Add a "closed" flag to queues so consumers can exit cleanly</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>condition_variable</code> — sleep until signaled</li>
+							<li class="note-item"><code>wait(lock, pred)</code> — always use a predicate</li>
+							<li class="note-item"><code>std::latch / std::barrier</code> — C++20 sync points</li>
+							<li class="note-item"><code>counting_semaphore</code> — limit concurrent access</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-092-mutexes-locks.html" class="nav-link prev">Mutexes &amp; Locks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-094-atomics.html" class="nav-link next">Atomics &amp; the Memory Model</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+	</body>
+</html>

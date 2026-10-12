@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 117: Garbage Collection &amp; Finalizers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s117">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 117</div>
+			<h1>Garbage Collection &amp; Finalizers</h1>
+			<div class="sheet-desc">generations 0/1/2 · Large Object Heap · finalizers ~T() · GC.SuppressFinalize · WeakReference · event-handler leaks</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Automatic Memory Management</h2>
+						<div class="description">The <strong>garbage collector</strong> reclaims objects that are no longer reachable. It's <strong>generational</strong>: new objects start in <strong>Gen 0</strong>, survivors move to <strong>Gen 1</strong> and <strong>Gen 2</strong>, and objects ≥ 85 KB go to the <strong>Large Object Heap</strong>. Most apps never call the GC directly; your job is to avoid <strong>leaks</strong> (unexpected references) and <strong>dispose</strong> unmanaged resources.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Gen 0 collections are frequent and cheap</li>
+							<li class="note-item">Finalizers delay collection and run on a separate thread</li>
+							<li class="note-item">Static references and event subscriptions keep objects alive</li>
+							<li class="note-item">Server GC is the default for ASP.NET Core</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">GC in Practice</h2>
+						<pre><code class="language-csharp">var data = new byte[100];
+Console.WriteLine(GC.GetGeneration(data));        // 0
+GC.Collect();                                     // don't do this in real apps
+Console.WriteLine(GC.GetGeneration(data));        // 1 (survived)
+
+Console.WriteLine(GC.CollectionCount(0));         // # of Gen 0 GCs
+public class NativeBuffer : IDisposable
+{
+    private IntPtr _ptr = Marshal.AllocHGlobal(1024);
+    public void Dispose() { Free(); GC.SuppressFinalize(this); }
+    ~NativeBuffer() =&gt; Free();                    // finalizer: last resort
+    private void Free()
+    {
+        if (_ptr == IntPtr.Zero) return;
+        Marshal.FreeHGlobal(_ptr); _ptr = IntPtr.Zero;
+    }
+}
+
+var cache = new ConditionalWeakTable&lt;object, Metadata&gt;();   // no leak
+var weak = new WeakReference&lt;BigThing&gt;(new BigThing());
+if (weak.TryGetTarget(out var thing)) Use(thing);           // may be collected</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>GetGeneration</code> — which generation an object is in</div>
+							<div class="explain-item"><code>GC.Collect</code> — forces a collection (diagnostics only)</div>
+							<div class="explain-item">Finalizer <code>~T()</code> — safety net for unmanaged memory</div>
+							<div class="explain-item"><code>SuppressFinalize</code> — skip finalizer after Dispose</div>
+							<div class="explain-item"><code>ConditionalWeakTable</code> — attach data without keeping keys alive</div>
+							<div class="explain-item"><code>WeakReference&lt;T&gt;</code> — reference that allows collection</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Gens Table | Leaks Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-gens">
+						<h2 class="section-title">Heap Areas</h2>
+						<table>
+							<thead><tr><th>Area</th><th>Holds</th><th>Collected</th></tr></thead>
+							<tbody>
+								<tr><td>Gen 0</td><td class="desc">New objects</td><td class="desc">Very often</td></tr>
+								<tr><td>Gen 1</td><td class="desc">Short-lived survivors</td><td class="desc">Often</td></tr>
+								<tr><td>Gen 2</td><td class="desc">Long-lived objects</td><td class="desc">Rarely</td></tr>
+								<tr><td>LOH</td><td class="desc">Objects ≥ 85 KB</td><td class="desc">With Gen 2</td></tr>
+								<tr><td>POH</td><td class="desc">Pinned objects (.NET 5)</td><td class="desc">With Gen 2</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-leaks">
+						<h2 class="section-title">Common Leaks</h2>
+						<table>
+							<thead><tr><th>Cause</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>Event handlers never removed</td><td class="desc">Unsubscribe / weak events</td></tr>
+								<tr><td>Static collections growing</td><td class="desc">Bound or evict entries</td></tr>
+								<tr><td>Undisposed timers / CTS</td><td class="desc">Dispose them</td></tr>
+								<tr><td>Captured closures in caches</td><td class="desc">Avoid capturing large objects</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>GC.Collect()</code> to "fix" memory — usually hurts performance and hides the real leak</li>
+							<li class="note-item">Writing finalizers for classes without unmanaged resources — adds overhead for nothing</li>
+							<li class="note-item">Allocating large temporary arrays repeatedly — fills the LOH; use <code>ArrayPool</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Investigate memory with <code>dotnet-counters</code> and <code>dotnet-gcdump</code></li>
+							<li class="note-item">Prefer <code>SafeHandle</code> over hand-written finalizers</li>
+							<li class="note-item">Reduce allocations in hot paths (spans, pooling, structs)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Generational GC — Gen 0/1/2 + LOH</li>
+							<li class="note-item">Leaks = unwanted references</li>
+							<li class="note-item">Finalizers — last resort; use <code>SafeHandle</code></li>
+							<li class="note-item">Diagnose with dotnet-counters / gcdump</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-116-span-memory.html" class="nav-link prev">Span, Memory &amp; Performance</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<a href="cs-118-reflection-attributes.html" class="nav-link next">Reflection &amp; Attributes</a>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>

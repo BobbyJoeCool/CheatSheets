@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 109: HttpClient</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s109">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 109</div>
+			<h1>HttpClient</h1>
+			<div class="sheet-desc">HttpClient · IHttpClientFactory · GetFromJsonAsync · PostAsJsonAsync · EnsureSuccessStatusCode · Microsoft.Extensions.Http.Resilience</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Calling HTTP APIs</h2>
+						<div class="description"><strong><code>HttpClient</code></strong> sends HTTP requests and receives responses asynchronously. Create clients through <strong><code>IHttpClientFactory</code></strong> (<code>AddHttpClient</code>) so connections are pooled and DNS changes are respected. <code>System.Net.Http.Json</code> extensions like <strong><code>GetFromJsonAsync</code></strong> and <strong><code>PostAsJsonAsync</code></strong> handle serialization, and <strong>Microsoft.Extensions.Http.Resilience</strong> adds retries and timeouts.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Don't create <code>new HttpClient()</code> per request</li>
+							<li class="note-item">Non-2xx responses don't throw unless you ask</li>
+							<li class="note-item">Default timeout is 100 seconds</li>
+							<li class="note-item">Typed clients wrap an API in a class</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Typed Client with Resilience</h2>
+						<pre><code class="language-csharp">builder.Services.AddHttpClient&lt;GitHubClient&gt;(c =&gt;
+{
+    c.BaseAddress = new Uri("https://api.github.com/");
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("my-app/1.0");
+})
+.AddStandardResilienceHandler();                     // retry, timeout, breaker
+
+public class GitHubClient(HttpClient http)
+{
+    public Task&lt;Repo?&gt; GetRepo(string owner, string name) =&gt;
+        http.GetFromJsonAsync&lt;Repo&gt;($"repos/{owner}/{name}");
+
+    public async Task&lt;int&gt; CreateIssue(string repo, NewIssue issue)
+    {
+        var url = $"repos/{repo}/issues";
+        using var resp = await http.PostAsJsonAsync(url, issue);
+        if (resp.StatusCode == HttpStatusCode.NotFound) return -1;
+        resp.EnsureSuccessStatusCode();              // throw on other errors
+        var created = await resp.Content.ReadFromJsonAsync&lt;Issue&gt;();
+        return created!.Number;
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>AddHttpClient&lt;T&gt;</code> — typed client via the factory</div>
+							<div class="explain-item"><code>BaseAddress</code> — relative URLs after this</div>
+							<div class="explain-item"><code>AddStandardResilienceHandler</code> — retries + timeouts</div>
+							<div class="explain-item"><code>GetFromJsonAsync&lt;T&gt;</code> — GET + deserialize</div>
+							<div class="explain-item"><code>PostAsJsonAsync</code> — serialize + POST</div>
+							<div class="explain-item"><code>EnsureSuccessStatusCode</code> — throw for non-2xx</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Methods Table | Response Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-methods">
+						<h2 class="section-title">HttpClient Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>GetStringAsync(url)</td><td class="desc">string</td></tr>
+								<tr><td>GetFromJsonAsync&lt;T&gt;(url)</td><td class="desc">T?</td></tr>
+								<tr><td>PostAsJsonAsync(url, obj)</td><td class="desc">HttpResponseMessage</td></tr>
+								<tr><td>PutAsJsonAsync / DeleteAsync</td><td class="desc">HttpResponseMessage</td></tr>
+								<tr><td>SendAsync(request)</td><td class="desc">Full control</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-response">
+						<h2 class="section-title">HttpResponseMessage</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>StatusCode</td><td class="desc">HttpStatusCode enum</td></tr>
+								<tr><td>IsSuccessStatusCode</td><td class="desc">2xx?</td></tr>
+								<tr><td>Headers / Content.Headers</td><td class="desc">Response headers</td></tr>
+								<tr><td>Content.ReadFromJsonAsync&lt;T&gt;()</td><td class="desc">Parse body</td></tr>
+								<tr><td>EnsureSuccessStatusCode()</td><td class="desc">Throw HttpRequestException</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>using var client = new HttpClient()</code> per call — exhausts sockets under load</li>
+							<li class="note-item">A static <code>HttpClient</code> without <code>PooledConnectionLifetime</code> — misses DNS changes</li>
+							<li class="note-item">Ignoring status codes — <code>GetFromJsonAsync</code> throws on non-2xx, but <code>PostAsJsonAsync</code> doesn't</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Pass <code>CancellationToken</code> to every HTTP call</li>
+							<li class="note-item">Use typed clients to keep API details in one class</li>
+							<li class="note-item">Stream large downloads with <code>ResponseHeadersRead</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>IHttpClientFactory</code> — managed clients</li>
+							<li class="note-item"><code>GetFromJsonAsync</code> / <code>PostAsJsonAsync</code></li>
+							<li class="note-item"><code>EnsureSuccessStatusCode</code> — error handling</li>
+							<li class="note-item">Resilience handler — retries &amp; timeouts</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-108-logging.html" class="nav-link prev">Logging</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<a href="cs-110-regex.html" class="nav-link next">Regular Expressions</a>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>

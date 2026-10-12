@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 106: new &amp; delete</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s106">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 106</div>
+			<h1>new &amp; delete</h1>
+			<div class="sheet-desc">new · delete · new[] / delete[] · placement new · memory leaks · double free · std::nothrow</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Manual Allocation</h2>
+						<div class="description"><code>new</code> allocates memory on the heap <strong>and</strong> constructs an object; <code>delete</code> destroys it <strong>and</strong> frees the memory. Arrays use <code>new[]</code> / <code>delete[]</code>, and mixing the forms is UB. Every <code>new</code> must be matched by exactly one <code>delete</code> on every path, including when exceptions are thrown, which is why modern code almost never writes them directly. <strong>Placement new</strong> constructs an object in memory you already own.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Failure Modes</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Leak</strong>: forgetting <code>delete</code></li>
+							<li class="note-item"><strong>Double free</strong>: deleting twice</li>
+							<li class="note-item"><strong>Use after free</strong>: touching memory after <code>delete</code></li>
+							<li class="note-item"><code>new</code> throws <code>std::bad_alloc</code>; <code>new (std::nothrow)</code> returns <code>nullptr</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">new / delete &amp; Friends</h2>
+						<pre><code class="language-cpp">int* n = new int{42};            // allocate + construct
+delete n;                        // destroy + free
+n = nullptr;                     // avoid dangling reuse
+
+int* arr = new int[5]{1, 2, 3};  // 1 2 3 0 0
+delete[] arr;                    // must use delete[]
+
+Widget* w = new Widget{"cfg"};
+process(*w);                     // if this throws → leak!
+delete w;
+
+int* maybe = new (std::nothrow) int[1'000'000];
+if (!maybe) { /* handle failure */ }
+
+alignas(Widget) std::byte storage[sizeof(Widget)];
+Widget* pw = new (storage) Widget{"inplace"};   // placement new
+pw-&gt;~Widget();                   // destroy manually, no delete
+auto good = std::make_unique&lt;Widget&gt;("cfg");    // what to write instead</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>new int{42}</code> — heap allocation with initialization</div>
+							<div class="explain-item"><code>delete[]</code> — required for <code>new[]</code>, runs every element's destructor</div>
+							<div class="explain-item">exception between <code>new</code> and <code>delete</code> — memory leaks</div>
+							<div class="explain-item"><code>std::nothrow</code> — returns null instead of throwing</div>
+							<div class="explain-item">placement new — construct in existing storage; call the destructor yourself</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Pairs That Must Match Table | Bugs Amp Detectors Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-pairs-that-must-match">
+						<h2 class="section-title">Pairs That Must Match</h2>
+						<table>
+							<thead><tr><th>Allocate</th><th>Release</th></tr></thead>
+							<tbody>
+								<tr><td>new T</td><td>delete p</td></tr>
+								<tr><td>new T[n]</td><td>delete[] p</td></tr>
+								<tr><td>new (buf) T</td><td>p-&gt;~T()</td></tr>
+								<tr><td>std::malloc</td><td>std::free</td></tr>
+								<tr><td>std::make_unique</td><td>automatic</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-bugs-amp-detectors">
+						<h2 class="section-title">Bugs &amp; Detectors</h2>
+						<table>
+							<thead><tr><th>Bug</th><th>Detected by</th></tr></thead>
+							<tbody>
+								<tr><td>leak</td><td class="desc">ASan (LeakSanitizer), valgrind</td></tr>
+								<tr><td>double free</td><td class="desc">ASan</td></tr>
+								<tr><td>use after free</td><td class="desc">ASan</td></tr>
+								<tr><td>new[] / delete mismatch</td><td class="desc">ASan</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>delete</code> on memory from <code>new[]</code> (or vice versa); that's UB</li>
+							<li class="note-item">Mixing <code>malloc</code>/<code>free</code> with <code>new</code>/<code>delete</code>; constructors and destructors don't run</li>
+							<li class="note-item">Deleting through a base pointer without a virtual destructor</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Replace <code>new</code> with <code>std::make_unique</code> / <code>std::make_shared</code> and containers</li>
+							<li class="note-item">If you must hold a raw owning pointer temporarily, wrap it in a smart pointer immediately</li>
+							<li class="note-item">Run tests with <code>-fsanitize=address</code> to find leaks and double frees</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>new</code> / <code>delete</code> — allocate+construct / destroy+free</li>
+							<li class="note-item"><code>new[]</code> / <code>delete[]</code> — array forms, never mix</li>
+							<li class="note-item">placement new — construct in existing memory</li>
+							<li class="note-item">modern code — use smart pointers instead</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-105-storage-duration.html" class="nav-link prev">Stack, Heap &amp; Storage Duration</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-107-unique-ptr.html" class="nav-link next">std::unique_ptr</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+	</body>
+</html>

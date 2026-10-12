@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 108: Logging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s108">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 108</div>
+			<h1>Logging</h1>
+			<div class="sheet-desc">ILogger&lt;T&gt; · LogInformation · log levels · message templates · [LoggerMessage] · Serilog</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Structured Logging</h2>
+						<div class="description"><strong><code>Microsoft.Extensions.Logging</code></strong> is the standard logging abstraction. Classes receive an <strong><code>ILogger&lt;T&gt;</code></strong> through DI and write messages at a <strong>log level</strong>. Message <strong>templates</strong> like <code>"Order {OrderId} placed"</code> produce <strong>structured</strong> logs where <code>OrderId</code> is a searchable field, not just text. Providers (console, Serilog, OpenTelemetry…) decide where logs go.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Levels: Trace &lt; Debug &lt; Information &lt; Warning &lt; Error &lt; Critical</li>
+							<li class="note-item">Placeholders are named, not interpolated</li>
+							<li class="note-item">Filter levels per category in <code>appsettings.json</code></li>
+							<li class="note-item"><code>[LoggerMessage]</code> source gen avoids allocations</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Logging in a Service</h2>
+						<pre><code class="language-csharp">public partial class OrderService(ILogger&lt;OrderService&gt; log)
+{
+    public void Place(Order o)
+    {
+        log.LogInformation("Placing {OrderId} for {Total}", o.Id, o.Total);
+        try { Save(o); }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Save failed for {OrderId}", o.Id); // ex first
+            throw;
+        }
+        using (log.BeginScope("Batch {BatchId}", o.BatchId))   // scope data
+            OrderPlaced(log, o.Id);
+    }
+    [LoggerMessage(LogLevel.Information, "Order {OrderId} placed")]
+    static partial void OrderPlaced(ILogger logger, int orderId); // generated
+}
+builder.Services.AddSerilog(lc =&gt; lc.WriteTo.Console());</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ILogger&lt;T&gt;</code> — category = the class name</div>
+							<div class="explain-item"><code>{OrderId}</code> — structured field</div>
+							<div class="explain-item"><code>LogError(ex, …)</code> — exception goes first</div>
+							<div class="explain-item"><code>BeginScope</code> — attach data to nested logs</div>
+							<div class="explain-item"><code>[LoggerMessage]</code> — fast, generated log method</div>
+							<div class="explain-item"><code>AddSerilog</code> — plug in Serilog (Serilog.Extensions.Hosting)</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Levels Table | Providers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-levels">
+						<h2 class="section-title">Log Levels</h2>
+						<table>
+							<thead><tr><th>Level</th><th>Use For</th></tr></thead>
+							<tbody>
+								<tr><td>Trace</td><td class="desc">Very detailed internals</td></tr>
+								<tr><td>Debug</td><td class="desc">Developer diagnostics</td></tr>
+								<tr><td>Information</td><td class="desc">Normal business events</td></tr>
+								<tr><td>Warning</td><td class="desc">Unexpected but handled</td></tr>
+								<tr><td>Error</td><td class="desc">Operation failed</td></tr>
+								<tr><td>Critical</td><td class="desc">App-wide failure</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-providers">
+						<h2 class="section-title">Popular Sinks / Providers</h2>
+						<table>
+							<thead><tr><th>Provider</th><th>Notes</th></tr></thead>
+							<tbody>
+								<tr><td>Console / Debug</td><td class="desc">Built in</td></tr>
+								<tr><td>Serilog</td><td class="desc">Rich sinks: file, Seq, Elastic</td></tr>
+								<tr><td>NLog</td><td class="desc">Mature, config-driven</td></tr>
+								<tr><td>OpenTelemetry</td><td class="desc">Logs + traces + metrics</td></tr>
+								<tr><td>Application Insights</td><td class="desc">Azure monitoring</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Interpolating messages <code>$"Order {id}"</code> — loses structure and allocates even when disabled</li>
+							<li class="note-item">Logging secrets or personal data — logs are widely accessible</li>
+							<li class="note-item">Logging and rethrowing at every layer — the same error appears many times</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use PascalCase placeholder names consistently (<code>{OrderId}</code>)</li>
+							<li class="note-item">Use <code>[LoggerMessage]</code> in hot paths</li>
+							<li class="note-item">Check <code>log.IsEnabled(LogLevel.Debug)</code> before expensive log data</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ILogger&lt;T&gt;</code> — inject and log</li>
+							<li class="note-item">Templates — <code>{Name}</code> placeholders</li>
+							<li class="note-item">Levels — Trace → Critical</li>
+							<li class="note-item">Serilog / OpenTelemetry — providers</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-107-mocking-assertions.html" class="nav-link prev">Mocking &amp; Assertion Libraries</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<a href="cs-109-httpclient.html" class="nav-link next">HttpClient</a>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>

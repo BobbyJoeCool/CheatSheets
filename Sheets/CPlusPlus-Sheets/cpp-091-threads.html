@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 091: Threads</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s091">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 091</div>
+			<h1>Threads</h1>
+			<div class="sheet-desc">std::thread · join / detach · std::jthread · std::stop_token · passing arguments · hardware_concurrency</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Running Code in Parallel</h2>
+						<div class="description"><code>std::thread</code> (<code>&lt;thread&gt;</code>) starts a new OS thread running any callable. You must <code>join()</code> it (wait for it) or <code>detach()</code> it before the <code>std::thread</code> object is destroyed, or the program calls <code>std::terminate</code>. C++20's <code>std::jthread</code> joins automatically in its destructor and supports <strong>cooperative cancellation</strong> through a <code>std::stop_token</code>, so it's the better default.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Arguments are <strong>copied</strong> into the thread; use <code>std::ref</code> to pass references</li>
+							<li class="note-item"><code>std::thread::hardware_concurrency()</code> — hint of available cores</li>
+							<li class="note-item">Exceptions escaping a thread function call <code>std::terminate</code></li>
+							<li class="note-item">Threads share memory: unsynchronized writes are data races (UB)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">thread &amp; jthread</h2>
+						<pre><code class="language-cpp">#include &lt;thread&gt;
+
+void work(int id, std::string&amp; out) { out = std::format("worker {}", id); }
+
+std::string result;
+std::thread t{work, 1, std::ref(result)};   // pass a reference with ref()
+t.join();                                   // wait; result == "worker 1"
+
+std::jthread j{[](std::stop_token st) {
+    while (!st.stop_requested()) {
+        poll();
+        std::this_thread::sleep_for(100ms);
+    }
+}};
+j.request_stop();                           // ask it to finish
+                                            // destructor joins
+unsigned cores = std::thread::hardware_concurrency();   // e.g. 8
+std::this_thread::get_id();                 // current thread id</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>std::thread{f, args...}</code> — starts immediately</div>
+							<div class="explain-item"><code>std::ref(result)</code> — otherwise the thread gets a copy</div>
+							<div class="explain-item"><code>join()</code> — blocks until the thread finishes</div>
+							<div class="explain-item"><code>std::jthread</code> — passes a <code>stop_token</code> if the callable accepts one</div>
+							<div class="explain-item"><code>request_stop()</code> — cooperative; the thread must check the token</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Thread Api Table | This Thread Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-thread-api">
+						<h2 class="section-title">Thread API</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>join()</td><td class="desc">wait for completion</td></tr>
+								<tr><td>detach()</td><td class="desc">let it run independently</td></tr>
+								<tr><td>joinable()</td><td class="desc">can still join/detach?</td></tr>
+								<tr><td>get_id()</td><td class="desc">thread id</td></tr>
+								<tr><td>request_stop()</td><td class="desc">jthread: signal stop</td></tr>
+								<tr><td>get_stop_token()</td><td class="desc">jthread: token</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-this-thread">
+						<h2 class="section-title">this_thread</h2>
+						<table>
+							<thead><tr><th>Function</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>sleep_for(dur)</td><td class="desc">pause for a duration</td></tr>
+								<tr><td>sleep_until(tp)</td><td class="desc">pause until a time point</td></tr>
+								<tr><td>yield()</td><td class="desc">hint to reschedule</td></tr>
+								<tr><td>get_id()</td><td class="desc">current thread id</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Letting a joinable <code>std::thread</code> go out of scope; the program terminates. Use <code>jthread</code> or join</li>
+							<li class="note-item">Passing a reference argument without <code>std::ref</code>, so the thread modifies a copy</li>
+							<li class="note-item">Detaching threads that use local variables of the creating function; they dangle</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Default to <code>std::jthread</code> in new code</li>
+							<li class="note-item">Prefer higher-level tools (<code>std::async</code>, thread pools, parallel algorithms) to raw threads</li>
+							<li class="note-item">Catch exceptions inside the thread function and hand them back via <code>std::promise</code> or a queue</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>std::thread</code> — must join or detach</li>
+							<li class="note-item"><code>std::jthread</code> — auto-join + stop token (C++20)</li>
+							<li class="note-item"><code>std::ref</code> — pass references to threads</li>
+							<li class="note-item"><code>stop_token</code> — cooperative cancellation</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-090-nlohmann-json.html" class="nav-link prev">nlohmann/json</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-092-mutexes-locks.html" class="nav-link next">Mutexes &amp; Locks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+	</body>
+</html>

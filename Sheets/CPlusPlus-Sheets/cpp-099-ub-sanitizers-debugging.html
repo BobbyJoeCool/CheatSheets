@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 099: UB, Sanitizers &amp; Debugging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s099">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 099</div>
+			<h1>UB, Sanitizers &amp; Debugging</h1>
+			<div class="sheet-desc">common UB · signed overflow · dangling · ASan / UBSan / TSan · gdb / lldb · valgrind · std::stacktrace</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Undefined Behavior &amp; Tools</h2>
+						<div class="description"><strong>Undefined behavior (UB)</strong> means the standard places no requirements on what happens: the program may crash, appear to work, or be "optimized" into something surprising. Common UB includes out-of-bounds access, signed overflow, use-after-free, data races, and dereferencing null. <strong>Sanitizers</strong> instrument your build to catch UB at run time, and <strong>debuggers</strong> let you inspect a running or crashed program.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">UB can appear to work until a compiler upgrade changes optimizations</li>
+							<li class="note-item">Sanitizers slow programs 2–5×; use them in tests and CI</li>
+							<li class="note-item">ASan and TSan can't be combined in one build</li>
+							<li class="note-item"><code>std::stacktrace</code> (C++23) prints a call stack from code</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Catching UB</h2>
+						<pre><code class="language-bash"># AddressSanitizer + UndefinedBehaviorSanitizer
+g++ -std=c++23 -g -O1 -fsanitize=address,undefined \
+    -fno-omit-frame-pointer main.cpp -o app
+./app        # reports: heap-use-after-free / signed-integer-overflow ...
+
+# ThreadSanitizer (separate build)
+clang++ -std=c++23 -g -fsanitize=thread main.cpp -o app_tsan
+
+# Debug with gdb (or lldb on macOS)
+gdb ./app
+(gdb) break inventory.cpp:42
+(gdb) run --config test.json
+(gdb) bt            # backtrace after a crash
+(gdb) print items.size()
+(gdb) next / step / continue
+
+valgrind --leak-check=full ./app      # leaks &amp; invalid reads (Linux)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-fsanitize=address</code> — out-of-bounds, use-after-free, leaks</div>
+							<div class="explain-item"><code>undefined</code> — signed overflow, bad shifts, null dereference</div>
+							<div class="explain-item"><code>-fno-omit-frame-pointer</code> — better stack traces</div>
+							<div class="explain-item"><code>thread</code> — data races (needs its own build)</div>
+							<div class="explain-item"><code>bt</code> — show the call stack at the crash</div>
+							<div class="explain-item"><code>valgrind</code> — no recompilation needed, but slower</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Common Ub Table | Tools Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-common-ub">
+						<h2 class="section-title">Common UB</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Problem</th></tr></thead>
+							<tbody>
+								<tr><td>v[v.size()]</td><td class="desc">out of bounds</td></tr>
+								<tr><td>INT_MAX + 1</td><td class="desc">signed overflow</td></tr>
+								<tr><td>delete p; *p</td><td class="desc">use after free</td></tr>
+								<tr><td>int x; f(x);</td><td class="desc">uninitialized read</td></tr>
+								<tr><td>1 &lt;&lt; 32 (32-bit int)</td><td class="desc">shift too far</td></tr>
+								<tr><td>two threads, one writes</td><td class="desc">data race</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-tools">
+						<h2 class="section-title">Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Finds</th></tr></thead>
+							<tbody>
+								<tr><td>ASan</td><td class="desc">memory errors, leaks</td></tr>
+								<tr><td>UBSan</td><td class="desc">arithmetic / type UB</td></tr>
+								<tr><td>TSan</td><td class="desc">data races</td></tr>
+								<tr><td>MSan (Clang)</td><td class="desc">uninitialized reads</td></tr>
+								<tr><td>valgrind</td><td class="desc">memory errors (slow)</td></tr>
+								<tr><td>clang-tidy</td><td class="desc">static bug patterns</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Concluding code is correct because it "works on my machine"; UB often hides until optimization changes</li>
+							<li class="note-item">Debugging release builds without <code>-g</code>; you get no line numbers</li>
+							<li class="note-item">Ignoring sanitizer reports in third-party code paths your program triggers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Add a sanitizer job to CI that runs the whole test suite with ASan + UBSan</li>
+							<li class="note-item">Use <code>_GLIBCXX_ASSERTIONS</code> or libc++ hardening modes to bounds-check <code>operator[]</code> in debug builds</li>
+							<li class="note-item">Print <code>std::stacktrace::current()</code> in fatal error handlers (C++23, link <code>-lstdc++exp</code> on GCC)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">UB — no guarantees; must be avoided, not tolerated</li>
+							<li class="note-item"><code>-fsanitize=address,undefined</code> — catch UB at run time</li>
+							<li class="note-item"><code>-fsanitize=thread</code> — catch data races</li>
+							<li class="note-item">gdb / lldb — breakpoints, <code>bt</code>, <code>print</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-098-regex.html" class="nav-link prev">Regular Expressions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-100-cpp26-preview.html" class="nav-link next">C++26 Preview</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

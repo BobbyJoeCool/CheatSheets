@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 113: async / await — Pitfalls</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s113">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 113</div>
+			<h1>async / await — Pitfalls</h1>
+			<div class="sheet-desc">async void · .Result / .Wait() deadlocks · ConfigureAwait(false) · fire-and-forget · WhenAll exceptions · await foreach</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Async Traps to Avoid</h2>
+						<div class="description">Most async bugs come from a few patterns: <strong><code>async void</code></strong>, <strong>blocking on tasks</strong> (<code>.Result</code>, <code>.Wait()</code>), <strong>fire-and-forget</strong> without error handling, and misunderstanding where code resumes. Library code adds <strong><code>ConfigureAwait(false)</code></strong> to avoid capturing a UI or legacy ASP.NET context. These rules keep async code correct and debuggable.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">ASP.NET Core has no sync context — deadlocks are rarer there</li>
+							<li class="note-item">UI apps (WPF, WinForms, MAUI) resume on the UI thread</li>
+							<li class="note-item">Unobserved task exceptions are silently lost</li>
+							<li class="note-item"><code>await using</code> / <code>await foreach</code> exist for async resources</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Wrong vs Right</h2>
+						<pre><code class="language-csharp">async void Save() { await db.SaveChangesAsync(); }     // ✗ crashes on error
+async Task SaveAsync() { await db.SaveChangesAsync(); } // ✓ awaitable
+
+var data = LoadAsync().Result;                         // ✗ blocks, may deadlock
+var data2 = await LoadAsync();                         // ✓
+
+// ✗ fire-and-forget: errors vanish
+_ = SendEmailAsync(user);
+// ✓ queue it to a background service, or at least observe errors
+_ = SendEmailAsync(user).ContinueWith(t =&gt; log.LogError(t.Exception, "email"),
+        TaskContinuationOptions.OnlyOnFaulted);
+
+// Library code: don't resume on the caller's context
+public async Task&lt;string&gt; ReadAsync(string p) =&gt;
+    await File.ReadAllTextAsync(p).ConfigureAwait(false);
+
+// ✗ lock + await isn't allowed; ✓ use SemaphoreSlim
+await _gate.WaitAsync();
+try { await WriteAsync(); } finally { _gate.Release(); }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>async void</code> — only for event handlers</div>
+							<div class="explain-item"><code>.Result</code> — blocks a thread, may deadlock</div>
+							<div class="explain-item"><code>_ =</code> — discards the task; exceptions unobserved</div>
+							<div class="explain-item"><code>ContinueWith(OnlyOnFaulted)</code> — minimal error logging</div>
+							<div class="explain-item"><code>ConfigureAwait(false)</code> — for libraries</div>
+							<div class="explain-item"><code>SemaphoreSlim</code> — async-friendly lock</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Rules Table | Diag Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-rules">
+						<h2 class="section-title">Rules</h2>
+						<table>
+							<thead><tr><th>Do</th><th>Don't</th></tr></thead>
+							<tbody>
+								<tr><td>async Task</td><td class="desc">async void</td></tr>
+								<tr><td>await task</td><td class="desc">.Result / .Wait()</td></tr>
+								<tr><td>Task.Delay</td><td class="desc">Thread.Sleep</td></tr>
+								<tr><td>SemaphoreSlim.WaitAsync</td><td class="desc">lock around await</td></tr>
+								<tr><td>Background queue / service</td><td class="desc">Unobserved fire-and-forget</td></tr>
+								<tr><td>Pass CancellationToken</td><td class="desc">Ignore it</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-diag">
+						<h2 class="section-title">Symptoms → Cause</h2>
+						<table>
+							<thead><tr><th>Symptom</th><th>Likely Cause</th></tr></thead>
+							<tbody>
+								<tr><td>UI freezes</td><td class="desc">Blocking on a task</td></tr>
+								<tr><td>App hangs forever</td><td class="desc">Sync-over-async deadlock</td></tr>
+								<tr><td>Crash with no stack</td><td class="desc">async void exception</td></tr>
+								<tr><td>Missing side effects</td><td class="desc">Missing await</td></tr>
+								<tr><td>Thread-pool starvation</td><td class="desc">Many blocking waits</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Wrapping sync APIs in <code>Task.Run</code> inside libraries — let callers decide</li>
+							<li class="note-item">Returning <code>null</code> from a <code>Task</code>-returning method — callers' <code>await</code> throws; return <code>Task.CompletedTask</code></li>
+							<li class="note-item">Assuming <code>await</code> always switches threads — it may complete synchronously</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Turn on analyzers (CA2007, VSTHRD*) to catch async misuse</li>
+							<li class="note-item">Use <code>IHostedService</code> + <code>Channel&lt;T&gt;</code> for background jobs</li>
+							<li class="note-item">In ASP.NET Core apps <code>ConfigureAwait(false)</code> is optional</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">No <code>async void</code> (except events)</li>
+							<li class="note-item">No <code>.Result</code> / <code>.Wait()</code></li>
+							<li class="note-item">Observe fire-and-forget tasks</li>
+							<li class="note-item"><code>SemaphoreSlim</code> instead of <code>lock</code> with await</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-112-async-patterns.html" class="nav-link prev">async / await — Patterns</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<a href="cs-114-threading-sync.html" class="nav-link next">Threads &amp; Synchronization</a>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 004: Compilation Model &amp; Linking</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s004">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 004</div>
+			<h1>Compilation Model &amp; Linking</h1>
+			<div class="sheet-desc">preprocess → compile → link · translation units · object files · ODR · static .a/.lib vs shared .so/.dll · &quot;undefined reference&quot;</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">From Source to Executable</h2>
+						<div class="description">Building C++ is a three-stage pipeline. The <strong>preprocessor</strong> expands <code>#include</code> and macros, producing a <strong>translation unit</strong> (TU). The <strong>compiler</strong> turns each TU into an <strong>object file</strong> independently. The <strong>linker</strong> combines object files and libraries into one executable, resolving every name used in one TU to its definition in another. Most confusing build errors make sense once you know which stage produced them.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">The ODR</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>One Definition Rule</strong>: each function/variable has exactly one definition program-wide</li>
+							<li class="note-item">Declarations (in headers) may repeat; definitions (in <code>.cpp</code>) may not</li>
+							<li class="note-item"><code>inline</code> functions and templates may be defined in headers: once per TU, all identical</li>
+							<li class="note-item">Breaking the ODR is often silent UB, not a compile error</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Building in Stages</h2>
+						<pre><code class="language-bash">g++ -E main.cpp -o main.ii      # 1. preprocess only
+g++ -c main.cpp -o main.o       # 2. compile one TU → object file
+g++ -c math.cpp -o math.o
+g++ main.o math.o -o app        # 3. link objects → executable
+
+# Static library: archive of .o files, copied into the app
+ar rcs libmath.a math.o
+g++ main.o -L. -lmath -o app
+
+# Shared library: loaded at run time
+g++ -fPIC -shared math.cpp -o libmath.so
+g++ main.o -L. -lmath -Wl,-rpath,. -o app
+
+nm -C math.o                    # list symbols in an object file</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-E</code> — stop after preprocessing; shows what the compiler really sees</div>
+							<div class="explain-item"><code>-c</code> — compile without linking; one <code>.o</code> per <code>.cpp</code></div>
+							<div class="explain-item"><code>ar rcs</code> — bundle objects into a static <code>.a</code> archive</div>
+							<div class="explain-item"><code>-fPIC -shared</code> — build position-independent shared library</div>
+							<div class="explain-item"><code>-Wl,-rpath,.</code> — tell the loader where to find <code>.so</code> at run time</div>
+							<div class="explain-item"><code>nm -C</code> — dump (demangled) symbols to debug link errors</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Which Stage Failed Table | Library Types Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-which-stage-failed">
+						<h2 class="section-title">Which Stage Failed?</h2>
+						<table>
+							<thead><tr><th>Error</th><th>Stage &amp; usual cause</th></tr></thead>
+							<tbody>
+								<tr><td>fatal error: x.h: No such file</td><td class="desc">preprocessor; missing <code>-I</code> path</td></tr>
+								<tr><td>expected ';' before …</td><td class="desc">compiler; syntax error</td></tr>
+								<tr><td>'foo' was not declared</td><td class="desc">compiler; missing <code>#include</code>/prototype</td></tr>
+								<tr><td>undefined reference to foo</td><td class="desc">linker; definition not compiled/linked</td></tr>
+								<tr><td>multiple definition of foo</td><td class="desc">linker; definition in a header</td></tr>
+								<tr><td>cannot open shared object</td><td class="desc">loader at run time; rpath / PATH</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-library-types">
+						<h2 class="section-title">Library Types</h2>
+						<table>
+							<thead><tr><th>Kind</th><th>Linux / macOS</th><th>Windows</th></tr></thead>
+							<tbody>
+								<tr><td>Object file</td><td>.o</td><td>.obj</td></tr>
+								<tr><td>Static lib</td><td>.a</td><td>.lib</td></tr>
+								<tr><td>Shared lib</td><td>.so / .dylib</td><td>.dll (+ import .lib)</td></tr>
+								<tr><td>Executable</td><td>(no ext)</td><td>.exe</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Putting a non-<code>inline</code> function definition in a header included by two <code>.cpp</code> files, which causes "multiple definition"</li>
+							<li class="note-item">Compiling only <code>main.cpp</code> and getting "undefined reference" because <code>math.cpp</code> was never passed to the build</li>
+							<li class="note-item">Listing libraries before the objects that use them (<code>-lmath main.o</code>); GNU ld resolves left to right</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Read the first error only; later errors are often fallout from it</li>
+							<li class="note-item">Use <code>extern "C"</code> when linking against C libraries to stop C++ name mangling</li>
+							<li class="note-item">Let a build system (CMake) track which TUs need recompiling instead of hand-written commands</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>preprocess → compile → link</code> — the three build stages</li>
+							<li class="note-item"><code>translation unit</code> — one <code>.cpp</code> after preprocessing</li>
+							<li class="note-item"><code>ODR</code> — one definition per entity across the program</li>
+							<li class="note-item"><code>undefined reference</code> — linker error: missing definition</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-003-program-structure.html" class="nav-link prev">Program Structure</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-005-cmake-basics.html" class="nav-link next">CMake Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

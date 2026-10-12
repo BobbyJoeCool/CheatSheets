@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 108: std::shared_ptr &amp; std::weak_ptr</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s108">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 108</div>
+			<h1>std::shared_ptr &amp; std::weak_ptr</h1>
+			<div class="sheet-desc">std::make_shared · use_count · control block · std::weak_ptr · lock() · reference cycles · enable_shared_from_this</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Shared Ownership</h2>
+						<div class="description"><code>std::shared_ptr&lt;T&gt;</code> allows <strong>multiple owners</strong>. A <strong>control block</strong> holds a reference count; the object is deleted when the last <code>shared_ptr</code> to it is destroyed. Copying increments the count atomically, so <code>shared_ptr</code> costs more than <code>unique_ptr</code>. <code>std::weak_ptr</code> observes a shared object without owning it, which breaks <strong>reference cycles</strong> and lets you check whether the object still exists.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Create with <code>std::make_shared&lt;T&gt;(args...)</code> (one allocation)</li>
+							<li class="note-item"><code>use_count()</code> — current number of owners (for debugging)</li>
+							<li class="note-item"><code>weak_ptr::lock()</code> — get a <code>shared_ptr</code> or null if expired</li>
+							<li class="note-item">The count is thread-safe; the pointed-to object isn't automatically</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">shared_ptr &amp; weak_ptr</h2>
+						<pre><code class="language-cpp">auto cfg = std::make_shared&lt;Config&gt;("prod");   // count 1
+auto alias = cfg;                              // count 2
+cfg.use_count();                               // 2
+alias.reset();                                 // count 1
+
+std::weak_ptr&lt;Config&gt; watcher = cfg;           // doesn't own
+if (auto locked = watcher.lock()) {            // shared_ptr or null
+    locked-&gt;reload();
+}
+cfg.reset();                                   // count 0 → deleted
+watcher.expired();                             // true
+
+struct Node {
+    std::shared_ptr&lt;Node&gt; next;
+    std::weak_ptr&lt;Node&gt;   prev;                // weak: no cycle
+};
+struct Session : std::enable_shared_from_this&lt;Session&gt; {
+    void start() { schedule(shared_from_this()); }   // keep alive
+};</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">copying a <code>shared_ptr</code> — increments the count</div>
+							<div class="explain-item"><code>reset()</code> — drops this owner</div>
+							<div class="explain-item"><code>weak_ptr::lock()</code> — safe temporary access</div>
+							<div class="explain-item"><code>expired()</code> — true once the object is gone</div>
+							<div class="explain-item"><code>prev</code> as <code>weak_ptr</code> — avoids a cycle that would never be freed</div>
+							<div class="explain-item"><code>shared_from_this()</code> — get a <code>shared_ptr</code> to <code>this</code> safely</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Shared Vs Unique Table | Weak Ptr Api Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-shared-vs-unique">
+						<h2 class="section-title">shared vs unique</h2>
+						<table>
+							<thead><tr><th>Aspect</th><th>unique_ptr</th><th>shared_ptr</th></tr></thead>
+							<tbody>
+								<tr><td>owners</td><td class="desc">one</td><td class="desc">many</td></tr>
+								<tr><td>copyable</td><td class="desc">no</td><td class="desc">yes</td></tr>
+								<tr><td>size</td><td class="desc">1 pointer</td><td class="desc">2 pointers</td></tr>
+								<tr><td>overhead</td><td class="desc">none</td><td class="desc">atomic ref count</td></tr>
+								<tr><td>default choice</td><td class="desc">✔</td><td class="desc">only when needed</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-weak-ptr-api">
+						<h2 class="section-title">weak_ptr API</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>lock()</td><td class="desc">shared_ptr or empty</td></tr>
+								<tr><td>expired()</td><td class="desc">object destroyed?</td></tr>
+								<tr><td>use_count()</td><td class="desc">strong owner count</td></tr>
+								<tr><td>reset()</td><td class="desc">stop observing</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Two <code>shared_ptr</code>s built from the same raw pointer (<code>shared_ptr&lt;T&gt;(raw)</code> twice); each deletes it</li>
+							<li class="note-item">Reference cycles (A → B → A) with <code>shared_ptr</code>; neither count reaches zero, so both leak</li>
+							<li class="note-item">Calling <code>shared_from_this()</code> in a constructor or on an object not owned by a <code>shared_ptr</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Start with <code>unique_ptr</code>; convert to <code>shared_ptr</code> only when ownership is truly shared (<code>unique_ptr</code> converts implicitly)</li>
+							<li class="note-item">Pass <code>const T&amp;</code> or <code>T*</code> to functions that don't care about ownership</li>
+							<li class="note-item">Use <code>weak_ptr</code> for caches, observers, and back-pointers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>std::shared_ptr</code> — shared ownership, ref-counted</li>
+							<li class="note-item"><code>make_shared</code> — one allocation</li>
+							<li class="note-item"><code>std::weak_ptr</code> — non-owning observer, breaks cycles</li>
+							<li class="note-item"><code>enable_shared_from_this</code> — safe self-reference</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-107-unique-ptr.html" class="nav-link prev">std::unique_ptr</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-109-ownership-raii.html" class="nav-link next">RAII &amp; Ownership Guidelines</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+	</body>
+</html>

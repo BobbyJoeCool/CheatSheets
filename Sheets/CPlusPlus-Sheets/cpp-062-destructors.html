@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 062: Destructors</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s062">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 062</div>
+			<h1>Destructors</h1>
+			<div class="sheet-desc">~Class() · destruction order · virtual destructors · scope exit · = default · never throw from a destructor</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Cleaning Up</h2>
+						<div class="description">A <strong>destructor</strong> <code>~T()</code> runs automatically when an object's lifetime ends: when it goes out of scope, when <code>delete</code> is called, or when its owner is destroyed. It's where a class releases resources it acquired. Members are destroyed <strong>after</strong> the destructor body, in <strong>reverse declaration order</strong>; local objects are destroyed in reverse order of creation. If a class will be deleted through a base pointer, its base needs a <strong>virtual destructor</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">One destructor per class, no parameters, no return type</li>
+							<li class="note-item">Implicitly <code>noexcept</code>; never let exceptions escape it</li>
+							<li class="note-item">Most classes need no destructor at all (rule of zero)</li>
+							<li class="note-item">Base classes used polymorphically: <code>virtual ~Base() = default;</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Destructors in Action</h2>
+						<pre><code class="language-cpp">class Logger {
+public:
+    explicit Logger(std::string name) : name_(std::move(name)) {
+        std::println("open {}", name_);
+    }
+    ~Logger() { std::println("close {}", name_); }   // destructor
+private:
+    std::string name_;
+};
+void run() {
+    Logger a{"A"};
+    {
+        Logger b{"B"};
+    }                       // "close B" here (end of inner scope)
+    Logger c{"C"};
+}                           // "close C", then "close A"
+struct Shape { virtual ~Shape() = default; };
+struct Circle : Shape { ~Circle() override { /* ... */ } };</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>~Logger()</code> — runs automatically, even during exception unwinding</div>
+							<div class="explain-item">inner scope — <code>b</code> dies at its closing brace</div>
+							<div class="explain-item">reverse order — <code>c</code> is destroyed before <code>a</code></div>
+							<div class="explain-item"><code>virtual ~Shape()</code> — makes <code>delete shapePtr</code> call <code>~Circle()</code></div>
+							<div class="explain-item"><code>override</code> on a destructor — allowed, documents intent</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: When Destructors Run Table | Do Don T Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-when-destructors-run">
+						<h2 class="section-title">When Destructors Run</h2>
+						<table>
+							<thead><tr><th>Object</th><th>Destroyed at</th></tr></thead>
+							<tbody>
+								<tr><td>local variable</td><td class="desc">end of its scope</td></tr>
+								<tr><td>temporary</td><td class="desc">end of full expression</td></tr>
+								<tr><td><code>new</code>-ed object</td><td class="desc"><code>delete</code></td></tr>
+								<tr><td>member</td><td class="desc">after owner's destructor body</td></tr>
+								<tr><td>static / global</td><td class="desc">program exit, reverse order</td></tr>
+								<tr><td>container element</td><td class="desc">erase / container destruction</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-do-don-t">
+						<h2 class="section-title">Do / Don&#x27;t</h2>
+						<table>
+							<thead><tr><th>Do</th><th>Don't</th></tr></thead>
+							<tbody>
+								<tr><td>release resources</td><td class="desc">throw exceptions</td></tr>
+								<tr><td>log or flush</td><td class="desc">call virtual functions expecting derived behavior</td></tr>
+								<tr><td><code>= default</code> when trivial</td><td class="desc">write one with nothing to do</td></tr>
+								<tr><td>virtual in poly bases</td><td class="desc">make it virtual "just in case" in value types</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Deleting a derived object through a base pointer without a virtual destructor; that's UB and usually leaks</li>
+							<li class="note-item">Throwing from a destructor; during unwinding this calls <code>std::terminate</code></li>
+							<li class="note-item">Calling the destructor manually (<code>obj.~T()</code>) on a normal object; it runs again at scope end</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Wrap each resource (file, socket, lock) in its own class so destructors clean up automatically</li>
+							<li class="note-item">Use <code>std::unique_ptr</code> with a custom deleter for C handles instead of writing a destructor</li>
+							<li class="note-item">Write <code>virtual ~Base() = default;</code> in every class meant to be inherited from polymorphically</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>~T()</code> — runs automatically at end of lifetime</li>
+							<li class="note-item">reverse order — locals and members</li>
+							<li class="note-item"><code>virtual ~Base()</code> — required for polymorphic deletion</li>
+							<li class="note-item">noexcept — destructors must not throw</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-061-constructors.html" class="nav-link prev">Constructors</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-063-access-control.html" class="nav-link next">Access Control &amp; friend</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+	</body>
+</html>

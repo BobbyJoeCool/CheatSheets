@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 067: Copy Semantics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s067">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 067</div>
+			<h1>Copy Semantics</h1>
+			<div class="sheet-desc">copy constructor · copy assignment · shallow vs deep copy · rule of three · = delete · copy elision</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Copying Objects</h2>
+						<div class="description">Copying is controlled by two special members: the <strong>copy constructor</strong> <code>T(const T&amp;)</code> creates a new object from an existing one, and the <strong>copy assignment operator</strong> <code>T&amp; operator=(const T&amp;)</code> overwrites an existing object. The compiler generates memberwise versions, which are correct when every member copies itself properly. Classes owning raw resources need a <strong>deep copy</strong>, and the <strong>rule of three</strong> says if you write one of destructor / copy ctor / copy assignment, you probably need all three.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Copy ctor: <code>T b = a;</code> or <code>T b{a};</code> or pass-by-value</li>
+							<li class="note-item">Copy assign: <code>b = a;</code> on an existing object</li>
+							<li class="note-item"><code>= delete</code> makes a type non-copyable</li>
+							<li class="note-item"><strong>Copy elision</strong>: returning a local or temporary often skips the copy entirely</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Deep Copy (Rule of Three)</h2>
+						<pre><code class="language-cpp">class Buffer {
+public:
+    explicit Buffer(std::size_t n) : size_(n), data_(new int[n]{}) {}
+    ~Buffer() { delete[] data_; }
+    Buffer(const Buffer&amp; o)                         // copy constructor
+        : size_(o.size_), data_(new int[o.size_]) {
+        std::copy_n(o.data_, size_, data_);         // deep copy
+    }
+    Buffer&amp; operator=(const Buffer&amp; o) {            // copy assignment
+        if (this != &amp;o) { Buffer tmp(o); swap(tmp); }   // copy-and-swap
+        return *this;
+    }
+    void swap(Buffer&amp; o) noexcept {
+        std::swap(size_, o.size_); std::swap(data_, o.data_);
+    }
+private:
+    std::size_t size_;
+    int* data_;
+};</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">default copy would copy the <strong>pointer</strong> — two objects, one array, double delete</div>
+							<div class="explain-item">copy constructor — allocates its own array and copies elements</div>
+							<div class="explain-item"><code>if (this != &amp;o)</code> — self-assignment guard</div>
+							<div class="explain-item">copy-and-swap — strong exception guarantee</div>
+							<div class="explain-item">better: use <code>std::vector&lt;int&gt;</code> and write none of this (rule of zero)</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Special Members Table | Shallow Vs Deep Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-special-members">
+						<h2 class="section-title">Special Members</h2>
+						<table>
+							<thead><tr><th>Member</th><th>Signature</th><th>Triggered by</th></tr></thead>
+							<tbody>
+								<tr><td>copy ctor</td><td>T(const T&amp;)</td><td class="desc"><code>T b = a;</code></td></tr>
+								<tr><td>copy assign</td><td>T&amp; operator=(const T&amp;)</td><td class="desc"><code>b = a;</code></td></tr>
+								<tr><td>destructor</td><td>~T()</td><td class="desc">end of lifetime</td></tr>
+								<tr><td>non-copyable</td><td>T(const T&amp;) = delete;</td><td class="desc">—</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-shallow-vs-deep">
+						<h2 class="section-title">Shallow vs Deep</h2>
+						<table>
+							<thead><tr><th>Copy</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>shallow (default with raw ptr)</td><td class="desc">shared buffer, double free</td></tr>
+								<tr><td>deep</td><td class="desc">independent buffers</td></tr>
+								<tr><td>member types like vector</td><td class="desc">deep automatically</td></tr>
+								<tr><td>unique_ptr member</td><td class="desc">copying disabled</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Owning a raw pointer and relying on the default copy; both objects delete the same memory</li>
+							<li class="note-item">Forgetting the self-assignment case, so <code>a = a;</code> frees data before copying it</li>
+							<li class="note-item">Writing a destructor but not the copy operations (violating the rule of three)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer the <strong>rule of zero</strong>: hold resources in <code>std::vector</code>, <code>std::string</code>, smart pointers, and write no special members</li>
+							<li class="note-item">Make resource handles move-only (<code>= delete</code> copies) when copying makes no sense</li>
+							<li class="note-item">Pass large objects by <code>const&amp;</code> to avoid accidental copies</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>T(const T&amp;)</code> — copy constructor</li>
+							<li class="note-item"><code>operator=(const T&amp;)</code> — copy assignment</li>
+							<li class="note-item">rule of three — dtor + copy ctor + copy assign together</li>
+							<li class="note-item">rule of zero — let members manage resources</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-066-aggregates-designated-init.html" class="nav-link prev">Aggregates &amp; Designated Initializers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-068-move-semantics.html" class="nav-link next">Move Semantics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+	</body>
+</html>

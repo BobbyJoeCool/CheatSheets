@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 095: Futures &amp; std::async</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s095">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 095</div>
+			<h1>Futures &amp; std::async</h1>
+			<div class="sheet-desc">std::async · std::future · std::promise · std::packaged_task · launch policies · std::shared_future</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Getting Results Back</h2>
+						<div class="description">A <code>std::future&lt;T&gt;</code> is a handle to a value that will be produced later, usually by another thread. <code>std::async</code> runs a callable and returns a future for its result; <code>get()</code> waits for the value and rethrows any exception the task threw. <code>std::promise</code> lets you set a future's value manually, and <code>std::packaged_task</code> wraps a callable so its result goes into a future when it runs.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>get()</code> can be called <strong>once</strong>; use <code>shared_future</code> for many readers</li>
+							<li class="note-item">Pass <code>std::launch::async</code> to guarantee a new thread</li>
+							<li class="note-item">The future from <code>std::async</code> blocks in its destructor until done</li>
+							<li class="note-item">Exceptions travel through the future to <code>get()</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">async, promise, packaged_task</h2>
+						<pre><code class="language-cpp">#include &lt;future&gt;
+
+auto f1 = std::async(std::launch::async,
+                     [] { return slowSum(1, 1'000'000); });
+auto f2 = std::async(std::launch::async, fetchUser, 42);
+long total = f1.get();                       // waits, then returns
+User u = f2.get();                           // rethrows if fetchUser threw
+
+std::promise&lt;std::string&gt; p;
+std::future&lt;std::string&gt; fut = p.get_future();
+std::jthread worker{[&amp;p] {
+    try { p.set_value(download("https://example.com")); }
+    catch (...) { p.set_exception(std::current_exception()); }
+}};
+std::string body = fut.get();
+
+std::packaged_task&lt;int(int, int)&gt; task{[](int a, int b) { return a + b; }};
+auto r = task.get_future();
+std::jthread t{std::move(task), 2, 3};
+r.get();                                     // 5
+if (fut.wait_for(0s) == std::future_status::ready) {}  // poll</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>std::launch::async</code> — run on a new thread now</div>
+							<div class="explain-item"><code>get()</code> — blocks for the result, rethrows exceptions</div>
+							<div class="explain-item"><code>promise::set_value</code> — fulfill the future from any thread</div>
+							<div class="explain-item"><code>set_exception</code> — deliver an error instead</div>
+							<div class="explain-item"><code>packaged_task</code> — callable + future, run wherever you like</div>
+							<div class="explain-item"><code>wait_for(0s)</code> — non-blocking readiness check</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Pieces Table | Launch Policies Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-pieces">
+						<h2 class="section-title">Pieces</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Role</th></tr></thead>
+							<tbody>
+								<tr><td>std::future&lt;T&gt;</td><td class="desc">read result once</td></tr>
+								<tr><td>std::shared_future&lt;T&gt;</td><td class="desc">read result many times</td></tr>
+								<tr><td>std::promise&lt;T&gt;</td><td class="desc">write side, set manually</td></tr>
+								<tr><td>std::packaged_task</td><td class="desc">wraps a callable</td></tr>
+								<tr><td>std::async</td><td class="desc">run + return future</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-launch-policies">
+						<h2 class="section-title">Launch Policies</h2>
+						<table>
+							<thead><tr><th>Policy</th><th>Behavior</th></tr></thead>
+							<tbody>
+								<tr><td>launch::async</td><td class="desc">new thread</td></tr>
+								<tr><td>launch::deferred</td><td class="desc">runs lazily on get()</td></tr>
+								<tr><td>async | deferred</td><td class="desc">implementation chooses (default)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>get()</code> twice on a <code>std::future</code>; the second call is UB / throws <code>future_error</code></li>
+							<li class="note-item">Ignoring the future returned by <code>std::async</code>; its destructor blocks, making the call synchronous</li>
+							<li class="note-item">Relying on the default launch policy; the task may never run if you never call <code>get()</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Always pass <code>std::launch::async</code> when you want real parallelism</li>
+							<li class="note-item">Use <code>wait_for</code> with a timeout to avoid hanging forever on a stuck task</li>
+							<li class="note-item">For many small tasks, use a thread pool (or C++26 <code>std::execution</code>) instead of <code>std::async</code> per task</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>std::async</code> — run a task, get a future</li>
+							<li class="note-item"><code>future::get()</code> — wait + value or exception</li>
+							<li class="note-item"><code>std::promise</code> — set a result manually</li>
+							<li class="note-item"><code>std::packaged_task</code> — callable bound to a future</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-094-atomics.html" class="nav-link prev">Atomics &amp; the Memory Model</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-096-coroutines.html" class="nav-link next">Coroutines</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+	</body>
+</html>

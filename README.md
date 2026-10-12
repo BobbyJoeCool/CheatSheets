@@ -164,8 +164,6 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | JavaScript / TypeScript | 131 | output & comments, variables & data types, strings, operators, control flow, error handling, functions, data structures, OOP, files & I/O, modules & packages, tooling, advanced topics, async, DOM, browser APIs, Node.js, TypeScript fundamentals & type system |
 | ✅ | React | 98 | introduction & setup, JSX, components & props, state, events, forms & Actions, refs & effects, context, custom hooks, concurrent features (Suspense, use, transitions, Activity, View Transitions), error handling, performance & React Compiler, TypeScript, styling, React Router, TanStack Query & SWR, Redux Toolkit & Zustand, Server Components & SSR, accessibility, testing, build & deploy, quick reference; every sheet adds Accessibility and Version Notes sections |
-| ✅ | Node.js | 68 | introduction & setup, modules & packages, event loop & async, process & environment, CLI tools, file system, buffers & streams, networking & HTTP, errors & debugging, testing, concurrency & performance, security, built-in utilities, web frameworks & libraries, deployment |
-| ✅ | Next.js | 58 | introduction & setup, routing, server & client components, data fetching, caching & rendering, mutations & server actions, route handlers & proxy, styling, optimizations, authentication & security, data, environment & i18n, testing & debugging, deployment & operations, Pages Router (legacy) |
 | ✅ | React Native | 70 | React Native 0.87 / Expo SDK 57–58: introduction & setup, React refresher, core components, styling & layout, navigation (Expo Router, React Navigation, deep links), platform-specific code & config, data, state & storage, animation & gestures (Reanimated 4, Gesture Handler 3), native code (TurboModules, Fabric, Expo Modules), testing & debugging, EAS build, submit & OTA updates, Apple: iOS, Apple: iPadOS / macOS / tvOS / visionOS, Android, Windows, web & other platforms; every sheet adds iOS and Android sections |
 
 ### Web Design
@@ -176,6 +174,13 @@ CheatSheets/
 | ✅ | CSS | 77 | introduction & setup, cascade & inheritance (specificity, layers, nesting & @scope), selectors, values, units & functions, custom properties, color (oklch, color-mix, light-dark), box model & sizing, typography, backgrounds & visual effects, layout fundamentals, flexbox, grid, responsive design & print, transforms, transitions & animation (scroll-driven, view transitions), UI & interaction, organization, accessibility & quick reference; every sheet adds Accessibility and Browser Support sections |
 | ✅ | CSS Systems | 46 | utility-first (Tailwind, UnoCSS), component frameworks (Bootstrap, Bulma, Foundation), CSS-in-JS (Styled Components, CSS Modules), preprocessors (Sass/SCSS, PostCSS), design tokens & architecture (Open Props, ITCSS), comparisons & migration |
 | ✅ | PHP | 133 | introduction & setup, output & comments, variables & data types, strings, operators, control flow, error handling, functions, arrays & data structures, OOP (enums, readonly, property hooks, asymmetric visibility), files & I/O, modules & Composer, standard library, testing & tooling, advanced topics, web fundamentals, PDO, security, quick reference; targets PHP 8.0–8.5 |
+
+### Server & Full-Stack
+
+| Status | Collection | Sheets | Notes |
+| :---: | :--- | :---: | :--- |
+| ✅ | Node.js | 68 | introduction & setup, modules & packages, event loop & async, process & environment, CLI tools, file system, buffers & streams, networking & HTTP, errors & debugging, testing, concurrency & performance, security, built-in utilities, web frameworks & libraries, deployment |
+| ✅ | Next.js | 58 | introduction & setup, routing, server & client components, data fetching, caching & rendering, mutations & server actions, route handlers & proxy, styling, optimizations, authentication & security, data, environment & i18n, testing & debugging, deployment & operations, Pages Router (legacy) |
 
 ### SQL & Tools
 
@@ -198,9 +203,9 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| 🚧| C | 98 | Outline drafted — C17 with C23 tags: introduction & toolchain, output & comments, variables & data types, strings, operators, control flow, error handling (return codes, errno), functions, pointers, memory management, arrays & data structures, structs, unions & enums, files & I/O, preprocessor, headers & builds (Make, CMake), standard library, tools & libraries, advanced topics (UB, threads, atomics, signals, C23), quick reference |
-| 🚧| C++ | 123 | Outline drafted — C++23 with C++26 notes: introduction & setup, I/O & comments, variables & data types, strings, operators, control flow, error handling (exceptions, optional, expected), functions & lambdas, STL containers, OOP (copy & move semantics), files & I/O, headers & modules, external libraries, concurrency & coroutines, pointers & references, memory management & smart pointers, templates & concepts, iterators, algorithms & ranges |
-| 🚧| C# | 128 | Outline drafted — C# 14 / .NET 10 with C# 15 preview notes: introduction & setup, output, input & comments, variables & data types (nullability), strings, operators, control flow & pattern matching, error handling, methods, delegates & events, collections, OOP (records, structs, generics), files & I/O, namespaces, NuGet & BCL, testing & logging, async/await, threading & performance, LINQ, Entity Framework Core |
+| ✅ | C | 98 | C17 with C23 tags: introduction & toolchain, output & comments, variables & data types, strings, operators, control flow, error handling (return codes, errno), functions, pointers, memory management, arrays & data structures, structs, unions & enums, files & I/O, preprocessor, headers & builds (Make, CMake), standard library, tools & libraries, advanced topics (UB, threads, atomics, signals, C23), quick reference |
+| ✅ | C++ | 123 | C++23 with C++26 notes: introduction & setup, I/O & comments, variables & data types, strings, operators, control flow, error handling (exceptions, optional, expected), functions & lambdas, STL containers, OOP (copy & move semantics), files & I/O, headers & modules, external libraries, concurrency & coroutines, pointers & references, memory management & smart pointers, templates & concepts, iterators, algorithms & ranges |
+| ✅ | C# | 128 | C# 14 / .NET 10 with C# 15 preview notes: introduction & setup, output, input & comments, variables & data types (nullability), strings, operators, control flow & pattern matching, error handling, methods, delegates & events, collections, OOP (records, structs, generics), files & I/O, namespaces, NuGet & BCL, testing & logging, async/await, threading & performance, LINQ, Entity Framework Core |
 
 ### Languages
 

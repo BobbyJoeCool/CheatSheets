@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C++ — Sheet 109: RAII &amp; Ownership Guidelines</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cpp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s109">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 109</div>
+			<h1>RAII &amp; Ownership Guidelines</h1>
+			<div class="sheet-desc">RAII · rule of zero · owning vs non-owning · raw pointers as observers · smart pointer parameters · Core Guidelines R.*</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Resource Ownership Rules</h2>
+						<div class="description"><strong>RAII</strong> (Resource Acquisition Is Initialization) ties every resource to an object's lifetime: acquire in the constructor, release in the destructor. Because destructors run on every exit path, including exceptions, RAII makes leaks structurally impossible. Combined with clear ownership types (smart pointers and containers own; raw pointers, references, <code>span</code>, and <code>string_view</code> observe), it's the core of safe modern C++.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Core Guidelines (R.*)</h2>
+						<ul class="note-list">
+							<li class="note-item">R.1: manage resources automatically using RAII</li>
+							<li class="note-item">R.3: a raw pointer <code>T*</code> is non-owning</li>
+							<li class="note-item">R.11: avoid calling <code>new</code> and <code>delete</code> explicitly</li>
+							<li class="note-item">R.20/21: use <code>unique_ptr</code> or <code>shared_ptr</code> to represent ownership</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">RAII Wrappers</h2>
+						<pre><code class="language-cpp">class File {                                    // RAII wrapper
+public:
+    explicit File(const char* path) : f_(std::fopen(path, "r")) {
+        if (!f_) throw std::runtime_error("open failed");
+    }
+    ~File() { std::fclose(f_); }
+    File(const File&amp;) = delete;                 // non-copyable
+    File&amp; operator=(const File&amp;) = delete;
+    std::FILE* get() const { return f_; }
+private:
+    std::FILE* f_;
+};
+void work(std::mutex&amp; m) {
+    std::scoped_lock lock{m};                   // RAII lock
+    File cfg{"app.cfg"};                        // RAII file
+    parse(cfg.get());                           // may throw
+}                                               // file closed, mutex unlocked</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">constructor acquires and throws if it can't</div>
+							<div class="explain-item">destructor releases unconditionally</div>
+							<div class="explain-item">deleted copies — one owner per handle</div>
+							<div class="explain-item"><code>scoped_lock</code> — the standard library's RAII lock</div>
+							<div class="explain-item">on any exit (return or throw), both resources are released</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Ownership Vocabulary Table | Standard Raii Types Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-ownership-vocabulary">
+						<h2 class="section-title">Ownership Vocabulary</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Owns?</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>T (value)</td><td class="desc">yes</td><td class="desc">default</td></tr>
+								<tr><td>std::unique_ptr&lt;T&gt;</td><td class="desc">yes, exclusive</td><td class="desc">heap / polymorphic</td></tr>
+								<tr><td>std::shared_ptr&lt;T&gt;</td><td class="desc">yes, shared</td><td class="desc">shared lifetime</td></tr>
+								<tr><td>T* / T&amp;</td><td class="desc">no</td><td class="desc">observe / use</td></tr>
+								<tr><td>std::span / string_view</td><td class="desc">no</td><td class="desc">view sequences</td></tr>
+								<tr><td>std::weak_ptr</td><td class="desc">no</td><td class="desc">observe shared</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-standard-raii-types">
+						<h2 class="section-title">Standard RAII Types</h2>
+						<table>
+							<thead><tr><th>Resource</th><th>RAII type</th></tr></thead>
+							<tbody>
+								<tr><td>heap memory</td><td>unique_ptr, vector, string</td></tr>
+								<tr><td>mutex</td><td>scoped_lock, unique_lock</td></tr>
+								<tr><td>file</td><td>ifstream / ofstream</td></tr>
+								<tr><td>thread</td><td>std::jthread</td></tr>
+								<tr><td>C handle</td><td>unique_ptr + deleter</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Manual <code>lock()</code> / <code>unlock()</code> or <code>fopen</code> / <code>fclose</code> pairs; any early return or exception skips the release</li>
+							<li class="note-item">Treating a raw pointer parameter as owning and deleting it</li>
+							<li class="note-item">Writing an RAII class but leaving copying enabled, so two objects release the same handle</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Follow the <strong>rule of zero</strong>: compose RAII members so your class needs no destructor</li>
+							<li class="note-item">Use <code>std::unique_ptr</code> with a custom deleter as a one-line RAII wrapper for C APIs</li>
+							<li class="note-item">Make ownership visible in signatures: <code>unique_ptr</code> by value means "I take it"</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">RAII — acquire in ctor, release in dtor</li>
+							<li class="note-item">owning types — values, smart pointers, containers</li>
+							<li class="note-item">non-owning — <code>T*</code>, <code>T&amp;</code>, <code>span</code>, <code>string_view</code></li>
+							<li class="note-item">rule of zero — let members own resources</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cpp-108-shared-weak-ptr.html" class="nav-link prev">std::shared_ptr &amp; std::weak_ptr</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C++ Reference · 123 Sheets</a>
+				<a href="cpp-110-function-templates.html" class="nav-link next">Function Templates</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+	</body>
+</html>

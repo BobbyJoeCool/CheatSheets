@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>C# — Sheet 128: EF Core — Querying &amp; Saving</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cs-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s128">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 128</div>
+			<h1>EF Core — Querying &amp; Saving</h1>
+			<div class="sheet-desc">LINQ to Entities · Include / ThenInclude · AsNoTracking · Add / Update / Remove · SaveChangesAsync · ExecuteUpdate / ExecuteDelete</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Reading and Writing Data</h2>
+						<div class="description">Queries on <code>DbSet&lt;T&gt;</code> are <strong><code>IQueryable</code></strong>: EF Core translates the LINQ into SQL when you call an executing method like <code>ToListAsync</code>. Loaded entities are <strong>tracked</strong>; changes are saved with <strong><code>SaveChangesAsync</code></strong>, which runs inside a transaction. Use <strong><code>AsNoTracking</code></strong> for read-only queries, <strong><code>Include</code></strong> for related data, and <strong><code>ExecuteUpdateAsync</code>/<code>ExecuteDeleteAsync</code></strong> for set-based changes.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Use the <code>…Async</code> methods in web apps</li>
+							<li class="note-item">Projections (<code>Select</code>) fetch only needed columns</li>
+							<li class="note-item"><code>FromSql($"…")</code> parameterizes interpolated values</li>
+							<li class="note-item">Each <code>SaveChanges</code> is one transaction</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Query &amp; Save</h2>
+						<pre><code class="language-csharp">var recent = await db.Blogs
+    .AsNoTracking()                                    // read-only, faster
+    .Where(b =&gt; b.Posts.Any(p =&gt; p.Published &gt; since))
+    .OrderBy(b =&gt; b.Title)
+    .Select(b =&gt; new { b.Id, b.Title, Count = b.Posts.Count })
+    .ToListAsync(ct);                                  // SQL runs here
+
+var blog = await db.Blogs
+    .Include(b =&gt; b.Posts).ThenInclude(p =&gt; p.Tags)    // eager load
+    .FirstOrDefaultAsync(b =&gt; b.Id == id, ct);
+
+db.Blogs.Add(new Blog { Title = "New" });              // insert
+blog!.Title = "Renamed";                               // tracked update
+db.Posts.Remove(blog.Posts[0]);                        // delete
+await db.SaveChangesAsync(ct);                         // one transaction
+
+await db.Posts.Where(p =&gt; p.Published &lt; cutoff)
+    .ExecuteDeleteAsync(ct);                           // bulk delete, no load
+await db.Posts.Where(p =&gt; p.BlogId == id)
+    .ExecuteUpdateAsync(s =&gt; s.SetProperty(p =&gt; p.Views, 0), ct);
+var rows = await db.Blogs
+    .FromSql($"SELECT * FROM Blogs WHERE Id = {id}").ToListAsync(ct);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>AsNoTracking</code> — skip change tracking</div>
+							<div class="explain-item"><code>Select</code> projection — only needed columns</div>
+							<div class="explain-item"><code>ToListAsync</code> — executes the SQL</div>
+							<div class="explain-item"><code>Include</code> / <code>ThenInclude</code> — load related rows</div>
+							<div class="explain-item">Add / modify / <code>Remove</code> + <code>SaveChangesAsync</code></div>
+							<div class="explain-item"><code>ExecuteDelete/UpdateAsync</code> — set-based SQL</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: States Table | Perf Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-states">
+						<h2 class="section-title">Entity States</h2>
+						<table>
+							<thead><tr><th>State</th><th>On SaveChanges</th></tr></thead>
+							<tbody>
+								<tr><td>Added</td><td class="desc">INSERT</td></tr>
+								<tr><td>Modified</td><td class="desc">UPDATE changed columns</td></tr>
+								<tr><td>Deleted</td><td class="desc">DELETE</td></tr>
+								<tr><td>Unchanged</td><td class="desc">Nothing</td></tr>
+								<tr><td>Detached</td><td class="desc">Not tracked</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-perf">
+						<h2 class="section-title">Performance Checklist</h2>
+						<table>
+							<thead><tr><th>Problem</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>N+1 queries in loops</td><td class="desc">Include or projection</td></tr>
+								<tr><td>Huge Include graphs</td><td class="desc">AsSplitQuery()</td></tr>
+								<tr><td>Loading to update many rows</td><td class="desc">ExecuteUpdateAsync</td></tr>
+								<tr><td>Tracking read-only data</td><td class="desc">AsNoTracking()</td></tr>
+								<tr><td>ToList() before Where</td><td class="desc">Filter in the query</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Building SQL with string concatenation — injection risk; use <code>FromSql($"…")</code> interpolation</li>
+							<li class="note-item">Calling <code>ToList()</code> early, then filtering in memory — pulls entire tables</li>
+							<li class="note-item">Lazy-loading navigation properties in loops — N+1 queries</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Return DTOs from APIs, not tracked entities</li>
+							<li class="note-item">Use <code>TagWith("…")</code> to label queries in SQL logs</li>
+							<li class="note-item">Wrap multi-step work in <code>db.Database.BeginTransactionAsync()</code> when needed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">LINQ → SQL via <code>IQueryable</code></li>
+							<li class="note-item"><code>Include</code> / projections — related data</li>
+							<li class="note-item"><code>SaveChangesAsync</code> — tracked changes</li>
+							<li class="note-item"><code>ExecuteUpdate/DeleteAsync</code> — bulk ops</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="cs-127-efcore-modeling-migrations.html" class="nav-link prev">EF Core — Modeling &amp; Migrations</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">C# Reference · 128 Sheets</a>
+				<span style="visibility: hidden" class="nav-link next">—</span>
+			</nav>
+		</footer>
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+	</body>
+</html>
