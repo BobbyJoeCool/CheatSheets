@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 23: Helm &amp; Kustomize</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<h1>Helm &amp; Kustomize</h1>
+			<div class="sheet-desc">helm repo add · upgrade --install · values.yaml / -f / --set · helm template / rollback · kustomization.yaml · overlays · apply -k</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Packaging and Variants</h2>
+						<div class="description"><strong>Helm</strong> is a package manager: a <strong>chart</strong> is a set of templated manifests plus <code>values.yaml</code>; installing it creates a versioned <strong>release</strong> you can upgrade and roll back. <strong>Kustomize</strong> is template-free and built into kubectl: plain YAML <strong>bases</strong> plus per-environment <strong>overlays</strong> that patch them. Many teams use Helm for third-party apps and Kustomize for their own.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Charts come from HTTP repos or OCI registries (<code>oci://</code>)</li>
+							<li class="note-item">Release state is stored as Secrets in the release namespace</li>
+							<li class="note-item"><code>kubectl kustomize</code> renders without applying</li>
+							<li class="note-item">No server component since Helm 3; Helm 4 keeps the same workflow</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-helm">
+						<h2 class="section-title">Helm</h2>
+						<pre><code class="language-bash">helm repo add prom https://prometheus-community.github.io/helm-charts
+helm show values prom/kube-prometheus-stack &gt; values.yaml
+helm upgrade --install mon prom/kube-prometheus-stack \
+  -n monitoring --create-namespace -f values.yaml --set grafana.enabled=true
+helm list -A ; helm history mon -n monitoring
+helm rollback mon 1 -n monitoring
+helm template mon prom/kube-prometheus-stack -f values.yaml   # render only</code></pre>
+					</section>
+					<section class="section-code" id="code-kust">
+						<h2 class="section-title">Kustomize: overlays/prod/kustomization.yaml</h2>
+						<pre><code class="language-yaml">resources: [../../base]            # base: deployment.yaml, service.yaml
+namespace: shop-prod
+images: [{ name: ghcr.io/acme/api, newTag: &quot;1.4.2&quot; }]
+replicas: [{ name: api, count: 5 }]
+patches: [{ path: memory-patch.yaml }]
+configMapGenerator: [{ name: api-cfg, literals: [LOG_LEVEL=warn] }]
+# kubectl apply -k overlays/prod</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>upgrade --install</code> — idempotent install-or-upgrade</div>
+							<div class="explain-item"><code>-f</code> then <code>--set</code> — later values win</div>
+							<div class="explain-item"><code>template</code> — render YAML locally; diff or review it</div>
+							<div class="explain-item"><code>images</code> / <code>replicas</code> — common edits without patches</div>
+							<div class="explain-item"><code>configMapGenerator</code> — adds a hash suffix, so pods roll on change</div>
+							<div class="explain-item"><code>helm show values</code> — start your values file from the defaults</div>
+							<div class="explain-item"><code>resources: [../../base]</code> — overlays reference a shared base</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Vs Table | Chart Table | Next Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-vs">
+						<h2 class="section-title">Helm vs Kustomize</h2>
+						<table>
+							<thead><tr><th></th><th>Helm</th><th>Kustomize</th></tr></thead>
+							<tbody>
+								<tr><td>Style</td><td class="desc">Go templates + values</td><td class="desc">Patches on plain YAML</td></tr>
+								<tr><td>Install</td><td class="desc">Separate CLI</td><td class="desc"><code>kubectl -k</code></td></tr>
+								<tr><td>Rollback</td><td class="desc"><code>helm rollback</code></td><td class="desc">Via Git</td></tr>
+								<tr><td>Best for</td><td class="desc">Third-party apps</td><td class="desc">Your own apps</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-chart">
+						<h2 class="section-title">Chart Layout</h2>
+						<table>
+							<thead><tr><th>Path</th><th>Holds</th></tr></thead>
+							<tbody>
+								<tr><td>Chart.yaml</td><td class="desc">Name, version</td></tr>
+								<tr><td>values.yaml</td><td class="desc">Defaults</td></tr>
+								<tr><td>templates/</td><td class="desc">Manifests</td></tr>
+								<tr><td>charts/</td><td class="desc">Dependencies</td></tr>
+								<tr><td>values.schema.json</td><td class="desc">Optional validation</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-next">
+						<h2 class="section-title">Where Next</h2>
+						<table>
+							<thead><tr><th>Topic</th><th>Tools</th></tr></thead>
+							<tbody>
+								<tr><td>GitOps</td><td class="desc">Argo CD, Flux</td></tr>
+								<tr><td>Operators</td><td class="desc">CRDs + controllers</td></tr>
+								<tr><td>Policy</td><td class="desc">Kyverno, Gatekeeper</td></tr>
+								<tr><td>Mesh</td><td class="desc">Istio, Linkerd</td></tr>
+								<tr><td>Packaging</td><td class="desc">Helmfile, Timoni</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>helm install</code> in CI — fails on rerun; use <code>upgrade --install</code></li>
+							<li class="note-item">Long <code>--set</code> chains — unreviewable; keep values files in Git</li>
+							<li class="note-item">Mixing <code>helm</code> and <code>kubectl edit</code> on the same release</li>
+							<li class="note-item">Editing rendered chart output by hand — next upgrade overwrites it</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Pin chart versions with <code>--version</code></li>
+							<li class="note-item"><code>helm diff</code> plugin previews upgrades</li>
+							<li class="note-item">Kustomize can inflate Helm charts via <code>helmCharts:</code></li>
+							<li class="note-item"><code>--rollback-on-failure</code> (Helm 4) / <code>--atomic</code> (Helm 3) auto-reverts</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>helm upgrade --install</code> — releases</li>
+							<li class="note-item"><code>kustomization.yaml</code> — base + overlays</li>
+							<li class="note-item"><code>kubectl apply -k</code> — apply an overlay</li>
+							<li class="note-item"><code>helm rollback</code> — previous release revision</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-22-debugging-troubleshooting.html" class="nav-link prev" title="Debugging &amp; Troubleshooting">Debugging</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-24-quick-reference-kubectl.html" class="nav-link next" title="Quick Reference — kubectl Commands">QR: kubectl</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

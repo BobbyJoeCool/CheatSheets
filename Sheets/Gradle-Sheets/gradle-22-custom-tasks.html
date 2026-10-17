@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Gradle — Sheet 22: Writing Custom Tasks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gradle-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Writing Custom Tasks</h1>
+			<div class="sheet-desc">
+				abstract class : DefaultTask() · @TaskAction · @Input / @InputFile / @OutputDirectory · @get: annotations · @CacheableTask · registering
+			</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Task Classes</h2>
+						<div class="description">
+							For anything beyond a few lines, write a <strong>task class</strong>: an <code>abstract</code> class extending <code>DefaultTask</code> with annotated lazy properties and one <code>@TaskAction</code> method. The annotations tell Gradle what the inputs and outputs are, which makes the task <strong>incremental</strong> (<code>UP-TO-DATE</code>) and, with <code>@CacheableTask</code>, <strong>cacheable</strong>. Keep the class in <code>build-logic</code> so it can be tested and reused.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Gradle generates the property implementations for <code>abstract</code> getters</li>
+							<li class="note-item">In Kotlin, annotate with <code>@get:Input</code> (the getter), not <code>@Input</code></li>
+							<li class="note-item">Inject services (<code>ExecOperations</code>, <code>FileSystemOperations</code>) instead of using <code>project</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Explain + Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Cacheable Task</h2>
+						<pre><code class="language-kotlin">@CacheableTask
+abstract class GenerateVersionFile : DefaultTask() {
+    @get:Input abstract val version: Property&lt;String&gt;
+    @get:InputFile @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val template: RegularFileProperty
+    @get:OutputFile abstract val outputFile: RegularFileProperty
+
+    @TaskAction fun generate() {
+        val text = template.get().asFile.readText()
+        val out = text.replace("@VERSION@", version.get())
+        outputFile.get().asFile.writeText(out)
+    }
+}
+tasks.register&lt;GenerateVersionFile&gt;("generateVersionFile") {
+    version = project.version.toString()
+    template = layout.projectDirectory.file("src/version.tmpl")
+    outputFile = layout.buildDirectory.file("generated/version.txt")
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@CacheableTask</code> — outputs may be stored in the build cache</div>
+							<div class="explain-item"><code>abstract val … : Property&lt;String&gt;</code> — Gradle implements it</div>
+							<div class="explain-item"><code>@PathSensitive(RELATIVE)</code> — cache key ignores absolute paths</div>
+							<div class="explain-item"><code>@OutputFile</code> — Gradle creates parent folders and tracks the file</div>
+							<div class="explain-item"><code>@TaskAction</code> — the method that does the work</div>
+							<div class="explain-item"><code>register&lt;T&gt;</code> — wire values in at configuration time</div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-groovy">
+						<h2 class="section-title">In Groovy DSL</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>abstract class X : DefaultTask()</code> → <code>abstract class X extends DefaultTask</code></div>
+							<div class="explain-item"><code>@get:Input abstract val v: Property&lt;String&gt;</code> → <code>@Input abstract Property&lt;String&gt; getV()</code></div>
+							<div class="explain-item"><code>register&lt;X&gt;("x")</code> → <code>register('x', X)</code></div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-langs">
+						<h2 class="section-title">Java vs Kotlin Projects</h2>
+						<div class="section-body">
+							<div class="explain-item">Java — <code>public abstract class X extends DefaultTask</code>, abstract getters</div>
+							<div class="explain-item">Kotlin — <code>@get:</code> puts the annotation on the getter Gradle reads</div>
+							<div class="explain-item">In build-logic: <code>src/main/java</code> or <code>src/main/kotlin</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Annot Table | Inject Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-annot">
+						<h2 class="section-title">Input / Output Annotations</h2>
+						<table>
+							<thead><tr><th>Annotation</th><th>For</th></tr></thead>
+							<tbody>
+								<tr><td>@Input</td><td class="desc">Strings, numbers, enums</td></tr>
+								<tr><td>@InputFile / @InputFiles</td><td class="desc">One / many files</td></tr>
+								<tr><td>@InputDirectory</td><td class="desc">A directory tree</td></tr>
+								<tr><td>@Classpath</td><td class="desc">Classpath (order matters)</td></tr>
+								<tr><td>@OutputFile / @OutputDirectory</td><td class="desc">What the task writes</td></tr>
+								<tr><td>@Internal</td><td class="desc">Not an input (e.g. a logger)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-inject">
+						<h2 class="section-title">Injectable Services</h2>
+						<table>
+							<thead><tr><th>Service</th><th>Replaces</th></tr></thead>
+							<tbody>
+								<tr><td>ExecOperations</td><td class="desc"><code>project.exec</code> / <code>javaexec</code></td></tr>
+								<tr><td>FileSystemOperations</td><td class="desc"><code>project.copy</code> / <code>delete</code></td></tr>
+								<tr><td>ArchiveOperations</td><td class="desc"><code>project.zipTree</code></td></tr>
+								<tr><td>WorkerExecutor</td><td class="desc">Parallel work inside a task</td></tr>
+								<tr><td>ProviderFactory</td><td class="desc"><code>project.providers</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Writing <code>@Input</code> instead of <code>@get:Input</code> in Kotlin — it lands on the property, where Gradle never sees it</li>
+							<li class="note-item">Forgetting <code>abstract</code> on the class — Gradle 9 requires it when properties are abstract or <code>@Inject</code> is used</li>
+							<li class="note-item">Not declaring outputs — the task can never be <code>UP-TO-DATE</code> and always runs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Inject a service: <code>@get:Inject abstract val exec: ExecOperations</code></li>
+							<li class="note-item">Use <code>@get:Incremental</code> + <code>InputChanges</code> to process only changed files</li>
+							<li class="note-item">Test task classes with Gradle TestKit (<code>GradleRunner</code>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>abstract class X : DefaultTask()</code> — a task type</li>
+							<li class="note-item"><code>@get:Input</code> / <code>@get:OutputFile</code> — declare I/O</li>
+							<li class="note-item"><code>@TaskAction</code> — the work</li>
+							<li class="note-item"><code>@CacheableTask</code> — opt into the build cache</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gradle-21-daemon-tuning.html" class="nav-link prev" title="Daemon &amp; Build Tuning">Daemon &amp; Tuning</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Gradle Reference · 27 Sheets</a>
+				<a href="gradle-23-publishing.html" class="nav-link next" title="Publishing Libraries">Publishing</a>
+			</nav>
+		</footer>
+
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

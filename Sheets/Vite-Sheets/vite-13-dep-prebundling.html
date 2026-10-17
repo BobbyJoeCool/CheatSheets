@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Vite — Sheet 13: Dependency Pre-Bundling</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/vite-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Dependency Pre-Bundling</h1>
+			<div class="sheet-desc">optimizeDeps.include · exclude · optimizeDeps.rolldownOptions · --force · node_modules/.vite · linked packages</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Why Pre-Bundle</h2>
+						<div class="description">On first start, Vite scans your source for bare imports and <strong>pre-bundles</strong> those dependencies with Rolldown into <code>node_modules/.vite/deps</code>. This converts CommonJS packages to ESM and collapses packages made of hundreds of files (like <code>lodash-es</code>) into one request each. Results are cached and reused until your lockfile, config or patches change.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Dev-only; the build bundles deps directly</li>
+							<li class="note-item">Vite 8 renamed <code>optimizeDeps.esbuildOptions</code> → <code>rolldownOptions</code></li>
+							<li class="note-item">Deps found late trigger a re-bundle and page reload</li>
+							<li class="note-item">Browser caches deps with <code>max-age=31536000,immutable</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">optimizeDeps in Practice</h2>
+						<pre><code class="language-typescript">export default defineConfig({
+  optimizeDeps: {
+    include: [
+      'lodash-es',                    // many small files
+      'my-cjs-lib',                   // CJS → ESM
+      'linked-pkg &gt; nested-cjs-dep',  // dep of a linked package
+    ],
+    exclude: ['@my-org/ui-kit'],      // linked ESM source; let HMR work
+    entries: ['src/main.ts', 'src/admin/*.html'],
+    holdUntilCrawlEnd: true,          // wait for full crawl on cold start
+    rolldownOptions: {                // was esbuildOptions
+      resolve: { mainFields: ['module', 'main'] },
+    },
+  },
+})</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>include</code> — force a dep into pre-bundling</div>
+							<div class="explain-item"><code>a &gt; b</code> — target a nested dependency</div>
+							<div class="explain-item"><code>exclude</code> — serve a package as raw source</div>
+							<div class="explain-item"><code>entries</code> — where the scanner starts</div>
+							<div class="explain-item"><code>rolldownOptions</code> — Rolldown settings for the optimizer</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: When Table | Options Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-when">
+						<h2 class="section-title">When to Use Which</h2>
+						<table>
+							<thead><tr><th>Situation</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>Reload after first visit to a route</td><td class="desc">Add the late dep to include</td></tr>
+								<tr><td>CJS dep inside a linked package</td><td class="desc">include: ['linked &gt; dep']</td></tr>
+								<tr><td>Linked package edits ignored</td><td class="desc">exclude it (if it's ESM)</td></tr>
+								<tr><td>"504 Outdated Optimize Dep"</td><td class="desc">Reload; or vite --force</td></tr>
+								<tr><td>Stale dep after patch-package</td><td class="desc">vite --force</td></tr>
+								<tr><td>Deps behind dynamic import()</td><td class="desc">include them explicitly</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-options">
+						<h2 class="section-title">optimizeDeps.*</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>include / exclude</td><td class="desc">Force in / keep out</td></tr>
+								<tr><td>entries</td><td class="desc">Scanner entry globs</td></tr>
+								<tr><td>force</td><td class="desc">Ignore the cache</td></tr>
+								<tr><td>noDiscovery</td><td class="desc">Only bundle include list</td></tr>
+								<tr><td>holdUntilCrawlEnd</td><td class="desc">Fewer reloads on cold start</td></tr>
+								<tr><td>rolldownOptions</td><td class="desc">Optimizer bundler options</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Excluding a CommonJS package — the browser can't load raw CJS and you get "does not provide an export named …"</li>
+							<li class="note-item">Deleting <code>node_modules</code> to clear the cache — <code>vite --force</code> or removing <code>node_modules/.vite</code> is enough</li>
+							<li class="note-item">Ignoring repeated "new dependencies optimized" logs — each one costs a reload; add them to <code>include</code></li>
+							<li class="note-item">Copying old <code>esbuildOptions.plugins</code> — Rolldown support for those is partial; port them to Rolldown plugins</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Watch the terminal on first load and add any late-discovered deps to <code>include</code></li>
+							<li class="note-item">In monorepos, <code>exclude</code> your linked ESM packages so edits hot-reload</li>
+							<li class="note-item">Use <code>DEBUG=vite:deps vite</code> to see what the optimizer is doing</li>
+							<li class="note-item">Commit the <code>include</code> list so every developer gets the same cold start</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>optimizeDeps.include</code> — pre-bundle these</li>
+							<li class="note-item"><code>optimizeDeps.exclude</code> — serve as source</li>
+							<li class="note-item"><code>vite --force</code> — rebuild the dep cache</li>
+							<li class="note-item"><code>node_modules/.vite/deps</code> — where results live</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="vite-12-hmr.html" class="nav-link prev">Hot Module Replacement</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Vite · 39 Sheets</a>
+				<a href="vite-14-static-assets.html" class="nav-link next">Static Assets</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

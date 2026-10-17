@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 25: Swarm Setup &amp; Nodes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Swarm Setup &amp; Nodes</h1>
+			<div class="sheet-desc">docker swarm init · swarm join · join-token · manager vs worker · node ls / promote / demote · node update --availability drain · Raft quorum</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Swarm Mode</h2>
+						<div class="description">
+							<strong>Swarm mode</strong> is Docker's built-in orchestrator: it joins several Docker hosts into one cluster and keeps <strong>services</strong> at the state you declare, rescheduling containers when a node fails. <strong>Managers</strong> store cluster state with the Raft consensus algorithm and schedule work; <strong>workers</strong> just run tasks. It ships with Docker Engine, so there's nothing extra to install.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Ports to Open Between Nodes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>2377/tcp</code> — cluster management (managers)</li>
+							<li class="note-item"><code>7946/tcp+udp</code> — node discovery (gossip)</li>
+							<li class="note-item"><code>4789/udp</code> — overlay network traffic (VXLAN)</li>
+							<li class="note-item">Managers are also workers unless drained</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Building a Cluster</h2>
+						<pre><code class="language-bash"># On the first manager
+docker swarm init --advertise-addr 10.0.0.10
+docker swarm join-token worker          # print the worker join command
+docker swarm join-token manager         # …and the manager one
+
+# On each other node (command printed by join-token)
+docker swarm join --token SWMTKN-1-&lt;token&gt; 10.0.0.10:2377
+
+# Back on a manager
+docker node ls                          # * = the node you're on
+docker node promote node2 node3         # 3 managers for HA
+docker node update --availability drain node4   # move tasks off
+docker node update --availability active node4
+docker node update --label-add zone=east node4
+docker node inspect node4 --pretty
+docker swarm join-token --rotate worker # invalidate leaked tokens
+docker swarm leave                      # on a worker; then `node rm` it</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>--advertise-addr</code> — IP other nodes use to reach this one</div>
+							<div class="explain-item"><code>drain</code> — no new tasks; existing ones move elsewhere (maintenance)</div>
+							<div class="explain-item"><code>pause</code> — keep running tasks, schedule nothing new</div>
+							<div class="explain-item">Node labels drive placement constraints (Sheet 26)</div>
+							<div class="explain-item"><code>swarm leave --force</code> on the last manager destroys the swarm</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Quorum Table | Swarm Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-quorum">
+						<h2 class="section-title">Managers & Quorum</h2>
+						<table>
+							<thead><tr><th>Managers</th><th>Can lose</th><th>Notes</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc">0</td><td class="desc">Fine for dev; no HA</td></tr>
+								<tr><td>3</td><td class="desc">1</td><td class="desc">Smallest HA setup</td></tr>
+								<tr><td>5</td><td class="desc">2</td><td class="desc">Common for production</td></tr>
+								<tr><td>7</td><td class="desc">3</td><td class="desc">Practical maximum</td></tr>
+								<tr><td>even (2, 4)</td><td class="desc">same as one fewer</td><td class="desc">Adds risk, no benefit</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-swarm">
+						<h2 class="section-title">Cluster Commands</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>docker info | grep Swarm</td><td class="desc">Is this node in a swarm?</td></tr>
+								<tr><td>docker swarm init --autolock</td><td class="desc">Encrypt Raft keys at rest</td></tr>
+								<tr><td>docker swarm unlock</td><td class="desc">Unlock after manager restart</td></tr>
+								<tr><td>docker node demote node3</td><td class="desc">Manager → worker</td></tr>
+								<tr><td>docker node rm node5</td><td class="desc">Remove a node that has left</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Running 2 managers — losing either one loses quorum; use an odd number</li>
+							<li class="note-item">Firewalls blocking <code>4789/udp</code> or <code>7946</code> — services deploy but containers on different nodes can't talk</li>
+							<li class="note-item">Treating the join token like a config value — anyone with it can join; rotate it if it leaks</li>
+							<li class="note-item">Taking a node down without draining — tasks restart elsewhere only after it's marked down</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep managers small and dedicated in production: <code>drain</code> them so they only manage</li>
+							<li class="note-item">Spread managers across failure zones (racks, availability zones)</li>
+							<li class="note-item">Back up <code>/var/lib/docker/swarm</code> on a manager to restore the cluster state</li>
+							<li class="note-item">Need autoscaling, a big ecosystem or managed cloud offerings? Use Kubernetes instead</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>swarm init</code> / <code>join</code> — create and grow a cluster</li>
+							<li class="note-item"><code>node promote/demote</code> — manager vs worker</li>
+							<li class="note-item"><code>node update --availability drain</code> — maintenance</li>
+							<li class="note-item">odd managers — (N−1)/2 failures tolerated</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-24-compose-workflows.html">Compose Workflows</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-26-swarm-services-updates.html" title="Swarm Services &amp; Rolling Updates">Swarm Services</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Gradle — Sheet 07: Tasks: Registering &amp; Configuring</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gradle-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s07">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 07</div>
+			<h1>Tasks: Registering &amp; Configuring</h1>
+			<div class="sheet-desc">
+				tasks.register · tasks.named · doFirst / doLast · dependsOn · finalizedBy · mustRunAfter · group &amp; description · lazy vs eager
+			</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Tasks</h2>
+						<div class="description">
+							A <strong>task</strong> has inputs, outputs and one or more <strong>actions</strong> (<code>doFirst</code>, <code>doLast</code>). Register tasks with <code>tasks.register</code>, which is <strong>lazy</strong>: the configuration block runs only if the task ends up in the graph. Change existing tasks with <code>tasks.named</code> or <code>tasks.withType&lt;T&gt;().configureEach</code>. Wiring an output to another task's input, or using <code>dependsOn</code>, tells Gradle the order.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Typed tasks: <code>tasks.register&lt;Copy&gt;("x")</code> gives <code>from</code>, <code>into</code>…</li>
+							<li class="note-item">Declare <code>inputs</code> / <code>outputs</code> so the task can be <code>UP-TO-DATE</code></li>
+							<li class="note-item">Inside actions, don't touch <code>project</code> — capture values first (config cache)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Explain + Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Register, Configure, Order</h2>
+						<pre><code class="language-kotlin">val generateInfo = tasks.register("generateInfo") {
+    group = "build"
+    description = "Writes build-info.txt"
+    val out = layout.buildDirectory.file("build-info.txt")
+    val ver = project.version.toString()      // captured at config time
+    inputs.property("version", ver)
+    outputs.file(out)
+    doLast { out.get().asFile.writeText("version=$ver\n") }
+}
+tasks.named("processResources") { dependsOn(generateInfo) }
+tasks.register&lt;Copy&gt;("copyDocs") {             // typed task
+    from("docs"); into(layout.buildDirectory.dir("site"))
+}
+tasks.withType&lt;JavaCompile&gt;().configureEach { options.encoding = "UTF-8" }
+tasks.named&lt;Test&gt;("test") { finalizedBy("jacocoTestReport") }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>tasks.register</code> — returns a <code>TaskProvider</code>; configured lazily</div>
+							<div class="explain-item"><code>inputs</code> / <code>outputs</code> — enable up-to-date checks and caching</div>
+							<div class="explain-item"><code>doLast</code> — the action that runs at execution time</div>
+							<div class="explain-item"><code>dependsOn(generateInfo)</code> — run it before <code>processResources</code></div>
+							<div class="explain-item"><code>register&lt;Copy&gt;</code> — a built-in task type with its own DSL</div>
+							<div class="explain-item"><code>withType&lt;T&gt;().configureEach</code> — lazily configure every task of a type</div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-groovy">
+						<h2 class="section-title">In Groovy DSL</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>register&lt;Copy&gt;("x")</code> → <code>register('x', Copy)</code></div>
+							<div class="explain-item"><code>withType&lt;JavaCompile&gt;()</code> → <code>withType(JavaCompile)</code></div>
+							<div class="explain-item"><code>val ver = …</code> → <code>def ver = …</code>; <code>"$ver"</code> interpolates, <code>'…'</code> doesn't</div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-langs">
+						<h2 class="section-title">Java vs Kotlin Projects</h2>
+						<div class="section-body">
+							<div class="explain-item">Java — <code>withType&lt;JavaCompile&gt;</code>: <code>options.encoding</code>, <code>options.compilerArgs</code></div>
+							<div class="explain-item">Kotlin — <code>withType&lt;KotlinCompile&gt;</code>: <code>compilerOptions { }</code>; sources are always UTF-8</div>
+							<div class="explain-item"><code>processResources</code>, <code>test</code>, <code>jar</code> — same tasks in both</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Order Table | Lazy Table | Types Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-order">
+						<h2 class="section-title">Ordering &amp; Conditions</h2>
+						<table>
+							<thead><tr><th>API</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>dependsOn(t)</td><td class="desc"><code>t</code> must run first (and is pulled in)</td></tr>
+								<tr><td>mustRunAfter(t)</td><td class="desc">If both run, this runs after <code>t</code></td></tr>
+								<tr><td>shouldRunAfter(t)</td><td class="desc">Soft version of <code>mustRunAfter</code></td></tr>
+								<tr><td>finalizedBy(t)</td><td class="desc">Run <code>t</code> after this, even on failure</td></tr>
+								<tr><td>onlyIf { … }</td><td class="desc">Skip unless the condition is true</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-lazy">
+						<h2 class="section-title">Lazy vs Eager APIs</h2>
+						<table>
+							<thead><tr><th>API</th><th>Lazy?</th></tr></thead>
+							<tbody>
+								<tr><td>tasks.register(…)</td><td class="center">✔</td></tr>
+								<tr><td>tasks.named(…)</td><td class="center">✔</td></tr>
+								<tr><td>withType&lt;T&gt;().configureEach</td><td class="center">✔</td></tr>
+								<tr><td>tasks.create(…)</td><td class="center">✖ eager</td></tr>
+								<tr><td>tasks.getByName(…)</td><td class="center">✖ eager</td></tr>
+								<tr><td>withType&lt;T&gt; { … }</td><td class="center">✖ eager</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-types">
+						<h2 class="section-title">Built-in Task Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Copy / Sync</td><td class="desc">Copy files (<code>Sync</code> deletes extras)</td></tr>
+								<tr><td>Delete</td><td class="desc">Remove files</td></tr>
+								<tr><td>Zip / Jar</td><td class="desc">Create archives</td></tr>
+								<tr><td>Exec / JavaExec</td><td class="desc">Run a program / main class</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>tasks.create</code> or <code>withType&lt;T&gt; { }</code> — eager APIs configure every task on every build and slow configuration</li>
+							<li class="note-item">Reading <code>project.something</code> inside <code>doLast</code> — breaks the configuration cache; capture values in a <code>val</code> outside the action</li>
+							<li class="note-item">Using <code>dependsOn</code> when you only need ordering — use <code>mustRunAfter</code> so you don't force the other task to run</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Pass a <code>TaskProvider</code> (not a name string) to <code>dependsOn</code> for safer wiring</li>
+							<li class="note-item">Give every custom task a <code>group</code> so it shows in <code>./gradlew tasks</code></li>
+							<li class="note-item">Wire outputs to inputs (<code>from(otherTask)</code>) — dependencies are then inferred</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>tasks.register</code> — create a task lazily</li>
+							<li class="note-item"><code>tasks.named</code> — configure an existing task</li>
+							<li class="note-item"><code>doLast { }</code> — task action</li>
+							<li class="note-item"><code>dependsOn</code> / <code>mustRunAfter</code> — ordering</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gradle-06-plugins.html" class="nav-link prev">Applying Plugins</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Gradle Reference · 27 Sheets</a>
+				<a href="gradle-08-properties-providers.html" class="nav-link next">Properties &amp; Providers</a>
+			</nav>
+		</footer>
+
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

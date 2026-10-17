@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ruby — Sheet 100: Performance &amp; Memory</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rb-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s100">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 100</div>
+			<h1>Performance &amp; Memory</h1>
+			<div class="sheet-desc">Benchmark · benchmark-ips · GC.stat · ObjectSpace · frozen strings · YJIT / ZJIT · memory_profiler</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Performance and Memory</h2>
+						<div class="description">Measure before optimizing: <strong><code>Benchmark</code></strong> (stdlib) and the <strong><code>benchmark-ips</code></strong> gem compare code, and <code>GC.stat</code> / <code>ObjectSpace</code> / <strong>memory_profiler</strong> show allocations. Common wins are fewer allocations (frozen strings, <code>&lt;&lt;</code> instead of <code>+</code>), better algorithms (Sets, hashes), and enabling the <strong>YJIT</strong> JIT for long-running processes.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ruby --yjit</code> or <code>RUBY_YJIT_ENABLE=1</code> turns on YJIT</li>
+							<li class="note-item">Ruby 4.0 adds the experimental <strong>ZJIT</strong> (<code>--zjit</code>)</li>
+							<li class="note-item">Allocations drive GC time; fewer objects = faster</li>
+							<li class="note-item">Profile with <code>stackprof</code> or <code>vernier</code> to find hot spots</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Measuring</h2>
+						<pre class="language-ruby"><code class="language-ruby">require "benchmark"
+Benchmark.realtime { 1_000_000.times { "a" + "b" } }   # 0.08 (seconds)
+Benchmark.bm(6) do |x|
+  x.report("+=")  { s = +""; 10_000.times { s += "x" } }
+  x.report("&lt;&lt;")  { s = +""; 10_000.times { s &lt;&lt; "x" } }
+end
+
+require "benchmark/ips"
+Benchmark.ips do |x|
+  x.report("map+flatten") { [[1], [2]].map { it }.flatten }
+  x.report("flat_map")    { [[1], [2]].flat_map { it } }
+  x.compare!
+end
+
+GC.stat[:total_allocated_objects]      # running total
+ObjectSpace.count_objects[:T_STRING]   # live strings
+RubyVM::YJIT.enabled?                  # true with --yjit
+
+require "memory_profiler"
+MemoryProfiler.report { load_data }.pretty_print(scale_bytes: true)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Benchmark.realtime</code> — wall time of one block</div>
+							<div class="explain-item"><code>Benchmark.bm</code> — side-by-side timings</div>
+							<div class="explain-item"><code>benchmark-ips</code> — iterations per second with error margins</div>
+							<div class="explain-item"><code>GC.stat</code> / <code>ObjectSpace</code> — allocation and object counts</div>
+							<div class="explain-item"><code>MemoryProfiler.report</code> — where memory is allocated</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Ruby Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>str += x</code> in loops → <code>str &lt;&lt; x</code> on a mutable buffer</li>
+							<li class="note-item"><code>arr.include?</code> in a loop → a <code>Set</code></li>
+							<li class="note-item"><code>map { }.flatten</code> → <code>flat_map</code>; <code>select { }.map { }</code> → <code>filter_map</code></li>
+						</ul>
+					</section>
+					<section class="section-notes section-rails" id="rails">
+						<h2 class="section-title">In Rails</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Rails</strong> · most slowness is N+1 queries; fix with <code>includes(:posts)</code> (the bullet gem detects them)</li>
+							<li class="note-item"><strong>Rails</strong> · <code>Rails.cache.fetch</code> and fragment caching avoid repeated work</li>
+							<li class="note-item"><strong>Rails</strong> · Rails 7.2+ enables YJIT by default when available</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tools Table | Quick Wins Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-tools">
+						<h2 class="section-title">Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Finds</th></tr></thead>
+							<tbody>
+								<tr><td>Benchmark / benchmark-ips</td><td class="desc">which version is faster</td></tr>
+								<tr><td>stackprof / vernier</td><td class="desc">CPU hot spots</td></tr>
+								<tr><td>memory_profiler</td><td class="desc">allocations by line</td></tr>
+								<tr><td>derailed_benchmarks</td><td class="desc">boot-time memory (Rails)</td></tr>
+								<tr><td>GC.stat</td><td class="desc">GC runs, heap size</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-quick-wins">
+						<h2 class="section-title">Quick Wins</h2>
+						<table>
+							<thead><tr><th>Change</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>frozen_string_literal</td><td class="desc">fewer allocations</td></tr>
+								<tr><td>Set / Hash lookups</td><td class="desc">O(1) vs O(n)</td></tr>
+								<tr><td>each_with_object / &lt;&lt;</td><td class="desc">avoid intermediate arrays</td></tr>
+								<tr><td>lazy enumerators</td><td class="desc">stop early</td></tr>
+								<tr><td>--yjit</td><td class="desc">JIT for hot methods</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Optimizing without measuring; intuition about Ruby performance is often wrong</li>
+							<li class="note-item">Benchmarking with too few iterations; use <code>benchmark-ips</code> for stable numbers</li>
+							<li class="note-item">Turning on YJIT for short scripts and CLIs; warm-up cost can outweigh the gain</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Measure in production-like conditions (same Ruby, YJIT setting, data size)</li>
+							<li class="note-item"><code>GC.compact</code> and <code>RUBY_GC_HEAP_*</code> settings tune long-running processes</li>
+							<li class="note-item">Use <code>vernier</code> for profiling apps with threads or fibers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Benchmark</code> / <code>benchmark-ips</code> — measure speed</li>
+							<li class="note-item"><code>memory_profiler</code> / <code>GC.stat</code> — measure memory</li>
+							<li class="note-item">fewer allocations — main optimization</li>
+							<li class="note-item"><code>--yjit</code> / <code>--zjit</code> — JIT compilers</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rb-099-rbs-types.html" class="nav-link prev">Type Signatures: RBS &amp; Sorbet</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ruby Reference · 113 Sheets</a>
+				<a href="rb-101-enumerable-transform.html" class="nav-link next">Enumerable — Iterate &amp; Transform</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

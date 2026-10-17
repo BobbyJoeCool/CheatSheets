@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 22: Debugging &amp; Troubleshooting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Debugging &amp; Troubleshooting</h1>
+			<div class="sheet-desc">logs -f / --previous · exec -it · kubectl debug · port-forward · events · top · CrashLoopBackOff / Pending</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">A Debugging Routine</h2>
+						<div class="description">Work outside in: <code>get</code> shows <strong>what</strong> is wrong (status, restarts), <code>describe</code> and <strong>events</strong> show <strong>why</strong> the cluster couldn't do it, <code>logs</code> show why the app failed, and <code>exec</code>/<code>debug</code> let you look inside. Most problems are a typo in an image name, a missing ConfigMap key, too little memory, or a selector that matches nothing.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Events expire after about an hour; check them early</li>
+							<li class="note-item"><code>kubectl debug</code> adds a tool container to a running pod</li>
+							<li class="note-item">Distroless images have no shell; use <code>debug</code>, not <code>exec</code></li>
+							<li class="note-item"><code>kubectl get pod x -o yaml</code> → <code>status.containerStatuses</code> has the exact reason</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Debug Toolkit</h2>
+						<pre><code class="language-bash">kubectl get pods -o wide                         # STATUS, RESTARTS, NODE
+kubectl describe pod api-7d9f-x2k                # Events: the why
+kubectl get events -n shop --sort-by=.lastTimestamp
+kubectl logs api-7d9f-x2k -c api --tail=100 -f   # follow one container
+kubectl logs api-7d9f-x2k --previous             # before the last crash
+kubectl logs deploy/api --all-containers --since=15m
+kubectl exec -it api-7d9f-x2k -- sh              # shell inside
+kubectl debug -it api-7d9f-x2k --image=busybox:1.36 --target=api
+kubectl debug node/worker-1 -it --image=ubuntu   # host fs at /host
+kubectl port-forward pod/api-7d9f-x2k 8080:8080  # reach it locally
+kubectl top pods --containers                    # needs metrics-server
+kubectl run net --rm -it --image=nicolaka/netshoot -- bash</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>--previous</code> — the crashed container's last output</div>
+							<div class="explain-item"><code>deploy/api</code> — logs from one pod of the Deployment</div>
+							<div class="explain-item"><code>--target=api</code> — share the app container's process namespace</div>
+							<div class="explain-item"><code>debug node/</code> — privileged pod on that node</div>
+							<div class="explain-item"><code>netshoot</code> — dig, curl, tcpdump, nc in one image</div>
+							<div class="explain-item"><code>--since=15m</code> — or <code>--since-time</code>, <code>--timestamps</code></div>
+							<div class="explain-item"><code>port-forward</code> — bypasses Services and Ingress to isolate the app</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Status Table | Exit Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-status">
+						<h2 class="section-title">Symptom → Cause → Check</h2>
+						<table>
+							<thead><tr><th>Status</th><th>Likely Cause</th><th>Check</th></tr></thead>
+							<tbody>
+								<tr><td>Pending</td><td class="desc">No room, PVC unbound, taints</td><td class="desc"><code>describe pod</code> Events</td></tr>
+								<tr><td>ImagePullBackOff</td><td class="desc">Wrong tag, private registry</td><td class="desc">Image name, <code>imagePullSecrets</code></td></tr>
+								<tr><td>CrashLoopBackOff</td><td class="desc">App exits on start</td><td class="desc"><code>logs --previous</code></td></tr>
+								<tr><td>OOMKilled</td><td class="desc">Over memory limit</td><td class="desc">Raise limit, check leaks</td></tr>
+								<tr><td>CreateContainerConfigError</td><td class="desc">Missing ConfigMap/Secret key</td><td class="desc"><code>describe pod</code></td></tr>
+								<tr><td>Running, no traffic</td><td class="desc">Not Ready, bad selector</td><td class="desc"><code>get endpointslices</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-exit">
+						<h2 class="section-title">Exit Codes</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>0</td><td class="desc">Clean exit</td></tr>
+								<tr><td>1</td><td class="desc">App error</td></tr>
+								<tr><td>126 / 127</td><td class="desc">Not executable / not found</td></tr>
+								<tr><td>137</td><td class="desc">SIGKILL (OOM, grace over)</td></tr>
+								<tr><td>143</td><td class="desc">SIGTERM</td></tr>
+								<tr><td>139</td><td class="desc">Segfault (SIGSEGV)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Reading current logs of a crash-looping pod — use <code>--previous</code></li>
+							<li class="note-item">Restarting pods before reading Events — the evidence disappears</li>
+							<li class="note-item"><code>exec</code> into distroless images — no shell; use <code>debug</code></li>
+							<li class="note-item">Blaming Kubernetes for app config errors — read the app's own logs first</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Install <code>stern</code> to tail logs across many pods</li>
+							<li class="note-item"><code>k9s</code> gives a live terminal UI over all of this</li>
+							<li class="note-item">Check endpoints before blaming the network</li>
+							<li class="note-item"><code>kubectl get pods --field-selector status.phase=Failed -A</code> finds casualties</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>get → describe → logs → exec/debug</code></li>
+							<li class="note-item"><code>logs --previous</code> — why it crashed</li>
+							<li class="note-item"><code>debug</code> — tools without rebuilding the image</li>
+							<li class="note-item"><code>events</code> — cluster's side; <code>logs</code> — app's side</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-21-pod-security.html" class="nav-link prev">Pod Security</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-23-helm-kustomize.html" class="nav-link next">Helm &amp; Kustomize</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

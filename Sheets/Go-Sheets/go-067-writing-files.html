@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 067: Writing Files</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s067">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 067</div>
+			<h1>Writing Files</h1>
+			<div class="sheet-desc">os.WriteFile(name, data, 0o644) · os.Create · os.OpenFile with O_APPEND|O_CREATE|O_WRONLY · bufio.Writer + Flush · fmt.Fprintf(f, …) · f.Sync · check the Close error · atomic write via temp + os.Rename</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Writing Files</h2>
+						<div class="description"><code>os.WriteFile</code> writes a whole byte slice in one call, creating or truncating the file. For streaming output, <code>os.Create</code> or <code>os.OpenFile</code> returns an <code>&#42;os.File</code>; wrap it in <code>bufio.Writer</code> for many small writes and remember to <strong><code>Flush</code></strong>. The error from <strong><code>Close</code> matters for writes</strong>, since buffered data can fail to land on disk.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Permissions &amp; Flags</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>0o644</code> — owner rw, others r (typical files)</li>
+							<li class="note-item"><code>0o755</code> — dirs and executables; <code>0o600</code> — secrets</li>
+							<li class="note-item">Permissions are filtered by the process <code>umask</code></li>
+							<li class="note-item">Combine flags with <code>|</code>: <code>os.O_APPEND|os.O_CREATE|os.O_WRONLY</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Writing Patterns</h2>
+						<pre class="language-go"><code class="language-go">err := os.WriteFile("out.txt", []byte("hello\n"), 0o644)
+
+f, err := os.OpenFile("app.log",
+    os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)   // append
+if err != nil { return err }
+defer f.Close()
+fmt.Fprintf(f, "%s started\n", time.Now().Format(time.RFC3339))
+
+func writeReport(path string, rows []Row) (err error) {
+    f, err := os.Create(path)                      // truncate
+    if err != nil { return err }
+    defer func() { err = errors.Join(err, f.Close()) }()
+    w := bufio.NewWriter(f)
+    for _, r := range rows { fmt.Fprintln(w, r) }
+    return w.Flush()                               // don't forget
+}
+
+tmp, _ := os.CreateTemp(dir, "cfg-*.tmp")          // atomic write
+tmp.Write(data); tmp.Sync(); tmp.Close()
+os.Rename(tmp.Name(), filepath.Join(dir, "cfg.json"))</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>os.WriteFile</code> — create/truncate + write + close</div>
+							<div class="explain-item"><code>O_APPEND|O_CREATE|O_WRONLY</code> — append, creating if needed</div>
+							<div class="explain-item"><code>errors.Join(err, f.Close())</code> — keep the close error</div>
+							<div class="explain-item"><code>w.Flush()</code> — push buffered data to the file</div>
+							<div class="explain-item">temp + <code>Sync</code> + <code>Rename</code> — readers never see half a file</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — <code>open(p, 'a')</code> → <code>O_APPEND|O_CREATE|O_WRONLY</code></li>
+							<li class="note-item"><strong>Java</strong> — <code>BufferedWriter</code> → <code>bufio.Writer</code> + <code>Flush</code></li>
+							<li class="note-item"><strong>Node</strong> — <code>fs.writeFileSync</code> → <code>os.WriteFile</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Open Flags Table | Write Methods Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-open-flags">
+						<h2 class="section-title">Open Flags</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>O_RDONLY / O_WRONLY / O_RDWR</td><td class="desc">access mode</td></tr>
+								<tr><td>O_CREATE</td><td class="desc">create if missing</td></tr>
+								<tr><td>O_TRUNC</td><td class="desc">empty existing file</td></tr>
+								<tr><td>O_APPEND</td><td class="desc">write at end</td></tr>
+								<tr><td>O_EXCL</td><td class="desc">fail if exists (with CREATE)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-write-methods">
+						<h2 class="section-title">Write Methods</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Writes</th></tr></thead>
+							<tbody>
+								<tr><td>f.Write(b)</td><td class="desc">[]byte</td></tr>
+								<tr><td>f.WriteString(s)</td><td class="desc">string</td></tr>
+								<tr><td>fmt.Fprintf(f, …)</td><td class="desc">formatted</td></tr>
+								<tr><td>w.Flush()</td><td class="desc">buffered → file</td></tr>
+								<tr><td>f.Sync()</td><td class="desc">fsync to disk</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>bufio.Writer.Flush()</code>: the end of the file is silently missing</li>
+							<li class="note-item">Ignoring <code>Close()</code> errors on written files (full disk, NFS errors)</li>
+							<li class="note-item">Using <code>0644</code> permissions for files containing secrets; use <code>0o600</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Write atomically with temp file + <code>os.Rename</code> (same directory/filesystem)</li>
+							<li class="note-item">Use <code>os.MkdirAll(dir, 0o755)</code> before writing into nested paths</li>
+							<li class="note-item">Return <code>w.Flush()</code> as the last statement so its error isn't lost</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>os.WriteFile</code> — one-shot write</li>
+							<li class="note-item"><code>os.Create</code> / <code>os.OpenFile</code> — streaming</li>
+							<li class="note-item"><code>bufio.Writer</code> + <code>Flush</code> — fast small writes</li>
+							<li class="note-item">check <code>Close</code> — write errors surface there</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-066-reading-files.html" class="nav-link prev">Reading Files</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-068-paths-filesystem.html" class="nav-link next">Paths &amp; the Filesystem</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

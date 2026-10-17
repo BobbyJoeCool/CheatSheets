@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 19: Volumes &amp; Bind Mounts</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Volumes &amp; Bind Mounts</h1>
+			<div class="sheet-desc">volume create / ls / rm · -v vs --mount · named vs anonymous · bind mounts · :ro · tmpfs · volume backup pattern</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Keeping Data</h2>
+						<div class="description">
+							A container's writable layer disappears with <code>docker rm</code>, so anything worth keeping goes in a mount. <strong>Volumes</strong> are storage managed by Docker (under <code>/var/lib/docker/volumes</code>) and are the right choice for databases and app data. <strong>Bind mounts</strong> map a host path into the container, ideal for live-editing source code. <strong>tmpfs</strong> mounts live in memory only.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Which One?</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Named volume</strong> — databases, uploads, anything persistent</li>
+							<li class="note-item"><strong>Bind mount</strong> — dev source code, config files from the host</li>
+							<li class="note-item"><strong>tmpfs</strong> — secrets or scratch files that must never hit disk</li>
+							<li class="note-item"><strong>Anonymous volume</strong> — from <code>VOLUME</code> / <code>-v /path</code>; easy to lose</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Mounting</h2>
+						<pre><code class="language-bash">docker volume create pgdata
+docker run -d --name db -v pgdata:/var/lib/postgresql/data postgres:17
+docker run -d --name db \
+  --mount type=volume,src=pgdata,dst=/var/lib/postgresql/data postgres:17
+
+docker run --rm -v "$PWD":/app -w /app node:22 npm test      # bind mount
+docker run --rm -v "$PWD/nginx.conf":/etc/nginx/nginx.conf:ro nginx
+docker run --rm --mount type=bind,src="$PWD",dst=/app,readonly alpine ls /app
+docker run --rm --tmpfs /scratch:size=100m alpine df -h /scratch
+
+docker volume ls                       # all volumes
+docker volume inspect pgdata           # Mountpoint, driver, labels
+docker volume rm pgdata
+docker volume prune -a                 # remove ALL unused volumes
+docker rm -v web                       # + its anonymous volumes</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">-v vs --mount</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-v src:dst[:opts]</code> — short; if <code>src</code> has no <code>/</code>, it's a volume name</div>
+							<div class="explain-item"><code>--mount type=…,src=…,dst=…</code> — explicit; preferred in scripts</div>
+							<div class="explain-item"><code>-v</code> creates a missing host path as a folder; <code>--mount</code> errors instead</div>
+							<div class="explain-item"><code>:ro</code> / <code>readonly</code> — mount read-only</div>
+							<div class="explain-item">An empty <strong>volume</strong> is pre-filled from the image's files at that path; a bind mount hides them</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Code | Opts Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-backup">
+						<h2 class="section-title">Backup and Restore a Volume</h2>
+						<pre><code class="language-bash">docker run --rm -v pgdata:/data -v "$PWD":/backup alpine \
+  tar czf /backup/pgdata.tgz -C /data .
+docker run --rm -v pgdata:/data -v "$PWD":/backup alpine \
+  tar xzf /backup/pgdata.tgz -C /data</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-opts">
+						<h2 class="section-title">Mount Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>:ro / readonly</td><td class="desc">Read-only in the container</td></tr>
+								<tr><td>:z / :Z</td><td class="desc">SELinux relabel (shared / private)</td></tr>
+								<tr><td>volume-opt=…</td><td class="desc">Driver options (NFS, CIFS)</td></tr>
+								<tr><td>tmpfs-size=64m</td><td class="desc">Cap a tmpfs mount</td></tr>
+								<tr><td>volume-subpath=dir</td><td class="desc">Mount one folder of a volume</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>docker volume prune -a</code> thinking it's safe — it deletes every volume no container uses right now</li>
+							<li class="note-item">Bind-mounting over the app folder and losing <code>node_modules</code> from the image — add a volume for that subfolder</li>
+							<li class="note-item">Mixing up <code>-v data:/x</code> (volume) and <code>-v ./data:/x</code> (bind) — a leading <code>./</code> or <code>/</code> makes it a host path</li>
+							<li class="note-item">Permission denied on bind mounts — the container UID doesn't own the host files; match UIDs or use <code>--user</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Name volumes explicitly; anonymous ones get random IDs and are easy to delete by accident</li>
+							<li class="note-item">Back up volumes with a throwaway container + <code>tar</code>, as shown above</li>
+							<li class="note-item">Use <code>:ro</code> for config files so a compromised app can't rewrite them</li>
+							<li class="note-item">On macOS/Windows Desktop, named volumes are much faster than bind mounts for heavy I/O</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>-v name:/path</code> — named volume</li>
+							<li class="note-item"><code>-v $PWD:/path</code> — bind mount</li>
+							<li class="note-item"><code>--tmpfs /path</code> — RAM only</li>
+							<li class="note-item"><code>volume ls/inspect/rm/prune</code> — manage</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-18-buildx-multi-platform.html" title="Buildx &amp; Multi-Platform Builds">Buildx &amp; Multi-Platform</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-20-networking.html">Networking</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

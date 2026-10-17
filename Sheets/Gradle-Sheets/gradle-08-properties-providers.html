@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Gradle — Sheet 08: Properties &amp; Providers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gradle-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>Properties &amp; Providers</h1>
+			<div class="sheet-desc">
+				Property&lt;T&gt; · Provider · .set() / .get() · providers.gradleProperty · -Pname=value · extra · environment variables · lazy wiring
+			</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Lazy Configuration</h2>
+						<div class="description">
+							Modern Gradle APIs use <strong>lazy properties</strong>: a <code>Provider&lt;T&gt;</code> is a value that is computed later, and a <code>Property&lt;T&gt;</code> is a provider you can <code>set()</code>. Wiring providers together (<code>map</code>, <code>flatMap</code>, <code>orElse</code>) lets Gradle read values only at execution time and track which task produced them. Read build settings with <code>providers.gradleProperty(…)</code> and <code>providers.environmentVariable(…)</code> instead of <code>System.getenv</code>.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Where Values Come From</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>-Pname=value</code> on the command line (highest priority)</li>
+							<li class="note-item"><code>~/.gradle/gradle.properties</code> (user-wide, keep secrets here)</li>
+							<li class="note-item"><code>gradle.properties</code> in the project root</li>
+							<li class="note-item"><code>ORG_GRADLE_PROJECT_name</code> environment variable</li>
+							<li class="note-item"><code>-Dname=value</code> — JVM system property, not a project property</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Explain + Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Reading and Wiring Values</h2>
+						<pre><code class="language-kotlin">// gradle.properties →  appEnv=dev
+val appEnv = providers.gradleProperty("appEnv").orElse("dev")
+val apiKey = providers.environmentVariable("API_KEY")
+val gitSha = providers.exec { commandLine("git", "rev-parse", "HEAD") }
+    .standardOutput.asText.map { it.take(7) }
+
+tasks.register("showEnv") {
+    val env = appEnv; val sha = gitSha   // capture providers, not project
+    doLast { println("env=${env.get()} sha=${sha.get()}") }
+}
+tasks.named&lt;Jar&gt;("jar") {
+    archiveBaseName.set("my-app")        // Property&lt;String&gt;.set()
+    archiveVersion = appEnv.map { "1.0-$it" }  // lazy assignment
+}
+// ./gradlew showEnv -PappEnv=prod  →  env=prod sha=3f2a9c1</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>providers.gradleProperty</code> — reads <code>-P</code> / <code>gradle.properties</code> lazily</div>
+							<div class="explain-item"><code>.orElse("dev")</code> — fallback when the property is missing</div>
+							<div class="explain-item"><code>providers.exec</code> — runs a command; replaces the removed <code>project.exec</code></div>
+							<div class="explain-item"><code>.map { }</code> — transform without reading the value yet</div>
+							<div class="explain-item"><code>.get()</code> — read the value; only inside task actions</div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-groovy">
+						<h2 class="section-title">In Groovy DSL</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>val x = providers…</code> → <code>def x = providers…</code></div>
+							<div class="explain-item"><code>named&lt;Jar&gt;("jar")</code> → <code>named('jar', Jar)</code></div>
+							<div class="explain-item"><code>"${env.get()}"</code> and <code>archiveVersion = …</code> work the same</div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-langs">
+						<h2 class="section-title">Java vs Kotlin Projects</h2>
+						<div class="section-body">
+							<div class="explain-item">Same <code>providers</code> / <code>Property</code> API in every project type</div>
+							<div class="explain-item">Java — <code>tasks.compileJava { options.release = 21 }</code></div>
+							<div class="explain-item">Kotlin — <code>kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_21 } }</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Api Table | Old Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-api">
+						<h2 class="section-title">Provider API</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>get()</td><td class="desc">Value, or error if absent</td></tr>
+								<tr><td>getOrElse(v)</td><td class="desc">Value or <code>v</code></td></tr>
+								<tr><td>orElse(v)</td><td class="desc">Provider with a fallback</td></tr>
+								<tr><td>map { }</td><td class="desc">Transform lazily</td></tr>
+								<tr><td>flatMap { }</td><td class="desc">Map to another provider</td></tr>
+								<tr><td>zip(other) { a, b -&gt; }</td><td class="desc">Combine two providers</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-old">
+						<h2 class="section-title">Old Habit → Lazy Way</h2>
+						<table>
+							<thead><tr><th>Old</th><th>New</th></tr></thead>
+							<tbody>
+								<tr><td>project.findProperty("x")</td><td class="desc"><code>providers.gradleProperty("x")</code></td></tr>
+								<tr><td>System.getenv("X")</td><td class="desc"><code>providers.environmentVariable("X")</code></td></tr>
+								<tr><td>project.exec { }</td><td class="desc"><code>providers.exec { }</code></td></tr>
+								<tr><td>buildDir</td><td class="desc"><code>layout.buildDirectory</code></td></tr>
+								<tr><td>ext["x"] = …</td><td class="desc"><code>extra</code> or a typed extension</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>.get()</code> at configuration time — forces the value early, may run a command on every build and defeats lazy wiring</li>
+							<li class="note-item">Putting secrets in the project's <code>gradle.properties</code> — it gets committed; use <code>~/.gradle/gradle.properties</code> or env vars</li>
+							<li class="note-item">Confusing <code>-D</code> with <code>-P</code> — <code>-D</code> sets a JVM system property, which <code>gradleProperty()</code> will not see</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefix with <code>systemProp.</code> in <code>gradle.properties</code> to set a system property</li>
+							<li class="note-item">In CI, pass secrets as <code>ORG_GRADLE_PROJECT_name</code> env vars</li>
+							<li class="note-item">Expose settings as <code>Property</code> fields on an extension for typed, lazy config</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Provider&lt;T&gt;</code> — read-only lazy value</li>
+							<li class="note-item"><code>Property&lt;T&gt;</code> — settable lazy value</li>
+							<li class="note-item"><code>providers.gradleProperty("x")</code> — read <code>-Px</code></li>
+							<li class="note-item"><code>.map { }</code> — transform without resolving</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gradle-07-tasks-basics.html" class="nav-link prev" title="Tasks: Registering &amp; Configuring">Tasks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Gradle Reference · 27 Sheets</a>
+				<a href="gradle-09-declaring-dependencies.html" class="nav-link next" title="Declaring Dependencies &amp; Configurations">Dependencies</a>
+			</nav>
+		</footer>
+
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

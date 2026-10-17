@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ruby — Sheet 095: Fibers &amp; the Fiber Scheduler</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rb-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s095">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 095</div>
+			<h1>Fibers &amp; the Fiber Scheduler</h1>
+			<div class="sheet-desc">Fiber.new · resume · Fiber.yield · Fiber.scheduler · async gem · non-blocking IO</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Fibers and the Fiber Scheduler</h2>
+						<div class="description">A <strong>Fiber</strong> is a lightweight, manually scheduled coroutine: <code>resume</code> runs it until it calls <code>Fiber.yield</code>, which hands a value back. Since Ruby 3.0 a <strong>Fiber Scheduler</strong> can make blocking I/O non-blocking, so thousands of fibers can wait on sockets concurrently. The <strong><code>async</code></strong> gem provides a production scheduler.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Fiber Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Fibers never run in parallel; they switch only at yield points or I/O</li>
+							<li class="note-item"><code>Fiber.new(blocking: false)</code> fibers use the scheduler</li>
+							<li class="note-item"><code>async</code> gives you tasks, timeouts and HTTP clients</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Fibers and async</h2>
+						<pre class="language-ruby"><code class="language-ruby">gen = Fiber.new do
+  Fiber.yield 1
+  Fiber.yield 2
+  3                              # final value
+end
+gen.resume                       # 1
+gen.resume                       # 2
+gen.resume                       # 3
+
+echo = Fiber.new { |x| loop { x = Fiber.yield(x * 2) } }
+echo.resume(5)                   # 10
+echo.resume(7)                   # 14
+
+require "async"
+require "async/http/internet"
+Async do |task|
+  internet = Async::HTTP::Internet.new
+  pages = %w[https://a.com https://b.com].map do |url|
+    task.async { internet.get(url).read.size }   # concurrent
+  end
+  p pages.map(&amp;:wait)            # [1256, 3471]
+ensure
+  internet&amp;.close
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Fiber.yield 1</code> — pause and return 1 to <code>resume</code></div>
+							<div class="explain-item"><code>resume(7)</code> — the value becomes <code>Fiber.yield</code>'s return</div>
+							<div class="explain-item"><code>alive?</code> — false after the block finishes</div>
+							<div class="explain-item"><code>Async do |task|</code> — starts a scheduler event loop</div>
+							<div class="explain-item"><code>task.async { }</code> — child task; <code>wait</code> gets its result</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Ruby Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Manual fiber juggling for generators → <code>Enumerator.new</code> (sheet 105)</li>
+							<li class="note-item">Threads for thousands of mostly idle connections → <code>async</code> fibers</li>
+							<li class="note-item">Callback-style I/O → plain blocking calls inside <code>Async</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Fiber Api Table | Concurrency Options Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-fiber-api">
+						<h2 class="section-title">Fiber API</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>Fiber.new { }</td><td class="desc">create</td></tr>
+								<tr><td>f.resume(x)</td><td class="desc">run / continue</td></tr>
+								<tr><td>Fiber.yield(v)</td><td class="desc">pause, return v</td></tr>
+								<tr><td>Fiber.scheduler</td><td class="desc">current scheduler</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-concurrency-options">
+						<h2 class="section-title">Concurrency Options</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Best for</th></tr></thead>
+							<tbody>
+								<tr><td>Thread</td><td class="desc">moderate I/O, simple code</td></tr>
+								<tr><td>Fiber + async</td><td class="desc">many concurrent I/O tasks</td></tr>
+								<tr><td>Ractor</td><td class="desc">parallel CPU work (sheet 096)</td></tr>
+								<tr><td>Process / fork</td><td class="desc">isolation, CPU work</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>resume</code> on a finished fiber; it raises <code>FiberError: dead fiber called</code></li>
+							<li class="note-item">Expecting fibers to run CPU work in parallel; they're cooperative and single-threaded</li>
+							<li class="note-item">Mixing blocking C extensions inside <code>Async</code>; calls the scheduler can't hook will block every task</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Async::Barrier</code> waits for a group of tasks; <code>Async::Semaphore</code> limits concurrency</li>
+							<li class="note-item">Falcon is a fiber-based web server built on <code>async</code></li>
+							<li class="note-item">Most programs never touch <code>Fiber</code> directly; use <code>Enumerator</code> or <code>async</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Fiber.new</code> / <code>resume</code> / <code>Fiber.yield</code> — coroutines</li>
+							<li class="note-item">Fiber Scheduler — non-blocking I/O</li>
+							<li class="note-item"><code>async</code> — production scheduler</li>
+							<li class="note-item">cooperative — no parallel CPU</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rb-094-threads.html" class="nav-link prev">Threads &amp; Mutex</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ruby Reference · 113 Sheets</a>
+				<a href="rb-096-ractors.html" class="nav-link next">Ractors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

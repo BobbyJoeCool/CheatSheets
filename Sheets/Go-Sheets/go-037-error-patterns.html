@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 037: Error Handling Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s037">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 037</div>
+			<h1>Error Handling Patterns</h1>
+			<div class="sheet-desc">add context at each layer · handle once (log or return) · errors at API boundaries · errgroup · error from deferred Close · opaque vs inspectable errors · slog with an err attribute</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Handling Errors Well</h2>
+						<div class="description">Good Go error handling adds <strong>context at each layer</strong>, handles each error <strong>exactly once</strong>, and decides at API boundaries what callers may inspect. Concurrent work collects errors with <code>errgroup</code> or <code>errors.Join</code>, and errors from deferred <code>Close</code> calls on written files must not be lost.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Principles</h2>
+						<ul class="note-list">
+							<li class="note-item">Wrap: <code>fmt.Errorf("verb object: %w", err)</code> at each layer</li>
+							<li class="note-item">Decide once: return it <strong>or</strong> log it</li>
+							<li class="note-item">Opaque by default; expose sentinels/types deliberately</li>
+							<li class="note-item">Treat <code>io.EOF</code> and <code>context.Canceled</code> as normal outcomes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Patterns</h2>
+						<pre class="language-go"><code class="language-go">func (s *Store) Save(u User) (err error) {
+    f, err := os.Create(s.path(u.ID))
+    if err != nil {
+        return fmt.Errorf("save user %d: %w", u.ID, err)
+    }
+    defer func() { err = errors.Join(err, f.Close()) }()
+    return json.NewEncoder(f).Encode(u)
+}
+
+g, ctx := errgroup.WithContext(ctx)      // x/sync/errgroup
+for _, url := range urls {
+    g.Go(func() error { return fetch(ctx, url) })
+}
+if err := g.Wait(); err != nil {         // first error wins
+    slog.Error("fetch failed", "err", err)
+}
+
+var errs []error                         // collect all
+for _, r := range rows {
+    if e := check(r); e != nil { errs = append(errs, e) }
+}
+return errors.Join(errs...)              // nil if none</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>errors.Join(err, f.Close())</code> — keep both write and close errors</div>
+							<div class="explain-item"><code>errgroup.WithContext</code> — cancels siblings on first error</div>
+							<div class="explain-item"><code>g.Wait()</code> — returns the first non-nil error</div>
+							<div class="explain-item"><code>slog.Error(…, "err", err)</code> — log once at the top</div>
+							<div class="explain-item"><code>errors.Join(errs...)</code> — validation reports every problem</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — no stack traces by default; add context when wrapping</li>
+							<li class="note-item"><strong>Python</strong> — <code>except: log; raise</code> is the "handle twice" anti-pattern</li>
+							<li class="note-item"><strong>JS</strong> — <code>Promise.allSettled</code> ≈ <code>errors.Join</code> of results</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Where To Handle Table | Expected Errors Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-where-to-handle">
+						<h2 class="section-title">Where to Handle</h2>
+						<table>
+							<thead><tr><th>Layer</th><th>Action</th></tr></thead>
+							<tbody>
+								<tr><td>low-level func</td><td class="desc">return with context</td></tr>
+								<tr><td>service</td><td class="desc">wrap / translate</td></tr>
+								<tr><td>HTTP handler</td><td class="desc">map to status + log</td></tr>
+								<tr><td>main</td><td class="desc">log + <code>os.Exit(1)</code></td></tr>
+								<tr><td>goroutine</td><td class="desc">send on chan / errgroup</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-expected-errors">
+						<h2 class="section-title">Expected "Errors"</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Treat as</th></tr></thead>
+							<tbody>
+								<tr><td>io.EOF</td><td class="desc">end of stream</td></tr>
+								<tr><td>sql.ErrNoRows</td><td class="desc">not found (404)</td></tr>
+								<tr><td>context.Canceled</td><td class="desc">client went away</td></tr>
+								<tr><td>http.ErrServerClosed</td><td class="desc">clean shutdown</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Logging at every layer, producing five log lines for one failure</li>
+							<li class="note-item">Swallowing errors in goroutines (<code>go f()</code> where <code>f</code> returns an error)</li>
+							<li class="note-item">Returning raw driver errors from a public package, leaking implementation details</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Translate errors at boundaries: DB <code>ErrNoRows</code> → your <code>ErrNotFound</code></li>
+							<li class="note-item">Use <code>errgroup.SetLimit(n)</code> to bound concurrency while collecting errors</li>
+							<li class="note-item">Attach errors to logs as attributes: <code>slog.Any("err", err)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">wrap with context — each layer</li>
+							<li class="note-item">handle once — log <strong>or</strong> return</li>
+							<li class="note-item"><code>errgroup</code> — concurrent errors</li>
+							<li class="note-item"><code>errors.Join</code> — keep close/validation errors</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-036-panic-recover.html" class="nav-link prev">panic &amp; recover</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-038-functions-basics.html" class="nav-link next">Defining &amp; Calling Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

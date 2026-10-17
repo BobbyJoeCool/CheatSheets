@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 03: Contexts &amp; Configuration</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s03">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 03</div>
+			<h1>Contexts &amp; Configuration</h1>
+			<div class="sheet-desc">docker context create / use · DOCKER_HOST · ssh:// hosts · ~/.docker/config.json · credsStore · /etc/docker/daemon.json</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Where the CLI Points</h2>
+						<div class="description">
+							The <code>docker</code> CLI is only a client. A <strong>context</strong> stores *which daemon* it talks to (local socket, remote host over SSH, Desktop's VM) plus TLS settings, so you can switch targets with one command. Client settings live in <code>~/.docker/config.json</code>; daemon settings live in <code>/etc/docker/daemon.json</code> on Linux or in <strong>Settings › Docker Engine</strong> in Docker Desktop.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Precedence</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>--context</code> flag beats everything</li>
+							<li class="note-item">then <code>DOCKER_HOST</code> / <code>DOCKER_CONTEXT</code> env vars</li>
+							<li class="note-item">then the current context from <code>docker context use</code></li>
+							<li class="note-item"><code>default</code> context = local socket <code>unix:///var/run/docker.sock</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Contexts</h2>
+						<pre><code class="language-bash">docker context ls                          # * marks the active context
+docker context create prod \
+  --docker "host=ssh://deploy@prod.example.com"
+docker context use prod                    # all commands now hit prod
+docker --context default ps                # one-off override
+docker context use default                 # back to local
+
+export DOCKER_HOST=ssh://deploy@prod.example.com   # env-var alternative
+DOCKER_CONTEXT=prod docker ps                      # per-command env
+
+docker context inspect prod                # endpoint + TLS details
+docker context rm prod</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item">SSH contexts need key-based login and Docker on the remote host</div>
+							<div class="explain-item">Desktop creates a <code>desktop-linux</code> context; Engine on Linux uses <code>default</code></div>
+							<div class="explain-item">Contexts don't copy files: <code>docker build .</code> sends the <strong>local</strong> folder to the remote daemon</div>
+							<div class="explain-item"><code>docker context export/import</code> moves a context between machines</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Code | Code -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-client">
+						<h2 class="section-title">~/.docker/config.json (client)</h2>
+						<pre><code class="language-json">{
+  "credsStore": "osxkeychain",
+  "currentContext": "default",
+  "auths": { "ghcr.io": {} },
+  "psFormat": "table {{.Names}}\t{{.Status}}",
+  "detachKeys": "ctrl-x,x"
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-code" id="code-daemon">
+						<h2 class="section-title">/etc/docker/daemon.json (Linux daemon)</h2>
+						<pre><code class="language-json">{
+  "data-root": "/mnt/docker",
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" },
+  "dns": ["1.1.1.1"],
+  "registry-mirrors": ["https://mirror.example.com"],
+  "features": { "containerd-snapshotter": true }
+}</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Editing <code>daemon.json</code> with a syntax error — the daemon won't start; validate with <code>dockerd --validate</code></li>
+							<li class="note-item">Changing <code>daemon.json</code> without <code>sudo systemctl restart docker</code> — settings load only at startup</li>
+							<li class="note-item">Leaving <code>DOCKER_HOST</code> exported — every later command silently goes to the remote host</li>
+							<li class="note-item">Storing registry passwords as base64 in <code>auths</code> — set <code>credsStore</code> to use the OS keychain</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Name contexts after environments (<code>dev</code>, <code>staging</code>, <code>prod</code>) and check <code>docker context ls</code> before risky commands</li>
+							<li class="note-item">Use <code>credsStore</code> (<code>osxkeychain</code>, <code>wincred</code>, <code>pass</code>, <code>secretservice</code>) to keep tokens out of plain text</li>
+							<li class="note-item">Set default log rotation in <code>daemon.json</code> so <code>json-file</code> logs can't fill the disk</li>
+							<li class="note-item"><code>DOCKER_CONFIG=/path</code> points the CLI at a different config folder</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>docker context use</code> — switch target daemon</li>
+							<li class="note-item"><code>DOCKER_HOST</code> — env override, e.g. <code>ssh://…</code></li>
+							<li class="note-item"><code>config.json</code> — client prefs + credentials</li>
+							<li class="note-item"><code>daemon.json</code> — engine settings (restart needed)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-02-installation-cli-basics.html">Installation &amp; CLI Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-04-desktop-install-settings.html" title="Docker Desktop — Install &amp; Settings">Desktop Install &amp; Settings</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Gradle — Sheet 18: Convention Plugins (build-logic)</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gradle-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Convention Plugins (build-logic)</h1>
+			<div class="sheet-desc">
+				buildSrc · build-logic included build · kotlin-dsl plugin · precompiled script plugins · java-conventions.gradle.kts · sharing config
+			</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Sharing Build Logic</h2>
+						<div class="description">
+							A <strong>convention plugin</strong> is a build script turned into a plugin: shared setup (toolchain, test config, linting) lives in one file, and each project opts in with <code>plugins { id("java-conventions") }</code>. Put them in a <code>build-logic</code> <strong>included build</strong> (or the older <code>buildSrc</code>). The file name of a precompiled script plugin becomes its id.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>kotlin-dsl</code> plugin compiles <code>src/main/kotlin/*.gradle.kts</code> into plugins</li>
+							<li class="note-item">Changing <code>buildSrc</code> invalidates the whole build; <code>build-logic</code> less so</li>
+							<li class="note-item"><code>libs</code> accessors are not generated inside precompiled plugins</li>
+							<li class="note-item">Read the catalog there with <code>the&lt;VersionCatalogsExtension&gt;()</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Explain + Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A build-logic Setup</h2>
+						<pre><code class="language-kotlin">// settings.gradle.kts (root)
+pluginManagement { includeBuild("build-logic") }
+
+// build-logic/build.gradle.kts
+plugins { `kotlin-dsl` }
+repositories { gradlePluginPortal() }
+
+// build-logic/src/main/kotlin/java-conventions.gradle.kts
+plugins { `java-library` }
+val libs = the&lt;VersionCatalogsExtension&gt;().named("libs")
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+dependencies {
+    testImplementation(libs.findLibrary("junit-jupiter").get())
+}
+tasks.withType&lt;Test&gt;().configureEach { useJUnitPlatform() }
+
+// core/build.gradle.kts
+plugins { id("java-conventions") }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>includeBuild("build-logic")</code> — plugins from this build are usable</div>
+							<div class="explain-item"><code>kotlin-dsl</code> — turns <code>.gradle.kts</code> files into plugins</div>
+							<div class="explain-item"><code>java-conventions.gradle.kts</code> — id is <code>java-conventions</code></div>
+							<div class="explain-item"><code>the&lt;VersionCatalogsExtension&gt;()</code> — untyped catalog lookup</div>
+							<div class="explain-item"><code>plugins { id(…) }</code> — a project opts in, no version needed</div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-groovy">
+						<h2 class="section-title">In Groovy DSL</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>`kotlin-dsl`</code> → <code>id 'groovy-gradle-plugin'</code></div>
+							<div class="explain-item">Script: <code>src/main/groovy/java-conventions.gradle</code></div>
+							<div class="explain-item">Catalog: <code>versionCatalogs.named('libs').findLibrary('junit-jupiter').get()</code></div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-langs">
+						<h2 class="section-title">Java vs Kotlin Projects</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>kotlin-dsl</code> is for the build logic — the projects can be Java or Kotlin</div>
+							<div class="explain-item">Kotlin conventions — add <code>org.jetbrains.kotlin:kotlin-gradle-plugin</code> to build-logic <code>dependencies</code></div>
+							<div class="explain-item">…then <code>plugins { kotlin("jvm") }</code> with no version in the script</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Compare Table | Ids Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-compare">
+						<h2 class="section-title">buildSrc vs build-logic</h2>
+						<table>
+							<thead><tr><th></th><th>buildSrc</th><th>build-logic</th></tr></thead>
+							<tbody>
+								<tr><td>Setup</td><td class="desc">Folder name is magic</td><td class="desc"><code>includeBuild</code> in settings</td></tr>
+								<tr><td>Rebuild cost</td><td class="desc">Any change rebuilds all</td><td class="desc">Only affected plugins</td></tr>
+								<tr><td>Several logic builds</td><td class="desc">No</td><td class="desc">Yes</td></tr>
+								<tr><td>Recommended</td><td class="desc">Small builds</td><td class="desc">Most builds</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-ids">
+						<h2 class="section-title">File → Plugin id</h2>
+						<table>
+							<thead><tr><th>File</th><th>id</th></tr></thead>
+							<tbody>
+								<tr><td>java-conventions.gradle.kts</td><td class="desc">java-conventions</td></tr>
+								<tr><td>myorg.library.gradle.kts</td><td class="desc">myorg.library</td></tr>
+								<tr><td>com/acme/app.gradle.kts + package</td><td class="desc">com.acme.app</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>libs.junit.jupiter</code> inside a precompiled plugin — the accessor doesn't exist there; use <code>findLibrary</code></li>
+							<li class="note-item">Giving the plugin a version in <code>plugins { }</code> — local convention plugins are versionless</li>
+							<li class="note-item">Forgetting <code>repositories { }</code> in <code>build-logic</code> — external plugins it applies can't be resolved</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Make one plugin per role: <code>java-conventions</code>, <code>library-conventions</code>, <code>app-conventions</code></li>
+							<li class="note-item">Share the root catalog with <code>build-logic</code> from its own settings file (sheet 11)</li>
+							<li class="note-item">Layer plugins: <code>library-conventions</code> applies <code>java-conventions</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>build-logic</code> — an included build for plugins</li>
+							<li class="note-item"><code>kotlin-dsl</code> — precompiled script plugins</li>
+							<li class="note-item">File name — becomes the plugin id</li>
+							<li class="note-item"><code>plugins { id("x-conventions") }</code> — opt in</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gradle-17-multi-project.html" class="nav-link prev">Multi-Project Builds</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Gradle Reference · 27 Sheets</a>
+				<a href="gradle-19-composite-builds.html" class="nav-link next">Composite Builds</a>
+			</nav>
+		</footer>
+
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

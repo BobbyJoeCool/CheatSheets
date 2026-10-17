@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 05: Imperative vs Declarative</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s05">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 05</div>
+			<h1>Imperative vs Declarative</h1>
+			<div class="sheet-desc">create · run · expose · apply -f · diff · --dry-run=client -o yaml · edit / patch · --server-side</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Two Ways to Change a Cluster</h2>
+						<div class="description"><strong>Imperative</strong> commands (<code>run</code>, <code>create</code>, <code>scale</code>, <code>set</code>) say <em>do this now</em>: quick, but unrecorded. <strong>Declarative</strong> management keeps manifests in Git and runs <code>kubectl apply</code>, which creates or updates objects to match the files. Best of both: generate YAML with <code>--dry-run=client -o yaml</code>, then <code>apply</code> it.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>apply</code> is idempotent; a second run changes nothing</li>
+							<li class="note-item"><code>create -f</code> fails if the object exists</li>
+							<li class="note-item"><code>edit</code>, <code>patch</code>, <code>scale</code> drift from Git</li>
+							<li class="note-item">Server-side apply records a <strong>field manager</strong> per field</li>
+							<li class="note-item"><code>replace --force</code> deletes and recreates (immutable fields)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Imperative → Declarative</h2>
+						<pre><code class="language-bash">kubectl run tmp --image=busybox:1.36 --rm -it --restart=Never -- sh
+kubectl create deployment web --image=nginx:1.27 --replicas=2
+kubectl expose deployment web --port=80 --target-port=8080
+kubectl set image deployment/web nginx=nginx:1.28
+kubectl create deploy web --image=nginx:1.27 --dry-run=client -o yaml &gt; web.yaml
+kubectl apply -f web.yaml               # create or update
+kubectl apply -f k8s/ -R                # whole folder
+kubectl diff -f web.yaml                # preview changes
+kubectl apply -f web.yaml --server-side --field-manager=ci
+kubectl edit deployment web             # live object in $EDITOR
+kubectl patch deployment web -p &#x27;{&quot;spec&quot;:{&quot;replicas&quot;:3}}&#x27;
+kubectl delete -f web.yaml              # remove what it defines</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>--rm -it --restart=Never</code> — interactive, deleted on exit</div>
+							<div class="explain-item"><code>--dry-run=client -o yaml</code> — prints YAML, creates nothing</div>
+							<div class="explain-item"><code>diff</code> — exits 1 when there are changes; a CI gate</div>
+							<div class="explain-item"><code>--server-side</code> — API server merges and tracks field owners</div>
+							<div class="explain-item"><code>patch -p</code> — strategic merge by default</div>
+							<div class="explain-item"><code>edit</code> — saved on exit; invalid YAML reopens the editor</div>
+							<div class="explain-item"><code>delete -f</code> — deletes only objects named in the file</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Approach Table | Patch Table | Dry Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-approach">
+						<h2 class="section-title">Three Approaches</h2>
+						<table>
+							<thead><tr><th>Style</th><th>Use For</th></tr></thead>
+							<tbody>
+								<tr><td>create deploy web …</td><td class="desc">Experiments</td></tr>
+								<tr><td>create -f x.yaml</td><td class="desc">Rare; fails if exists</td></tr>
+								<tr><td>apply -f dir/</td><td class="desc">Everything real</td></tr>
+								<tr><td>replace --force -f</td><td class="desc">Immutable changes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-patch">
+						<h2 class="section-title">Patch --type</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Lists Are…</th></tr></thead>
+							<tbody>
+								<tr><td>strategic</td><td class="desc">Merged by key (default)</td></tr>
+								<tr><td>merge</td><td class="desc">Replaced whole</td></tr>
+								<tr><td>json</td><td class="desc">Edited by RFC 6902 ops</td></tr>
+								<tr><td>--subresource=scale</td><td class="desc">Patch only scale/status</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-dry">
+						<h2 class="section-title">Dry Run</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>=client</td><td class="desc">Render locally</td></tr>
+								<tr><td>=server</td><td class="desc">Validate + admission</td></tr>
+								<tr><td>--validate=strict</td><td class="desc">Reject unknown fields</td></tr>
+								<tr><td>diff -f</td><td class="desc">Compare file to live</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Hotfixing with <code>edit</code> — the next <code>apply</code> reverts it</li>
+							<li class="note-item"><code>create -f</code> in CI — reruns fail with <code>AlreadyExists</code></li>
+							<li class="note-item">Expecting <code>apply</code> to delete objects removed from Git</li>
+							<li class="note-item">Hand-writing YAML from memory — generate it to avoid typos</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Run <code>kubectl diff</code> before applying to shared clusters</li>
+							<li class="note-item"><code>--dry-run=server</code> catches policy rejections early</li>
+							<li class="note-item">Copy any live hotfix back into Git right away</li>
+							<li class="note-item">Name the <code>--field-manager</code> per tool in CI</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>create / run / expose</code> — imperative</li>
+							<li class="note-item"><code>apply -f</code> — declarative, idempotent</li>
+							<li class="note-item"><code>--dry-run=client -o yaml</code> — make YAML</li>
+							<li class="note-item"><code>diff</code> — preview; <code>edit / patch</code> — live drift</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-04-kubectl-get-describe-output.html" class="nav-link prev" title="Inspecting Resources &amp; Output Formats">Inspecting Resources</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-06-manifests-labels-selectors.html" class="nav-link next" title="Manifests, Labels &amp; Selectors">Manifests &amp; Labels</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

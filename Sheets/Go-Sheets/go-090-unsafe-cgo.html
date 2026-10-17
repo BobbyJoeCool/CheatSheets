@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 090: unsafe &amp; cgo</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s090">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 090</div>
+			<h1>unsafe &amp; cgo</h1>
+			<div class="sheet-desc">unsafe.Pointer / Sizeof / Alignof / Offsetof · unsafe.String / StringData / Slice · import "C" preamble · C.CString + C.free · cgo call cost · cross-compiling with cgo · go vet unsafeptr</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">unsafe &amp; cgo</h2>
+						<div class="description"><code>unsafe</code> bypasses the type system: converting between pointer types, reading struct layout, and building strings or slices from raw pointers. <strong>cgo</strong> lets Go call C code via a special <code>import "C"</code> preceded by a C preamble comment. Both sacrifice portability and safety guarantees; use them only for performance-critical or interop code.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Costs &amp; Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">A cgo call costs far more than a Go call; batch work per call</li>
+							<li class="note-item">cgo breaks easy cross-compiling and static binaries</li>
+							<li class="note-item">C memory isn't GC'd: free what you <code>C.malloc</code> / <code>C.CString</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">unsafe &amp; cgo</h2>
+						<pre class="language-go"><code class="language-go">type Header struct { A byte; B int64; C byte }
+unsafe.Sizeof(Header{})           // 24 (padding!)
+unsafe.Alignof(int64(0))          // 8
+unsafe.Offsetof(Header{}.B)       // 8
+
+b := []byte("hello")
+s := unsafe.String(&amp;b[0], len(b)) // no copy; b must not change
+sl := unsafe.Slice(unsafe.StringData(s), len(s)) // []byte view
+
+f := 1.5
+bits := *(*uint64)(unsafe.Pointer(&amp;f)) // = math.Float64bits(f)
+
+/*
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+static int add(int a, int b) { return a + b; }
+*/
+import "C"
+
+r := C.add(2, 3)                  // C.int 5
+cs := C.CString("go")             // malloc'd copy
+defer C.free(unsafe.Pointer(cs))
+n := C.strlen(cs)                 // 2</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Sizeof</code> / <code>Alignof</code> / <code>Offsetof</code> — memory layout</div>
+							<div class="explain-item"><code>unsafe.String</code> — zero-copy <code>[]byte</code> → <code>string</code></div>
+							<div class="explain-item"><code>(&#42;uint64)(unsafe.Pointer(&amp;f))</code> — type punning</div>
+							<div class="explain-item">C preamble comment directly above <code>import "C"</code></div>
+							<div class="explain-item"><code>C.CString</code> + <code>C.free</code> — manual memory management</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — cgo ≈ C extensions / ctypes</li>
+							<li class="note-item"><strong>Rust</strong> — <code>unsafe</code> ≈ <code>unsafe {}</code> blocks</li>
+							<li class="note-item"><strong>Java</strong> — ≈ JNI, with similar call overhead</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Unsafe Api Table | Cgo Types Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-unsafe-api">
+						<h2 class="section-title">unsafe API</h2>
+						<table>
+							<thead><tr><th>Func</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>unsafe.Pointer</td><td class="desc">generic pointer type</td></tr>
+								<tr><td>Sizeof / Alignof / Offsetof</td><td class="desc">layout info</td></tr>
+								<tr><td>String / StringData</td><td class="desc">string ↔ *byte</td></tr>
+								<tr><td>Slice / SliceData</td><td class="desc">slice ↔ *T</td></tr>
+								<tr><td>Add(p, n)</td><td class="desc">pointer offset</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-cgo-types">
+						<h2 class="section-title">cgo Types</h2>
+						<table>
+							<thead><tr><th>C</th><th>Go</th></tr></thead>
+							<tbody>
+								<tr><td>int / long</td><td class="desc">C.int / C.long</td></tr>
+								<tr><td>char*</td><td class="desc">*C.char</td></tr>
+								<tr><td>C string → Go</td><td class="desc">C.GoString(p)</td></tr>
+								<tr><td>Go → C string</td><td class="desc">C.CString(s)</td></tr>
+								<tr><td>void*</td><td class="desc">unsafe.Pointer</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Mutating a <code>[]byte</code> after creating a string from it with <code>unsafe.String</code></li>
+							<li class="note-item">Storing pointers as <code>uintptr</code>; the GC doesn't track them and memory can move/free</li>
+							<li class="note-item">Blank line between the C preamble and <code>import "C"</code>; the preamble is ignored</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>math.Float64bits</code>, <code>binary.&#42;</code> and <code>slices</code> before reaching for unsafe</li>
+							<li class="note-item">Check for pure-Go alternatives (e.g. <code>modernc.org/sqlite</code>) to avoid cgo</li>
+							<li class="note-item">Put cgo code in a small, well-tested package with a Go-friendly API</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>unsafe</code> — bypass type safety</li>
+							<li class="note-item"><code>unsafe.String/Slice</code> — zero-copy views</li>
+							<li class="note-item"><code>import "C"</code> — call C via cgo</li>
+							<li class="note-item">costs — speed, portability, safety</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-089-memory-gc.html" class="nav-link prev">Memory &amp; Garbage Collection</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-091-goroutines.html" class="nav-link next">Goroutines</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

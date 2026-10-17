@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 106: Handlers &amp; Middleware</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s106">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 106</div>
+			<h1>Handlers &amp; Middleware</h1>
+			<div class="sheet-desc">http.Handler interface · http.HandlerFunc adapter · func(http.Handler) http.Handler · logging / recovery / auth middleware · chaining · r.Context() values · http.StripPrefix / FileServer</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Handlers &amp; Middleware</h2>
+						<div class="description">Everything in <code>net/http</code> revolves around one interface, <code>http.Handler</code> with <code>ServeHTTP(w, r)</code>. <code>http.HandlerFunc</code> adapts a plain function into a Handler. <strong>Middleware</strong> is a function that takes a Handler and returns a new one wrapping it, adding logging, auth, recovery or CORS around every request.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Middleware order matters: the outermost runs first</li>
+							<li class="note-item">Pass request-scoped data via <code>r.WithContext(ctx)</code></li>
+							<li class="note-item"><code>net/http</code> already recovers panics per request, but logs noisily</li>
+							<li class="note-item">Wrap <code>ResponseWriter</code> to capture the status code for logging</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Writing Middleware</h2>
+						<pre class="language-go"><code class="language-go">func logging(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        next.ServeHTTP(w, r)                   // call the next handler
+        slog.Info("req", "path", r.URL.Path, "took", time.Since(start))
+    })
+}
+
+type userKey struct{}
+func auth(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        user, err := verify(r.Header.Get("Authorization"))
+        if err != nil { http.Error(w, "unauthorized", 401); return }
+        ctx := context.WithValue(r.Context(), userKey{}, user)
+        next.ServeHTTP(w, r.WithContext(ctx))  // pass data on
+    })
+}
+
+mux.Handle("GET /admin/", auth(adminHandler))  // per-route
+mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("public"))))
+http.ListenAndServe(":8080", logging(recoverer(mux))) // global chain</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>func(http.Handler) http.Handler</code> — middleware shape</div>
+							<div class="explain-item"><code>next.ServeHTTP</code> — continue the chain (or don't, to block)</div>
+							<div class="explain-item"><code>r.WithContext(ctx)</code> — attach values for later handlers</div>
+							<div class="explain-item"><code>StripPrefix</code> + <code>FileServer</code> — static files</div>
+							<div class="explain-item"><code>logging(recoverer(mux))</code> — logging runs outermost</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Node</strong> — middleware ≈ Express <code>(req, res, next)</code></li>
+							<li class="note-item"><strong>Python</strong> — ≈ WSGI middleware / decorators</li>
+							<li class="note-item"><strong>Java</strong> — ≈ servlet filters</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Common Middleware Table | Adapters Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-common-middleware">
+						<h2 class="section-title">Common Middleware</h2>
+						<table>
+							<thead><tr><th>Middleware</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>logging</td><td class="desc">method, path, status, latency</td></tr>
+								<tr><td>recover</td><td class="desc">turn panics into 500</td></tr>
+								<tr><td>auth</td><td class="desc">verify token, set user</td></tr>
+								<tr><td>CORS</td><td class="desc">cross-origin headers</td></tr>
+								<tr><td>request ID</td><td class="desc">trace correlation</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-adapters">
+						<h2 class="section-title">Adapters</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>http.HandlerFunc</td><td class="desc">func → Handler</td></tr>
+								<tr><td>http.StripPrefix</td><td class="desc">trim path prefix</td></tr>
+								<tr><td>http.TimeoutHandler</td><td class="desc">per-request time limit</td></tr>
+								<tr><td>http.MaxBytesHandler</td><td class="desc">limit body size</td></tr>
+								<tr><td>http.FileServerFS</td><td class="desc">serve an fs.FS</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Writing to <code>w</code> after calling <code>next</code> and expecting to change the status (already sent)</li>
+							<li class="note-item">Using string keys for context values; collide across packages. Use an unexported key type</li>
+							<li class="note-item">Applying auth middleware to the whole mux and accidentally protecting health checks</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Build a tiny <code>chain(h, m1, m2, …)</code> helper to make order explicit</li>
+							<li class="note-item">Wrap <code>ResponseWriter</code> in a struct that records <code>WriteHeader</code> for status logging</li>
+							<li class="note-item">Use <code>http.NewResponseController(w)</code> (1.20) for flush/deadline control</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>http.Handler</code> — <code>ServeHTTP(w, r)</code></li>
+							<li class="note-item"><code>HandlerFunc</code> — functions as handlers</li>
+							<li class="note-item">middleware — <code>func(Handler) Handler</code></li>
+							<li class="note-item"><code>r.WithContext</code> — per-request values</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-105-http-server-basics.html" class="nav-link prev">HTTP Server — Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-107-json-apis.html" class="nav-link next">Building JSON APIs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

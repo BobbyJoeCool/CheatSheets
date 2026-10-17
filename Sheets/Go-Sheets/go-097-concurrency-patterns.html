@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 097: Concurrency Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s097">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 097</div>
+			<h1>Concurrency Patterns</h1>
+			<div class="sheet-desc">worker pool · fan-out / fan-in · pipelines · semaphore via buffered channel · errgroup.Group / SetLimit · rate limiting (time.Ticker, x/time/rate) · graceful shutdown</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Concurrency Patterns</h2>
+						<div class="description">Most concurrent Go code is built from a few patterns: a <strong>worker pool</strong> reading jobs from a channel, <strong>fan-out/fan-in</strong> to parallelize and merge, <strong>pipelines</strong> of stages connected by channels, and <strong>bounded concurrency</strong> with a semaphore or <code>errgroup.SetLimit</code>. Each pattern needs a clear <strong>shutdown</strong> path via channel close or context cancel.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Principles</h2>
+						<ul class="note-list">
+							<li class="note-item">The goroutine that creates a channel usually closes it</li>
+							<li class="note-item">Bound concurrency; unbounded goroutines exhaust memory/sockets</li>
+							<li class="note-item">Propagate <code>ctx</code> so every stage can stop</li>
+							<li class="note-item"><code>golang.org/x/sync/errgroup</code> = WaitGroup + errors + cancel</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Worker Pool &amp; errgroup</h2>
+						<pre class="language-go"><code class="language-go">func pool(ctx context.Context, jobs []Job, n int) []Result {
+    in, out := make(chan Job), make(chan Result)
+    var wg sync.WaitGroup
+    for range n {                             // fan-out
+        wg.Go(func() { for j := range in { out &lt;- process(j) } })
+    }
+    go func() {                               // feed jobs
+        defer close(in)
+        for _, j := range jobs {
+            select { case in &lt;- j: case &lt;-ctx.Done(): return }
+        }
+    }()
+    go func() { wg.Wait(); close(out) }()     // close when all done
+    var res []Result
+    for r := range out { res = append(res, r) } // fan-in
+    return res
+}
+
+g, ctx := errgroup.WithContext(ctx)
+g.SetLimit(8)                                 // at most 8 at once
+for _, u := range urls { g.Go(func() error { return fetch(ctx, u) }) }
+err := g.Wait()</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">N workers <code>range</code> over one input channel</div>
+							<div class="explain-item">producer closes <code>in</code>; workers then exit</div>
+							<div class="explain-item"><code>wg.Wait(); close(out)</code> — signals fan-in to stop</div>
+							<div class="explain-item"><code>errgroup.SetLimit</code> — bounded parallelism + first error</div>
+							<div class="explain-item">buffered chan — counting semaphore</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — worker pool ≈ <code>ExecutorService</code></li>
+							<li class="note-item"><strong>Python</strong> — ≈ <code>ThreadPoolExecutor</code></li>
+							<li class="note-item"><strong>JS</strong> — <code>errgroup</code> ≈ <code>Promise.all</code> with concurrency limit</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Patterns Table | Shutdown Signals Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-patterns">
+						<h2 class="section-title">Patterns</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Shape</th></tr></thead>
+							<tbody>
+								<tr><td>worker pool</td><td class="desc">1 chan → N workers</td></tr>
+								<tr><td>fan-out / fan-in</td><td class="desc">split → merge results</td></tr>
+								<tr><td>pipeline</td><td class="desc">stage → chan → stage</td></tr>
+								<tr><td>semaphore</td><td class="desc">buffered chan of size N</td></tr>
+								<tr><td>rate limit</td><td class="desc"><code>time.Ticker</code> / <code>x/time/rate</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-shutdown-signals">
+						<h2 class="section-title">Shutdown Signals</h2>
+						<table>
+							<thead><tr><th>Signal</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>no more input</td><td class="desc"><code>close(in)</code></td></tr>
+								<tr><td>all workers done</td><td class="desc"><code>wg.Wait()</code> then close out</td></tr>
+								<tr><td>abort everything</td><td class="desc"><code>cancel()</code> ctx</td></tr>
+								<tr><td>OS signal</td><td class="desc"><code>signal.NotifyContext</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Closing the output channel from a worker while others still send</li>
+							<li class="note-item">Unbounded <code>go</code> per item on a million-item list</li>
+							<li class="note-item">Fan-in reader that stops early, leaving workers blocked on send forever</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Reach for <code>errgroup</code> first; hand-roll pools only when you need streaming results</li>
+							<li class="note-item">Use <code>x/time/rate.Limiter</code> for requests-per-second limits</li>
+							<li class="note-item">Keep results ordered by sending <code>{index, value}</code> and placing into a slice</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">worker pool — N goroutines, one job chan</li>
+							<li class="note-item">fan-out / fan-in — parallelize &amp; merge</li>
+							<li class="note-item"><code>errgroup.SetLimit</code> — bounded + errors</li>
+							<li class="note-item">clean shutdown — close / cancel</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-096-context.html" class="nav-link prev">context</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-098-races-deadlocks-leaks.html" class="nav-link next">Races, Deadlocks &amp; Leaks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 042: Scope &amp; Shadowing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s042">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 042</div>
+			<h1>Scope &amp; Shadowing</h1>
+			<div class="sheet-desc">universe / package / file / function / block scope · := shadowing outer err · shadowing in if / for init · shadowed builtins (len, new) · package-level vars · shadow analyzer</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Scope &amp; Shadowing</h2>
+						<div class="description">Go is <strong>lexically scoped by blocks</strong>: each <code>{ }</code>, plus the implicit blocks of <code>if</code>, <code>for</code> and <code>switch</code> statements, starts a new scope. Declaring a name that already exists in an outer scope <strong>shadows</strong> it. The usual source of bugs is <code>:=</code> creating a new <code>err</code> or variable inside a block when you meant to assign the outer one.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Scope Levels</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Universe</strong> — builtins: <code>int</code>, <code>len</code>, <code>nil</code>, <code>true</code>, <code>error</code>…</li>
+							<li class="note-item"><strong>Package</strong> — top-level names, visible in every file of the package</li>
+							<li class="note-item"><strong>File</strong> — imports are file-scoped</li>
+							<li class="note-item"><strong>Function / block</strong> — params, locals, init statements</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Shadowing Bugs</h2>
+						<pre class="language-go"><code class="language-go">var cfg *Config                      // package level
+
+func setup() error {
+    cfg, err := load()               // BUG: new local cfg
+    _ = cfg                          // package cfg still nil
+    return err
+}
+
+func setupFixed() error {
+    var err error
+    cfg, err = load()                // assigns package cfg
+    return err
+}
+
+x := 1
+if x := 2; x &gt; 1 {                   // shadows outer x
+    fmt.Println(x)                   // 2
+}
+fmt.Println(x)                       // 1
+
+len := 3                             // shadows builtin len!
+// n := len("abc")                   // error: len is int</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>cfg, err := load()</code> — declares a new <code>cfg</code> in the function</div>
+							<div class="explain-item"><code>var err error</code> + <code>=</code> — reuse the package-level <code>cfg</code></div>
+							<div class="explain-item"><code>if x := 2</code> — <code>x</code> lives only inside the <code>if</code></div>
+							<div class="explain-item"><code>len := 3</code> — legal, but breaks <code>len()</code> in that scope</div>
+							<div class="explain-item">Shadowing isn't an error; the compiler allows it</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — block scope; variables in <code>if</code> don't leak out</li>
+							<li class="note-item"><strong>JS</strong> — like <code>let</code>/<code>const</code>, no hoisting</li>
+							<li class="note-item"><strong>Java</strong> — shadowing is allowed (and a common bug)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Visibility Table | Finding Shadows Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-visibility">
+						<h2 class="section-title">Visibility</h2>
+						<table>
+							<thead><tr><th>Declared</th><th>Visible in</th></tr></thead>
+							<tbody>
+								<tr><td>builtin</td><td class="desc">everywhere</td></tr>
+								<tr><td>package-level</td><td class="desc">whole package (all files)</td></tr>
+								<tr><td>Exported (Caps)</td><td class="desc">other packages too</td></tr>
+								<tr><td>import</td><td class="desc">that file only</td></tr>
+								<tr><td>inside block</td><td class="desc">that block + nested</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-finding-shadows">
+						<h2 class="section-title">Finding Shadows</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>vet shadow</td><td class="desc"><code>go run golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow ./...</code></td></tr>
+								<tr><td>golangci-lint</td><td class="desc"><code>govet: enable: [shadow]</code></td></tr>
+								<tr><td>gopls</td><td class="desc">highlights declarations</td></tr>
+								<tr><td>predeclared lint</td><td class="desc">flags <code>len</code>, <code>new</code> shadowing</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>err</code> shadowed inside <code>if</code>/<code>for</code>, so the outer <code>err</code> checked later is always nil</li>
+							<li class="note-item">Naming a variable <code>new</code>, <code>len</code>, <code>copy</code>, <code>string</code> or <code>error</code></li>
+							<li class="note-item">Package-level mutable variables used as hidden globals across files</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Declare <code>var err error</code> up front when assigning to existing variables</li>
+							<li class="note-item">Keep scopes tiny with <code>if x := …; cond</code> init statements</li>
+							<li class="note-item">Enable the <code>shadow</code> and <code>predeclared</code> linters in CI</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">block scope — every <code>{}</code> and if/for/switch</li>
+							<li class="note-item"><code>:=</code> in a block — may shadow</li>
+							<li class="note-item">imports — file scope</li>
+							<li class="note-item">builtins — can be (but shouldn't be) shadowed</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-041-closures.html" class="nav-link prev">Closures</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-043-package-initialization.html" class="nav-link next">Package Initialization</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

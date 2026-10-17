@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 12: Services &amp; DNS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Services &amp; DNS</h1>
+			<div class="sheet-desc">ClusterIP · NodePort · LoadBalancer · ExternalName · port vs targetPort · EndpointSlices · CoreDNS</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">A Stable Address for Changing Pods</h2>
+						<div class="description">Pods come and go with new IPs; a <strong>Service</strong> gives a set of pods (chosen by <strong>label selector</strong>) one stable virtual IP and DNS name and load-balances across the <strong>Ready</strong> ones. kube-proxy (or the CNI) programs the routing on every node. <strong>CoreDNS</strong> answers <code>&lt;svc&gt;.&lt;ns&gt;.svc.cluster.local</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Selector matches nothing → Service exists but has no endpoints</li>
+							<li class="note-item">Pods in the same namespace can just use the short name: <code>http://web</code></li>
+							<li class="note-item">EndpointSlices list the backing pod IPs; the old Endpoints API is deprecated</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Service</h2>
+						<pre><code class="language-yaml">apiVersion: v1
+kind: Service
+metadata: { name: web, namespace: shop }
+spec:
+  type: ClusterIP                # default; see types table
+  selector: { app: web }         # pods that get traffic
+  ports:
+    - name: http
+      port: 80                   # what clients connect to
+      targetPort: http           # container port (number or name)</code></pre>
+					</section>
+					<section class="section-code" id="code-check">
+						<h2 class="section-title">Check It</h2>
+						<pre><code class="language-bash">kubectl get svc,endpointslices -n shop -l app=web
+kubectl port-forward svc/web 8080:80 -n shop     # http://localhost:8080</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>selector</code> — must match pod labels, not Deployment labels</div>
+							<div class="explain-item"><code>port</code> vs <code>targetPort</code> — Service side vs container side</div>
+							<div class="explain-item"><code>nodePort</code> — set only for NodePort/LoadBalancer (30000–32767)</div>
+							<div class="explain-item"><code>endpointslices</code> — empty means selector or readiness problem</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Types Table | Dns Table | Opts Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-types">
+						<h2 class="section-title">Service Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Reachable From</th></tr></thead>
+							<tbody>
+								<tr><td>ClusterIP</td><td class="desc">Inside the cluster only</td></tr>
+								<tr><td>NodePort</td><td class="desc">Every node's IP on a high port</td></tr>
+								<tr><td>LoadBalancer</td><td class="desc">Cloud LB → NodePort → pods</td></tr>
+								<tr><td>ExternalName</td><td class="desc">DNS CNAME to an outside host</td></tr>
+								<tr><td>clusterIP: None</td><td class="desc">Headless: DNS returns pod IPs</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-dns">
+						<h2 class="section-title">DNS Names</h2>
+						<table>
+							<thead><tr><th>Name</th><th>Resolves To</th></tr></thead>
+							<tbody>
+								<tr><td>web</td><td class="desc">Same-namespace Service</td></tr>
+								<tr><td>web.shop</td><td class="desc">Service in namespace shop</td></tr>
+								<tr><td>web.shop.svc.cluster.local</td><td class="desc">Fully qualified</td></tr>
+								<tr><td>db-0.db.shop.svc…</td><td class="desc">One StatefulSet pod</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-opts">
+						<h2 class="section-title">Useful Fields</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>externalTrafficPolicy: Local</td><td class="desc">Keep client IP</td></tr>
+								<tr><td>sessionAffinity: ClientIP</td><td class="desc">Sticky by IP</td></tr>
+								<tr><td>internalTrafficPolicy: Local</td><td class="desc">Node-local only</td></tr>
+								<tr><td>loadBalancerSourceRanges</td><td class="desc">IP allowlist</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Selector copied from the Deployment's metadata labels instead of pod template labels</li>
+							<li class="note-item"><code>targetPort</code> not matching the container's listening port — connection refused</li>
+							<li class="note-item">One LoadBalancer Service per app — costly; share an Ingress/Gateway</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Name ports and use <code>targetPort: http</code> so port changes live in one place</li>
+							<li class="note-item"><code>kubectl get endpointslices</code> first when a Service "doesn't work"</li>
+							<li class="note-item"><code>port-forward</code> for local testing; no Service type change needed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Service</code> — stable IP + DNS over Ready pods</li>
+							<li class="note-item"><code>ClusterIP / NodePort / LoadBalancer</code> — widening reach</li>
+							<li class="note-item"><code>port → targetPort</code> — client side → container side</li>
+							<li class="note-item"><code>svc.ns.svc.cluster.local</code> — CoreDNS name</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-11-probes-lifecycle.html" class="nav-link prev" title="Health Probes &amp; Pod Lifecycle">Health Probes</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-13-ingress-gateway-api.html" class="nav-link next">Ingress &amp; Gateway API</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

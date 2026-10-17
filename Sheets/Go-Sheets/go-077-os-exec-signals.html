@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 077: os, exec &amp; Signals</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s077">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 077</div>
+			<h1>os, exec &amp; Signals</h1>
+			<div class="sheet-desc">os.Args · os.Getenv / LookupEnv / Setenv · os.Exit (skips defers) · exec.Command / CommandContext / CombinedOutput · signal.NotifyContext · os.Getwd / Hostname · runtime.GOOS / NumCPU</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">os, exec &amp; Signals</h2>
+						<div class="description">The <code>os</code> package exposes the process environment: arguments, environment variables, working directory, exit codes. <code>os/exec</code> runs <strong>external commands</strong> without a shell, and <code>os/signal</code> lets you react to Ctrl-C and <code>SIGTERM</code>, usually by canceling a context for a <strong>graceful shutdown</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>os.Exit</code> skips deferred functions</li>
+							<li class="note-item"><code>exec.Command</code> does <strong>not</strong> use a shell: no globs, pipes or <code>$VAR</code></li>
+							<li class="note-item"><code>exec.LookPath</code> finds a binary on <code>PATH</code></li>
+							<li class="note-item"><code>runtime.GOOS</code> / <code>GOARCH</code> tell you the platform</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Process &amp; Environment</h2>
+						<pre class="language-go"><code class="language-go">fmt.Println(os.Args[0], os.Args[1:])     // program, args
+port := os.Getenv("PORT")                // "" if unset
+if v, ok := os.LookupEnv("DEBUG"); ok { fmt.Println("debug:", v) }
+os.Setenv("MODE", "test")
+host, _ := os.Hostname()
+wd, _ := os.Getwd()
+
+out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+fmt.Println(strings.TrimSpace(string(out)))
+
+cmd := exec.CommandContext(ctx, "ffmpeg", "-i", in, outFile)
+cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+cmd.Env = append(os.Environ(), "LANG=C")
+if err := cmd.Run(); err != nil {
+    var ee *exec.ExitError
+    if errors.As(err, &amp;ee) { fmt.Println("exit:", ee.ExitCode()) }
+}
+
+ctx, stop := signal.NotifyContext(context.Background(),
+    os.Interrupt, syscall.SIGTERM)       // Ctrl-C / kill
+defer stop()
+&lt;-ctx.Done()                             // wait, then clean up
+fmt.Println(runtime.GOOS, runtime.NumCPU()) // darwin 10</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>os.LookupEnv</code> — distinguishes unset from empty</div>
+							<div class="explain-item"><code>Output()</code> — run and capture stdout</div>
+							<div class="explain-item"><code>CommandContext</code> — kill the process when ctx is done</div>
+							<div class="explain-item"><code>&#42;exec.ExitError</code> — non-zero exit details</div>
+							<div class="explain-item"><code>signal.NotifyContext</code> — ctx canceled on signal</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — <code>sys.argv</code> → <code>os.Args</code></li>
+							<li class="note-item"><strong>Python</strong> — <code>subprocess.run</code> → <code>exec.Command(...).Run</code></li>
+							<li class="note-item"><strong>Node</strong> — <code>process.on('SIGTERM')</code> → <code>signal.NotifyContext</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Exec Cmd Methods Table | Exit Codes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-exec-cmd-methods">
+						<h2 class="section-title">exec.Cmd Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>Run()</td><td class="desc">start + wait</td></tr>
+								<tr><td>Output()</td><td class="desc">stdout as []byte</td></tr>
+								<tr><td>CombinedOutput()</td><td class="desc">stdout + stderr</td></tr>
+								<tr><td>Start() / Wait()</td><td class="desc">async</td></tr>
+								<tr><td>StdoutPipe()</td><td class="desc">stream output</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-exit-codes">
+						<h2 class="section-title">Exit Codes</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Convention</th></tr></thead>
+							<tbody>
+								<tr><td>0</td><td class="desc">success</td></tr>
+								<tr><td>1</td><td class="desc">general error (<code>log.Fatal</code>)</td></tr>
+								<tr><td>2</td><td class="desc">usage error / panic exit</td></tr>
+								<tr><td>130</td><td class="desc">terminated by Ctrl-C</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>exec.Command("ls &#42;.go")</code>: treats the whole string as the program name. Split args, glob in Go</li>
+							<li class="note-item">Passing user input to <code>exec.Command("sh", "-c", input)</code>: command injection</li>
+							<li class="note-item">Calling <code>os.Exit</code> in library code; return an error instead</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep <code>main</code> as <code>if err := run(); err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }</code></li>
+							<li class="note-item">Use <code>exec.CommandContext</code> with a timeout for external tools</li>
+							<li class="note-item">Read config from env with defaults: <code>cmp.Or(os.Getenv("PORT"), "8080")</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>os.Args</code> / <code>Getenv</code> / <code>LookupEnv</code> — inputs</li>
+							<li class="note-item"><code>exec.Command(…).Output()</code> — run programs</li>
+							<li class="note-item"><code>signal.NotifyContext</code> — graceful shutdown</li>
+							<li class="note-item"><code>os.Exit(code)</code> — skips defers</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-076-time.html" class="nav-link prev">time</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-078-flag-cli.html" class="nav-link next">Command-Line Flags</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

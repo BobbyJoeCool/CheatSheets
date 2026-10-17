@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 18: Buildx &amp; Multi-Platform Builds</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Buildx &amp; Multi-Platform Builds</h1>
+			<div class="sheet-desc">docker buildx create / use · --platform linux/amd64,linux/arm64 · --push · --cache-to / --cache-from · imagetools inspect · buildx bake</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">One Tag, Many CPUs</h2>
+						<div class="description">
+							Laptops are often <strong>arm64</strong> (Apple silicon) while servers are often <strong>amd64</strong>. A <strong>multi-platform</strong> image is one tag pointing at an index with a variant per architecture; each host pulls the one it needs. <strong>Buildx</strong> builds them using QEMU emulation, native nodes, or cross-compiling in the Dockerfile.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Where Multi-Platform Works</h2>
+						<ul class="note-list">
+							<li class="note-item">Docker Desktop and Engine 29+ with the <strong>containerd image store</strong></li>
+							<li class="note-item">Or a <code>docker-container</code> builder (<code>buildx create</code>)</li>
+							<li class="note-item">Emulation needs QEMU (<code>binfmt</code>); Desktop includes it</li>
+							<li class="note-item">Emulated builds are slow; cross-compile when you can</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Buildx Commands</h2>
+						<pre><code class="language-bash">docker buildx ls                                 # builders + platforms
+docker buildx create --name multi --driver docker-container --use
+docker run --privileged --rm tonistiigi/binfmt --install all   # QEMU (Linux)
+
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/acme/api:1.4 --push .
+
+docker buildx build --platform linux/amd64 --load -t api:amd64 .
+
+docker buildx build \
+  --cache-from type=registry,ref=ghcr.io/acme/api:cache \
+  --cache-to   type=registry,ref=ghcr.io/acme/api:cache,mode=max \
+  -t ghcr.io/acme/api:1.4 --push .
+
+docker buildx imagetools inspect ghcr.io/acme/api:1.4   # list platforms
+docker buildx bake                     # build targets from docker-bake.hcl</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>--push</code> sends all platforms + the index in one go</div>
+							<div class="explain-item"><code>--load</code> puts the image in the local store (multi-platform needs the containerd store)</div>
+							<div class="explain-item"><code>mode=max</code> caches every stage, not just the final one</div>
+							<div class="explain-item">In GitHub Actions use <code>--cache-to type=gha</code></div>
+							<div class="explain-item"><code>TARGETPLATFORM</code>, <code>TARGETARCH</code>, <code>BUILDPLATFORM</code> are automatic build args</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Code | Code -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-cross">
+						<h2 class="section-title">Cross-Compile Instead of Emulating</h2>
+						<pre><code class="language-docker">FROM --platform=$BUILDPLATFORM golang:1.25 AS build
+ARG TARGETOS TARGETARCH
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -o /out/app .
+FROM alpine:3.22
+COPY --from=build /out/app /app</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-code" id="code-bake">
+						<h2 class="section-title">docker-bake.hcl</h2>
+						<pre><code class="language-hcl">group "default" { targets = ["api", "web"] }
+target "api" {
+  context   = "./api"
+  platforms = ["linux/amd64", "linux/arm64"]
+  tags      = ["ghcr.io/acme/api:1.4"]
+}
+target "web" { context = "./web" }</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Running an arm64 image on amd64 servers — <code>exec format error</code>; build for <code>linux/amd64</code> too</li>
+							<li class="note-item"><code>--platform a,b --load</code> on the classic image store — error; enable containerd or use <code>--push</code></li>
+							<li class="note-item">Emulating a 20-minute compile under QEMU — can be 5–10× slower; cross-compile with <code>$BUILDPLATFORM</code></li>
+							<li class="note-item">Forgetting <code>docker buildx use</code> after <code>create</code> — builds still go to the old builder</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Check what a tag supports with <code>buildx imagetools inspect</code> before deploying</li>
+							<li class="note-item">Use a registry or GHA cache in CI so builds don't start cold</li>
+							<li class="note-item">Bake files keep long build commands in version control</li>
+							<li class="note-item"><code>docker buildx bake --print</code> shows the resolved targets without building</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>--platform a,b</code> — multi-arch build</li>
+							<li class="note-item"><code>--push</code> / <code>--load</code> — where the result goes</li>
+							<li class="note-item"><code>--cache-to/--cache-from</code> — shared cache</li>
+							<li class="note-item"><code>$BUILDPLATFORM</code> + <code>$TARGETARCH</code> — cross-compile</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-17-multi-stage-caching.html" title="Multi-Stage Builds &amp; Layer Caching">Multi-Stage &amp; Caching</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-19-volumes-bind-mounts.html">Volumes &amp; Bind Mounts</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-docker.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-hcl.min.js"></script>
+	</body>
+</html>

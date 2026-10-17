@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 16: Volumes &amp; Persistent Storage</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>Volumes &amp; Persistent Storage</h1>
+			<div class="sheet-desc">emptyDir · hostPath · PersistentVolume · PersistentVolumeClaim · StorageClass · RWO / RWX / RWOP · CSI</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Data That Outlives Containers</h2>
+						<div class="description">A <strong>volume</strong> is a directory mounted into containers. <code>emptyDir</code> lives as long as the pod. For data that must survive the pod, a <strong>PersistentVolumeClaim</strong> (PVC) requests storage; a <strong>StorageClass</strong> tells a <strong>CSI driver</strong> to provision a matching <strong>PersistentVolume</strong> (PV) on demand, such as an EBS, Persistent Disk or Azure Disk volume.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">PVCs are namespaced; PVs and StorageClasses are cluster-scoped</li>
+							<li class="note-item">One class can be the default (annotation <code>is-default-class</code>)</li>
+							<li class="note-item">Block disks are usually <code>ReadWriteOnce</code>: one node at a time</li>
+							<li class="note-item">Shared RWX needs a file system: EFS, Filestore, Azure Files, NFS</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">PVC + Pod</h2>
+						<pre><code class="language-yaml">apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: pg-data }
+spec:
+  accessModes: [ReadWriteOnce]       # one node at a time
+  storageClassName: fast-ssd         # omit → default class
+  resources: { requests: { storage: 20Gi } }
+---
+# inside a Pod / pod template spec:
+volumes:
+  - { name: data, persistentVolumeClaim: { claimName: pg-data } }
+  - { name: scratch, emptyDir: { sizeLimit: 1Gi } }   # dies with pod
+containers:
+  - name: db
+    image: postgres:17
+    volumeMounts:
+      - { name: data, mountPath: /var/lib/postgresql/data }
+      - { name: scratch, mountPath: /tmp }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>accessModes</code> — must be supported by the driver</div>
+							<div class="explain-item"><code>storageClassName: ""</code> — bind only to a pre-made PV</div>
+							<div class="explain-item"><code>requests.storage</code> — grow later if the class allows expansion</div>
+							<div class="explain-item"><code>claimName</code> — PVC must be in the pod's namespace</div>
+							<div class="explain-item"><code>emptyDir.medium: Memory</code> — tmpfs, counts toward memory</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Vol Table | Modes Table | Sc Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-vol">
+						<h2 class="section-title">Volume Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Lifetime / Use</th></tr></thead>
+							<tbody>
+								<tr><td>emptyDir</td><td class="desc">Pod lifetime; scratch, caches</td></tr>
+								<tr><td>persistentVolumeClaim</td><td class="desc">Independent; databases</td></tr>
+								<tr><td>configMap / secret</td><td class="desc">Config files (Sheet 15)</td></tr>
+								<tr><td>hostPath</td><td class="desc">Node's disk; agents only</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-modes">
+						<h2 class="section-title">Access Modes</h2>
+						<table>
+							<thead><tr><th>Mode</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>RWO</td><td class="desc">Read-write, one node</td></tr>
+								<tr><td>RWOP</td><td class="desc">Read-write, one pod</td></tr>
+								<tr><td>ROX</td><td class="desc">Read-only, many nodes</td></tr>
+								<tr><td>RWX</td><td class="desc">Read-write, many nodes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-sc">
+						<h2 class="section-title">StorageClass Fields</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Values</th></tr></thead>
+							<tbody>
+								<tr><td>provisioner</td><td class="desc"><code>ebs.csi.aws.com</code>…</td></tr>
+								<tr><td>reclaimPolicy</td><td class="desc">Delete | Retain</td></tr>
+								<tr><td>volumeBindingMode</td><td class="desc">WaitForFirstConsumer</td></tr>
+								<tr><td>allowVolumeExpansion</td><td class="desc">true</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">PVC stuck <code>Pending</code> — no default class, or the class can't satisfy the access mode</li>
+							<li class="note-item"><code>reclaimPolicy: Delete</code> on precious data — deleting the PVC deletes the disk</li>
+							<li class="note-item">Two pods on different nodes sharing an RWO volume — second one won't start</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>WaitForFirstConsumer</code> so disks are created in the pod's zone</li>
+							<li class="note-item">Resize: edit <code>spec.resources.requests.storage</code> on the PVC</li>
+							<li class="note-item">Back up volumes with VolumeSnapshots or Velero</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>emptyDir</code> — scratch, pod lifetime</li>
+							<li class="note-item"><code>PVC</code> — request; <code>PV</code> — actual disk</li>
+							<li class="note-item"><code>StorageClass</code> — dynamic provisioning via CSI</li>
+							<li class="note-item"><code>RWO / RWX / RWOP</code> — who can mount</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-15-configmaps-secrets.html" class="nav-link prev">ConfigMaps &amp; Secrets</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-17-requests-limits-quotas.html" class="nav-link next" title="Requests, Limits &amp; Quotas">Requests &amp; Limits</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

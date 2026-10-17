@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 110: TCP, UDP &amp; net</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s110">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 110</div>
+			<h1>TCP, UDP &amp; net</h1>
+			<div class="sheet-desc">net.Listen("tcp", ":8080") · Accept loop + goroutine per conn · net.Dial / DialTimeout · SetDeadline on net.Conn · net.ListenPacket (UDP) · net/netip · net.LookupHost · bufio over connections</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">TCP, UDP &amp; the net Package</h2>
+						<div class="description">Below HTTP, the <code>net</code> package provides <strong>TCP</strong> and <strong>UDP</strong> sockets. A TCP server calls <code>net.Listen</code>, then <code>Accept</code>s connections in a loop and handles each in its <strong>own goroutine</strong>. Clients use <code>net.Dial</code> / <code>DialTimeout</code>. A <code>net.Conn</code> is an <code>io.Reader</code> + <code>io.Writer</code>, so <code>bufio</code>, <code>io.Copy</code> and encoders all work on it.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Set deadlines (<code>SetDeadline</code>) or a stalled peer blocks forever</li>
+							<li class="note-item"><code>net/netip</code> (1.18) has small, comparable <code>Addr</code> / <code>AddrPort</code> types</li>
+							<li class="note-item"><code>net.Dialer{Timeout, KeepAlive}</code> for fine-grained control</li>
+							<li class="note-item">Network names: <code>"tcp"</code>, <code>"tcp4"</code>, <code>"udp"</code>, <code>"unix"</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">TCP Echo Server &amp; Client</h2>
+						<pre class="language-go"><code class="language-go">ln, err := net.Listen("tcp", ":9000")
+if err != nil { log.Fatal(err) }
+for {
+    conn, err := ln.Accept()
+    if err != nil { continue }
+    go func(c net.Conn) {                      // one goroutine per conn
+        defer c.Close()
+        c.SetDeadline(time.Now().Add(time.Minute))
+        sc := bufio.NewScanner(c)
+        for sc.Scan() { fmt.Fprintf(c, "echo: %s
+", sc.Text()) }
+    }(conn)
+}
+
+conn, err := net.DialTimeout("tcp", "localhost:9000", 3*time.Second)
+fmt.Fprintln(conn, "hello")
+reply, _ := bufio.NewReader(conn).ReadString('
+') // echo: hello
+
+pc, _ := net.ListenPacket("udp", ":9001")       // UDP
+n, addr, _ := pc.ReadFrom(buf); pc.WriteTo(buf[:n], addr)
+ap := netip.MustParseAddrPort("10.0.0.1:443")  // ap.Addr(), ap.Port()</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Accept</code> loop — handle each connection concurrently</div>
+							<div class="explain-item"><code>SetDeadline</code> — absolute time limit for reads + writes</div>
+							<div class="explain-item"><code>bufio.Scanner</code> over <code>conn</code> — line-based protocol</div>
+							<div class="explain-item"><code>ListenPacket</code> / <code>ReadFrom</code> / <code>WriteTo</code> — UDP datagrams</div>
+							<div class="explain-item"><code>netip</code> — value-type IP addresses</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — ≈ <code>socket</code> module, plus goroutines</li>
+							<li class="note-item"><strong>Node</strong> — ≈ <code>net.createServer</code></li>
+							<li class="note-item"><strong>C</strong> — ≈ BSD sockets, without <code>select</code>/<code>epoll</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Functions Table | Conn Methods Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-functions">
+						<h2 class="section-title">Functions</h2>
+						<table>
+							<thead><tr><th>Func</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>net.Listen</td><td class="desc">TCP/Unix server</td></tr>
+								<tr><td>net.Dial / DialTimeout</td><td class="desc">client connect</td></tr>
+								<tr><td>net.ListenPacket</td><td class="desc">UDP socket</td></tr>
+								<tr><td>net.LookupHost / LookupIP</td><td class="desc">DNS</td></tr>
+								<tr><td>net.SplitHostPort</td><td class="desc">"h:p" → h, p</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-conn-methods">
+						<h2 class="section-title">Conn Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>Read / Write</td><td class="desc">io.Reader/Writer</td></tr>
+								<tr><td>SetDeadline(t)</td><td class="desc">read + write limit</td></tr>
+								<tr><td>SetReadDeadline</td><td class="desc">read only</td></tr>
+								<tr><td>RemoteAddr()</td><td class="desc">peer address</td></tr>
+								<tr><td>Close()</td><td class="desc">close socket</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Handling connections inline in the Accept loop; one slow client blocks all others</li>
+							<li class="note-item">No deadlines on connections; idle or malicious peers leak goroutines</li>
+							<li class="note-item">Assuming one <code>Read</code> returns one full message; TCP is a byte stream, frame your protocol</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>net.JoinHostPort</code> to build addresses (handles IPv6 brackets)</li>
+							<li class="note-item">Prefix messages with a length (<code>binary.BigEndian</code>) to frame them</li>
+							<li class="note-item">Prefer HTTP/gRPC unless you need a custom protocol</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>net.Listen</code> + <code>Accept</code> + <code>go handle</code></li>
+							<li class="note-item"><code>net.Dial</code> / <code>DialTimeout</code> — clients</li>
+							<li class="note-item"><code>SetDeadline</code> — avoid hangs</li>
+							<li class="note-item"><code>ListenPacket</code> — UDP; <code>netip</code> — addresses</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-109-http-production.html" class="nav-link prev">Production HTTP Servers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-111-quick-reference-syntax-types.html" class="nav-link next">Quick Reference — Syntax &amp; Types</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

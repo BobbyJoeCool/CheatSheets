@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 18: Scheduling &amp; Node Placement</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Scheduling &amp; Node Placement</h1>
+			<div class="sheet-desc">nodeSelector · node affinity · pod anti-affinity · taints &amp; tolerations · topologySpreadConstraints · drain</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Controlling Where Pods Land</h2>
+						<div class="description">The scheduler filters nodes that fit a pod's requests, then scores them. You steer it with <strong>nodeSelector</strong> and <strong>node affinity</strong> (pod wants certain nodes), <strong>pod affinity / anti-affinity</strong> (near or away from other pods), <strong>topology spread</strong> (even out across zones or nodes) and <strong>taints</strong>, which repel pods unless they carry a matching <strong>toleration</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>required…</code> rules are hard; <code>preferred…</code> rules are weighted hints</li>
+							<li class="note-item"><code>…IgnoredDuringExecution</code>: running pods aren't evicted if labels change</li>
+							<li class="note-item">A toleration allows a tainted node; it doesn't attract pods there</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Placement Rules</h2>
+						<pre><code class="language-yaml">spec:
+  nodeSelector: { kubernetes.io/arch: arm64 }   # simple must-match
+  affinity:
+    podAntiAffinity:                    # keep replicas apart
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector: { matchLabels: { app: web } }
+            topologyKey: kubernetes.io/hostname
+  topologySpreadConstraints:            # even across zones
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector: { matchLabels: { app: web } }
+  tolerations:                          # may use GPU nodes
+    - { key: gpu, operator: Exists, effect: NoSchedule }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>nodeSelector</code> — node must have every label</div>
+							<div class="explain-item"><code>topologyKey: hostname</code> — "apart" means different nodes</div>
+							<div class="explain-item"><code>maxSkew: 1</code> — zone pod counts differ by at most 1</div>
+							<div class="explain-item"><code>ScheduleAnyway</code> — soft; <code>DoNotSchedule</code> — hard</div>
+							<div class="explain-item"><code>operator: Exists</code> — any value of the key</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Nodecmd Table | Effect Table + Labels Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-nodecmd">
+						<h2 class="section-title">Node Commands (kubectl …)</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>cordon worker-1</td><td class="desc">No new pods</td></tr>
+								<tr><td>drain worker-1 --ignore-daemonsets --delete-emptydir-data</td><td class="desc">Evict for maintenance</td></tr>
+								<tr><td>uncordon worker-1</td><td class="desc">Schedulable again</td></tr>
+								<tr><td>taint nodes worker-1 gpu=true:NoSchedule</td><td class="desc">Add taint</td></tr>
+								<tr><td>taint nodes worker-1 gpu-</td><td class="desc">Remove taint</td></tr>
+								<tr><td>label nodes worker-1 disktype=ssd</td><td class="desc">Add label</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-effect">
+						<h2 class="section-title">Taint Effects</h2>
+						<table>
+							<thead><tr><th>Effect</th><th>Pods Without Toleration</th></tr></thead>
+							<tbody>
+								<tr><td>NoSchedule</td><td class="desc">Not scheduled</td></tr>
+								<tr><td>PreferNoSchedule</td><td class="desc">Avoided if possible</td></tr>
+								<tr><td>NoExecute</td><td class="desc">Evicted too</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section id="tbl-labels">
+						<h2 class="section-title">Well-Known Labels</h2>
+						<table>
+							<thead><tr><th>Label</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>kubernetes.io/hostname</td><td class="desc">worker-1</td></tr>
+								<tr><td>topology.kubernetes.io/zone</td><td class="desc">us-east-1a</td></tr>
+								<tr><td>node.kubernetes.io/instance-type</td><td class="desc">m7g.large</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Hard anti-affinity with more replicas than nodes — extra pods stay Pending</li>
+							<li class="note-item">Expecting a toleration to pin pods to tainted nodes — add affinity too</li>
+							<li class="note-item"><code>drain</code> without a PDB — every replica may be evicted at once</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer topology spread over pod anti-affinity for spreading</li>
+							<li class="note-item">Dedicated nodes = taint + toleration + node affinity together</li>
+							<li class="note-item"><code>describe pod</code> Events show which filter failed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>nodeSelector / nodeAffinity</code> — pick nodes</li>
+							<li class="note-item"><code>taints + tolerations</code> — keep pods off</li>
+							<li class="note-item"><code>cordon / drain / uncordon</code> — maintenance</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-17-requests-limits-quotas.html" class="nav-link prev" title="Requests, Limits &amp; Quotas">Requests &amp; Limits</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-19-autoscaling-disruptions.html" class="nav-link next" title="Autoscaling &amp; Disruption Budgets">Autoscaling &amp; PDBs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

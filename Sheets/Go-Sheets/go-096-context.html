@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 096: context</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s096">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 096</div>
+			<h1>context</h1>
+			<div class="sheet-desc">context.Background / TODO · WithCancel / WithTimeout / WithDeadline · ctx.Done() / ctx.Err() · WithCancelCause / context.Cause · WithValue (unexported key types) · AfterFunc / WithoutCancel · ctx as the first param</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">context</h2>
+						<div class="description">A <code>context.Context</code> carries a <strong>cancellation signal</strong>, an optional <strong>deadline</strong>, and request-scoped values across API boundaries and goroutines. Every function that does I/O or may block should accept <code>ctx context.Context</code> as its <strong>first parameter</strong> and stop when <code>ctx.Done()</code> closes. Derived contexts form a tree: canceling a parent cancels all its children.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Never store a context in a struct; pass it explicitly</li>
+							<li class="note-item">Always call the <code>cancel</code> func (usually <code>defer cancel()</code>)</li>
+							<li class="note-item">Use <code>WithValue</code> only for request-scoped data (IDs), not optional params</li>
+							<li class="note-item"><code>ctx.Err()</code> is <code>context.Canceled</code> or <code>context.DeadlineExceeded</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Cancellation &amp; Deadlines</h2>
+						<pre class="language-go"><code class="language-go">func fetch(ctx context.Context, url string) (*http.Response, error) {
+    req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+    return http.DefaultClient.Do(req)        // aborts on cancel
+}
+
+ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+defer cancel()
+resp, err := fetch(ctx, url)
+if errors.Is(err, context.DeadlineExceeded) { /* too slow */ }
+
+for {                                        // worker loop
+    select {
+    case &lt;-ctx.Done(): return ctx.Err()      // stop promptly
+    case j := &lt;-jobs: handle(ctx, j)
+    }
+}
+
+ctx2, cancelC := context.WithCancelCause(parent)
+cancelC(errShutdown); context.Cause(ctx2)    // errShutdown
+stop := context.AfterFunc(ctx, cleanup)      // run on cancel
+type ctxKey struct{}; ctx = context.WithValue(ctx, ctxKey{}, reqID)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>NewRequestWithContext</code> — HTTP honors cancellation</div>
+							<div class="explain-item"><code>WithTimeout</code> + <code>defer cancel()</code> — bounded work</div>
+							<div class="explain-item"><code>DeadlineExceeded</code> — distinguish timeouts</div>
+							<div class="explain-item"><code>ctx.Done()</code> in <code>select</code> — cooperative stop</div>
+							<div class="explain-item">unexported key type — avoids <code>WithValue</code> collisions</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>JS</strong> — ≈ <code>AbortController</code> / <code>AbortSignal</code></li>
+							<li class="note-item"><strong>C#</strong> — ≈ <code>CancellationToken</code></li>
+							<li class="note-item"><strong>Python</strong> — ≈ <code>asyncio</code> task cancellation + timeouts</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Constructors Table | Methods Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-constructors">
+						<h2 class="section-title">Constructors</h2>
+						<table>
+							<thead><tr><th>Func</th><th>Done when</th></tr></thead>
+							<tbody>
+								<tr><td>Background() / TODO()</td><td class="desc">never (roots)</td></tr>
+								<tr><td>WithCancel(p)</td><td class="desc">cancel() called</td></tr>
+								<tr><td>WithTimeout(p, d)</td><td class="desc">after d</td></tr>
+								<tr><td>WithDeadline(p, t)</td><td class="desc">at time t</td></tr>
+								<tr><td>WithCancelCause(p)</td><td class="desc">cancel(err)</td></tr>
+								<tr><td>WithoutCancel(p)</td><td class="desc">never (keeps values)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-methods">
+						<h2 class="section-title">Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>Done()</td><td class="desc">&lt;-chan struct{}</td></tr>
+								<tr><td>Err()</td><td class="desc">nil / Canceled / DeadlineExceeded</td></tr>
+								<tr><td>Deadline()</td><td class="desc">time, ok</td></tr>
+								<tr><td>Value(key)</td><td class="desc">any</td></tr>
+								<tr><td>context.Cause(ctx)</td><td class="desc">cancel cause</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>cancel()</code>: timers and goroutines leak until the parent ends (<code>go vet lostcancel</code>)</li>
+							<li class="note-item">Passing <code>nil</code> as a context; use <code>context.TODO()</code></li>
+							<li class="note-item">Using <code>context.Background()</code> deep inside handlers, losing the request's cancellation</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">In HTTP handlers use <code>r.Context()</code>; it cancels when the client disconnects</li>
+							<li class="note-item">Use <code>context.WithoutCancel</code> for work that must finish after the request (audit logs)</li>
+							<li class="note-item">In tests, use <code>t.Context()</code> (1.24); it's canceled when the test ends</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ctx</code> first param — cancellation + deadline</li>
+							<li class="note-item"><code>WithTimeout</code> / <code>WithCancel</code> + <code>defer cancel()</code></li>
+							<li class="note-item"><code>&lt;-ctx.Done()</code> / <code>ctx.Err()</code> — react</li>
+							<li class="note-item"><code>WithValue</code> — request-scoped data only</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-095-atomic.html" class="nav-link prev">sync/atomic</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-097-concurrency-patterns.html" class="nav-link next">Concurrency Patterns</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

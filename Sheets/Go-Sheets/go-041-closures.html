@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 041: Closures</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s041">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 041</div>
+			<h1>Closures</h1>
+			<div class="sheet-desc">capture by reference · counter / generator pattern · loop-variable capture (fixed in 1.22) · closures in goroutines · memoization · sync.OnceValue · deferred closures</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Closures</h2>
+						<div class="description">A <strong>closure</strong> is a function literal that <strong>captures variables</strong> from its surrounding scope by reference: it sees and can modify their current values, and they live as long as the closure does. Closures power generators, middleware, deferred cleanups and callbacks. Since <strong>Go 1.22</strong>, loop variables are per-iteration, so capturing them in a loop is safe.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Captured variables are shared, not copied</li>
+							<li class="note-item">Each call to the outer function creates new captured state</li>
+							<li class="note-item">Closures that escape move captured vars to the heap</li>
+							<li class="note-item"><code>sync.OnceValue(f)</code> wraps a closure to run it once (1.21)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Capturing State</h2>
+						<pre class="language-go"><code class="language-go">func counter() func() int {
+    n := 0                      // captured
+    return func() int { n++; return n }
+}
+c1, c2 := counter(), counter()
+c1(); c1()                      // 1, 2
+fmt.Println(c1(), c2())         // 3 1: separate state
+
+x := 1
+show := func() { fmt.Println(x) }
+x = 2
+show()                          // 2: sees the latest value
+
+var funcs []func()
+for i := range 3 {
+    funcs = append(funcs, func() { fmt.Print(i) })
+}
+for _, f := range funcs { f() } // 012 (Go 1.22+)
+
+config := sync.OnceValue(func() Config { return load() })
+cfg := config()                 // load() runs only once</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>n</code> — lives on after <code>counter</code> returns</div>
+							<div class="explain-item"><code>c1</code>, <code>c2</code> — each has its own <code>n</code></div>
+							<div class="explain-item"><code>show()</code> — reads <code>x</code> at call time, not creation</div>
+							<div class="explain-item">loop capture — each iteration's <code>i</code> is distinct (1.22)</div>
+							<div class="explain-item"><code>sync.OnceValue</code> — lazy, thread-safe initialization</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>JS</strong> — closures capture variables, like JS</li>
+							<li class="note-item"><strong>Python</strong> — no <code>nonlocal</code> needed to modify captured vars</li>
+							<li class="note-item"><strong>Java</strong> — captured vars needn't be effectively final</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Closure Uses Table | Loop Capture By Version Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-closure-uses">
+						<h2 class="section-title">Closure Uses</h2>
+						<table>
+							<thead><tr><th>Use</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>generator</td><td class="desc"><code>next := counter()</code></td></tr>
+								<tr><td>middleware</td><td class="desc"><code>func(h Handler) Handler</code></td></tr>
+								<tr><td>deferred cleanup</td><td class="desc"><code>defer func(){…}()</code></td></tr>
+								<tr><td>goroutine body</td><td class="desc"><code>go func(){…}()</code></td></tr>
+								<tr><td>memoization</td><td class="desc"><code>cache</code> map captured</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-loop-capture-by-version">
+						<h2 class="section-title">Loop Capture by Version</h2>
+						<table>
+							<thead><tr><th>go.mod go</th><th>Behavior</th></tr></thead>
+							<tbody>
+								<tr><td>≤ 1.21</td><td class="desc">one shared <code>i</code>: prints 333</td></tr>
+								<tr><td>≥ 1.22</td><td class="desc">per-iteration <code>i</code>: prints 012</td></tr>
+								<tr><td>old fix</td><td class="desc"><code>i := i</code> inside loop</td></tr>
+								<tr><td>vet</td><td class="desc"><code>loopclosure</code> check</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Expecting a closure to snapshot a variable; it reads whatever the variable holds when called</li>
+							<li class="note-item">Goroutines capturing a shared variable they all write: a data race. Pass values as args or lock</li>
+							<li class="note-item">Keeping a closure around that captured a huge slice, preventing it from being freed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Remove old <code>i := i</code> loop copies once your module targets Go 1.22+ (<code>go fix</code> can help)</li>
+							<li class="note-item">Use closures for small adapters; switch to a struct with methods when state grows</li>
+							<li class="note-item">Pass values as parameters (<code>go func(v int){…}(v)</code>) when intent should be explicit</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">closure — func literal + captured vars</li>
+							<li class="note-item">capture is by reference</li>
+							<li class="note-item">per-iteration loop vars — Go 1.22</li>
+							<li class="note-item"><code>sync.OnceValue</code> — run-once closure</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-040-function-values.html" class="nav-link prev">Function Values &amp; Types</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-042-scope-shadowing.html" class="nav-link next">Scope &amp; Shadowing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

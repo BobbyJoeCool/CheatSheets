@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 092: Channels</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s092">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 092</div>
+			<h1>Channels</h1>
+			<div class="sheet-desc">make(chan T) unbuffered · make(chan T, n) buffered · send ch &lt;- v / receive &lt;-ch · v, ok := &lt;-ch · close(ch) (sender closes) · for v := range ch · directional chan&lt;- / &lt;-chan · nil channels block forever</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Channels</h2>
+						<div class="description">A channel is a typed pipe between goroutines: <code>ch &lt;- v</code> sends and <code>v := &lt;-ch</code> receives. An <strong>unbuffered</strong> channel synchronizes sender and receiver (each waits for the other); a <strong>buffered</strong> channel lets senders run ahead until it's full. The sender <strong>closes</strong> a channel to signal "no more values", which ends <code>for range ch</code> loops.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Send on a closed channel → <strong>panic</strong>; close twice → panic</li>
+							<li class="note-item">Receive from a closed channel → zero value, <code>ok == false</code></li>
+							<li class="note-item">Send/receive on a <code>nil</code> channel blocks forever</li>
+							<li class="note-item">Only the sender should close; receivers never close</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Channel Basics</h2>
+						<pre class="language-go"><code class="language-go">ch := make(chan int)              // unbuffered
+go func() {
+    for i := range 3 { ch &lt;- i }  // blocks until received
+    close(ch)                     // signal: done sending
+}()
+for v := range ch {               // ends when closed + drained
+    fmt.Print(v, " ")             // 0 1 2
+}
+
+buf := make(chan string, 2)       // buffered, cap 2
+buf &lt;- "a"; buf &lt;- "b"            // no receiver needed yet
+fmt.Println(len(buf), cap(buf))   // 2 2
+fmt.Println(&lt;-buf)                // a (FIFO)
+
+v, ok := &lt;-ch                     // 0 false: closed
+
+func producer(out chan&lt;- int) { out &lt;- 42 }   // send-only
+func consumer(in &lt;-chan int)  { fmt.Println(&lt;-in) } // receive-only
+
+done := make(chan struct{})       // signal-only channel
+go func() { work(); close(done) }()
+&lt;-done                            // wait for the signal</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">unbuffered — each send waits for a matching receive</div>
+							<div class="explain-item"><code>close(ch)</code> + <code>range</code> — clean end of stream</div>
+							<div class="explain-item">buffered — sends block only when full</div>
+							<div class="explain-item"><code>chan&lt;-</code> / <code>&lt;-chan</code> — direction enforced by the compiler</div>
+							<div class="explain-item"><code>chan struct{}</code> + <code>close</code> — broadcast a one-time signal</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — ≈ <code>queue.Queue</code>, built into the language</li>
+							<li class="note-item"><strong>Java</strong> — ≈ <code>BlockingQueue</code></li>
+							<li class="note-item"><strong>Rust</strong> — ≈ <code>mpsc</code> channels</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Channel States Table | Buffered Or Not Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-channel-states">
+						<h2 class="section-title">Channel States</h2>
+						<table>
+							<thead><tr><th>Operation</th><th>nil / open / closed</th></tr></thead>
+							<tbody>
+								<tr><td>send</td><td class="desc">block / ok or block / panic</td></tr>
+								<tr><td>receive</td><td class="desc">block / value / zero, false</td></tr>
+								<tr><td>close</td><td class="desc">panic / ok / panic</td></tr>
+								<tr><td>len / cap</td><td class="desc">0 / n / n</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-buffered-or-not">
+						<h2 class="section-title">Buffered or Not?</h2>
+						<table>
+							<thead><tr><th>Use</th><th>Choice</th></tr></thead>
+							<tbody>
+								<tr><td>handoff / sync</td><td class="desc">unbuffered</td></tr>
+								<tr><td>bounded queue</td><td class="desc">buffered(n)</td></tr>
+								<tr><td>semaphore</td><td class="desc">buffered(limit)</td></tr>
+								<tr><td>one result from goroutine</td><td class="desc">buffered(1)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Closing from the receiver side, or from multiple senders: "send on closed channel" panics</li>
+							<li class="note-item">Unbuffered send with no receiver in <code>main</code>: "all goroutines are asleep - deadlock!"</li>
+							<li class="note-item">Using buffer size to "fix" a deadlock; it usually just hides a design bug</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use a buffered channel of size 1 so a goroutine can deliver its result and exit even if nobody reads</li>
+							<li class="note-item">Declare directional types in function params to document ownership</li>
+							<li class="note-item">With multiple senders, close via a <code>sync.WaitGroup</code> in a separate goroutine</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>make(chan T[, n])</code> — create</li>
+							<li class="note-item"><code>ch &lt;- v</code> / <code>&lt;-ch</code> — send / receive</li>
+							<li class="note-item"><code>close</code> + <code>range</code> — end a stream</li>
+							<li class="note-item"><code>chan&lt;-</code> / <code>&lt;-chan</code> — directions</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-091-goroutines.html" class="nav-link prev">Goroutines</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-093-select.html" class="nav-link next">select</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

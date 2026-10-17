@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 07: Pods</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s07">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 07</div>
+			<h1>Pods</h1>
+			<div class="sheet-desc">containers · command / args · env · initContainers · sidecars · phases · restartPolicy · imagePullPolicy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Smallest Unit</h2>
+						<div class="description">A <strong>Pod</strong> is one or more containers on one node sharing an IP (talk over <code>localhost</code>) and volumes. <strong>Init containers</strong> run to completion, in order, before the app. A <strong>sidecar</strong> is an init container with <code>restartPolicy: Always</code>: it starts first and runs beside the app. Pods are disposable; controllers create them from a template.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Recreated Pods get a new IP; use a Service</li>
+							<li class="note-item"><code>command</code> = ENTRYPOINT, <code>args</code> = CMD</li>
+							<li class="note-item">Native sidecars are stable since 1.33</li>
+							<li class="note-item">Most Pod spec fields are immutable; recreate instead of editing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Pod Spec</h2>
+						<pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata: { name: api, labels: { app: api } }
+spec:
+  restartPolicy: Always            # Always | OnFailure | Never
+  initContainers:
+    - name: wait-db                # must exit 0 first
+      image: busybox:1.36
+      command: [&quot;sh&quot;, &quot;-c&quot;, &quot;until nc -z db 5432; do sleep 2; done&quot;]
+    - name: logs                   # sidecar: runs alongside
+      image: fluent/fluent-bit:3.1
+      restartPolicy: Always
+  containers:
+    - name: api
+      image: ghcr.io/acme/api:1.4.2
+      command: [&quot;/app/server&quot;]     # overrides ENTRYPOINT
+      args: [&quot;--port=8080&quot;]        # overrides CMD
+      ports: [{ containerPort: 8080, name: http }]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>restartPolicy</code> — Deployments require <code>Always</code></div>
+							<div class="explain-item"><code>initContainers</code> — setup, waits, migrations</div>
+							<div class="explain-item"><code>restartPolicy: Always</code> on init — native sidecar</div>
+							<div class="explain-item"><code>name: http</code> — reference by name in Services/probes</div>
+							<div class="explain-item"><code>until nc -z</code> — blocks the app until the DB port answers</div>
+							<div class="explain-item"><code>image</code> — pin a tag or <code>@sha256:</code> digest</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Phase Table | Reason Table | Pull Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-phase">
+						<h2 class="section-title">Pod Phases</h2>
+						<table>
+							<thead><tr><th>Phase</th><th>Means</th></tr></thead>
+							<tbody>
+								<tr><td>Pending</td><td class="desc">Not scheduled or still pulling</td></tr>
+								<tr><td>Running</td><td class="desc">On a node, a container is up</td></tr>
+								<tr><td>Succeeded</td><td class="desc">All exited 0, no restart</td></tr>
+								<tr><td>Failed</td><td class="desc">All stopped, one failed</td></tr>
+								<tr><td>Unknown</td><td class="desc">Node stopped reporting</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-reason">
+						<h2 class="section-title">Status Reasons</h2>
+						<table>
+							<thead><tr><th>Reason</th><th>Cause</th></tr></thead>
+							<tbody>
+								<tr><td>ImagePullBackOff</td><td class="desc">Bad tag or no auth</td></tr>
+								<tr><td>CrashLoopBackOff</td><td class="desc">Keeps exiting</td></tr>
+								<tr><td>OOMKilled</td><td class="desc">Over memory limit</td></tr>
+								<tr><td>Completed</td><td class="desc">Exited 0</td></tr>
+								<tr><td>ContainerCreating</td><td class="desc">Pulling, mounting volumes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-pull">
+						<h2 class="section-title">imagePullPolicy</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Pulls</th></tr></thead>
+							<tbody>
+								<tr><td>IfNotPresent</td><td class="desc">If missing (pinned tags)</td></tr>
+								<tr><td>Always</td><td class="desc">Every start (<code>:latest</code>)</td></tr>
+								<tr><td>Never</td><td class="desc">Local only</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Bare Pod for an app — not rescheduled when its node dies</li>
+							<li class="note-item"><code>:latest</code> tags — nodes may run different builds</li>
+							<li class="note-item">Setting <code>command</code> skips the image's entrypoint script</li>
+							<li class="note-item">Two containers binding one port — they share a network namespace</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">One main process per container; helpers as sidecars</li>
+							<li class="note-item"><code>kubectl run api --image=… --dry-run=client -o yaml</code></li>
+							<li class="note-item">Name ports and reference them by name</li>
+							<li class="note-item"><code>env</code> from ConfigMaps/Secrets: Sheet 15</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Pod</code> — containers sharing IP + volumes</li>
+							<li class="note-item"><code>initContainers</code> — run first, in order</li>
+							<li class="note-item"><code>command / args</code> — ENTRYPOINT / CMD</li>
+							<li class="note-item"><code>restartPolicy: Always</code> init container — native sidecar</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-06-manifests-labels-selectors.html" class="nav-link prev" title="Manifests, Labels &amp; Selectors">Manifests &amp; Labels</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-08-deployments-rollouts.html" class="nav-link next" title="Deployments &amp; Rollouts">Deployments</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 044: Functional Options &amp; Function Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s044">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 044</div>
+			<h1>Functional Options &amp; Function Patterns</h1>
+			<div class="sheet-desc">type Option func(Server) · WithTimeout(d) Option · NewServer(addr, opts...) · config-struct alternative · decorator / middleware wrapping · recursion (no tail-call optimization) · callback hooks</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Functional Options</h2>
+						<div class="description">Go has no default or named arguments, so configurable constructors use the <strong>functional options</strong> pattern: each option is a function that modifies a config struct, and the constructor takes them as a variadic list. Callers pass only what they need, and new options can be added without breaking anyone. A plain <strong>config struct</strong> is the simpler alternative.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Related Patterns</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Decorator</strong> — wrap a func/handler to add behavior</li>
+							<li class="note-item"><strong>Callback hooks</strong> — func fields called at lifecycle points</li>
+							<li class="note-item"><strong>Recursion</strong> works normally; Go has <strong>no tail-call optimization</strong></li>
+							<li class="note-item">Deep recursion grows the goroutine stack (up to 1 GB)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Options &amp; Decorators</h2>
+						<pre class="language-go"><code class="language-go">type Server struct{ addr string; timeout time.Duration }
+type Option func(*Server)
+
+func WithTimeout(d time.Duration) Option {
+    return func(s *Server) { s.timeout = d }
+}
+
+func NewServer(addr string, opts ...Option) *Server {
+    s := &amp;Server{addr: addr, timeout: 30 * time.Second}
+    for _, opt := range opts { opt(s) }   // apply in order
+    return s
+}
+srv := NewServer(":8080", WithTimeout(5*time.Second))
+
+func timed(f func()) func() {             // decorator
+    return func() { t := time.Now(); f(); log.Println(time.Since(t)) }
+}
+
+func fact(n int) int {                    // recursion
+    if n &lt;= 1 { return 1 }
+    return n * fact(n-1)
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>type Option func(&#42;Server)</code> — each option mutates the config</div>
+							<div class="explain-item">defaults set first, then options override them</div>
+							<div class="explain-item"><code>opts ...Option</code> — zero or more options</div>
+							<div class="explain-item"><code>timed(f)</code> — returns a wrapped function</div>
+							<div class="explain-item"><code>fact</code> — base case first; each call adds a stack frame</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — options ≈ keyword args with defaults</li>
+							<li class="note-item"><strong>Java</strong> — functional options ≈ the builder pattern</li>
+							<li class="note-item"><strong>Python</strong> — decorators ≈ funcs returning wrapped funcs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Options Vs Config Struct Table | Seen In Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-options-vs-config-struct">
+						<h2 class="section-title">Options vs Config Struct</h2>
+						<table>
+							<thead><tr><th>Aspect</th><th>Options / Struct</th></tr></thead>
+							<tbody>
+								<tr><td>Call site</td><td class="desc"><code>New(a, WithX(1))</code> / <code>New(Config{X: 1})</code></td></tr>
+								<tr><td>Defaults</td><td class="desc">in constructor / zero values</td></tr>
+								<tr><td>Validation</td><td class="desc">per option / once</td></tr>
+								<tr><td>Boilerplate</td><td class="desc">more / less</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-seen-in">
+						<h2 class="section-title">Seen In</h2>
+						<table>
+							<thead><tr><th>Library</th><th>Style</th></tr></thead>
+							<tbody>
+								<tr><td>grpc.Dial</td><td class="desc">functional options</td></tr>
+								<tr><td>zap.New</td><td class="desc">functional options</td></tr>
+								<tr><td>http.Server</td><td class="desc">config struct</td></tr>
+								<tr><td>slog.HandlerOptions</td><td class="desc">config struct</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Options that can't report errors; return <code>func(&#42;S) error</code> if validation is needed</li>
+							<li class="note-item">Deep recursion on untrusted input (e.g. nested JSON) without a depth limit</li>
+							<li class="note-item">Exporting the config fields and also offering options; pick one style</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Start with a config struct; switch to options when defaults get complex</li>
+							<li class="note-item">Name options <code>WithXxx</code> so they read well at the call site</li>
+							<li class="note-item">Convert hot recursive functions to loops with an explicit stack</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>type Option func(&#42;T)</code> — option type</li>
+							<li class="note-item"><code>New(req, opts ...Option)</code> — constructor</li>
+							<li class="note-item">decorators — funcs returning wrapped funcs</li>
+							<li class="note-item">recursion — fine, but no TCO</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-043-package-initialization.html" class="nav-link prev">Package Initialization</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-045-arrays.html" class="nav-link next">Arrays</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

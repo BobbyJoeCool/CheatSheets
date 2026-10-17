@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 17: Requests, Limits &amp; Quotas</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Requests, Limits &amp; Quotas</h1>
+			<div class="sheet-desc">requests vs limits · millicores / Mi · QoS classes · OOMKilled · CPU throttling · LimitRange · ResourceQuota</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Sizing Containers</h2>
+						<div class="description"><strong>Requests</strong> are what the scheduler reserves: a pod only lands on a node with that much unrequested CPU and memory. <strong>Limits</strong> are hard caps enforced at runtime: going over the CPU limit gets the container <strong>throttled</strong>; going over the memory limit gets it <strong>OOMKilled</strong>. <strong>LimitRange</strong> sets per-container defaults in a namespace; <strong>ResourceQuota</strong> caps the namespace's totals.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Requests drive scheduling and autoscaling; set them on every container</li>
+							<li class="note-item">Many teams set a memory limit but no CPU limit, to avoid throttling</li>
+							<li class="note-item">With a quota on CPU/memory, pods without requests are rejected</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Resources & Quota</h2>
+						<pre><code class="language-yaml">containers:
+  - name: api
+    image: ghcr.io/acme/api:1.4.2
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }   # reserved for scheduling
+      limits:   { memory: 512Mi }              # hard cap (no CPU limit)
+---
+apiVersion: v1
+kind: ResourceQuota                 # totals for the whole namespace
+metadata: { name: shop-quota, namespace: shop }
+spec:
+  hard:
+    requests.cpu: &quot;8&quot;
+    requests.memory: 16Gi
+    limits.memory: 32Gi
+    pods: &quot;50&quot;
+    persistentvolumeclaims: &quot;10&quot;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>250m</code> — 250 millicores = a quarter of one CPU</div>
+							<div class="explain-item"><code>256Mi</code> — mebibytes (2<sup>20</sup>); <code>M</code> is 10<sup>6</sup></div>
+							<div class="explain-item">Limit only → request defaults to the limit</div>
+							<div class="explain-item"><code>hard</code> — new pods that would exceed it are rejected</div>
+							<div class="explain-item"><code>kubectl describe quota -n shop</code> — used vs hard</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Qos Table | Over Table | Lr Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-qos">
+						<h2 class="section-title">QoS Classes</h2>
+						<table>
+							<thead><tr><th>Class</th><th>When</th><th>Evicted</th></tr></thead>
+							<tbody>
+								<tr><td>Guaranteed</td><td class="desc">requests = limits, all containers</td><td class="desc">Last</td></tr>
+								<tr><td>Burstable</td><td class="desc">Some requests/limits set</td><td class="desc">Middle</td></tr>
+								<tr><td>BestEffort</td><td class="desc">Nothing set</td><td class="desc">First</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-over">
+						<h2 class="section-title">Going Over</h2>
+						<table>
+							<thead><tr><th>Resource</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>CPU limit</td><td class="desc">Throttled (slow, not killed)</td></tr>
+								<tr><td>Memory limit</td><td class="desc">OOMKilled, exit 137</td></tr>
+								<tr><td>Node memory</td><td class="desc">Eviction by QoS + usage</td></tr>
+								<tr><td>Ephemeral disk</td><td class="desc">Evicted</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-lr">
+						<h2 class="section-title">LimitRange Fields</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Sets</th></tr></thead>
+							<tbody>
+								<tr><td>defaultRequest</td><td class="desc">Request if missing</td></tr>
+								<tr><td>default</td><td class="desc">Limit if missing</td></tr>
+								<tr><td>min / max</td><td class="desc">Allowed range</td></tr>
+								<tr><td>maxLimitRequestRatio</td><td class="desc">Limit ÷ request cap</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">No requests — scheduler overpacks nodes and the HPA can't compute utilization</li>
+							<li class="note-item">Memory limit below real peak usage — random OOMKilled restarts</li>
+							<li class="note-item">Tight CPU limits on latency-sensitive apps — throttling spikes p99</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Measure with <code>kubectl top pods</code> before picking numbers</li>
+							<li class="note-item">Set memory request = limit for predictable memory</li>
+							<li class="note-item">Add LimitRange defaults so forgotten specs still get sane values</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>requests</code> — reserved, used to schedule</li>
+							<li class="note-item"><code>limits</code> — CPU throttles, memory kills</li>
+							<li class="note-item"><code>LimitRange / ResourceQuota</code> — defaults / totals</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-16-volumes-persistent-storage.html" class="nav-link prev" title="Volumes &amp; Persistent Storage">Volumes &amp; Storage</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-18-scheduling-node-placement.html" class="nav-link next" title="Scheduling &amp; Node Placement">Scheduling</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 032: defer</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s032">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 032</div>
+			<h1>defer</h1>
+			<div class="sheet-desc">LIFO order · arguments evaluated immediately · defer f.Close() · defer mu.Unlock() · defer-in-loop pitfall · modifying named results · defer func() { … }()</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">defer</h2>
+						<div class="description"><code>defer</code> schedules a function call to run <strong>when the surrounding function returns</strong>, whether normally or by panic. Deferred calls run in <strong>LIFO</strong> order. The call's <strong>arguments are evaluated immediately</strong> at the <code>defer</code> statement, but the call itself runs later. It's Go's tool for cleanup: closing files, unlocking mutexes, ending spans.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Defers run at <strong>function</strong> exit, not block or loop-iteration exit</li>
+							<li class="note-item">Deferred closures can read and modify <strong>named results</strong></li>
+							<li class="note-item"><code>os.Exit</code> skips deferred calls; <code>panic</code> runs them</li>
+							<li class="note-item">Defer cost is near zero since Go 1.14 (open-coded defers)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">defer Patterns</h2>
+						<pre class="language-go"><code class="language-go">func readConfig(path string) (cfg Config, err error) {
+    f, err := os.Open(path)
+    if err != nil { return cfg, err }
+    defer f.Close()                 // runs on every return
+
+    defer func() {                  // sees named result
+        if err != nil { err = fmt.Errorf("cfg: %w", err) }
+    }()
+    return parse(f)
+}
+
+for i := range 3 { defer fmt.Print(i) } // prints 210 (LIFO)
+
+x := 1
+defer fmt.Println("x =", x)  // x = 1 (args evaluated now)
+x = 2
+
+for _, name := range files {        // defer in a loop: wrap
+    func() { f := open(name); defer f.Close(); use(f) }()
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>defer f.Close()</code> — after the error check, never before</div>
+							<div class="explain-item"><code>defer mu.Unlock()</code> — unlock even on early return/panic</div>
+							<div class="explain-item"><code>defer func() { … }()</code> — closure sees the final <code>err</code></div>
+							<div class="explain-item"><code>defer fmt.Println("x =", x)</code> — captures <code>x</code> = 1 immediately</div>
+							<div class="explain-item">Wrap loop bodies in a func so each defer runs per iteration</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — <code>defer</code> ≈ <code>with</code> / <code>finally</code> for cleanup</li>
+							<li class="note-item"><strong>Java</strong> — ≈ try-with-resources, but any call works</li>
+							<li class="note-item"><strong>C#</strong> — ≈ <code>using</code> / <code>finally</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Common Uses Table | Evaluation Timing Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-common-uses">
+						<h2 class="section-title">Common Uses</h2>
+						<table>
+							<thead><tr><th>Resource</th><th>Defer</th></tr></thead>
+							<tbody>
+								<tr><td>file / conn</td><td class="desc"><code>defer f.Close()</code></td></tr>
+								<tr><td>mutex</td><td class="desc"><code>defer mu.Unlock()</code></td></tr>
+								<tr><td>HTTP response</td><td class="desc"><code>defer resp.Body.Close()</code></td></tr>
+								<tr><td>timer / ticker</td><td class="desc"><code>defer t.Stop()</code></td></tr>
+								<tr><td>context</td><td class="desc"><code>defer cancel()</code></td></tr>
+								<tr><td>recover</td><td class="desc"><code>defer func(){ recover() }()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-evaluation-timing">
+						<h2 class="section-title">Evaluation Timing</h2>
+						<table>
+							<thead><tr><th>Part</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>function value</td><td class="desc">at defer</td></tr>
+								<tr><td>arguments</td><td class="desc">at defer</td></tr>
+								<tr><td>call</td><td class="desc">at function return</td></tr>
+								<tr><td>closure body vars</td><td class="desc">at return (latest)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>defer f.Close()</code> before checking <code>err</code>; <code>f</code> is nil and <code>Close</code> panics</li>
+							<li class="note-item">Deferring inside a long loop; files stay open until the function ends</li>
+							<li class="note-item">Ignoring the <code>Close</code> error on files you wrote; write errors may surface there</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Pair acquire + <code>defer</code> release on adjacent lines so they're reviewed together</li>
+							<li class="note-item">For writes, capture the close error: <code>defer func() { err = errors.Join(err, f.Close()) }()</code></li>
+							<li class="note-item">Use a deferred closure to add context to every returned error</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>defer call()</code> — runs at function return</li>
+							<li class="note-item">LIFO — last deferred runs first</li>
+							<li class="note-item">args — evaluated immediately</li>
+							<li class="note-item">closures — can modify named results</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-031-labels-break-continue-goto.html" class="nav-link prev">Labels, break, continue &amp; goto</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-033-errors-as-values.html" class="nav-link next">Errors as Values</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

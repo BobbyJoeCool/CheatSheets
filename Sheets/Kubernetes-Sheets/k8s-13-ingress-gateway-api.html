@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 13: Ingress &amp; Gateway API</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Ingress &amp; Gateway API</h1>
+			<div class="sheet-desc">Ingress rules · ingressClassName · TLS · GatewayClass · Gateway · HTTPRoute · path / header matching</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">HTTP Routing Into the Cluster</h2>
+						<div class="description"><strong>Ingress</strong> routes HTTP(S) by host and path to Services, through an <strong>ingress controller</strong> you install. It's stable but frozen. <strong>Gateway API</strong> is its successor: roles are split into <code>GatewayClass</code> (provider), <code>Gateway</code> (listeners, ports, TLS; owned by ops) and <code>HTTPRoute</code> (owned by app teams), with header matching, traffic weights and more built in.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Both need a controller: Envoy Gateway, Istio, Cilium, Traefik, cloud LBs…</li>
+							<li class="note-item">Community <code>ingress-nginx</code> is retired; plan a migration</li>
+							<li class="note-item">Gateway API CRDs may need installing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-ing">
+						<h2 class="section-title">Ingress</h2>
+						<pre><code class="language-yaml">apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: { name: shop }
+spec:
+  ingressClassName: traefik          # which controller handles it
+  tls: [{ hosts: [shop.acme.io], secretName: shop-tls }]
+  rules:
+    - host: shop.acme.io
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend: { service: { name: api, port: { number: 80 } } }</code></pre>
+					</section>
+					<section class="section-code" id="code-gw">
+						<h2 class="section-title">Gateway API: HTTPRoute</h2>
+						<pre><code class="language-yaml">apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: { name: shop }
+spec:
+  parentRefs: [{ name: public-gw }]  # attach to a Gateway
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /api } }]
+      backendRefs:
+        - { name: api, port: 80, weight: 90 }
+        - { name: api-v2, port: 80, weight: 10 }   # 10% canary</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ingressClassName</code> — picks the controller; list with <code>get ingressclass</code></div>
+							<div class="explain-item"><code>tls.secretName</code> — a <code>kubernetes.io/tls</code> Secret</div>
+							<div class="explain-item"><code>pathType: Prefix</code> — <code>/api</code> matches <code>/api/x</code>, not <code>/apix</code></div>
+							<div class="explain-item"><code>parentRefs</code> — the Gateway must allow routes from this namespace</div>
+							<div class="explain-item"><code>weight</code> — split traffic without a service mesh</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Roles Table | Path Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-roles">
+						<h2 class="section-title">Gateway API Objects</h2>
+						<table>
+							<thead><tr><th>Kind</th><th>Owned By · Holds</th></tr></thead>
+							<tbody>
+								<tr><td>GatewayClass</td><td class="desc">Provider · which controller</td></tr>
+								<tr><td>Gateway</td><td class="desc">Platform team · listeners, ports, TLS</td></tr>
+								<tr><td>HTTPRoute</td><td class="desc">App team · hosts, paths, backends</td></tr>
+								<tr><td>ReferenceGrant</td><td class="desc">Allows cross-namespace refs</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-path">
+						<h2 class="section-title">Ingress pathType</h2>
+						<table>
+							<thead><tr><th>Value</th><th>Matches</th></tr></thead>
+							<tbody>
+								<tr><td>Exact</td><td class="desc">Only that path</td></tr>
+								<tr><td>Prefix</td><td class="desc">Path segments</td></tr>
+								<tr><td>ImplementationSpecific</td><td class="desc">Controller-defined</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">No controller installed — Ingress objects are accepted and do nothing</li>
+							<li class="note-item">Missing <code>ingressClassName</code> with no default class — ignored</li>
+							<li class="note-item">Controller-specific annotations don't port between controllers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">New setups: start with Gateway API</li>
+							<li class="note-item"><code>kubectl describe httproute shop</code> → status shows Accepted / ResolvedRefs</li>
+							<li class="note-item">Automate TLS with cert-manager</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Ingress</code> — host/path → Service, frozen API</li>
+							<li class="note-item"><code>Gateway</code> — listeners, owned by ops</li>
+							<li class="note-item"><code>HTTPRoute</code> — routing rules, owned by apps</li>
+							<li class="note-item">controller required for both</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-12-services-dns.html" class="nav-link prev">Services &amp; DNS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-14-network-policies.html" class="nav-link next">Network Policies</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

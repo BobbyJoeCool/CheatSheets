@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 094: sync Primitives</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s094">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 094</div>
+			<h1>sync Primitives</h1>
+			<div class="sheet-desc">sync.Mutex / RWMutex · sync.WaitGroup &amp; wg.Go (1.25) · sync.Once / OnceFunc / OnceValue · sync.Cond · sync.Map · sync.Pool · never copy locks (vet copylocks)</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">sync Primitives</h2>
+						<div class="description">When goroutines share memory, the <code>sync</code> package protects it. <code>Mutex</code> allows one goroutine at a time; <code>RWMutex</code> allows many readers or one writer. <code>WaitGroup</code> waits for goroutines, <code>Once</code> runs initialization exactly once, and <code>Pool</code> recycles temporary objects. All zero values are ready to use and <strong>must not be copied</strong> after use.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Lock, then <code>defer Unlock()</code> on the next line</li>
+							<li class="note-item">Embed the mutex next to the fields it guards</li>
+							<li class="note-item"><code>sync.OnceFunc</code> / <code>OnceValue</code> / <code>OnceValues</code> (1.21) wrap functions</li>
+							<li class="note-item"><code>go vet</code> copylocks catches accidental copies</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Guarding Shared State</h2>
+						<pre class="language-go"><code class="language-go">type Counter struct {
+    mu sync.Mutex
+    m  map[string]int          // guarded by mu
+}
+func (c *Counter) Inc(k string) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.m[k]++
+}
+
+type Cache struct { mu sync.RWMutex; data map[string]string }
+func (c *Cache) Get(k string) string {
+    c.mu.RLock(); defer c.mu.RUnlock()   // many readers at once
+    return c.data[k]
+}
+
+var wg sync.WaitGroup
+for _, f := range files { wg.Go(func() { process(f) }) } // 1.25
+wg.Wait()
+
+var loadConfig = sync.OnceValue(mustLoad) // computed once
+cfg := loadConfig()</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Lock</code> / <code>defer Unlock</code> — critical section</div>
+							<div class="explain-item"><code>RLock</code> — shared read lock</div>
+							<div class="explain-item"><code>wg.Go</code> — spawn + track (1.25)</div>
+							<div class="explain-item"><code>sync.OnceValue</code> — lazy init with a result</div>
+							<div class="explain-item"><code>sync.Map</code> — specialized concurrent map</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — <code>Mutex</code> ≈ <code>ReentrantLock</code> (not reentrant!)</li>
+							<li class="note-item"><strong>Python</strong> — ≈ <code>threading.Lock</code>; <code>Once</code> ≈ <code>functools.cache</code></li>
+							<li class="note-item"><strong>Java</strong> — <code>WaitGroup</code> ≈ <code>CountDownLatch</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Primitives Table | Sync Map Fits When Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-primitives">
+						<h2 class="section-title">Primitives</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Mutex</td><td class="desc">exclusive access</td></tr>
+								<tr><td>RWMutex</td><td class="desc">read-heavy data</td></tr>
+								<tr><td>WaitGroup</td><td class="desc">wait for goroutines</td></tr>
+								<tr><td>Once / OnceFunc</td><td class="desc">run once</td></tr>
+								<tr><td>Cond</td><td class="desc">wait for condition (rare)</td></tr>
+								<tr><td>Pool</td><td class="desc">reuse temp objects</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sync-map-fits-when">
+						<h2 class="section-title">sync.Map Fits When</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>write once, read many</td><td class="desc">cache</td></tr>
+								<tr><td>disjoint key sets per goroutine</td><td class="desc">low contention</td></tr>
+								<tr><td>otherwise</td><td class="desc">map + Mutex is better</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Passing a struct with a mutex <strong>by value</strong>; each copy has its own lock</li>
+							<li class="note-item">Forgetting to unlock on an early return; use <code>defer</code></li>
+							<li class="note-item">Calling a method that locks from inside another method holding the same lock: deadlock (not reentrant)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep critical sections tiny: copy data out, unlock, then do slow work</li>
+							<li class="note-item">Comment which fields a mutex guards</li>
+							<li class="note-item">Run tests with <code>-race</code> to find unguarded access</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Mutex</code> / <code>RWMutex</code> — protect shared data</li>
+							<li class="note-item"><code>WaitGroup</code> / <code>wg.Go</code> — wait</li>
+							<li class="note-item"><code>Once&#42;</code> — one-time init</li>
+							<li class="note-item">never copy sync types</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-093-select.html" class="nav-link prev">select</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-095-atomic.html" class="nav-link next">sync/atomic</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

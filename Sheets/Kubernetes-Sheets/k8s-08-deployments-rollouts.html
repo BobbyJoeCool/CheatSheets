@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 08: Deployments &amp; Rollouts</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>Deployments &amp; Rollouts</h1>
+			<div class="sheet-desc">ReplicaSet · replicas · RollingUpdate · maxSurge / maxUnavailable · Recreate · rollout undo · scale</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Stateless Apps, Updated Safely</h2>
+						<div class="description">A <strong>Deployment</strong> owns <strong>ReplicaSets</strong>, which keep N identical Pods running. Changing the pod <code>template</code> creates a new ReplicaSet and <strong>rolls</strong> pods over gradually; the old one is kept at 0 replicas so you can <strong>undo</strong>. Changing only <code>replicas</code> scales without a rollout.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Pod names: <code>web-&lt;template-hash&gt;-&lt;id&gt;</code></li>
+							<li class="note-item">Rollouts advance only as new pods turn <strong>Ready</strong></li>
+							<li class="note-item">Stuck after <code>progressDeadlineSeconds</code> (600) = failed, not rolled back</li>
+							<li class="note-item">Need stable names or per-pod disks? Use a StatefulSet (Sheet 09)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Deployment</h2>
+						<pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata: { name: web }
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5        # old ReplicaSets kept for undo
+  selector:
+    matchLabels: { app: web }    # = template labels; immutable
+  strategy:
+    type: RollingUpdate          # or Recreate
+    rollingUpdate:
+      maxSurge: 25%              # extra pods during update
+      maxUnavailable: 0          # never below 3 ready
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers: [{ name: web, image: nginx:1.27 }]</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>replicas</code> — leave out if an HPA scales it</div>
+							<div class="explain-item"><code>revisionHistoryLimit</code> — default 10</div>
+							<div class="explain-item"><code>maxUnavailable: 0</code> — zero downtime, needs spare room</div>
+							<div class="explain-item"><code>template</code> — any change triggers a rollout</div>
+							<div class="explain-item"><code>selector</code> — must match template labels exactly</div>
+							<div class="explain-item"><code>maxSurge: 25%</code> — of 3 replicas rounds up to 1 extra pod</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Rollout Table | Strategy Table + Scale Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-rollout">
+						<h2 class="section-title">Rollout Commands (kubectl rollout …)</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>status deploy/web</td><td class="desc">Wait; non-zero exit on failure</td></tr>
+								<tr><td>history deploy/web</td><td class="desc">List revisions</td></tr>
+								<tr><td>undo deploy/web</td><td class="desc">Previous revision</td></tr>
+								<tr><td>undo deploy/web --to-revision=2</td><td class="desc">Specific revision</td></tr>
+								<tr><td>restart deploy/web</td><td class="desc">New pods, same spec</td></tr>
+								<tr><td>pause / resume deploy/web</td><td class="desc">Batch edits into one rollout</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-strategy">
+						<h2 class="section-title">Strategies</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Behavior</th></tr></thead>
+							<tbody>
+								<tr><td>RollingUpdate</td><td class="desc">Gradual; versions overlap</td></tr>
+								<tr><td>Recreate</td><td class="desc">All down, then up</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section id="tbl-scale">
+						<h2 class="section-title">Scale & Update</h2>
+						<table>
+							<thead><tr><th>kubectl …</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>scale deploy/web --replicas=5</td><td class="desc">Scale</td></tr>
+								<tr><td>set image deploy/web web=nginx:1.28</td><td class="desc">Roll out</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Editing a ConfigMap and expecting a restart — <code>rollout restart</code></li>
+							<li class="note-item">No readiness probe — rollout "succeeds" before pods work</li>
+							<li class="note-item"><code>maxUnavailable: 0</code> on a full cluster — surge pods stay Pending</li>
+							<li class="note-item">Treating <code>rollout undo</code> as a fix — Git still has the bad version</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Gate CI on <code>rollout status --timeout=5m</code></li>
+							<li class="note-item"><code>Recreate</code> when two versions can't coexist</li>
+							<li class="note-item">After <code>undo</code>, fix the manifest in Git too</li>
+							<li class="note-item">Pair with a PodDisruptionBudget for node drains (Sheet 19)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Deployment → ReplicaSet → Pods</code></li>
+							<li class="note-item"><code>maxSurge / maxUnavailable</code> — speed vs capacity</li>
+							<li class="note-item"><code>rollout status / undo / restart</code></li>
+							<li class="note-item"><code>template</code> change — rollout; <code>replicas</code> — scale only</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-07-pods.html" class="nav-link prev">Pods</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-09-statefulsets-daemonsets.html" class="nav-link next">StatefulSets &amp; DaemonSets</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

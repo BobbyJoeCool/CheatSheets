@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 08: Container Lifecycle</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>Container Lifecycle</h1>
+			<div class="sheet-desc">docker ps -a · start / stop / restart · kill · pause · rm -f · container prune · --restart policies · container states</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">States</h2>
+						<div class="description">
+							A container moves through <strong>created → running → (paused) → exited</strong>, and finally <strong>removed</strong>. Stopping keeps the container and its writable layer, so you can start it again with the same config; removing deletes it. Restart policies tell the daemon to bring a container back after it exits or after the host reboots.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Stop vs Kill</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>stop</code> sends <strong>SIGTERM</strong>, waits 10 s, then <strong>SIGKILL</strong></li>
+							<li class="note-item"><code>kill</code> sends SIGKILL right away (or <code>-s</code> another signal)</li>
+							<li class="note-item">Image <code>STOPSIGNAL</code> changes the first signal</li>
+							<li class="note-item"><code>stop -t 30</code> waits 30 s before forcing</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Lifecycle Commands</h2>
+						<pre><code class="language-bash">docker ps                         # running only
+docker ps -a                      # all, including exited
+docker ps -a --filter status=exited --format '{{.Names}}: {{.Status}}'
+docker start web                  # start an existing (stopped) container
+docker start -ai web              # start and attach (interactive)
+docker stop web                   # graceful stop
+docker stop -t 30 web             # longer grace period
+docker restart web
+docker kill web                   # immediate SIGKILL
+docker kill -s HUP web            # send SIGHUP (e.g. reload config)
+docker pause web                  # freeze all processes (unpause to thaw)
+docker rm web                     # remove stopped container
+docker rm -f web                  # stop + remove in one step
+docker container prune            # remove ALL stopped containers
+docker wait web                   # block until it exits, print exit code</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item">Most commands take a name, a full ID or a unique ID prefix (<code>docker stop 3f2</code>)</div>
+							<div class="explain-item">Pass several at once: <code>docker stop web db cache</code></div>
+							<div class="explain-item"><code>docker rm $(docker ps -aq -f status=exited)</code> — remove exited ones</div>
+							<div class="explain-item"><code>docker update --restart=no web</code> changes a policy without recreating</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Restart Table | States Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-restart">
+						<h2 class="section-title">--restart Policies</h2>
+						<table>
+							<thead><tr><th>Policy</th><th>Restarts when…</th><th>After daemon restart</th></tr></thead>
+							<tbody>
+								<tr><td>no</td><td class="desc">Never (default)</td><td class="desc">Stays stopped</td></tr>
+								<tr><td>on-failure[:5]</td><td class="desc">Exit code ≠ 0 (max 5 tries)</td><td class="desc">Only if it had been running</td></tr>
+								<tr><td>always</td><td class="desc">Any exit</td><td class="desc">Always started</td></tr>
+								<tr><td>unless-stopped</td><td class="desc">Any exit</td><td class="desc">Started unless you stopped it</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-states">
+						<h2 class="section-title">docker ps Status Column</h2>
+						<table>
+							<thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>Up 3 minutes</td><td class="desc">Running</td></tr>
+								<tr><td>Up … (healthy)</td><td class="desc">Running + passing HEALTHCHECK</td></tr>
+								<tr><td>Exited (0)</td><td class="desc">Finished OK</td></tr>
+								<tr><td>Exited (137)</td><td class="desc">Killed (SIGKILL / out of memory)</td></tr>
+								<tr><td>Restarting (1)</td><td class="desc">Crash loop under a restart policy</td></tr>
+								<tr><td>Created</td><td class="desc">Never started</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Expecting <code>docker stop</code> to be instant — apps that ignore SIGTERM wait the full 10 s, then get killed</li>
+							<li class="note-item">Using <code>always</code> for one-off jobs — they restart forever; use <code>on-failure</code> or <code>no</code></li>
+							<li class="note-item"><code>docker container prune</code> on a shared host — deletes everyone's stopped containers</li>
+							<li class="note-item">Debugging a crash loop by restarting — read <code>docker logs</code> first (Sheet 09)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>unless-stopped</code> for long-running services on a single host</li>
+							<li class="note-item">Make your app handle SIGTERM to shut down cleanly within the grace period</li>
+							<li class="note-item">Filter with <code>-f name=</code>, <code>-f label=</code>, <code>-f status=</code>, <code>-f ancestor=nginx</code></li>
+							<li class="note-item">Use <code>docker wait</code> in scripts to get a job's exit code</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>stop</code> / <code>kill</code> — SIGTERM+grace vs SIGKILL</li>
+							<li class="note-item"><code>rm -f</code> — force stop + remove</li>
+							<li class="note-item"><code>--restart unless-stopped</code> — survive reboots</li>
+							<li class="note-item"><code>ps -a</code> — see exited containers too</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-07-running-containers.html">Running Containers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-09-logs-inspecting.html">Logs &amp; Inspecting</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

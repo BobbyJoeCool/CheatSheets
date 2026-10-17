@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 095: sync/atomic</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s095">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 095</div>
+			<h1>sync/atomic</h1>
+			<div class="sheet-desc">atomic.Int64 / Int32 / Uint64 / Bool · atomic.Pointer[T] · atomic.Value · Load / Store / Add / Swap · CompareAndSwap · counters &amp; flags · atomics vs mutexes</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Atomic Operations</h2>
+						<div class="description"><code>sync/atomic</code> performs <strong>lock-free</strong> reads and writes on single values. The typed wrappers (<code>atomic.Int64</code>, <code>atomic.Bool</code>, <code>atomic.Pointer[T]</code>) added in Go 1.19 are the preferred API: they can't be accessed non-atomically by accident and are correctly aligned. Use atomics for counters, flags and swapping immutable snapshots; use a mutex when several values must change together.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Every access to an atomic must be atomic (no mixing with plain reads)</li>
+							<li class="note-item"><code>CompareAndSwap</code> is the building block of lock-free updates</li>
+							<li class="note-item"><code>atomic.Pointer[T]</code> swaps whole immutable structs (config reload)</li>
+							<li class="note-item"><code>go fix</code> modernizer <code>atomictypes</code> (1.27) migrates old calls</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Typed Atomics</h2>
+						<pre class="language-go"><code class="language-go">var requests atomic.Int64
+requests.Add(1)                       // safe from many goroutines
+fmt.Println(requests.Load())          // 1
+
+var ready atomic.Bool; ready.Store(true)
+old := hits.Swap(0)                   // read + reset (atomic.Uint32)
+
+var state atomic.Int32
+if state.CompareAndSwap(0, 1) {       // only one winner
+    start()
+}
+
+type Config struct{ Limit int }
+var cfg atomic.Pointer[Config]
+cfg.Store(&amp;Config{Limit: 10})
+go func() { cfg.Store(&amp;Config{Limit: 20}) }() // hot reload
+limit := cfg.Load().Limit             // readers never block
+
+var n int64
+atomic.AddInt64(&amp;n, 1)                // old func style; prefer types</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>atomic.Int64</code> — methods <code>Add</code>, <code>Load</code>, <code>Store</code>, <code>Swap</code>, <code>CAS</code></div>
+							<div class="explain-item"><code>atomic.Bool</code> — lock-free flag</div>
+							<div class="explain-item"><code>Swap</code> — set and return the previous value</div>
+							<div class="explain-item"><code>CompareAndSwap(old, new)</code> — succeed only if unchanged</div>
+							<div class="explain-item"><code>atomic.Pointer[T]</code> — publish new immutable snapshots</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — ≈ <code>AtomicLong</code>, <code>AtomicReference</code></li>
+							<li class="note-item"><strong>C++</strong> — ≈ <code>std::atomic&lt;T&gt;</code></li>
+							<li class="note-item"><strong>Rust</strong> — ≈ <code>AtomicI64</code>, <code>AtomicBool</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Types Table | Atomic Or Mutex Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-types">
+						<h2 class="section-title">Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Holds</th></tr></thead>
+							<tbody>
+								<tr><td>atomic.Int32 / Int64</td><td class="desc">signed ints</td></tr>
+								<tr><td>atomic.Uint32 / Uint64 / Uintptr</td><td class="desc">unsigned</td></tr>
+								<tr><td>atomic.Bool</td><td class="desc">bool</td></tr>
+								<tr><td>atomic.Pointer[T]</td><td class="desc">*T</td></tr>
+								<tr><td>atomic.Value</td><td class="desc">any (same type each Store)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-atomic-or-mutex">
+						<h2 class="section-title">Atomic or Mutex?</h2>
+						<table>
+							<thead><tr><th>Case</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>single counter</td><td class="desc">atomic</td></tr>
+								<tr><td>flag / state</td><td class="desc">atomic</td></tr>
+								<tr><td>read-mostly snapshot</td><td class="desc">atomic.Pointer</td></tr>
+								<tr><td>several fields together</td><td class="desc">mutex</td></tr>
+								<tr><td>map / slice updates</td><td class="desc">mutex</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Mixing <code>atomic.AddInt64(&amp;n, 1)</code> with plain <code>n++</code> elsewhere: data race</li>
+							<li class="note-item">Check-then-act with <code>Load</code> then <code>Store</code> instead of <code>CompareAndSwap</code></li>
+							<li class="note-item">Mutating the struct behind an <code>atomic.Pointer</code> instead of storing a new one</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer typed atomics over the function API</li>
+							<li class="note-item">Expose metrics counters as <code>atomic.Int64</code> fields</li>
+							<li class="note-item">Benchmark: under low contention a mutex is often just as fast and clearer</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>atomic.Int64</code> etc. — lock-free values</li>
+							<li class="note-item"><code>Add</code> / <code>Load</code> / <code>Store</code> / <code>Swap</code></li>
+							<li class="note-item"><code>CompareAndSwap</code> — conditional update</li>
+							<li class="note-item"><code>atomic.Pointer[T]</code> — swap snapshots</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-094-sync-primitives.html" class="nav-link prev">sync Primitives</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-096-context.html" class="nav-link next">context</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 29: Security &amp; Best Practices</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>Security &amp; Best Practices</h1>
+			<div class="sheet-desc">non-root USER · --cap-drop ALL · --security-opt no-new-privileges · secrets not ENV · pin by digest · docker scout cves · SBOM · minimal base images</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Defense in Depth</h2>
+						<div class="description">
+							Containers share the host kernel, so a container running as root with extra privileges is only a short step from root on the host. Good practice layers several controls: small trusted base images, non-root users, dropped capabilities, read-only filesystems, secrets kept out of images, and regular vulnerability scans.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Never Do</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>--privileged</code> for normal apps (full host device access)</li>
+							<li class="note-item">Mount <code>/var/run/docker.sock</code> into untrusted containers</li>
+							<li class="note-item">Bake passwords into <code>ENV</code>, <code>ARG</code> or <code>COPY</code>'d files</li>
+							<li class="note-item">Run unpinned <code>latest</code> images in production</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Locked-Down Run</h2>
+						<pre><code class="language-bash">docker run -d --name api \
+  --user 10001:10001 \
+  --read-only --tmpfs /tmp \
+  --cap-drop ALL --cap-add NET_BIND_SERVICE \
+  --security-opt no-new-privileges \
+  --memory 512m --cpus 1 --pids-limit 100 \
+  -p 127.0.0.1:8080:8080 \
+  ghcr.io/acme/api:1.4.2@sha256:&lt;digest&gt;
+
+docker scout quickview ghcr.io/acme/api:1.4.2     # summary of CVEs
+docker scout cves --only-severity critical,high ghcr.io/acme/api:1.4.2
+docker scout recommendations ghcr.io/acme/api:1.4.2   # better base images
+docker buildx build --sbom=true --provenance=mode=max \
+  -t ghcr.io/acme/api:1.4.2 --push .</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>--user</code> — non-root UID (also set <code>USER</code> in the Dockerfile)</div>
+							<div class="explain-item"><code>--cap-drop ALL</code> then add back only what's needed</div>
+							<div class="explain-item"><code>no-new-privileges</code> — blocks setuid binaries from gaining root</div>
+							<div class="explain-item"><code>@sha256:</code> — run exactly the image you scanned</div>
+							<div class="explain-item"><code>--sbom</code> / <code>--provenance</code> — attach a package list and build record to the image</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Checklist Table | Runtime Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-checklist">
+						<h2 class="section-title">Image Checklist</h2>
+						<table>
+							<thead><tr><th>Practice</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>Minimal base</td><td class="desc"><code>-slim</code>, <code>alpine</code>, distroless, hardened images</td></tr>
+								<tr><td>Multi-stage</td><td class="desc">No compilers in the final image</td></tr>
+								<tr><td>Non-root</td><td class="desc"><code>USER 10001</code> in Dockerfile</td></tr>
+								<tr><td>No secrets</td><td class="desc"><code>RUN --mount=type=secret</code></td></tr>
+								<tr><td>Rebuild often</td><td class="desc"><code>--pull</code> to pick up base patches</td></tr>
+								<tr><td>Scan in CI</td><td class="desc"><code>docker scout cves --exit-code</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-runtime">
+						<h2 class="section-title">Runtime Checklist</h2>
+						<table>
+							<thead><tr><th>Practice</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>Drop capabilities</td><td class="desc"><code>--cap-drop ALL</code></td></tr>
+								<tr><td>Read-only root</td><td class="desc"><code>--read-only</code> + <code>--tmpfs</code></td></tr>
+								<tr><td>Limit resources</td><td class="desc"><code>--memory</code>, <code>--pids-limit</code></td></tr>
+								<tr><td>Private ports</td><td class="desc"><code>-p 127.0.0.1:…</code></td></tr>
+								<tr><td>Rootless daemon</td><td class="desc"><code>dockerd-rootless-setuptool.sh</code></td></tr>
+								<tr><td>Isolate (Desktop)</td><td class="desc">Enhanced Container Isolation</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Adding <code>--privileged</code> to "fix" a permission error — find the one capability or device actually needed</li>
+							<li class="note-item">Scanning once and never again — new CVEs appear daily; scan on every build and on a schedule</li>
+							<li class="note-item">Deleting a secret in a later layer (<code>RUN rm .env</code>) — it still exists in the earlier layer</li>
+							<li class="note-item">Trusting any image on Docker Hub — prefer Docker Official Images and Verified Publishers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Add <code>--exit-code</code> to <code>docker scout cves</code> in CI to fail builds with critical CVEs</li>
+							<li class="note-item">Rebuild images weekly with <code>--pull</code> even when your code hasn't changed</li>
+							<li class="note-item">Use read-only bind mounts (<code>:ro</code>) for config files</li>
+							<li class="note-item">Run Docker Bench for Security or similar checks against hosts</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>USER</code> / <code>--user</code> — never root</li>
+							<li class="note-item"><code>--cap-drop ALL</code> + <code>no-new-privileges</code></li>
+							<li class="note-item"><code>@sha256:</code> — pin what you scanned</li>
+							<li class="note-item"><code>docker scout cves</code> — find and fix vulnerabilities</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-28-cleanup-troubleshooting.html">Cleanup &amp; Troubleshooting</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-30-quick-reference-cli.html" title="Quick Reference — CLI Commands">Quick Ref — CLI</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

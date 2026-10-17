@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 19: Autoscaling &amp; Disruption Budgets</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Autoscaling &amp; Disruption Budgets</h1>
+			<div class="sheet-desc">HorizontalPodAutoscaler · kubectl autoscale · metrics-server · VPA · Cluster Autoscaler · Karpenter · PodDisruptionBudget</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Scaling Pods and Nodes</h2>
+						<div class="description">The <strong>HorizontalPodAutoscaler</strong> (HPA) changes a workload's <code>replicas</code> to hold a target metric, usually CPU utilization <em>relative to requests</em>. The <strong>VerticalPodAutoscaler</strong> adjusts the requests themselves. When pods don't fit, <strong>Cluster Autoscaler</strong> or <strong>Karpenter</strong> adds nodes. A <strong>PodDisruptionBudget</strong> limits how many pods voluntary disruptions (drains, upgrades, scale-down) may take at once.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Resource metrics need <strong>metrics-server</strong> installed</li>
+							<li class="note-item">Remove <code>replicas</code> from Git manifests the HPA manages</li>
+							<li class="note-item">PDBs don't protect against node crashes (involuntary)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">HPA + PDB</h2>
+						<pre><code class="language-yaml">apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: web }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: web }
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: web }
+spec:
+  minAvailable: 2                   # or maxUnavailable: 1
+  selector: { matchLabels: { app: web } }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>scaleTargetRef</code> — Deployment, StatefulSet, or any <code>/scale</code></div>
+							<div class="explain-item"><code>averageUtilization: 70</code> — 70% of the CPU <em>request</em></div>
+							<div class="explain-item"><code>behavior:</code> — tune scale-up/down speed (default 5 min down window)</div>
+							<div class="explain-item"><code>minAvailable</code> — drains wait while fewer would remain</div>
+							<div class="explain-item"><code>selector</code> — same pods as the Deployment</div>
+							<div class="explain-item"><code>maxReplicas</code> — a cost ceiling; set it deliberately</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Layers Table | Hpacmd Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-layers">
+						<h2 class="section-title">Autoscalers</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Scales</th></tr></thead>
+							<tbody>
+								<tr><td>HPA</td><td class="desc">Pod count from metrics</td></tr>
+								<tr><td>VPA</td><td class="desc">Pod requests (add-on)</td></tr>
+								<tr><td>KEDA</td><td class="desc">Pods from events/queues, to zero</td></tr>
+								<tr><td>Cluster Autoscaler</td><td class="desc">Node groups for Pending pods</td></tr>
+								<tr><td>Karpenter</td><td class="desc">Right-sized nodes on demand</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-hpacmd">
+						<h2 class="section-title">Commands (kubectl …)</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>autoscale deploy web --max=10 --cpu-percent=70</td><td class="desc">Create HPA</td></tr>
+								<tr><td>get hpa -w</td><td class="desc">Watch targets vs current</td></tr>
+								<tr><td>describe hpa web</td><td class="desc">Scaling events</td></tr>
+								<tr><td>top pods</td><td class="desc">Live CPU/memory</td></tr>
+								<tr><td>get pdb</td><td class="desc">Allowed disruptions</td></tr>
+								<tr><td>get hpa web -o yaml</td><td class="desc">Current metrics, conditions</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">HPA on pods with no CPU requests — target shows <code>&lt;unknown&gt;</code></li>
+							<li class="note-item">HPA and VPA both acting on CPU — they fight; use one per resource</li>
+							<li class="note-item">PDB <code>minAvailable</code> = replicas — drains block forever</li>
+							<li class="note-item">Expecting instant scale-up — new nodes can take minutes to join</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Set <code>minReplicas</code> ≥ 2 for anything user-facing</li>
+							<li class="note-item">Scale on custom metrics (RPS, queue depth) via adapters or KEDA</li>
+							<li class="note-item">Run VPA in <code>Off</code> mode to get request recommendations</li>
+							<li class="note-item">Pair HPA with Cluster Autoscaler or Karpenter so new pods have room</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>HPA</code> — replicas from metrics</li>
+							<li class="note-item"><code>Cluster Autoscaler / Karpenter</code> — nodes</li>
+							<li class="note-item"><code>PDB</code> — cap voluntary disruptions</li>
+							<li class="note-item"><code>VPA</code> — right-size requests</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-18-scheduling-node-placement.html" class="nav-link prev" title="Scheduling &amp; Node Placement">Scheduling</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-20-rbac-serviceaccounts.html" class="nav-link next" title="RBAC &amp; ServiceAccounts">RBAC</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

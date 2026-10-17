@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Gradle — Sheet 20: Build Cache &amp; Configuration Cache</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gradle-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Build Cache &amp; Configuration Cache</h1>
+			<div class="sheet-desc">
+				--build-cache · org.gradle.caching · --configuration-cache · org.gradle.configuration-cache · problems report · UP-TO-DATE vs FROM-CACHE
+			</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Two Different Caches</h2>
+						<div class="description">
+							The <strong>build cache</strong> stores task <strong>outputs</strong> keyed by their inputs, so a task whose inputs were seen before (on any branch, or on another machine with a remote cache) is restored <code>FROM-CACHE</code> instead of run. The <strong>configuration cache</strong> stores the <strong>task graph</strong> after configuration, so the next run with the same tasks skips running build scripts entirely. Gradle 9 treats the configuration cache as the preferred mode; turn both on in <code>gradle.properties</code>.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>UP-TO-DATE</code> — outputs already in <code>build/</code>; <code>FROM-CACHE</code> — restored</li>
+							<li class="note-item">Cached tasks need declared inputs/outputs (sheet 22)</li>
+							<li class="note-item">Config-cache problems are listed in an HTML report under <code>build/reports/configuration-cache/</code></li>
+							<li class="note-item">Local cache: <code>~/.gradle/caches/build-cache-1</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Explain + Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Turning Them On + a Remote Cache</h2>
+						<pre><code class="language-kotlin">// gradle.properties
+//   org.gradle.caching=true
+//   org.gradle.configuration-cache=true
+//   org.gradle.configuration-cache.problems=warn   # while migrating
+
+// settings.gradle.kts — share outputs between CI and developers
+buildCache {
+    local { isEnabled = true }
+    remote&lt;HttpBuildCache&gt; {
+        url = uri("https://cache.example.com/cache/")
+        isPush = providers.environmentVariable("CI").isPresent  // CI writes
+        credentials { username = "ci"; password = providers
+            .environmentVariable("CACHE_PASSWORD").orNull }
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>org.gradle.caching=true</code> — same as <code>--build-cache</code> every run</div>
+							<div class="explain-item"><code>configuration-cache=true</code> — same as <code>--configuration-cache</code></div>
+							<div class="explain-item"><code>problems=warn</code> — report problems without failing</div>
+							<div class="explain-item"><code>remote&lt;HttpBuildCache&gt;</code> — a shared HTTP cache node</div>
+							<div class="explain-item"><code>isPush</code> only on CI — developers read, CI writes</div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-groovy">
+						<h2 class="section-title">In Groovy DSL</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>local { isEnabled = true }</code> → <code>local { enabled = true }</code></div>
+							<div class="explain-item"><code>remote&lt;HttpBuildCache&gt; { }</code> → <code>remote(HttpBuildCache) { }</code></div>
+							<div class="explain-item"><code>isPush = ….isPresent</code> → <code>push = ….present</code></div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-langs">
+						<h2 class="section-title">Java vs Kotlin Projects</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>compileJava</code> and <code>compileKotlin</code> are both cacheable</div>
+							<div class="explain-item">Kotlin — compiles in its own Kotlin daemon; tune with <code>kotlin.daemon.jvmargs</code></div>
+							<div class="explain-item">Kotlin plugin supports the configuration cache — keep it current</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Msgs Table | Fixes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-msgs">
+						<h2 class="section-title">What You'll See</h2>
+						<table>
+							<thead><tr><th>Message</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>Configuration cache entry stored.</td><td class="desc">First run with these tasks</td></tr>
+								<tr><td>Reusing configuration cache.</td><td class="desc">Scripts skipped</td></tr>
+								<tr><td>:compileJava FROM-CACHE</td><td class="desc">Output restored</td></tr>
+								<tr><td>:test UP-TO-DATE</td><td class="desc">Nothing changed</td></tr>
+								<tr><td>Calculating task graph as … has changed</td><td class="desc">A build file changed</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-fixes">
+						<h2 class="section-title">Common Config-Cache Problems</h2>
+						<table>
+							<thead><tr><th>Problem</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td><code>project</code> used at execution time</td><td class="desc">Capture values into <code>val</code>s before <code>doLast</code></td></tr>
+								<tr><td><code>System.getenv()</code> read</td><td class="desc"><code>providers.environmentVariable()</code></td></tr>
+								<tr><td><code>project.exec { }</code></td><td class="desc"><code>providers.exec</code> or inject <code>ExecOperations</code></td></tr>
+								<tr><td><code>buildDir</code> / <code>project.file</code> in actions</td><td class="desc"><code>layout.buildDirectory</code>, captured early</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Confusing the two caches — the build cache saves task work; the configuration cache saves script evaluation</li>
+							<li class="note-item">Letting every developer push to the remote cache — one bad machine can poison it</li>
+							<li class="note-item">Using absolute paths as task inputs — cache keys differ per machine; use <code>@PathSensitive(RELATIVE)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Try <code>./gradlew build --configuration-cache</code> before enabling it in properties</li>
+							<li class="note-item">Run <code>./gradlew clean build</code> twice: the second should be mostly <code>FROM-CACHE</code></li>
+							<li class="note-item">A build scan's Performance tab shows cache hits and misses</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Build cache — reuse task outputs</li>
+							<li class="note-item">Configuration cache — reuse the task graph</li>
+							<li class="note-item"><code>org.gradle.caching=true</code> — enable the build cache</li>
+							<li class="note-item"><code>org.gradle.configuration-cache=true</code> — enable the config cache</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gradle-19-composite-builds.html" class="nav-link prev">Composite Builds</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Gradle Reference · 27 Sheets</a>
+				<a href="gradle-21-daemon-tuning.html" class="nav-link next" title="Daemon &amp; Build Tuning">Daemon &amp; Tuning</a>
+			</nav>
+		</footer>
+
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

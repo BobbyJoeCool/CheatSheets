@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 043: Package Initialization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s043">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 043</div>
+			<h1>Package Initialization</h1>
+			<div class="sheet-desc">package var init order (dependency-based) · func init() · multiple init per file · import-order init · side-effect imports import _ "…" · avoid heavy init · sync.Once lazy init</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Package Initialization</h2>
+						<div class="description">Before <code>main</code> runs, Go initializes every imported package <strong>once</strong>, dependencies first. Within a package, package-level variables are initialized in <strong>dependency order</strong> (not file order), then every <code>init()</code> function runs in the order the files are presented to the compiler. A blank import <code>import _ "pkg"</code> runs a package's init purely for its side effects.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">A file can have <strong>multiple</strong> <code>init()</code> functions</li>
+							<li class="note-item"><code>init</code> takes no args, returns nothing, and can't be called</li>
+							<li class="note-item">Imported packages finish initializing before the importer</li>
+							<li class="note-item">Initialization runs in a single goroutine</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Init Order</h2>
+						<pre class="language-go"><code class="language-go">package app
+
+import (                        // side-effect imports
+    _ "image/png"               // registers PNG decoder
+    _ "github.com/lib/pq"       // registers "postgres" driver
+)
+
+var a = b + 1          // initialized second (needs b)
+var b = f()            // initialized first
+func f() int { return 41 }
+
+func init() {          // runs after all package vars
+    fmt.Println("init 1:", a)   // init 1: 42
+}
+func init() {          // multiple inits are allowed
+    registry["json"] = jsonCodec{}
+}
+var loadCfg = sync.OnceValue(readConfig) // lazy alternative</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>a</code> depends on <code>b</code>, so <code>b</code> initializes first</div>
+							<div class="explain-item"><code>init()</code> — after every package-level var is set</div>
+							<div class="explain-item">two <code>init</code> funcs — run in source order</div>
+							<div class="explain-item"><code>_ "image/png"</code> — import only for its <code>init</code> registration</div>
+							<div class="explain-item"><code>sync.OnceValue</code> — defer expensive setup until first use</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — <code>init()</code> ≈ static initializer blocks</li>
+							<li class="note-item"><strong>Python</strong> — ≈ module-level code run on import</li>
+							<li class="note-item"><strong>JS</strong> — side-effect imports ≈ <code>import 'polyfill'</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Full Order Table | Side Effect Imports Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-full-order">
+						<h2 class="section-title">Full Order</h2>
+						<table>
+							<thead><tr><th>Step</th><th>What</th></tr></thead>
+							<tbody>
+								<tr><td class="center">1</td><td class="desc">imported packages (recursively)</td></tr>
+								<tr><td class="center">2</td><td class="desc">package-level vars, by dependency</td></tr>
+								<tr><td class="center">3</td><td class="desc"><code>init()</code> funcs, file order</td></tr>
+								<tr><td class="center">4</td><td class="desc"><code>main.main()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-side-effect-imports">
+						<h2 class="section-title">Side-Effect Imports</h2>
+						<table>
+							<thead><tr><th>Import</th><th>Registers</th></tr></thead>
+							<tbody>
+								<tr><td>_ "image/jpeg"</td><td class="desc">image.Decode format</td></tr>
+								<tr><td>_ "time/tzdata"</td><td class="desc">embedded time zones</td></tr>
+								<tr><td>_ "embed"</td><td class="desc">enables //go:embed string</td></tr>
+								<tr><td>_ "modernc.org/sqlite"</td><td class="desc">sql driver</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Doing network or file I/O in <code>init</code>; failures can't be returned and tests become slow</li>
+							<li class="note-item">Relying on <code>init</code> order across files; it depends on file naming</li>
+							<li class="note-item">Mutable global registries filled in <code>init</code> that tests can't reset</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer explicit <code>New…</code> constructors called from <code>main</code> over <code>init</code> side effects</li>
+							<li class="note-item">Use <code>sync.OnceValue</code> / <code>OnceFunc</code> for lazy, error-aware setup</li>
+							<li class="note-item">Keep <code>init</code> for cheap registrations and constant tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">deps → package vars → <code>init()</code> → <code>main</code></li>
+							<li class="note-item">vars — dependency order</li>
+							<li class="note-item"><code>init()</code> — automatic, multiple allowed</li>
+							<li class="note-item"><code>import _</code> — side effects only</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-042-scope-shadowing.html" class="nav-link prev">Scope &amp; Shadowing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-044-functional-options.html" class="nav-link next">Functional Options &amp; Function Patterns</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Gradle — Sheet 12: Conflicts, Constraints &amp; Platforms</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gradle-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Conflicts, Constraints &amp; Platforms</h1>
+			<div class="sheet-desc">
+				highest-version wins · constraints { } · platform() / BOMs · enforcedPlatform · exclude · strictly / require / prefer · dependency locking
+			</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Resolving Versions</h2>
+						<div class="description">
+							When two paths in the graph ask for different versions of one module, Gradle picks the <strong>highest</strong> version by default (Maven picks the nearest). <strong>Constraints</strong> and <strong>platforms</strong> (BOMs) let you steer that choice without adding dependencies, and <strong>rich versions</strong> say how firm a version is. Use <code>dependencyInsight</code> to see which version won and why.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">A BOM is a POM of versions; <code>platform()</code> imports it as constraints</li>
+							<li class="note-item"><code>enforcedPlatform</code> overrides even higher transitive versions</li>
+							<li class="note-item">Constraints apply only if something else pulls the module in</li>
+							<li class="note-item">Locking (<code>--write-locks</code>) freezes dynamic versions for repeatable builds</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Explain + Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Steering Resolution</h2>
+						<pre><code class="language-kotlin">dependencies {
+    implementation(platform(libs.spring.boot.bom))       // import a BOM
+    implementation("com.fasterxml.jackson.core:jackson-databind")  // no version
+    constraints {
+        implementation("org.yaml:snakeyaml:2.4") { because("CVE fix") }
+    }
+    implementation("com.example:client:1.2") {
+        exclude(group = "commons-logging", module = "commons-logging")
+    }
+    implementation("org.slf4j:slf4j-api") {
+        version { strictly("[2.0, 3.0[") }               // any 2.x, never 3
+    }
+}
+configurations.all { resolutionStrategy.failOnVersionConflict() }
+dependencyLocking { lockAllConfigurations() }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>platform(...)</code> — versions from the BOM become constraints</div>
+							<div class="explain-item"><code>constraints { }</code> — minimum version if the module appears at all</div>
+							<div class="explain-item"><code>because("…")</code> — shows up in <code>dependencyInsight</code> output</div>
+							<div class="explain-item"><code>exclude(...)</code> — drop one transitive dependency</div>
+							<div class="explain-item"><code>strictly("[2.0, 3.0[")</code> — a range nothing can override</div>
+							<div class="explain-item"><code>failOnVersionConflict()</code> — make every conflict a build error</div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-groovy">
+						<h2 class="section-title">In Groovy DSL</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>implementation(platform(x))</code> → <code>implementation platform(x)</code></div>
+							<div class="explain-item"><code>exclude(group = "a", module = "b")</code> → <code>exclude group: 'a', module: 'b'</code></div>
+							<div class="explain-item"><code>version { strictly("…") }</code> → <code>version { strictly '…' }</code></div>
+						</div>
+					</section>
+					<section class="section-explain" id="explain-langs">
+						<h2 class="section-title">Java vs Kotlin Projects</h2>
+						<div class="section-body">
+							<div class="explain-item">Same conflict rules for Java and Kotlin dependencies</div>
+							<div class="explain-item">Kotlin — align Kotlin modules with <code>platform("org.jetbrains.kotlin:kotlin-bom:…")</code></div>
+							<div class="explain-item">Kotlin — coroutines: <code>platform("org.jetbrains.kotlinx:kotlinx-coroutines-bom:…")</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Rich Table | Tools Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-rich">
+						<h2 class="section-title">Rich Versions</h2>
+						<table>
+							<thead><tr><th>Keyword</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>require("1.2")</td><td class="desc">At least 1.2 (same as a plain version)</td></tr>
+								<tr><td>prefer("1.4")</td><td class="desc">Use 1.4 if nothing asks for more</td></tr>
+								<tr><td>strictly("1.3")</td><td class="desc">Exactly 1.3 — fails if impossible</td></tr>
+								<tr><td>reject("1.3.1")</td><td class="desc">Never pick this version</td></tr>
+								<tr><td>"1.+" / "[1.0,2.0)"</td><td class="desc">Dynamic / range — lock these</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-tools">
+						<h2 class="section-title">Commands</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Shows</th></tr></thead>
+							<tbody>
+								<tr><td>dependencyInsight --dependency jackson</td><td class="desc">Why this version won</td></tr>
+								<tr><td>dependencies --configuration runtimeClasspath</td><td class="desc">Resolved tree</td></tr>
+								<tr><td>dependencies --write-locks</td><td class="desc">Write <code>gradle.lockfile</code></td></tr>
+								<tr><td>build --refresh-dependencies</td><td class="desc">Re-check remote versions</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>enforcedPlatform</code> in a published library — it forces versions on every consumer; keep it to applications</li>
+							<li class="note-item">Using <code>exclude</code> to fix a version clash — it removes the module entirely; use a constraint instead</li>
+							<li class="note-item">Leaving <code>1.+</code> versions unlocked — builds change silently when a new release appears</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Add <code>because("…")</code> to every constraint so the reason survives review</li>
+							<li class="note-item">Spring Boot: use <code>SpringBootPlugin.BOM_COORDINATES</code> instead of hard-coding the BOM</li>
+							<li class="note-item">Fix CVEs in transitive libs with a constraint, not a direct dependency</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Highest version wins — Gradle's default</li>
+							<li class="note-item"><code>platform(bom)</code> — import aligned versions</li>
+							<li class="note-item"><code>constraints { }</code> — set a version without a dependency</li>
+							<li class="note-item"><code>dependencyInsight</code> — explain a resolution</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gradle-11-version-catalogs.html" class="nav-link prev">Version Catalogs</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Gradle Reference · 27 Sheets</a>
+				<a href="gradle-13-java-plugin-source-sets.html" class="nav-link next">Java Plugin &amp; Source Sets</a>
+			</nav>
+		</footer>
+
+		<!-- Prism: syntax highlighting (no defer — loads after DOM is built) -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

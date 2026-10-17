@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 24: Compose Workflows</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s24">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 24</div>
+			<h1>Compose Workflows</h1>
+			<div class="sheet-desc">compose exec vs run --rm · build --pull · watch / develop.watch · -f override files · compose.override.yaml · config · include · --scale</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Working with a Stack Day to Day</h2>
+						<div class="description">
+							Beyond <code>up</code> and <code>down</code>, Compose has commands for one-off tasks, live code sync during development, and layering files for different environments. Compose automatically merges <code>compose.override.yaml</code> on top of <code>compose.yaml</code>, which is the usual place for dev-only settings.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">exec vs run</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>exec</code> — command in the <strong>running</strong> service container</li>
+							<li class="note-item"><code>run --rm</code> — new one-off container from the service config</li>
+							<li class="note-item"><code>run</code> skips <code>ports</code> unless you add <code>--service-ports</code></li>
+							<li class="note-item"><code>run</code> starts dependencies first</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Commands</h2>
+						<pre><code class="language-bash">docker compose exec web sh                        # shell in running container
+docker compose run --rm web npm test              # one-off container
+docker compose run --rm --no-deps web rake db:migrate
+
+docker compose build --pull web                   # rebuild with fresh base
+docker compose up -d --force-recreate web
+docker compose up -d --scale worker=3             # 3 worker containers
+docker compose watch                              # sync + rebuild on change
+
+docker compose -f compose.yaml -f compose.prod.yaml up -d
+docker compose config                             # final merged YAML
+docker compose ls                                 # all projects on host</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>--no-deps</code> — don't start linked services</div>
+							<div class="explain-item"><code>--force-recreate</code> — new containers even if config is unchanged</div>
+							<div class="explain-item"><code>--scale</code> fails if the service has <code>container_name</code> or a fixed host port</div>
+							<div class="explain-item">Later <code>-f</code> files override earlier ones key by key</div>
+							<div class="explain-item">Lists like <code>ports</code> are <strong>merged</strong>, not replaced</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Code | Code -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-code" id="code-watch">
+						<h2 class="section-title">develop.watch</h2>
+						<pre><code class="language-yaml">services:
+  web:
+    build: .
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+        - action: sync+restart
+          path: ./config
+          target: /app/config
+        - action: rebuild
+          path: package.json</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-code" id="code-include">
+						<h2 class="section-title">include + override</h2>
+						<pre><code class="language-yaml"># compose.yaml
+include:
+  - ./db/compose.yaml      # own project dir
+services:
+  web:
+    build: .
+
+# compose.override.yaml (auto-loaded)
+services:
+  web:
+    volumes: ["./src:/app/src"]
+    environment: { DEBUG: "1" }</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Running tests with <code>exec</code> and finding the dev server's state — use <code>run --rm</code> for a clean container</li>
+							<li class="note-item">Prod deploy picking up <code>compose.override.yaml</code> — pass <code>-f compose.yaml -f compose.prod.yaml</code> explicitly</li>
+							<li class="note-item"><code>watch</code> with a bind mount of the same folder — files sync twice; use one or the other</li>
+							<li class="note-item">Expecting <code>--scale</code> to load-balance published ports — use a proxy (Traefik, nginx) in front</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>sync</code> for interpreted code, <code>sync+restart</code> for config, <code>rebuild</code> for dependency files</li>
+							<li class="note-item">Use <code>docker compose config &gt; resolved.yaml</code> to review exactly what will deploy</li>
+							<li class="note-item"><code>include</code> lets each team own its own Compose file while sharing one stack</li>
+							<li class="note-item"><code>docker compose ls</code> finds stacks you forgot were running</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>exec</code> vs <code>run --rm</code> — existing vs fresh container</li>
+							<li class="note-item"><code>watch</code> — live sync / rebuild</li>
+							<li class="note-item"><code>-f a -f b</code> / override file — layer configs</li>
+							<li class="note-item"><code>config</code> — print the final merged model</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-23-compose-volumes-networks-secrets.html" title="Compose Volumes, Networks &amp; Secrets">Compose Volumes &amp; Secrets</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-25-swarm-setup-nodes.html">Swarm Setup &amp; Nodes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

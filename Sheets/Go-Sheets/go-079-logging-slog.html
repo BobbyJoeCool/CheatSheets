@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 079: Logging: log &amp; slog</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s079">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 079</div>
+			<h1>Logging: log &amp; slog</h1>
+			<div class="sheet-desc">log.Println / Printf / Fatal · log.SetFlags / SetPrefix · slog.Info key-value pairs · slog.NewJSONHandler / TextHandler · levels &amp; HandlerOptions · slog.With / Group · slog.SetDefault · LogValuer</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Logging: log &amp; slog</h2>
+						<div class="description">The classic <code>log</code> package writes timestamped lines to stderr; <code>log.Fatal</code> also exits. <strong><code>log/slog</code></strong> (Go 1.21) is the standard <strong>structured logger</strong>: each record has a level, a message and key-value <strong>attributes</strong>, rendered by a handler as text or JSON. Use <code>slog</code> for anything that runs in production.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Levels: <code>Debug</code> (-4), <code>Info</code> (0), <code>Warn</code> (4), <code>Error</code> (8)</li>
+							<li class="note-item"><code>slog.SetDefault</code> also routes the old <code>log</code> package through slog</li>
+							<li class="note-item">Typed attrs (<code>slog.Int</code>, <code>slog.String</code>) avoid allocations</li>
+							<li class="note-item"><code>LogValuer</code> controls how a type is logged (redact secrets)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">log and slog</h2>
+						<pre class="language-go"><code class="language-go">log.SetFlags(log.LstdFlags | log.Lshortfile)
+log.SetPrefix("[api] ")
+log.Println("starting")  // [api] 2026/10/16 14:30:00 main.go:12: …
+// log.Fatalf("bad config: %v", err) // logs, then os.Exit(1)
+
+slog.Info("user login", "user", "ann", "attempts", 3)
+// time=… level=INFO msg="user login" user=ann attempts=3
+
+h := slog.NewJSONHandler(os.Stdout, &amp;slog.HandlerOptions{
+    Level:     slog.LevelDebug,
+    AddSource: true,
+})
+logger := slog.New(h)
+slog.SetDefault(logger)
+
+reqLog := logger.With("request_id", rid)   // child logger
+reqLog.Warn("slow query", slog.Duration("took", d),
+    slog.Group("db", "table", "users", "rows", 120))
+reqLog.ErrorContext(ctx, "save failed", "err", err)
+
+type Token string
+func (Token) LogValue() slog.Value { return slog.StringValue("REDACTED") }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>log.Lshortfile</code> — add file:line to each line</div>
+							<div class="explain-item"><code>slog.Info(msg, k, v, …)</code> — alternating key-value pairs</div>
+							<div class="explain-item"><code>NewJSONHandler</code> — machine-readable output</div>
+							<div class="explain-item"><code>logger.With(…)</code> — attach attrs to every later record</div>
+							<div class="explain-item"><code>LogValue</code> — custom/redacted rendering</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — <code>logging</code> ≈ <code>log/slog</code></li>
+							<li class="note-item"><strong>Java</strong> — SLF4J + Logback ≈ <code>slog</code> + handlers</li>
+							<li class="note-item"><strong>JS</strong> — pino / winston JSON ≈ <code>JSONHandler</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Slog Api Table | Handlers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-slog-api">
+						<h2 class="section-title">slog API</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>slog.Debug/Info/Warn/Error</td><td class="desc">log at level</td></tr>
+								<tr><td>…Context(ctx, …)</td><td class="desc">pass ctx to handler</td></tr>
+								<tr><td>slog.With(attrs…)</td><td class="desc">child logger</td></tr>
+								<tr><td>slog.Group(name, …)</td><td class="desc">nested attrs</td></tr>
+								<tr><td>slog.SetLogLoggerLevel</td><td class="desc">level for <code>log</code> pkg</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-handlers">
+						<h2 class="section-title">Handlers</h2>
+						<table>
+							<thead><tr><th>Handler</th><th>Output</th></tr></thead>
+							<tbody>
+								<tr><td>TextHandler</td><td class="desc"><code>key=value</code> lines</td></tr>
+								<tr><td>JSONHandler</td><td class="desc">one JSON object/line</td></tr>
+								<tr><td>DiscardHandler</td><td class="desc">drop all (1.24)</td></tr>
+								<tr><td>custom</td><td class="desc">implement <code>slog.Handler</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Odd number of key-value args: you get <code>!BADKEY</code> in the output (<code>go vet</code> checks this)</li>
+							<li class="note-item"><code>log.Fatal</code> inside libraries or goroutines; it kills the process and skips defers</li>
+							<li class="note-item">Logging secrets (tokens, passwords) as attributes; implement <code>LogValuer</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Create one logger in <code>main</code> and pass it (or ctx) down; avoid globals in libraries</li>
+							<li class="note-item">Use JSON in production, Text in local dev</li>
+							<li class="note-item">Use <code>slog.LevelVar</code> to change log level at runtime</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>log</code> — simple timestamped lines</li>
+							<li class="note-item"><code>slog</code> — structured, leveled logging</li>
+							<li class="note-item"><code>slog.With</code> — contextual child loggers</li>
+							<li class="note-item"><code>JSONHandler</code> / <code>TextHandler</code> — output format</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-078-flag-cli.html" class="nav-link prev">Command-Line Flags</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-080-hashing-crypto-uuid.html" class="nav-link next">Hashing, Crypto &amp; UUIDs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 102: Profiling &amp; Tracing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s102">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 102</div>
+			<h1>Profiling &amp; Tracing</h1>
+			<div class="sheet-desc">-cpuprofile / -memprofile · runtime/pprof · net/http/pprof /debug/pprof/ · go tool pprof -http=:8080 · flame graphs · go tool trace · trace.FlightRecorder (1.25) · PGO with default.pgo</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Profiling &amp; Tracing</h2>
+						<div class="description"><strong>pprof</strong> shows where a program spends CPU and memory; the <strong>execution tracer</strong> shows what goroutines, the scheduler and GC were doing over time. Profiles come from tests (<code>-cpuprofile</code>), from code (<code>runtime/pprof</code>), or from a live server via <code>net/http/pprof</code>. Go 1.25 added a <strong>flight recorder</strong> that keeps the last few seconds of trace in memory, and <strong>PGO</strong> feeds a profile back into the compiler.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Profile before optimizing; intuition about hot spots is often wrong</li>
+							<li class="note-item">Expose <code>/debug/pprof</code> only on an internal port</li>
+							<li class="note-item"><code>default.pgo</code> in the main package enables PGO automatically (2-14% gains)</li>
+							<li class="note-item">Go 1.27 adds the <code>goroutineleak</code> profile</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Collecting Profiles</h2>
+						<pre class="language-go"><code class="language-go">import _ "net/http/pprof"           // registers /debug/pprof/*
+go http.ListenAndServe("localhost:6060", nil)
+
+f, _ := os.Create("cpu.out")        // programmatic CPU profile
+pprof.StartCPUProfile(f)
+defer pprof.StopCPUProfile()
+
+fr := trace.NewFlightRecorder(trace.FlightRecorderConfig{
+    MinAge: 5 * time.Second,        // keep last ~5s (1.25)
+})
+fr.Start()
+if slowRequest { fr.WriteTo(traceFile) } // snapshot on anomaly
+
+// $ go test -bench=. -cpuprofile cpu.out -memprofile mem.out
+// $ go tool pprof -http=:8080 cpu.out          # web UI + flame graph
+// $ go tool pprof http://localhost:6060/debug/pprof/heap
+// $ curl -o trace.out localhost:6060/debug/pprof/trace?seconds=5
+// $ go tool trace trace.out
+// $ cp cpu.out ./cmd/app/default.pgo &amp;&amp; go build ./cmd/app  # PGO</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>_ "net/http/pprof"</code> — adds handlers to the default mux</div>
+							<div class="explain-item"><code>StartCPUProfile</code> — sample CPU until stopped</div>
+							<div class="explain-item"><code>FlightRecorder</code> — rolling in-memory trace buffer</div>
+							<div class="explain-item"><code>pprof -http</code> — interactive graphs and flame graph</div>
+							<div class="explain-item"><code>default.pgo</code> — profile-guided optimization</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — ≈ <code>cProfile</code> / py-spy</li>
+							<li class="note-item"><strong>Java</strong> — ≈ async-profiler / JFR</li>
+							<li class="note-item"><strong>Node</strong> — ≈ <code>--prof</code>, Chrome DevTools</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Profiles Table | Pprof Commands Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-profiles">
+						<h2 class="section-title">Profiles</h2>
+						<table>
+							<thead><tr><th>Profile</th><th>Shows</th></tr></thead>
+							<tbody>
+								<tr><td>profile (CPU)</td><td class="desc">where time goes</td></tr>
+								<tr><td>heap / allocs</td><td class="desc">live memory / allocations</td></tr>
+								<tr><td>goroutine</td><td class="desc">all goroutine stacks</td></tr>
+								<tr><td>block / mutex</td><td class="desc">contention (enable rate)</td></tr>
+								<tr><td>goroutineleak</td><td class="desc">leaked goroutines (1.27)</td></tr>
+								<tr><td>trace</td><td class="desc">timeline of events</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pprof-commands">
+						<h2 class="section-title">pprof Commands</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>top10</td><td class="desc">hottest functions</td></tr>
+								<tr><td>list Func</td><td class="desc">annotated source</td></tr>
+								<tr><td>web</td><td class="desc">call graph (graphviz)</td></tr>
+								<tr><td>-diff_base old.out</td><td class="desc">compare profiles</td></tr>
+								<tr><td>-http=:8080</td><td class="desc">browser UI</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Exposing <code>/debug/pprof</code> on a public port; it leaks internals and can be abused</li>
+							<li class="note-item">Profiling a debug build or a tiny input that doesn't reflect production</li>
+							<li class="note-item">Reading <code>flat</code> vs <code>cum</code> wrong: <code>cum</code> includes time in callees</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Start with the flame graph view; it makes wide (expensive) stacks obvious</li>
+							<li class="note-item">Enable <code>runtime.SetMutexProfileFraction</code> / <code>SetBlockProfileRate</code> only when investigating</li>
+							<li class="note-item">Commit a representative <code>default.pgo</code> and refresh it periodically</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>pprof</code> — CPU, heap, goroutine profiles</li>
+							<li class="note-item"><code>net/http/pprof</code> — live server profiling</li>
+							<li class="note-item"><code>go tool trace</code> + flight recorder — timelines</li>
+							<li class="note-item">PGO — <code>default.pgo</code> speeds up builds</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-101-benchmarks-fuzzing.html" class="nav-link prev">Benchmarks, Fuzzing &amp; Examples</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-103-formatting-vet-linters.html" class="nav-link next">Formatting, Vet &amp; Linters</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

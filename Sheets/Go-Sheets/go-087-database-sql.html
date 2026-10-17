@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 087: database/sql</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s087">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 087</div>
+			<h1>database/sql</h1>
+			<div class="sheet-desc">sql.Open(driver, dsn) + blank driver import · QueryContext / rows.Next / Scan · QueryRowContext · ExecContext / RowsAffected · ? vs $1 placeholders · BeginTx / Commit / Rollback · sql.Null[T] · pool settings</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">database/sql</h2>
+						<div class="description"><code>database/sql</code> is a driver-agnostic API over a <strong>connection pool</strong>. You import a driver for its side effect (<code>_ "github.com/jackc/pgx/v5/stdlib"</code>), open a <code>&#42;sql.DB</code> once, and share it everywhere. Always use <strong>placeholders</strong> for parameters, always <code>Close</code> rows, and pass a <code>context</code> so queries can be canceled.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>sql.Open</code> doesn't connect; call <code>db.PingContext</code> to verify</li>
+							<li class="note-item"><code>&#42;sql.DB</code> is safe for concurrent use; don't open one per request</li>
+							<li class="note-item"><code>QueryRow</code> returns <code>sql.ErrNoRows</code> from <code>Scan</code> if nothing matched</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Query, Exec, Transactions</h2>
+						<pre class="language-go"><code class="language-go">db, err := sql.Open("pgx", os.Getenv("DATABASE_URL")) // check err, then:
+defer db.Close()
+db.SetMaxOpenConns(20); db.SetConnMaxIdleTime(5 * time.Minute)
+
+var name string
+err = db.QueryRowContext(ctx, "SELECT name FROM users WHERE id=$1", 7).
+    Scan(&amp;name)
+if errors.Is(err, sql.ErrNoRows) { return ErrNotFound }
+
+rows, err := db.QueryContext(ctx, "SELECT id, email FROM users")
+if err != nil { return err }
+defer rows.Close()
+for rows.Next() {
+    var id int; var email sql.Null[string]   // nullable
+    if err := rows.Scan(&amp;id, &amp;email); err != nil { return err }
+}
+if err := rows.Err(); err != nil { return err }
+
+res, err := db.ExecContext(ctx, "DELETE FROM users WHERE id=$1", 7)
+n, _ := res.RowsAffected()
+
+tx, err := db.BeginTx(ctx, nil)
+defer tx.Rollback()                       // no-op after Commit
+tx.ExecContext(ctx, "INSERT INTO audit(msg) VALUES ($1)", "x")
+err = tx.Commit()</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>sql.Open("pgx", dsn)</code> — driver name + data source</div>
+							<div class="explain-item"><code>QueryRowContext(…).Scan</code> — single row</div>
+							<div class="explain-item"><code>defer rows.Close()</code> + <code>rows.Err()</code> — always both</div>
+							<div class="explain-item"><code>ExecContext</code> — INSERT/UPDATE/DELETE</div>
+							<div class="explain-item"><code>defer tx.Rollback()</code> — safe even after <code>Commit</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — ≈ DB-API (<code>cursor.execute</code>)</li>
+							<li class="note-item"><strong>Java</strong> — ≈ JDBC <code>PreparedStatement</code> + pool</li>
+							<li class="note-item"><strong>Node</strong> — ≈ <code>pg</code> pool queries</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Placeholders Table | Pool Settings Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-placeholders">
+						<h2 class="section-title">Placeholders</h2>
+						<table>
+							<thead><tr><th>Database</th><th>Style</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>$1, $2</code></td></tr>
+								<tr><td>MySQL / SQLite</td><td class="desc"><code>?</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>@p1</code> / <code>@name</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pool-settings">
+						<h2 class="section-title">Pool Settings</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>SetMaxOpenConns</td><td class="desc">cap total connections</td></tr>
+								<tr><td>SetMaxIdleConns</td><td class="desc">idle pool size</td></tr>
+								<tr><td>SetConnMaxLifetime</td><td class="desc">recycle connections</td></tr>
+								<tr><td>SetConnMaxIdleTime</td><td class="desc">close idle ones</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>rows.Close()</code>; connections leak until the pool is exhausted</li>
+							<li class="note-item">Skipping <code>rows.Err()</code>; network errors mid-iteration look like "fewer rows"</li>
+							<li class="note-item">Scanning a NULL into a plain <code>string</code>: "converting NULL to string is unsupported"</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Wrap <code>sql.ErrNoRows</code> into your own <code>ErrNotFound</code> at the repository layer</li>
+							<li class="note-item">Use <code>Prepare</code> for statements executed many times in a loop</li>
+							<li class="note-item">Keep transactions short and always pass <code>ctx</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>sql.Open</code> once — pooled <code>&#42;sql.DB</code></li>
+							<li class="note-item"><code>QueryRow</code> / <code>Query</code> / <code>Exec</code> (+Context)</li>
+							<li class="note-item"><code>rows.Close</code> + <code>rows.Err</code> — every time</li>
+							<li class="note-item"><code>BeginTx</code> + <code>defer Rollback</code> + <code>Commit</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-086-reflection.html" class="nav-link prev">Reflection</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-088-build-tags-cross-compile.html" class="nav-link next">Build Tags &amp; Cross-Compilation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

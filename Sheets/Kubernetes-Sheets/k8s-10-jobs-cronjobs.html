@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 10: Jobs &amp; CronJobs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s10">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>Jobs &amp; CronJobs</h1>
+			<div class="sheet-desc">completions · parallelism · backoffLimit · activeDeadlineSeconds · ttlSecondsAfterFinished · schedule · concurrencyPolicy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Run to Completion</h2>
+						<div class="description">A <strong>Job</strong> runs pods until a set number <strong>succeed</strong>, retrying failures up to <code>backoffLimit</code>. Use it for migrations, batch processing and one-off tasks. A <strong>CronJob</strong> creates a Job on a <strong>cron schedule</strong>, with rules for overlapping runs and how much history to keep.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Job pods need <code>restartPolicy: Never</code> or <code>OnFailure</code></li>
+							<li class="note-item">Missed CronJob runs beyond <code>startingDeadlineSeconds</code> are skipped</li>
+							<li class="note-item"><code>timeZone</code> takes IANA names; otherwise the controller's zone is used</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-job">
+						<h2 class="section-title">Job</h2>
+						<pre><code class="language-yaml">apiVersion: batch/v1
+kind: Job
+metadata: { name: migrate }
+spec:
+  completions: 1                 # successes needed
+  backoffLimit: 4                # retries before Failed
+  activeDeadlineSeconds: 600     # hard time limit for the Job
+  ttlSecondsAfterFinished: 3600  # auto-delete 1h after finishing
+  template:
+    spec:
+      restartPolicy: Never
+      containers: [{ name: m, image: acme/api:1.4.2, command: [&quot;./migrate&quot;] }]</code></pre>
+					</section>
+					<section class="section-code" id="code-cron">
+						<h2 class="section-title">CronJob</h2>
+						<pre><code class="language-yaml">apiVersion: batch/v1
+kind: CronJob
+metadata: { name: nightly-report }
+spec:
+  schedule: &quot;30 2 * * *&quot;         # 02:30 every day
+  timeZone: America/Chicago
+  concurrencyPolicy: Forbid      # skip if last run still going
+  jobTemplate: { spec: { template: { ... } } }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>completions: 5, parallelism: 2</code> — 5 successes, 2 at a time</div>
+							<div class="explain-item"><code>backoffLimit</code> — default 6</div>
+							<div class="explain-item"><code>activeDeadlineSeconds</code> — beats <code>backoffLimit</code>; kills running pods</div>
+							<div class="explain-item"><code>ttlSecondsAfterFinished</code> — keeps the namespace tidy</div>
+							<div class="explain-item"><code>Never</code> — new pod per retry; <code>OnFailure</code> restarts in place</div>
+							<div class="explain-item"><code>jobTemplate</code> — a full Job spec</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Cron Table | Conc Table | Jobcmd Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-cron">
+						<h2 class="section-title">Cron Fields</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Range</th></tr></thead>
+							<tbody>
+								<tr><td>minute</td><td class="desc">0–59</td></tr>
+								<tr><td>hour</td><td class="desc">0–23</td></tr>
+								<tr><td>day of month</td><td class="desc">1–31</td></tr>
+								<tr><td>month</td><td class="desc">1–12</td></tr>
+								<tr><td>day of week</td><td class="desc">0–6 (Sun = 0)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-conc">
+						<h2 class="section-title">concurrencyPolicy</h2>
+						<table>
+							<thead><tr><th>Value</th><th>If Still Running</th></tr></thead>
+							<tbody>
+								<tr><td>Allow</td><td class="desc">Start another (default)</td></tr>
+								<tr><td>Forbid</td><td class="desc">Skip this run</td></tr>
+								<tr><td>Replace</td><td class="desc">Kill old, start new</td></tr>
+								<tr><td>suspend: true</td><td class="desc">Pause the schedule</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-jobcmd">
+						<h2 class="section-title">Commands</h2>
+						<table>
+							<thead><tr><th>kubectl …</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>create job now --from=cronjob/x</td><td class="desc">Run now</td></tr>
+								<tr><td>logs job/migrate</td><td class="desc">Logs of a job pod</td></tr>
+								<tr><td>wait --for=condition=complete job/m</td><td class="desc">Block in CI</td></tr>
+								<tr><td>get jobs -w</td><td class="desc">Watch progress</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>restartPolicy: Always</code> in a Job — rejected by the API</li>
+							<li class="note-item">Non-idempotent job code — retries run it twice (double charges, dup emails)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Test a CronJob instantly with <code>create job --from=cronjob/…</code></li>
+							<li class="note-item">Use <code>Forbid</code> for jobs that must not overlap</li>
+							<li class="note-item"><code>completionMode: Indexed</code> gives each pod a <code>JOB_COMPLETION_INDEX</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Job</code> — run until N successes</li>
+							<li class="note-item"><code>backoffLimit / activeDeadlineSeconds</code> — limits</li>
+							<li class="note-item"><code>CronJob</code> — Job on a schedule</li>
+							<li class="note-item"><code>concurrencyPolicy</code> — overlap rules</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-09-statefulsets-daemonsets.html" class="nav-link prev">StatefulSets &amp; DaemonSets</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-11-probes-lifecycle.html" class="nav-link next" title="Health Probes &amp; Pod Lifecycle">Health Probes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

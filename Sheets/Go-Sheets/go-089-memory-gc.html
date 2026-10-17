@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 089: Memory &amp; Garbage Collection</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s089">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 089</div>
+			<h1>Memory &amp; Garbage Collection</h1>
+			<div class="sheet-desc">stack vs heap · escape analysis -gcflags=-m · GOGC / GOMEMLIMIT · Green Tea GC · sync.Pool · runtime.AddCleanup / weak.Pointer · runtime.MemStats · preallocating slices &amp; maps</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Memory &amp; Garbage Collection</h2>
+						<div class="description">Go is garbage collected with a concurrent, low-pause collector; <strong>Green Tea</strong>, the default since Go 1.26, scans memory in page-sized batches for better CPU cache use. The compiler's <strong>escape analysis</strong> decides whether values live on the cheap <strong>stack</strong> or the GC-managed <strong>heap</strong>. Tuning knobs are <code>GOGC</code> (how much growth triggers a GC) and <code>GOMEMLIMIT</code> (a soft memory cap).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Values escape when they outlive the function (returned pointers, closures, interfaces)</li>
+							<li class="note-item"><code>GOGC=100</code> (default): collect when heap grows 100% since last GC</li>
+							<li class="note-item"><code>GOMEMLIMIT=1GiB</code> makes the GC work harder near the limit (containers)</li>
+							<li class="note-item"><code>runtime.AddCleanup</code> (1.24) replaces most <code>SetFinalizer</code> uses</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Allocation Awareness</h2>
+						<pre class="language-go"><code class="language-go">// $ go build -gcflags=-m ./...     → escape analysis report
+func sum(xs []int) int { t := 0; for _, x := range xs { t += x }; return t }
+                                     // t stays on the stack
+func newUser() *User { return &amp;User{} } // &amp;User{} escapes to heap
+
+out := make([]Row, 0, len(in))      // preallocate: 1 allocation
+m := make(map[string]int, 1000)     // size hint
+
+var bufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+b := bufPool.Get().(*bytes.Buffer)
+b.Reset(); defer bufPool.Put(b)     // reuse hot temporary objects
+
+var ms runtime.MemStats
+runtime.ReadMemStats(&amp;ms)
+fmt.Println(ms.HeapAlloc/1e6, "MB", ms.NumGC, "GCs")
+
+debug.SetMemoryLimit(512 &lt;&lt; 20)     // same as GOMEMLIMIT=512MiB
+runtime.AddCleanup(f, func(fd int) { syscall.Close(fd) }, f.fd) // 1.24
+wp := weak.Make(bigObj)             // weak pointer (1.24)
+if obj := wp.Value(); obj != nil { use(obj) }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-gcflags=-m</code> — shows what escapes and why</div>
+							<div class="explain-item">preallocation — avoids repeated growth copies</div>
+							<div class="explain-item"><code>sync.Pool</code> — reuse buffers under load</div>
+							<div class="explain-item"><code>ReadMemStats</code> — heap size and GC counts</div>
+							<div class="explain-item"><code>weak.Make</code> — reference that doesn't keep objects alive</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — no JVM heap flags; <code>GOMEMLIMIT</code> ≈ <code>-Xmx</code> (soft)</li>
+							<li class="note-item"><strong>Python</strong> — no refcounting; tracing GC only</li>
+							<li class="note-item"><strong>C</strong> — no <code>free</code>; escape analysis picks stack vs heap</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Knobs Table | Reduce Allocations Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-knobs">
+						<h2 class="section-title">Knobs</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>GOGC=100</td><td class="desc">default growth target</td></tr>
+								<tr><td>GOGC=off</td><td class="desc">disable GC (with memory limit)</td></tr>
+								<tr><td>GOMEMLIMIT=2GiB</td><td class="desc">soft limit</td></tr>
+								<tr><td>GODEBUG=gctrace=1</td><td class="desc">print each GC</td></tr>
+								<tr><td>nogreenteagc</td><td class="desc">GOEXPERIMENT opt-out (1.26)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-reduce-allocations">
+						<h2 class="section-title">Reduce Allocations</h2>
+						<table>
+							<thead><tr><th>Technique</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>preallocate</td><td class="desc"><code>make([]T, 0, n)</code></td></tr>
+								<tr><td>reuse buffers</td><td class="desc"><code>sync.Pool</code>, <code>buf[:0]</code></td></tr>
+								<tr><td>avoid boxing</td><td class="desc">concrete types over <code>any</code></td></tr>
+								<tr><td>strings.Builder</td><td class="desc">instead of <code>+=</code></td></tr>
+								<tr><td>value receivers</td><td class="desc">small structs</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Optimizing allocations without a profile; measure with <code>-benchmem</code> and pprof first</li>
+							<li class="note-item">Putting objects back into <code>sync.Pool</code> while still using them</li>
+							<li class="note-item">Running in containers without <code>GOMEMLIMIT</code> and getting OOM-killed</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Set <code>GOMEMLIMIT</code> to ~90% of the container limit</li>
+							<li class="note-item">Use <code>testing.AllocsPerRun</code> or <code>-benchmem</code> to lock in allocation counts</li>
+							<li class="note-item">Since Go 1.25, <code>GOMAXPROCS</code> respects container CPU limits automatically</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">stack vs heap — escape analysis decides</li>
+							<li class="note-item"><code>GOGC</code> / <code>GOMEMLIMIT</code> — GC tuning</li>
+							<li class="note-item">Green Tea — default GC since 1.26</li>
+							<li class="note-item"><code>sync.Pool</code>, preallocation — fewer allocs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-088-build-tags-cross-compile.html" class="nav-link prev">Build Tags &amp; Cross-Compilation</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-090-unsafe-cgo.html" class="nav-link next">unsafe &amp; cgo</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

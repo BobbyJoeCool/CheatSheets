@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 107: Building JSON APIs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s107">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 107</div>
+			<h1>Building JSON APIs</h1>
+			<div class="sheet-desc">json.NewDecoder(r.Body) · http.MaxBytesReader · DisallowUnknownFields · write JSON + Content-Type · w.WriteHeader status codes · r.URL.Query() · consistent error responses · r.FormValue</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Building JSON APIs</h2>
+						<div class="description">A JSON API handler decodes the request body into a struct, validates it, does the work, and encodes a response with the right <strong>status code</strong> and <code>Content-Type</code>. Limit body size with <code>http.MaxBytesReader</code>, reject unknown fields to catch client typos, and return errors in a <strong>consistent JSON shape</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Order: <code>Header().Set</code> → <code>WriteHeader</code> → body</li>
+							<li class="note-item">201 Created for POST, 204 No Content for DELETE</li>
+							<li class="note-item">Map domain errors to statuses in one place</li>
+							<li class="note-item"><code>r.Body</code> is closed by the server; no need to close it</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Decode, Validate, Respond</h2>
+						<pre class="language-go"><code class="language-go">type createReq struct {
+    Name  string `json:"name"`
+    Price int    `json:"price"`
+}
+func writeJSON(w http.ResponseWriter, status int, v any) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(status)
+    json.NewEncoder(w).Encode(v)
+}
+func createItem(w http.ResponseWriter, r *http.Request) {
+    r.Body = http.MaxBytesReader(w, r.Body, 1&lt;&lt;20)  // 1 MB max
+    dec := json.NewDecoder(r.Body)
+    dec.DisallowUnknownFields()
+    var req createReq
+    if err := dec.Decode(&amp;req); err != nil {
+        writeJSON(w, 400, errBody(err)); return
+    }
+    if req.Name == "" { writeJSON(w, 422, errMsg("name required")); return }
+    item, err := store.Create(r.Context(), req.Name, req.Price)
+    if errors.Is(err, ErrDuplicate) { writeJSON(w, 409, errBody(err)); return }
+    writeJSON(w, http.StatusCreated, item)
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>writeJSON</code> — one helper for headers, status, body</div>
+							<div class="explain-item"><code>MaxBytesReader</code> — 413-style failure for huge bodies</div>
+							<div class="explain-item"><code>DisallowUnknownFields</code> — reject <code>{"nmae": …}</code> typos</div>
+							<div class="explain-item">422 for validation, 409 for conflicts</div>
+							<div class="explain-item"><code>r.Context()</code> — cancel DB work if the client leaves</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — ≈ FastAPI handler, manual validation</li>
+							<li class="note-item"><strong>Node</strong> — ≈ Express + <code>res.status().json()</code></li>
+							<li class="note-item"><strong>Java</strong> — ≈ <code>@RestController</code> without annotations</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Status Codes Table | Input Sources Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-status-codes">
+						<h2 class="section-title">Status Codes</h2>
+						<table>
+							<thead><tr><th>Code</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>200 OK</td><td class="desc">successful GET/PUT</td></tr>
+								<tr><td>201 Created</td><td class="desc">POST created a resource</td></tr>
+								<tr><td>204 No Content</td><td class="desc">DELETE / empty success</td></tr>
+								<tr><td>400 / 422</td><td class="desc">bad JSON / invalid data</td></tr>
+								<tr><td>401 / 403</td><td class="desc">not logged in / not allowed</td></tr>
+								<tr><td>404 / 409 / 500</td><td class="desc">missing / conflict / server bug</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-input-sources">
+						<h2 class="section-title">Input Sources</h2>
+						<table>
+							<thead><tr><th>Source</th><th>Read</th></tr></thead>
+							<tbody>
+								<tr><td>JSON body</td><td class="desc"><code>json.NewDecoder(r.Body)</code></td></tr>
+								<tr><td>path</td><td class="desc"><code>r.PathValue("id")</code></td></tr>
+								<tr><td>query</td><td class="desc"><code>r.URL.Query().Get("page")</code></td></tr>
+								<tr><td>form</td><td class="desc"><code>r.FormValue("q")</code></td></tr>
+								<tr><td>header</td><td class="desc"><code>r.Header.Get("X-Key")</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>WriteHeader</code> before setting <code>Content-Type</code>; the header is lost</li>
+							<li class="note-item">Returning raw internal errors (SQL text) to clients; log them, send a generic message</li>
+							<li class="note-item">Decoding without a size limit, letting clients exhaust memory</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Define <code>type apiError struct{ Error string </code>json:"error"<code> }</code> for one error shape</li>
+							<li class="note-item">Validate with a library like <code>go-playground/validator</code> once rules grow</li>
+							<li class="note-item">Version your API in the path (<code>/v1/…</code>) from the start</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">decode — <code>MaxBytesReader</code> + <code>DisallowUnknownFields</code></li>
+							<li class="note-item">validate — 400 / 422</li>
+							<li class="note-item">respond — header → status → body</li>
+							<li class="note-item">consistent JSON error shape</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-106-handlers-middleware.html" class="nav-link prev">Handlers &amp; Middleware</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-108-http-client.html" class="nav-link next">HTTP Client</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

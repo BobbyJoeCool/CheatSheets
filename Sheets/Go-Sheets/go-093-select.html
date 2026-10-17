@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 093: select</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s093">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 093</div>
+			<h1>select</h1>
+			<div class="sheet-desc">select { case v := &lt;-a: … } · default for non-blocking · timeouts with time.After · ctx.Done() case · random choice among ready cases · disabling a case with a nil channel · for { select { … } } · time.NewTimer reuse</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">select</h2>
+						<div class="description"><code>select</code> waits on <strong>several channel operations</strong> at once and runs whichever case is ready first; if several are ready, it picks one <strong>at random</strong>. A <code>default</code> case makes it non-blocking. Combined with <code>time.After</code> or <code>ctx.Done()</code>, <code>select</code> implements timeouts and cancellation.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>select {}</code> with no cases blocks forever</li>
+							<li class="note-item">A <code>nil</code> channel case is never ready: use it to disable a case</li>
+							<li class="note-item"><code>break</code> inside <code>select</code> exits the select, not the loop (label it)</li>
+							<li class="note-item"><code>time.After</code> in a hot loop allocates a timer per iteration; reuse a <code>Timer</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">select Patterns</h2>
+						<pre class="language-go"><code class="language-go">select {                               // first ready wins
+case msg := &lt;-msgs: fmt.Println("got", msg)
+case &lt;-time.After(2 * time.Second):    // timeout
+    return errors.New("timed out")
+case &lt;-ctx.Done():                     // cancellation
+    return ctx.Err()
+}
+
+select { case jobs &lt;- j: default: log.Println("full, dropped") } // try-send
+
+for a != nil || b != nil {             // merge two channels
+    select {
+    case v, ok := &lt;-a:
+        if !ok { a = nil; continue }   // disable closed channel
+        out &lt;- v
+    case v, ok := &lt;-b:
+        if !ok { b = nil; continue }
+        out &lt;- v
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">multiple ready cases — chosen at random (fairness)</div>
+							<div class="explain-item"><code>time.After</code> — channel that fires once after <code>d</code></div>
+							<div class="explain-item"><code>ctx.Done()</code> — closed when the context is canceled</div>
+							<div class="explain-item"><code>default</code> — runs immediately if nothing is ready</div>
+							<div class="explain-item"><code>a = nil</code> — stop selecting on a closed channel</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>JS</strong> — ≈ <code>Promise.race</code> over channels</li>
+							<li class="note-item"><strong>Python</strong> — ≈ <code>asyncio.wait(FIRST_COMPLETED)</code></li>
+							<li class="note-item"><strong>Rust</strong> — ≈ <code>tokio::select!</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Idioms Table | Gotchas Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-idioms">
+						<h2 class="section-title">Idioms</h2>
+						<table>
+							<thead><tr><th>Goal</th><th>Case</th></tr></thead>
+							<tbody>
+								<tr><td>timeout</td><td class="desc"><code>case &lt;-time.After(d):</code></td></tr>
+								<tr><td>cancel</td><td class="desc"><code>case &lt;-ctx.Done():</code></td></tr>
+								<tr><td>try send / recv</td><td class="desc"><code>default:</code></td></tr>
+								<tr><td>periodic work</td><td class="desc"><code>case &lt;-ticker.C:</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-gotchas">
+						<h2 class="section-title">Gotchas</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>select {}</td><td class="desc">block forever</td></tr>
+								<tr><td>break in select</td><td class="desc">leaves select only</td></tr>
+								<tr><td>all cases nil, no default</td><td class="desc">deadlock</td></tr>
+								<tr><td>for+select without exit</td><td class="desc">goroutine leak</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Busy loop <code>for { select { … default: } }</code> burning 100% CPU</li>
+							<li class="note-item">Expecting case order to set priority; selection among ready cases is random</li>
+							<li class="note-item">Forgetting a <code>ctx.Done()</code> case, so the goroutine can't be stopped</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Always include <code>ctx.Done()</code> in long-running <code>for</code>/<code>select</code> loops</li>
+							<li class="note-item">Prefer <code>context.WithTimeout</code> over <code>time.After</code> when calling APIs that take a context</li>
+							<li class="note-item">For priority, check the urgent channel in a separate non-blocking select first</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>select</code> — wait on multiple channels</li>
+							<li class="note-item">random among ready cases</li>
+							<li class="note-item"><code>default</code> — non-blocking</li>
+							<li class="note-item">timeouts &amp; cancellation — <code>time.After</code>, <code>ctx.Done()</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-092-channels.html" class="nav-link prev">Channels</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-094-sync-primitives.html" class="nav-link next">sync Primitives</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

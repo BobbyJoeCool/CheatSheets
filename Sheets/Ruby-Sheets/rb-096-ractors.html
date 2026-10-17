@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ruby — Sheet 096: Ractors</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rb-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s096">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 096</div>
+			<h1>Ractors</h1>
+			<div class="sheet-desc">Ractor.new · Ractor::Port · send / receive · shareable objects · make_shareable · value / join</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Ractors</h2>
+						<div class="description"><strong>Ractors</strong> (Ruby 3.0+) run Ruby code in <strong>true parallel</strong>, each with its own GVL. They share almost nothing: objects pass between Ractors by <strong>copying or moving</strong>, and only <strong>shareable</strong> (deeply frozen) objects can be read from several Ractors. Ruby 4.0 replaces <code>Ractor.yield</code> / <code>take</code> with <strong><code>Ractor::Port</code></strong> for communication.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Ractor Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Still marked experimental; Ruby warns on first use</li>
+							<li class="note-item">Many gems aren't Ractor-safe (global state, C extensions)</li>
+							<li class="note-item"><code>Ractor.make_shareable</code> deep-freezes an object</li>
+							<li class="note-item">Ruby 4.0: <code>Ractor#join</code> / <code>#value</code> and <code>Ractor::Port</code> replace <code>take</code> / <code>yield</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Ractor Basics (Ruby 4.0)</h2>
+						<pre class="language-ruby"><code class="language-ruby">def fib(n) = n &lt; 2 ? n : fib(n - 1) + fib(n - 2)
+
+rs = 4.times.map { |i| Ractor.new(30 + i) { |n| fib(n) } }
+rs.map(&amp;:value)                 # computed in parallel
+
+port = Ractor::Port.new
+worker = Ractor.new(port) do |out|
+  while (msg = Ractor.receive) != :stop
+    out &lt;&lt; msg.upcase           # send results back
+  end
+end
+worker &lt;&lt; "a"                   # Ractor#send
+worker &lt;&lt; "b"
+port.receive                    # "A"
+port.receive                    # "B"
+worker &lt;&lt; :stop
+worker.join
+
+CONFIG = Ractor.make_shareable({ level: 3 })
+Ractor.new { CONFIG[:level] }.value   # 3 (shareable constant)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Ractor.new(arg) { |n| }</code> — pass arguments in (copied)</div>
+							<div class="explain-item"><code>value</code> — wait for the Ractor's final result</div>
+							<div class="explain-item"><code>Ractor::Port</code> — a channel others can send to</div>
+							<div class="explain-item"><code>Ractor.receive</code> / <code>&lt;&lt;</code> — the Ractor's own inbox</div>
+							<div class="explain-item"><code>make_shareable</code> — deep-freeze so any Ractor can read it</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Ruby Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Threads for CPU-bound math → Ractors (or processes)</li>
+							<li class="note-item">Mutable globals read inside Ractors → shareable constants</li>
+							<li class="note-item"><code>Ractor.yield</code> / <code>take</code> (3.x) → <code>Ractor::Port</code> (4.0)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Ractor Api Table | Sharing Rules Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-ractor-api">
+						<h2 class="section-title">Ractor API</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>Ractor.new(*args) { }</td><td class="desc">start</td></tr>
+								<tr><td>r &lt;&lt; msg / r.send(msg)</td><td class="desc">to its inbox</td></tr>
+								<tr><td>Ractor.receive</td><td class="desc">read own inbox</td></tr>
+								<tr><td>r.value / r.join</td><td class="desc">result / wait</td></tr>
+								<tr><td>Ractor::Port.new</td><td class="desc">create a channel</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sharing-rules">
+						<h2 class="section-title">Sharing Rules</h2>
+						<table>
+							<thead><tr><th>Object</th><th>Shareable?</th></tr></thead>
+							<tbody>
+								<tr><td>Integer, Symbol, nil</td><td class="desc">yes</td></tr>
+								<tr><td>frozen String</td><td class="desc">yes</td></tr>
+								<tr><td>deep-frozen Hash / Array</td><td class="desc">yes</td></tr>
+								<tr><td>mutable object</td><td class="desc">no (copied or moved)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Accessing non-shareable constants or globals inside a Ractor; it raises <code>Ractor::IsolationError</code></li>
+							<li class="note-item">Using 3.x <code>Ractor.yield</code> / <code>take</code> code on 4.0; switch to ports and <code>value</code></li>
+							<li class="note-item">Assuming every gem works inside Ractors; check before relying on them in production</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Start with pure functions on plain data; that's where Ractors work best today</li>
+							<li class="note-item">Pass <code>move: true</code> to <code>send</code> to transfer large objects without copying</li>
+							<li class="note-item">Benchmark against processes (<code>fork</code>, <code>parallel</code> gem); they're often simpler for CPU work</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Ractor.new</code> — parallel execution</li>
+							<li class="note-item"><code>Ractor::Port</code> — 4.0 message channels</li>
+							<li class="note-item"><code>value</code> / <code>join</code> — get results</li>
+							<li class="note-item">shareable objects — deeply frozen data</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rb-095-fibers-async.html" class="nav-link prev">Fibers &amp; the Fiber Scheduler</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ruby Reference · 113 Sheets</a>
+				<a href="rb-097-databases.html" class="nav-link next">Databases</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 065: io.Reader &amp; io.Writer</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s065">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 065</div>
+			<h1>io.Reader &amp; io.Writer</h1>
+			<div class="sheet-desc">Read(p) contract · io.EOF · io.Copy / CopyN · io.ReadAll · TeeReader / MultiWriter / MultiReader · io.LimitReader · io.Pipe · io.Discard</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Streams: Reader &amp; Writer</h2>
+						<div class="description"><code>io.Reader</code> and <code>io.Writer</code> are the two most important interfaces in Go. Files, network connections, HTTP bodies, compressors, hashes and buffers all implement them, so one function written against <code>io.Reader</code> works with every source. The <code>io</code> package supplies helpers to copy, combine, limit and split streams.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">The Read Contract</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Read(p)</code> fills <strong>up to</strong> <code>len(p)</code> bytes and returns <code>n</code></li>
+							<li class="note-item">Process <code>n &gt; 0</code> bytes <strong>before</strong> checking <code>err</code></li>
+							<li class="note-item"><code>io.EOF</code> signals the normal end of the stream</li>
+							<li class="note-item"><code>Write</code> must return a non-nil error if <code>n &lt; len(p)</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Composing Streams</h2>
+						<pre class="language-go"><code class="language-go">r := strings.NewReader("hello, reader")
+buf := make([]byte, 5)
+for {
+    n, err := r.Read(buf)
+    fmt.Print(string(buf[:n]), "|")   // hello|, rea|der|
+    if err == io.EOF { break }
+    if err != nil { return err }
+}
+
+n, err := io.Copy(os.Stdout, resp.Body)    // stream, no full load
+data, err := io.ReadAll(io.LimitReader(r, 1&lt;&lt;20)) // cap at 1 MB
+
+h := sha256.New()
+tee := io.TeeReader(file, h)                // hash while reading
+io.Copy(io.Discard, tee)
+fmt.Printf("%x\n", h.Sum(nil))
+
+var log bytes.Buffer
+w := io.MultiWriter(os.Stdout, &amp;log)        // write to both
+fmt.Fprintln(w, "saved")
+
+pr, pw := io.Pipe()                         // sync in-memory pipe
+go func() { json.NewEncoder(pw).Encode(v); pw.Close() }()
+http.Post(url, "application/json", pr)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>buf[:n]</code> — use only the bytes actually read</div>
+							<div class="explain-item"><code>io.Copy</code> — streams with a 32 KB buffer</div>
+							<div class="explain-item"><code>LimitReader</code> — protect against huge inputs</div>
+							<div class="explain-item"><code>TeeReader</code> — copy everything read into a writer</div>
+							<div class="explain-item"><code>io.Pipe</code> — connect a writer goroutine to a reader</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — <code>io.Reader</code> ≈ <code>InputStream</code>, <code>Writer</code> ≈ <code>OutputStream</code></li>
+							<li class="note-item"><strong>Python</strong> — ≈ file-like objects with <code>read</code> / <code>write</code></li>
+							<li class="note-item"><strong>Node</strong> — ≈ streams, but synchronous calls</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Io Helpers Table | Adapters Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-io-helpers">
+						<h2 class="section-title">io Helpers</h2>
+						<table>
+							<thead><tr><th>Func</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>Copy(dst, src)</td><td class="desc">stream everything</td></tr>
+								<tr><td>CopyN(dst, src, n)</td><td class="desc">exactly n bytes</td></tr>
+								<tr><td>ReadAll(r)</td><td class="desc">read into []byte</td></tr>
+								<tr><td>ReadFull(r, buf)</td><td class="desc">fill buf or error</td></tr>
+								<tr><td>WriteString(w, s)</td><td class="desc">write a string</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-adapters">
+						<h2 class="section-title">Adapters</h2>
+						<table>
+							<thead><tr><th>Func</th><th>Builds</th></tr></thead>
+							<tbody>
+								<tr><td>LimitReader</td><td class="desc">stops after n</td></tr>
+								<tr><td>TeeReader</td><td class="desc">read + copy</td></tr>
+								<tr><td>MultiReader</td><td class="desc">concatenate readers</td></tr>
+								<tr><td>MultiWriter</td><td class="desc">fan-out writes</td></tr>
+								<tr><td>Discard</td><td class="desc">writer that drops data</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Checking <code>err</code> before using <code>n</code>; the last chunk often arrives together with <code>io.EOF</code></li>
+							<li class="note-item">Treating <code>io.EOF</code> as a failure and reporting it to users</li>
+							<li class="note-item"><code>io.ReadAll</code> on untrusted input without a limit (memory exhaustion)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Accept <code>io.Reader</code> / <code>io.Writer</code> params so tests can pass <code>strings.Reader</code> / <code>bytes.Buffer</code></li>
+							<li class="note-item">Use <code>io.ReadFull</code> when you need an exact number of bytes (headers, frames)</li>
+							<li class="note-item">Wrap with <code>bufio</code> for many small reads/writes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>io.Reader</code> — <code>Read(p) (n, err)</code></li>
+							<li class="note-item"><code>io.Writer</code> — <code>Write(p) (n, err)</code></li>
+							<li class="note-item"><code>io.EOF</code> — normal end</li>
+							<li class="note-item"><code>io.Copy</code> / <code>TeeReader</code> / <code>MultiWriter</code> — compose</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-064-generic-methods.html" class="nav-link prev">Generic Methods &amp; Advanced Generics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-066-reading-files.html" class="nav-link next">Reading Files</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

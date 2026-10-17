@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Vite — Sheet 32: Environment API</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/vite-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s32">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 32</div>
+			<h1>Environment API</h1>
+			<div class="sheet-desc">environments · client / ssr · createRunnableDevEnvironment · ModuleRunner · per-environment config · experimental status</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Many Runtimes, One Server</h2>
+						<div class="description">The <strong>Environment API</strong> generalizes Vite's old client/SSR split into any number of named environments: browser client, Node SSR, edge workers, React Server Components and so on. Each environment gets its own module graph, resolve conditions and build output. It's aimed mainly at framework and runtime authors; app developers usually get it through their framework.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Introduced in Vite 6; still marked as not yet stable in Vite 8</li>
+							<li class="note-item">Top-level options act as defaults for every environment</li>
+							<li class="note-item"><code>vite build --app</code> builds all environments</li>
+							<li class="note-item">Plugins read <code>this.environment</code> instead of an <code>ssr</code> flag</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Code -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-config">
+						<h2 class="section-title">Config</h2>
+						<pre><code class="language-typescript">export default defineConfig({
+  build: { sourcemap: true },        // default for all
+  environments: {
+    client: { build: { outDir: 'dist/client' } },
+    ssr: { build: { outDir: 'dist/server' } },
+    edge: {
+      resolve: { noExternal: true, conditions: ['workerd'] },
+      build: {
+        outDir: 'dist/edge',
+        rolldownOptions: { input: 'src/edge.ts' },
+      },
+    },
+  },
+  builder: {
+    buildApp: (b) =&gt; Promise.all(
+      Object.values(b.environments).map((e) =&gt; b.build(e))),
+  },
+})</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-code" id="code-use">
+						<h2 class="section-title">Using Environments</h2>
+						<pre><code class="language-typescript">import { createServer, isRunnableDevEnvironment } from 'vite'
+
+const server = await createServer()
+const ssr = server.environments.ssr
+
+if (isRunnableDevEnvironment(ssr)) {
+  const { render } = await ssr.runner.import('/src/entry-server.ts')
+  console.log(await render('/'))
+}
+
+// In a plugin
+const plugin = {
+  name: 'env-aware',
+  applyToEnvironment: (env) =&gt; env.name !== 'client',
+  transform(code, id) {
+    const server = this.environment.config.consumer === 'server'
+  },
+}</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Terms Table | Plugin Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-terms">
+						<h2 class="section-title">Key Terms</h2>
+						<table>
+							<thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>environment</td><td class="desc">Named runtime with its own graph</td></tr>
+								<tr><td>consumer</td><td class="desc">'client' or 'server'</td></tr>
+								<tr><td>DevEnvironment</td><td class="desc">Dev-time instance per env</td></tr>
+								<tr><td>RunnableDevEnvironment</td><td class="desc">Can run modules in-process</td></tr>
+								<tr><td>ModuleRunner</td><td class="desc">Executes modules (vite/module-runner)</td></tr>
+								<tr><td>builder</td><td class="desc">Builds every environment</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-plugin">
+						<h2 class="section-title">Plugin Hooks for Environments</h2>
+						<table>
+							<thead><tr><th>API</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>this.environment</td><td class="desc">Current environment in hooks</td></tr>
+								<tr><td>applyToEnvironment(env)</td><td class="desc">Enable plugin per env</td></tr>
+								<tr><td>configEnvironment(name, cfg)</td><td class="desc">Adjust one env's config</td></tr>
+								<tr><td>hotUpdate</td><td class="desc">Per-environment HMR</td></tr>
+								<tr><td>sharedDuringBuild</td><td class="desc">Share one instance across envs</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Treating the API as stable for app code — expect changes between minors until it's marked stable</li>
+							<li class="note-item">Checking <code>options.ssr</code> in new plugin hooks — use <code>this.environment.name</code> or <code>.config.consumer</code></li>
+							<li class="note-item">Assuming every environment can run in Node — edge or workerd environments need their own runner</li>
+							<li class="note-item">Building with plain <code>vite build</code> and only getting the client — use <code>vite build --app</code> or <code>builder.buildApp</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>isRunnableDevEnvironment()</code> before calling <code>.runner.import()</code></li>
+							<li class="note-item">Put shared settings at the top level; override only what differs per environment</li>
+							<li class="note-item">Read the framework's docs first; most expose a higher-level API</li>
+							<li class="note-item">Test plugins against both <code>client</code> and <code>ssr</code> environments</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>environments: { client, ssr, … }</code> — per-runtime config</li>
+							<li class="note-item"><code>server.environments.ssr.runner.import()</code> — run code in dev</li>
+							<li class="note-item"><code>vite build --app</code> — build every environment</li>
+							<li class="note-item"><code>this.environment</code> — environment-aware plugins</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="vite-31-ssr.html" class="nav-link prev">Server-Side Rendering</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Vite · 39 Sheets</a>
+				<a href="vite-33-javascript-api.html" class="nav-link next">JavaScript API</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

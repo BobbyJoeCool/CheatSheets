@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 20: Networking</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Networking</h1>
+			<div class="sheet-desc">-p host:container · network create · bridge / host / none · user-defined bridge DNS · --network · network connect · overlay / macvlan</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">How Containers Talk</h2>
+						<div class="description">
+							Each container gets its own network stack. On the default <strong>bridge</strong> network, containers can reach each other only by IP. Create your own <strong>user-defined bridge</strong> and containers on it find each other <strong>by name</strong> through Docker's built-in DNS. To reach a container from outside the host, <strong>publish</strong> a port with <code>-p</code>.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>-p 8080:80</code> = host port 8080 → container port 80</li>
+							<li class="note-item">Containers on the same network use the <strong>container</strong> port, not the published one</li>
+							<li class="note-item">Published ports bypass <code>ufw</code>-style firewalls on Linux; bind to <code>127.0.0.1</code> to keep them private</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Networks in Practice</h2>
+						<pre><code class="language-bash">docker network create appnet                    # user-defined bridge
+docker run -d --name db  --network appnet -e POSTGRES_PASSWORD=dev postgres:17
+docker run -d --name api --network appnet -p 8080:3000 \
+  -e DATABASE_URL=postgres://postgres:dev@db:5432/postgres myapi
+docker exec api ping -c1 db                     # name resolves via DNS
+
+docker network connect frontend api             # attach a 2nd network
+docker network disconnect frontend api
+docker run -d --network-alias search --network appnet elasticsearch:8.15
+
+docker network ls
+docker network inspect appnet -f '{{range .Containers}}{{.Name}} {{end}}'
+docker network rm appnet
+docker network prune                            # unused networks</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>db</code> resolves to the db container's IP for anything on <code>appnet</code></div>
+							<div class="explain-item">API listens on 3000 inside; reachable at <code>localhost:8080</code> from the host</div>
+							<div class="explain-item">A container can join several networks (e.g. frontend + backend)</div>
+							<div class="explain-item"><code>--network-alias</code> adds an extra DNS name; several containers can share one</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Ports Table | Drivers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-ports">
+						<h2 class="section-title">Publishing Ports</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>-p 8080:80</td><td class="desc">All host IPs, port 8080 → 80</td></tr>
+								<tr><td>-p 127.0.0.1:8080:80</td><td class="desc">Localhost only</td></tr>
+								<tr><td>-p 8080:80/udp</td><td class="desc">UDP</td></tr>
+								<tr><td>-p 80</td><td class="desc">Random host port → 80</td></tr>
+								<tr><td>-P</td><td class="desc">All EXPOSEd ports, random</td></tr>
+								<tr><td>-p 9000-9002:9000-9002</td><td class="desc">Port range</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-drivers">
+						<h2 class="section-title">Network Drivers</h2>
+						<table>
+							<thead><tr><th>Driver</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>bridge</td><td class="desc">Default; single host, NAT</td></tr>
+								<tr><td>host</td><td class="desc">Share host's network (no -p needed)</td></tr>
+								<tr><td>none</td><td class="desc">No networking at all</td></tr>
+								<tr><td>overlay</td><td class="desc">Span Swarm nodes (Sheet 27)</td></tr>
+								<tr><td>macvlan</td><td class="desc">Own MAC/IP on the physical LAN</td></tr>
+								<tr><td>ipvlan</td><td class="desc">Like macvlan, shared MAC</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>localhost</code> to reach another container — that's the container itself; use the other container's name</li>
+							<li class="note-item">Relying on the default <code>bridge</code> network for names — DNS only works on user-defined networks</li>
+							<li class="note-item">Connecting to <code>db:5433</code> because you published <code>-p 5433:5432</code> — inside the network it's still <code>5432</code></li>
+							<li class="note-item">Publishing database ports on <code>0.0.0.0</code> on a public server — bind to <code>127.0.0.1</code> or don't publish</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Create one network per app (Compose does this for you)</li>
+							<li class="note-item">Use <code>docker run --rm --network appnet nicolaka/netshoot</code> for <code>dig</code>, <code>curl</code>, <code>tcpdump</code></li>
+							<li class="note-item"><code>--network container:api</code> shares another container's network stack (sidecars, debugging)</li>
+							<li class="note-item"><code>host</code> networking works fully on Linux; on Desktop it is limited</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>-p host:container</code> — publish a port</li>
+							<li class="note-item"><code>network create</code> — user-defined bridge with DNS</li>
+							<li class="note-item"><code>--network name</code> — join at start</li>
+							<li class="note-item"><code>network connect</code> — join later</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-19-volumes-bind-mounts.html">Volumes &amp; Bind Mounts</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-21-compose-basics.html">Compose Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ruby — Sheet 094: Threads &amp; Mutex</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rb-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s094">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 094</div>
+			<h1>Threads &amp; Mutex</h1>
+			<div class="sheet-desc">Thread.new · join · value · Mutex#synchronize · GVL · Thread::Queue · thread-local vars</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Threads and Mutex</h2>
+						<div class="description"><code>Thread.new</code> runs a block concurrently; <code>join</code> waits for it and <code>value</code> returns its result. CRuby has a <strong>Global VM Lock (GVL)</strong>, so threads don't run Ruby code in parallel, but they <strong>do overlap I/O</strong> (network, files, sleep), which makes them useful for concurrent requests. Shared mutable state needs a <strong><code>Mutex</code></strong>, and <strong><code>Thread::Queue</code></strong> passes work between threads safely.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Thread Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Exceptions in a thread surface on <code>join</code> / <code>value</code></li>
+							<li class="note-item">Ruby's GVL means CPU-bound work needs Ractors or processes</li>
+							<li class="note-item"><code>Thread::Queue#pop</code> blocks until an item is available</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Threads, Mutex, Queue</h2>
+						<pre class="language-ruby"><code class="language-ruby">urls = %w[https://a.com https://b.com https://c.com]
+threads = urls.map do |url|
+  Thread.new(url) { |u| Net::HTTP.get(URI(u)).size }   # I/O overlaps
+end
+threads.map(&amp;:value)            # [1256, 3471, 902]
+
+count = 0
+lock = Mutex.new
+10.times.map {
+  Thread.new { 1000.times { lock.synchronize { count += 1 } } }
+}.each(&amp;:join)
+count                           # 10000 (always)
+
+queue = Thread::Queue.new
+workers = 3.times.map do
+  Thread.new do
+    while (job = queue.pop)     # nil after close
+      puts "done #{job}"
+    end
+  end
+end
+5.times { queue &lt;&lt; it }
+queue.close
+workers.each(&amp;:join)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Thread.new(url) { |u| }</code> — pass values in as arguments</div>
+							<div class="explain-item"><code>value</code> — joins and returns the block's result</div>
+							<div class="explain-item"><code>lock.synchronize { }</code> — one thread at a time in the block</div>
+							<div class="explain-item"><code>Thread::Queue</code> — thread-safe work queue</div>
+							<div class="explain-item"><code>queue.close</code> — <code>pop</code> returns <code>nil</code>, ending the workers</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Ruby Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>count += 1</code> from many threads → <code>Mutex#synchronize</code></li>
+							<li class="note-item">Polling shared arrays → <code>Thread::Queue</code></li>
+							<li class="note-item">Unbounded <code>Thread.new</code> per item → a fixed worker pool</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Thread Api Table | Sync Tools Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-thread-api">
+						<h2 class="section-title">Thread API</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>Thread.new { }</td><td class="desc">start a thread</td></tr>
+								<tr><td>t.join</td><td class="desc">wait</td></tr>
+								<tr><td>t.value</td><td class="desc">wait + result</td></tr>
+								<tr><td>Thread.current[:k]</td><td class="desc">fiber-local storage</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sync-tools">
+						<h2 class="section-title">Sync Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Mutex</td><td class="desc">exclusive section</td></tr>
+								<tr><td>Thread::Queue</td><td class="desc">producer / consumer</td></tr>
+								<tr><td>SizedQueue</td><td class="desc">bounded queue (backpressure)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Expecting threads to speed up CPU-heavy work in CRuby; the GVL serializes Ruby code</li>
+							<li class="note-item">Updating shared counters or arrays without a lock; <code>+=</code> isn't atomic</li>
+							<li class="note-item">Forgetting to <code>join</code>; the main program exits and kills unfinished threads</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>concurrent-ruby</code> provides thread pools, futures and atomic counters</li>
+							<li class="note-item">Keep the critical section inside <code>synchronize</code> as small as possible</li>
+							<li class="note-item">Use <code>SizedQueue</code> so fast producers can't exhaust memory</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Thread.new</code> / <code>join</code> / <code>value</code> — run and wait</li>
+							<li class="note-item">GVL — concurrency for I/O, not CPU</li>
+							<li class="note-item"><code>Mutex#synchronize</code> — protect shared state</li>
+							<li class="note-item"><code>Thread::Queue</code> — pass work safely</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rb-093-regex-methods.html" class="nav-link prev">Regex in String Methods</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ruby Reference · 113 Sheets</a>
+				<a href="rb-095-fibers-async.html" class="nav-link next">Fibers &amp; the Fiber Scheduler</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

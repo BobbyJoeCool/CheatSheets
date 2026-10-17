@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Vite — Sheet 30: Writing Plugins: Server &amp; HTML Hooks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/vite-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>Writing Plugins: Server &amp; HTML Hooks</h1>
+			<div class="sheet-desc">configureServer · server.middlewares · transformIndexHtml · hotUpdate · this.environment · vite-plugin-inspect</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Dev-Server Hooks</h2>
+						<div class="description">Some plugin hooks exist only in Vite. <strong><code>configureServer</code></strong> gives you the dev server to add middleware or watch files; <strong><code>transformIndexHtml</code></strong> edits or injects into HTML; <strong><code>hotUpdate</code></strong> customizes what happens when a file changes. Inside hooks, <code>this.environment</code> tells you whether you're working on the client, SSR or another environment.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>configureServer</code> can return a function to run <strong>after</strong> internal middleware</li>
+							<li class="note-item"><code>configurePreviewServer</code> is the same hook for <code>vite preview</code></li>
+							<li class="note-item"><code>hotUpdate</code> replaces the older <code>handleHotUpdate</code></li>
+							<li class="note-item">Use <code>apply: 'serve'</code> for dev-only plugins</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Middleware, HTML Injection, HMR</h2>
+						<pre><code class="language-typescript">import type { Plugin } from 'vite'
+
+export function devTools(): Plugin {
+  return {
+    name: 'dev-tools',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/__health', (req, res) =&gt; res.end('ok'))
+      return () =&gt; server.middlewares.use(spaFallback)   // after internals
+    },
+    transformIndexHtml: () =&gt; [
+      { tag: 'script', attrs: { src: '/banner.js' }, injectTo: 'body' },
+    ],
+    hotUpdate({ file, server }) {
+      if (file.endsWith('.md') &amp;&amp; this.environment.name === 'client') {
+        server.ws.send({ type: 'custom', event: 'content-changed', data: { file } })
+        return []                                         // skip default HMR
+      }
+    },
+  }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>server.middlewares</code> — Connect app; add routes</div>
+							<div class="explain-item">Returned function — post-middleware</div>
+							<div class="explain-item"><code>transformIndexHtml</code> — return tags or new HTML</div>
+							<div class="explain-item"><code>hotUpdate</code> — <code>[]</code> = handled; <code>server.ws.send</code> notifies clients</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Server Table | Html Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-server">
+						<h2 class="section-title">Useful server Properties</h2>
+						<table>
+							<thead><tr><th>Property</th><th>What it is</th></tr></thead>
+							<tbody>
+								<tr><td>server.middlewares</td><td class="desc">Connect app</td></tr>
+								<tr><td>server.watcher</td><td class="desc">File watcher</td></tr>
+								<tr><td>server.ws</td><td class="desc">HMR WebSocket (send / on)</td></tr>
+								<tr><td>server.environments</td><td class="desc">client, ssr, …</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-html">
+						<h2 class="section-title">transformIndexHtml Return</h2>
+						<table>
+							<thead><tr><th>Return value</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>string</td><td class="desc">Replace HTML</td></tr>
+								<tr><td>[{ tag, attrs, injectTo }]</td><td class="desc">Inject tags</td></tr>
+								<tr><td>{ html, tags }</td><td class="desc">Both</td></tr>
+								<tr><td>{ order: 'pre', handler }</td><td class="desc">Run before other HTML transforms</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Adding a catch-all middleware directly in <code>configureServer</code> — it runs before Vite's and swallows module requests; return a function instead</li>
+							<li class="note-item">Forgetting <code>apply: 'serve'</code> on dev-only plugins — <code>configureServer</code> code may still be imported and run at build</li>
+							<li class="note-item">Using <code>handleHotUpdate</code> in new plugins — prefer <code>hotUpdate</code>, which is environment-aware</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Debug your transforms with <code>vite-plugin-inspect</code> at <code>/__inspect/</code></li>
+							<li class="note-item">Use <code>server.ws.send({ type: 'full-reload' })</code> to force a reload</li>
+							<li class="note-item">Use <code>injectTo: 'head-prepend'</code> for scripts that must run first</li>
+							<li class="note-item">Read <code>this.environment.config</code> instead of global config in environment-aware hooks</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>configureServer</code> — dev middleware + watcher</li>
+							<li class="note-item"><code>transformIndexHtml</code> — edit / inject HTML</li>
+							<li class="note-item"><code>hotUpdate</code> — custom HMR handling</li>
+							<li class="note-item"><code>this.environment</code> — which environment is running</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="vite-29-writing-plugins.html" class="nav-link prev" title="Writing Plugins: Core Hooks">Writing Plugins</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Vite · 39 Sheets</a>
+				<a href="vite-31-ssr.html" class="nav-link next">Server-Side Rendering</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

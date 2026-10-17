@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ruby — Sheet 039: retry &amp; Cleanup Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rb-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s039">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 039</div>
+			<h1>retry &amp; Cleanup Patterns</h1>
+			<div class="sheet-desc">retry with attempts · ensure · File.open block · yield-based cleanup · at_exit · Timeout.timeout</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">retry and Cleanup Patterns</h2>
+						<div class="description"><strong><code>retry</code></strong> inside a <code>rescue</code> jumps back to the start of the <code>begin</code> block, which is handy for flaky network calls when combined with an attempt counter. For cleanup, prefer <strong>block-based APIs</strong> (<code>File.open { }</code>, <code>Mutex#synchronize { }</code>) that release resources automatically; <code>ensure</code> and <code>at_exit</code> cover the rest.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>retry</code> without a limit can loop forever</li>
+							<li class="note-item">Back off between attempts (<code>sleep 2 ** attempts</code>)</li>
+							<li class="note-item"><code>at_exit</code> blocks run in reverse order of registration</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Retry and Cleanup</h2>
+						<pre class="language-ruby"><code class="language-ruby">attempts = 0
+begin
+  attempts += 1
+  response = fetch_data          # may raise Net::OpenTimeout
+rescue Net::OpenTimeout, Errno::ECONNRESET
+  if attempts &lt; 3
+    sleep(2 ** attempts)         # 2s, 4s
+    retry                        # back to `begin`
+  end
+  raise                          # give up after 3 tries
+end
+
+def with_tempfile
+  file = File.open("tmp.dat", "w")
+  yield file
+ensure
+  file&amp;.close
+  File.delete("tmp.dat") if File.exist?("tmp.dat")
+end
+
+Timeout.timeout(5) { slow_call }  # require "timeout"
+at_exit { puts "bye" }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>retry</code> — restarts the <code>begin</code> block; counter lives outside it</div>
+							<div class="explain-item"><code>sleep(2 ** attempts)</code> — exponential backoff</div>
+							<div class="explain-item"><code>raise</code> after the limit — re-raise the last error</div>
+							<div class="explain-item"><code>yield</code> + <code>ensure</code> — build your own cleanup helper</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Ruby Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>f = File.open(...); ...; f.close</code> → <code>File.open(...) { |f| ... }</code></li>
+							<li class="note-item">Copy-pasted retry loops → one <code>with_retries(times: 3) { }</code> helper</li>
+							<li class="note-item"><code>Timeout.timeout</code> around IO → the library's own timeout options</li>
+						</ul>
+					</section>
+					<section class="section-notes section-rails" id="rails">
+						<h2 class="section-title">In Rails</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Rails</strong> · ActiveJob has <code>retry_on Net::OpenTimeout, wait: :polynomially_longer, attempts: 5</code></li>
+							<li class="note-item"><strong>Rails</strong> · <code>discard_on ActiveJob::DeserializationError</code> drops jobs that can't succeed</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Cleanup Tools Table | Retry Checklist Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-cleanup-tools">
+						<h2 class="section-title">Cleanup Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>ensure</td><td class="desc">always-run cleanup</td></tr>
+								<tr><td>File.open { }</td><td class="desc">auto-close files</td></tr>
+								<tr><td>Mutex#synchronize { }</td><td class="desc">auto-unlock</td></tr>
+								<tr><td>at_exit { }</td><td class="desc">run at program exit</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-retry-checklist">
+						<h2 class="section-title">retry Checklist</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>count attempts</td><td class="desc">avoid infinite loops</td></tr>
+								<tr><td>rescue specific errors</td><td class="desc">don't retry bugs</td></tr>
+								<tr><td>back off</td><td class="desc">don't hammer a failing service</td></tr>
+								<tr><td>re-raise at the end</td><td class="desc">surface the failure</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Retrying on every <code>StandardError</code>; bugs like <code>NoMethodError</code> will be retried pointlessly</li>
+							<li class="note-item">Initializing the counter inside <code>begin</code>; it resets on every <code>retry</code>, so the loop never ends</li>
+							<li class="note-item">Relying on <code>Timeout.timeout</code> for code that holds locks; it can interrupt at unsafe points</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>Net::HTTP</code> options (<code>open_timeout</code>, <code>read_timeout</code>) instead of wrapping in <code>Timeout</code></li>
+							<li class="note-item">Write cleanup helpers with <code>yield</code> inside <code>begin/ensure</code>, like the stdlib does</li>
+							<li class="note-item">Add jitter (<code>sleep(2 ** n + rand)</code>) when many clients retry at once</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>retry</code> — re-run the begin block</li>
+							<li class="note-item">attempt counter — limit retries</li>
+							<li class="note-item">block APIs — automatic cleanup</li>
+							<li class="note-item"><code>ensure</code> / <code>at_exit</code> — always-run code</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rb-038-custom-exceptions.html" class="nav-link prev">Exception Hierarchy &amp; Custom Errors</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ruby Reference · 113 Sheets</a>
+				<a href="rb-040-methods-defining.html" class="nav-link next">Defining &amp; Calling Methods</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

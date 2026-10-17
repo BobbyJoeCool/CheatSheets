@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ruby — Sheet 072: Copying &amp; Freezing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rb-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s072">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 072</div>
+			<h1>Copying &amp; Freezing</h1>
+			<div class="sheet-desc">dup · clone(freeze:) · initialize_copy · freeze · frozen? · deep copy · Ractor.make_shareable</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Copying and Freezing</h2>
+						<div class="description">Assignment copies <strong>references</strong>, not objects. <strong><code>dup</code></strong> and <strong><code>clone</code></strong> make <strong>shallow</strong> copies (nested objects are still shared); <code>clone</code> also keeps the frozen state and singleton methods. <strong><code>freeze</code></strong> makes an object immutable, which raises <code>FrozenError</code> on mutation, and <code>Ractor.make_shareable</code> deep-freezes a structure.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>freeze</code> is shallow; inner objects stay mutable</li>
+							<li class="note-item"><code>dup</code> returns an unfrozen copy; <code>clone</code> keeps frozen state</li>
+							<li class="note-item"><code>clone(freeze: false)</code> unfreezes the copy</li>
+							<li class="note-item"><code>initialize_copy</code> customizes what <code>dup</code> / <code>clone</code> copy</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Copies and Freezing</h2>
+						<pre class="language-ruby"><code class="language-ruby">a = [[1, 2], [3]]
+b = a.dup
+b &lt;&lt; [4]                        # a unchanged
+b[0] &lt;&lt; 99                      # a[0] is [1, 2, 99] too (shared)
+deep = Marshal.load(Marshal.dump(a))  # deep copy
+
+s = "hi".freeze
+s.frozen?                       # true
+s &lt;&lt; "!"                        # FrozenError
+s.dup.frozen?                   # false
+s.clone.frozen?                 # true
+s.clone(freeze: false).frozen?  # false
+
+CONFIG = { db: { host: "x" } }.freeze
+CONFIG[:db][:host] = "y"        # allowed! inner hash not frozen
+SAFE = Ractor.make_shareable({ db: { host: "x" } })
+SAFE[:db].frozen?               # true (deep)
+
+class Order
+  def initialize = @items = []
+  def initialize_copy(src) = @items = @items.dup  # after copy
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>dup</code> — shallow copy, nested arrays shared</div>
+							<div class="explain-item"><code>Marshal</code> round-trip — quick deep copy for plain data</div>
+							<div class="explain-item"><code>clone</code> — keeps frozen state; <code>freeze: false</code> overrides</div>
+							<div class="explain-item"><code>.freeze</code> on a hash — only the outer hash is frozen</div>
+							<div class="explain-item"><code>initialize_copy</code> — deep-copy your own ivars on <code>dup</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Ruby Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Defensive <code>dup</code> everywhere → freeze shared data instead</li>
+							<li class="note-item">Hand-freezing nested config → <code>Ractor.make_shareable</code></li>
+							<li class="note-item"><code>Marshal</code> deep copy of objects with procs or IO → copy explicitly in <code>initialize_copy</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Dup Vs Clone Table | Freezing Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-dup-vs-clone">
+						<h2 class="section-title">dup vs clone</h2>
+						<table>
+							<thead><tr><th>Feature</th><th>dup</th><th>clone</th></tr></thead>
+							<tbody>
+								<tr><td>copies ivars</td><td class="desc">yes</td><td class="desc">yes</td></tr>
+								<tr><td>frozen state</td><td class="desc">dropped</td><td class="desc">kept</td></tr>
+								<tr><td>singleton methods</td><td class="desc">dropped</td><td class="desc">kept</td></tr>
+								<tr><td>depth</td><td class="desc">shallow</td><td class="desc">shallow</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-freezing">
+						<h2 class="section-title">Freezing</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>obj.freeze</td><td class="desc">shallow immutable</td></tr>
+								<tr><td>obj.frozen?</td><td class="desc">check</td></tr>
+								<tr><td>Ractor.make_shareable(obj)</td><td class="desc">deep freeze</td></tr>
+								<tr><td># frozen_string_literal: true</td><td class="desc">freeze literals</td></tr>
+								<tr><td>+str / str.dup</td><td class="desc">mutable copy</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Expecting <code>dup</code> to copy nested arrays; <code>b[0] &lt;&lt; x</code> changes <code>a[0]</code> too</li>
+							<li class="note-item">Freezing a constant hash and assuming its nested values are protected</li>
+							<li class="note-item"><code>Marshal</code> deep copies of objects holding procs, IO or singleton methods; they raise <code>TypeError</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Freeze constants at definition: <code>LIMITS = [1, 5].freeze</code></li>
+							<li class="note-item">Prefer immutable value objects (<code>Data</code>) over copying mutable ones</li>
+							<li class="note-item"><code>Object#then</code> / <code>tap</code> with <code>dup</code> keeps transformations free of side effects</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>dup</code> / <code>clone</code> — shallow copies</li>
+							<li class="note-item"><code>freeze</code> — shallow immutability</li>
+							<li class="note-item"><code>make_shareable</code> — deep freeze</li>
+							<li class="note-item"><code>initialize_copy</code> — custom copying</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rb-071-conversion-protocols.html" class="nav-link prev">Conversion Protocols</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ruby Reference · 113 Sheets</a>
+				<a href="rb-073-reading-files.html" class="nav-link next">Reading Files</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

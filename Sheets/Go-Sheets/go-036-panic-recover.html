@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 036: panic &amp; recover</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s036">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 036</div>
+			<h1>panic &amp; recover</h1>
+			<div class="sheet-desc">panic(v) · runtime panics (index, nil map, nil deref) · recover() in a deferred func · re-panic · Must… helpers · panic vs return error · a goroutine panic crashes the program</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">panic &amp; recover</h2>
+						<div class="description"><code>panic</code> stops normal execution, runs deferred calls up the stack, and crashes the program with a stack trace. It's for <strong>programmer errors and impossible states</strong>, not expected failures. <code>recover()</code> called <strong>inside a deferred function</strong> stops the panic and returns its value, letting a server keep running after one bad request.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>recover()</code> returns <code>nil</code> when not panicking or not called from a defer</li>
+							<li class="note-item">A panic in another goroutine can't be recovered from <code>main</code></li>
+							<li class="note-item">Runtime panics: nil map write, index out of range, nil deref, bad assertion</li>
+							<li class="note-item"><code>Must…</code> helpers (<code>regexp.MustCompile</code>) panic for init-time failures</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Panic and Recovery</h2>
+						<pre class="language-go"><code class="language-go">func mustPositive(n int) int {
+    if n &lt;= 0 { panic(fmt.Sprintf("bad n: %d", n)) }
+    return n
+}
+
+func safeCall(f func()) (err error) {
+    defer func() {
+        if r := recover(); r != nil {      // stop the panic
+            err = fmt.Errorf("recovered: %v", r)
+        }
+    }()
+    f()
+    return nil
+}
+
+err := safeCall(func() { var m map[string]int; m["x"] = 1 })
+fmt.Println(err) // recovered: assignment to entry in nil map
+
+var re = regexp.MustCompile(`^\d+$`) // panics at init if bad</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>panic(v)</code> — any value; usually a string or error</div>
+							<div class="explain-item"><code>recover()</code> — only works directly inside a deferred func</div>
+							<div class="explain-item">named result <code>err</code> — the deferred func converts panic → error</div>
+							<div class="explain-item">Runtime errors are panics with a <code>runtime.Error</code> value</div>
+							<div class="explain-item"><code>MustCompile</code> — fail fast on a constant that must be valid</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java / Python</strong> — <code>panic</code> ≈ unchecked exception; rarely caught</li>
+							<li class="note-item"><strong>Python</strong> — <code>recover</code> ≈ a top-level <code>except</code> in a deferred func</li>
+							<li class="note-item"><strong>Rust</strong> — <code>panic!</code> ≈ Go <code>panic</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Common Runtime Panics Table | Panic Vs Error Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-common-runtime-panics">
+						<h2 class="section-title">Common Runtime Panics</h2>
+						<table>
+							<thead><tr><th>Cause</th><th>Message</th></tr></thead>
+							<tbody>
+								<tr><td>nil map write</td><td class="desc">assignment to entry in nil map</td></tr>
+								<tr><td>s[10] on len 3</td><td class="desc">index out of range [10]</td></tr>
+								<tr><td>nil pointer</td><td class="desc">invalid memory address</td></tr>
+								<tr><td>x.(T) wrong type</td><td class="desc">interface conversion</td></tr>
+								<tr><td>close closed chan</td><td class="desc">close of closed channel</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-panic-vs-error">
+						<h2 class="section-title">panic vs error</h2>
+						<table>
+							<thead><tr><th>Situation</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>File not found</td><td class="desc">error</td></tr>
+								<tr><td>Bad user input</td><td class="desc">error</td></tr>
+								<tr><td>Broken invariant</td><td class="desc">panic</td></tr>
+								<tr><td>Init-time config</td><td class="desc">Must… panic</td></tr>
+								<tr><td>Library API</td><td class="desc">error (never panic)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>panic</code>/<code>recover</code> as try/catch for normal control flow</li>
+							<li class="note-item">Calling <code>recover()</code> in a helper called by the deferred func; it must be the deferred func itself</li>
+							<li class="note-item">Starting goroutines without recovery in servers; one panic kills the whole process</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Recover at boundaries only: HTTP middleware, worker loops (<code>net/http</code> already recovers per request)</li>
+							<li class="note-item">Log the stack with <code>debug.Stack()</code> when you recover</li>
+							<li class="note-item">Re-panic (<code>panic(r)</code>) values you don't know how to handle</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>panic(v)</code> — unwinds, runs defers, crashes</li>
+							<li class="note-item"><code>recover()</code> — only in a deferred func</li>
+							<li class="note-item">errors for expected failures; panic for bugs</li>
+							<li class="note-item"><code>Must…</code> — panic on invalid constants</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-035-custom-sentinel-errors.html" class="nav-link prev">Custom &amp; Sentinel Errors</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-037-error-patterns.html" class="nav-link next">Error Handling Patterns</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

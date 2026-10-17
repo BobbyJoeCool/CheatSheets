@@ -132,6 +132,7 @@ CheatSheets/
 | ✅ | Bitwise | 23 | binary, hex & octal, two's complement, AND/OR/XOR/NOT, shifts & rotations, single-bit ops, masks & bit fields, lowest set bit & powers of two, counting & scanning bits, XOR tricks, flags & permissions, bitsets & subsets, colors & packed data, bytes & endianness, IP subnets & CIDR, hashing & branchless tricks, language guides (Python, Java, JS, C/C++, C#, Go, Rust, Kotlin, Ruby, SQL, CLI), quick reference |
 | ✅ | RegEx | 25 | flavors, literals & escaping, how the engine matches, character classes & Unicode, quantifiers (greedy, lazy & possessive), anchors & boundaries, groups & backreferences, lookaround, flags, substitution, advanced constructs, performance & ReDoS, Python, Java, JavaScript, other languages, command-line tools, quick reference (validation & text processing) |
 | ✅ | Playwright | 67 | introduction & setup, writing tests, locators, actions, assertions, navigation & waiting, fixtures & page objects, authentication, network, browsers, contexts & emulation, visual & accessibility testing, configuration & running tests, debugging & tooling, AI agents & MCP, web app frameworks, language bindings, other runners & cross-language, CI & remote execution, quick reference |
+| ✅ | Gradle | 27 | wrapper & project structure, CLI, Kotlin vs Groovy DSL, plugins, tasks, properties & providers, dependencies, repositories & version catalogs, conflicts & platforms, Java plugin & toolchains, application JARs, testing, multi-project & composite builds, convention plugins, build & configuration cache, daemon tuning, custom tasks, publishing, Spring Boot / Kotlin / Android plugins, CI & troubleshooting, quick reference |
 
 ### Command Line Interface
 
@@ -180,6 +181,7 @@ CheatSheets/
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
 | ✅ | Node.js | 68 | introduction & setup, modules & packages, event loop & async, process & environment, CLI tools, file system, buffers & streams, networking & HTTP, errors & debugging, testing, concurrency & performance, security, built-in utilities, web frameworks & libraries, deployment |
+| ✅ | Vite | 39 | Vite 8: project setup & structure, CLI, config & shared options, aliases, env & modes, TypeScript, dev server & proxy, HMR, dependency pre-bundling, static assets & glob imports, JSON / Wasm / workers, dynamic imports, CSS & preprocessors, Lightning CSS, Tailwind, build & Rolldown chunking, minification, library mode, preview & deployment, browser support, using & writing plugins, SSR, Environment API, JavaScript API, performance, Vitest, troubleshooting, migrating to Vite 8, quick reference |
 | ✅ | Next.js | 58 | introduction & setup, routing, server & client components, data fetching, caching & rendering, mutations & server actions, route handlers & proxy, styling, optimizations, authentication & security, data, environment & i18n, testing & debugging, deployment & operations, Pages Router (legacy) |
 
 ### SQL & Tools
@@ -211,5 +213,12 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ⬜ | Go | 112 | Outline drafted — Go 1.27: introduction & toolchain, output & comments, variables & data types, strings, operators & pointers, control flow, errors as values, functions, data structures & iterators, types, methods, interfaces & generics, files & I/O, modules & standard library, external libraries, advanced topics, concurrency, testing & tooling, web & networking, quick reference |
-| ⬜ | Ruby | 113 | Outline drafted — Ruby 4.0: introduction & setup, output & comments, variables & data types, strings, operators, control flow & pattern matching, error handling, methods & blocks (procs, lambdas, closures), data structures, OOP & modules, files & I/O, gems & Bundler, testing & tooling, advanced topics (regex, threads, fibers, Ractors, RBS), Enumerable & enumerators, metaprogramming |
+| ✅ | Go | 112 | Go 1.27: introduction & toolchain, output & comments, variables & data types, strings, operators & pointers, control flow, errors as values, functions, data structures & iterators, types, methods, interfaces & generics, files & I/O, modules & standard library, external libraries, advanced topics, concurrency, testing & tooling, web & networking, quick reference |
+| ✅ | Ruby | 113 | Ruby 4.0: introduction & setup, output & comments, variables & data types, strings, operators, control flow & pattern matching, error handling, methods & blocks (procs, lambdas, closures), data structures, OOP & modules, files & I/O, gems & Bundler, testing & tooling, advanced topics (regex, threads, fibers, Ractors, RBS), Enumerable & enumerators, metaprogramming |
+
+### DevOps & Containers
+
+| Status | Collection | Sheets | Notes |
+| :---: | :--- | :---: | :--- |
+| ✅ | Docker | 31 | installation & CLI, contexts, Docker Desktop, running containers & lifecycle, logs & debugging, resource limits, images, tags & registries, Dockerfile, build & BuildKit, multi-stage builds & caching, Buildx multi-platform builds, volumes & bind mounts, networking, Compose (services, volumes, networks, secrets, workflows), Swarm (nodes, services, stacks), cleanup & troubleshooting, security & best practices, quick reference |
+| ✅ | Kubernetes | 25 | local clusters & kubectl, kubeconfig & contexts, inspecting resources, imperative vs declarative, manifests & labels, Pods, Deployments & rollouts, StatefulSets & DaemonSets, Jobs & CronJobs, probes & Pod lifecycle, Services & DNS, Ingress & Gateway API, network policies, ConfigMaps & Secrets, volumes & storage, requests, limits & quotas, scheduling, autoscaling & disruption budgets, RBAC, Pod Security, debugging, Helm & Kustomize, quick reference |

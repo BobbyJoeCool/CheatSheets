@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kubernetes — Sheet 21: Pod Security</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/k8s-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Pod Security</h1>
+			<div class="sheet-desc">securityContext · runAsNonRoot · readOnlyRootFilesystem · drop ALL · allowPrivilegeEscalation · seccomp · Pod Security Admission</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Locking Down Containers</h2>
+						<div class="description">A container's <strong>securityContext</strong> controls the Linux user, capabilities, privilege escalation, seccomp profile and file-system writes. <strong>Pod Security Admission</strong> (built in) checks pods against the <strong>Pod Security Standards</strong>: <code>privileged</code>, <code>baseline</code> or <code>restricted</code>, chosen per namespace with labels. It replaced PodSecurityPolicy, removed in 1.25.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Pod-level <code>securityContext</code> sets defaults; container-level wins</li>
+							<li class="note-item"><code>runAsNonRoot</code> fails pods whose image runs as UID 0</li>
+							<li class="note-item">Need custom rules? Use Kyverno or OPA Gatekeeper</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Restricted Namespace + Hardened Pod</h2>
+						<pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+  labels:
+    pod-security.kubernetes.io/enforce: restricted   # reject violators
+    pod-security.kubernetes.io/warn: restricted      # warn on apply
+---
+spec:                                  # pod spec
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    fsGroup: 10001                     # group owning mounted volumes
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: api
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>enforce</code> — rejected at the API; <code>warn</code> — shown to kubectl</div>
+							<div class="explain-item"><code>runAsUser: 10001</code> — avoid UIDs that exist on the host</div>
+							<div class="explain-item"><code>RuntimeDefault</code> — the runtime's default syscall filter</div>
+							<div class="explain-item"><code>readOnlyRootFilesystem</code> — mount an <code>emptyDir</code> for <code>/tmp</code></div>
+							<div class="explain-item"><code>drop: [ALL]</code> — add back only e.g. <code>NET_BIND_SERVICE</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Levels Table | Modes Table | Restricted Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-levels">
+						<h2 class="section-title">Pod Security Standards</h2>
+						<table>
+							<thead><tr><th>Level</th><th>Allows</th></tr></thead>
+							<tbody>
+								<tr><td>privileged</td><td class="desc">Anything (system add-ons)</td></tr>
+								<tr><td>baseline</td><td class="desc">Blocks known escalations</td></tr>
+								<tr><td>restricted</td><td class="desc">Hardened best practice</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-modes">
+						<h2 class="section-title">Namespace Label Modes</h2>
+						<table>
+							<thead><tr><th>pod-security…/</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>enforce</td><td class="desc">Reject pod</td></tr>
+								<tr><td>audit</td><td class="desc">Audit log entry</td></tr>
+								<tr><td>warn</td><td class="desc">kubectl warning</td></tr>
+								<tr><td>enforce-version</td><td class="desc">Pin rules, e.g. v1.3x</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-restricted">
+						<h2 class="section-title">Restricted Blocks</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Rule</th></tr></thead>
+							<tbody>
+								<tr><td>privileged / host*</td><td class="desc">Not allowed</td></tr>
+								<tr><td>hostPath volumes</td><td class="desc">Not allowed</td></tr>
+								<tr><td>runAsNonRoot</td><td class="desc">Must be true</td></tr>
+								<tr><td>capabilities</td><td class="desc">Drop ALL</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Enforcing <code>restricted</code> on <code>kube-system</code> — breaks CNI and CSI pods</li>
+							<li class="note-item"><code>readOnlyRootFilesystem</code> without a writable <code>/tmp</code> — app crashes</li>
+							<li class="note-item">Images built to run as root — <code>runAsNonRoot</code> blocks them</li>
+							<li class="note-item">Assuming PSA blocks everything bad — it only checks pod fields</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Roll out with <code>warn</code> + <code>audit</code> first, then <code>enforce</code></li>
+							<li class="note-item"><code>kubectl label --dry-run=server ns shop pod-security…=restricted</code> lists violators</li>
+							<li class="note-item">Set <code>USER 10001</code> in your Dockerfile</li>
+							<li class="note-item"><code>kubectl debug</code> profiles help keep debug pods compliant</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>securityContext</code> — user, caps, seccomp</li>
+							<li class="note-item"><code>privileged / baseline / restricted</code></li>
+							<li class="note-item"><code>pod-security.kubernetes.io/enforce</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="k8s-20-rbac-serviceaccounts.html" class="nav-link prev" title="RBAC &amp; ServiceAccounts">RBAC</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Kubernetes · 25 Sheets</a>
+				<a href="k8s-22-debugging-troubleshooting.html" class="nav-link next" title="Debugging &amp; Troubleshooting">Debugging</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

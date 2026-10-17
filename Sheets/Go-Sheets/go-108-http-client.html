@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 108: HTTP Client</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s108">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 108</div>
+			<h1>HTTP Client</h1>
+			<div class="sheet-desc">http.Get / Post · http.Client{Timeout: …} · http.NewRequestWithContext · req.Header.Set · always defer resp.Body.Close() · check resp.StatusCode · Transport tuning · url.Parse / url.Values</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">HTTP Client</h2>
+						<div class="description"><code>http.Get</code> and friends use <code>http.DefaultClient</code>, which has <strong>no timeout</strong>, so production code should create its own <code>http.Client{Timeout: …}</code> and reuse it (it pools connections). Build requests with <code>http.NewRequestWithContext</code> to set headers and support cancellation, <strong>always close</strong> <code>resp.Body</code>, and check <code>resp.StatusCode</code> yourself: non-2xx is not an error.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">One <code>http.Client</code> per app; it's safe for concurrent use</li>
+							<li class="note-item">Not reading/closing the body prevents connection reuse</li>
+							<li class="note-item"><code>err</code> is only for transport failures (DNS, timeout, refused)</li>
+							<li class="note-item">Use <code>url.Values</code> / <code>url.Parse</code> to build query strings safely</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Making Requests</h2>
+						<pre class="language-go"><code class="language-go">var client = &amp;http.Client{Timeout: 10 * time.Second}
+
+func getUser(ctx context.Context, id int) (*User, error) {
+    u, _ := url.Parse("https://api.example.com/users")
+    u.RawQuery = url.Values{"id": {strconv.Itoa(id)}}.Encode()
+    req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+    if err != nil { return nil, err }
+    req.Header.Set("Authorization", "Bearer "+token)
+
+    resp, err := client.Do(req)
+    if err != nil { return nil, err }           // network error
+    defer resp.Body.Close()
+    if resp.StatusCode != http.StatusOK {
+        b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+        return nil, fmt.Errorf("status %d: %s", resp.StatusCode, b)
+    }
+    var user User
+    return &amp;user, json.NewDecoder(resp.Body).Decode(&amp;user)
+}
+body, _ := json.Marshal(newUser)                // POST JSON
+resp, err := client.Post(apiURL, "application/json", bytes.NewReader(body))</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Timeout</code> — covers connect, headers and body read</div>
+							<div class="explain-item"><code>url.Values{…}.Encode()</code> — escaped query string</div>
+							<div class="explain-item"><code>NewRequestWithContext</code> — cancellable request</div>
+							<div class="explain-item"><code>defer resp.Body.Close()</code> — after the error check</div>
+							<div class="explain-item">check <code>StatusCode</code>; 404/500 return <code>err == nil</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — ≈ <code>requests</code>, but no default timeout</li>
+							<li class="note-item"><strong>JS</strong> — ≈ <code>fetch</code>; non-2xx isn't an error either</li>
+							<li class="note-item"><strong>Java</strong> — ≈ <code>HttpClient</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Client Options Table | Transport Tuning Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-client-options">
+						<h2 class="section-title">Client Options</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>Timeout</td><td class="desc">whole request limit</td></tr>
+								<tr><td>Transport</td><td class="desc">pooling, TLS, proxy</td></tr>
+								<tr><td>CheckRedirect</td><td class="desc">redirect policy</td></tr>
+								<tr><td>Jar</td><td class="desc">cookies</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-transport-tuning">
+						<h2 class="section-title">Transport Tuning</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Default</th></tr></thead>
+							<tbody>
+								<tr><td>MaxIdleConns</td><td class="desc">100</td></tr>
+								<tr><td>MaxIdleConnsPerHost</td><td class="desc">2 (raise for one API)</td></tr>
+								<tr><td>IdleConnTimeout</td><td class="desc">90s</td></tr>
+								<tr><td>TLSHandshakeTimeout</td><td class="desc">10s</td></tr>
+								<tr><td>ForceAttemptHTTP2</td><td class="desc">true (default transport)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>http.Get</code> in production: no timeout, a slow server hangs your goroutine forever</li>
+							<li class="note-item">Creating a new <code>http.Client</code> (and Transport) per request; connections aren't reused</li>
+							<li class="note-item">Treating <code>err == nil</code> as success without checking <code>resp.StatusCode</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Raise <code>MaxIdleConnsPerHost</code> when calling one host heavily</li>
+							<li class="note-item">Add retries with backoff for idempotent requests (or use <code>hashicorp/go-retryablehttp</code>)</li>
+							<li class="note-item">Test clients against <code>httptest.NewServer</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>http.Client{Timeout}</code> — create once, reuse</li>
+							<li class="note-item"><code>NewRequestWithContext</code> + headers</li>
+							<li class="note-item"><code>defer resp.Body.Close()</code> — always</li>
+							<li class="note-item">check <code>StatusCode</code> — non-2xx isn't an error</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-107-json-apis.html" class="nav-link prev">Building JSON APIs</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-109-http-production.html" class="nav-link next">Production HTTP Servers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 066: Reading Files</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s066">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 066</div>
+			<h1>Reading Files</h1>
+			<div class="sheet-desc">os.ReadFile · os.Open + defer f.Close() · bufio.Scanner by line · scanner.Buffer for long lines · bufio.Reader.ReadString · chunked f.Read · os.Stdin · fs.ErrNotExist</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Reading Files</h2>
+						<div class="description"><code>os.ReadFile</code> loads a whole file into memory in one call, ideal for small files. For large files or line-by-line processing, <code>os.Open</code> returns an <code>&#42;os.File</code> (an <code>io.Reader</code>), which you wrap in a <code>bufio.Scanner</code> or <code>bufio.Reader</code>. Always <code>defer f.Close()</code> <strong>after</strong> checking the open error.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>bufio.Scanner</code> strips the trailing <code>\n</code> (and <code>\r\n</code>)</li>
+							<li class="note-item">Scanner's default max line is <strong>64 KB</strong>; raise it with <code>Buffer</code></li>
+							<li class="note-item">Check <code>scanner.Err()</code> after the loop</li>
+							<li class="note-item"><code>errors.Is(err, fs.ErrNotExist)</code> detects a missing file</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Reading Patterns</h2>
+						<pre class="language-go"><code class="language-go">data, err := os.ReadFile("config.json")   // whole file
+if errors.Is(err, fs.ErrNotExist) { return defaults, nil }
+
+f, err := os.Open("access.log")
+if err != nil { return err }
+defer f.Close()
+
+sc := bufio.NewScanner(f)
+sc.Buffer(make([]byte, 0, 64*1024), 1024*1024) // allow 1 MB lines
+for sc.Scan() {
+    line := sc.Text()                  // no trailing newline
+    if strings.HasPrefix(line, "#") { continue }
+    process(line)
+}
+if err := sc.Err(); err != nil { return err }
+
+sc = bufio.NewScanner(strings.NewReader("a b  c"))
+sc.Split(bufio.ScanWords)              // word by word
+
+br := bufio.NewReader(os.Stdin)        // interactive input
+name, _ := br.ReadString('\n')         // includes the '\n'
+name = strings.TrimSpace(name)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>os.ReadFile</code> — returns <code>[]byte</code>; convert with <code>string(data)</code></div>
+							<div class="explain-item"><code>defer f.Close()</code> — only after the error check</div>
+							<div class="explain-item"><code>sc.Scan()</code> — false at EOF or on error</div>
+							<div class="explain-item"><code>sc.Buffer</code> — needed for lines over 64 KB</div>
+							<div class="explain-item"><code>ReadString('\n')</code> — keeps the delimiter; trim it</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — <code>open().read()</code> → <code>os.ReadFile</code></li>
+							<li class="note-item"><strong>Python</strong> — <code>for line in f</code> → <code>bufio.Scanner</code></li>
+							<li class="note-item"><strong>Java</strong> — <code>Files.readAllBytes</code> → <code>os.ReadFile</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Choosing A Reader Table | Opening Files Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-choosing-a-reader">
+						<h2 class="section-title">Choosing a Reader</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>small file at once</td><td class="desc"><code>os.ReadFile</code></td></tr>
+								<tr><td>lines</td><td class="desc"><code>bufio.Scanner</code></td></tr>
+								<tr><td>words / runes</td><td class="desc"><code>sc.Split(ScanWords)</code></td></tr>
+								<tr><td>very long lines</td><td class="desc"><code>bufio.Reader.ReadLine</code></td></tr>
+								<tr><td>binary chunks</td><td class="desc"><code>f.Read(buf)</code> / <code>io.ReadFull</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-opening-files">
+						<h2 class="section-title">Opening Files</h2>
+						<table>
+							<thead><tr><th>Func</th><th>Mode</th></tr></thead>
+							<tbody>
+								<tr><td>os.Open(name)</td><td class="desc">read-only</td></tr>
+								<tr><td>os.Create(name)</td><td class="desc">write, truncate</td></tr>
+								<tr><td>os.OpenFile(n, flag, perm)</td><td class="desc">custom</td></tr>
+								<tr><td>os.Stdin</td><td class="desc">standard input</td></tr>
+								<tr><td>os.DirFS(dir)</td><td class="desc">read-only fs.FS</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>bufio.Scanner: token too long</code> on big lines; call <code>sc.Buffer</code> with a larger max</li>
+							<li class="note-item">Forgetting <code>sc.Err()</code>, so read errors look like a normal end of file</li>
+							<li class="note-item">Reading multi-GB files with <code>os.ReadFile</code>; stream them instead</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Open with <code>os.Open</code> + <code>defer Close</code> in a small helper so the file closes per call</li>
+							<li class="note-item">Pass <code>io.Reader</code> to parsing functions instead of file names</li>
+							<li class="note-item">Use <code>os.Root</code> (1.24) to confine reads to a directory when paths come from users</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>os.ReadFile</code> — whole file</li>
+							<li class="note-item"><code>os.Open</code> + <code>defer f.Close()</code> — streaming</li>
+							<li class="note-item"><code>bufio.Scanner</code> — line by line</li>
+							<li class="note-item"><code>fs.ErrNotExist</code> — missing file check</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-065-io-readers-writers.html" class="nav-link prev">io.Reader &amp; io.Writer</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-067-writing-files.html" class="nav-link next">Writing Files</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

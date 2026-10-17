@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 047: Slices — Internals &amp; Gotchas</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s047">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 047</div>
+			<h1>Slices — Internals &amp; Gotchas</h1>
+			<div class="sheet-desc">header (ptr, len, cap) · shared backing array · append reallocation &amp; growth · full slice expr s[a:b:c] · copy(dst, src) · slices.Clone · sub-slice memory retention · passing slices to funcs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">How Slices Work</h2>
+						<div class="description">A slice value is a small <strong>header</strong>: a pointer to a backing array, a length and a capacity. Slicing creates a new header over the <strong>same array</strong>, so writes through one slice are visible through the other. <code>append</code> writes in place while capacity remains, and only <strong>allocates a new array</strong> when it runs out, after which the slices no longer share.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Header = <code>{ptr, len, cap}</code> (24 bytes on 64-bit)</li>
+							<li class="note-item">Growth roughly doubles small slices, ~1.25× for large ones</li>
+							<li class="note-item"><code>s[a:b:c]</code> — full slice expression sets cap to <code>c - a</code></li>
+							<li class="note-item"><code>copy(dst, src)</code> copies <code>min(len(dst), len(src))</code> elements</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Sharing &amp; Growth</h2>
+						<pre class="language-go"><code class="language-go">base := []int{1, 2, 3, 4, 5}
+a := base[1:3]                // [2 3], cap 4
+a[0] = 99                     // base is now [1 99 3 4 5]
+
+a = append(a, 100)            // fits in cap: overwrites base[3]!
+fmt.Println(base)             // [1 99 3 100 5]
+
+b := base[1:3:3]              // full slice expr: cap 2
+b = append(b, 7)              // exceeds cap → new array
+b[0] = -1                     // base unaffected
+
+dst := make([]int, 2)
+n := copy(dst, base)          // 2, dst = [1 99]
+c := slices.Clone(base)       // independent copy
+
+big := loadMB()               // 1 MB
+head := big[:10]              // keeps the whole MB alive
+head = slices.Clone(big[:10]) // keeps only 10 elements
+
+func addOne(s []int) { s = append(s, 1) } // caller won't see it</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>a := base[1:3]</code> — same backing array</div>
+							<div class="explain-item"><code>append</code> within cap — overwrites <code>base[3]</code></div>
+							<div class="explain-item"><code>[1:3:3]</code> — limit cap so append must copy</div>
+							<div class="explain-item"><code>slices.Clone</code> — break the sharing</div>
+							<div class="explain-item"><code>addOne</code> — append changes the local header only</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Python</strong> — <code>s[1:3]</code> copies in Python; in Go it shares memory</li>
+							<li class="note-item"><strong>JS</strong> — <code>.slice()</code> copies; Go needs <code>slices.Clone</code></li>
+							<li class="note-item"><strong>Rust</strong> — slice ≈ <code>&amp;mut [T]</code> view</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Slice Expressions Table | Copying Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-slice-expressions">
+						<h2 class="section-title">Slice Expressions</h2>
+						<table>
+							<thead><tr><th>Expr</th><th>len / cap</th></tr></thead>
+							<tbody>
+								<tr><td>s[i:j]</td><td class="desc">j-i / cap-i</td></tr>
+								<tr><td>s[i:j:k]</td><td class="desc">j-i / k-i</td></tr>
+								<tr><td>s[:0]</td><td class="desc">0 / cap (reuse)</td></tr>
+								<tr><td>s[len(s):]</td><td class="desc">0 / cap-len</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-copying">
+						<h2 class="section-title">Copying</h2>
+						<table>
+							<thead><tr><th>Way</th><th>Note</th></tr></thead>
+							<tbody>
+								<tr><td>copy(dst, src)</td><td class="desc">dst must be sized</td></tr>
+								<tr><td>slices.Clone(s)</td><td class="desc">nil stays nil</td></tr>
+								<tr><td>append([]T(nil), s...)</td><td class="desc">older idiom</td></tr>
+								<tr><td>slices.Concat(a, b)</td><td class="desc">new combined slice</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Appending to a sub-slice and corrupting the parent's later elements</li>
+							<li class="note-item">Expecting <code>func f(s []int) { s = append(s, x) }</code> to grow the caller's slice; return it instead</li>
+							<li class="note-item">Holding a tiny sub-slice of a huge buffer; the whole buffer can't be GC'd</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Return the slice from functions that append: <code>s = add(s, x)</code></li>
+							<li class="note-item">Use <code>s[a:b:b]</code> when handing out sub-slices that others may append to</li>
+							<li class="note-item">Reuse buffers with <code>buf = buf[:0]</code> in hot loops</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">header — ptr, len, cap</li>
+							<li class="note-item">sub-slices — share memory</li>
+							<li class="note-item">append past cap — new array</li>
+							<li class="note-item"><code>slices.Clone</code> / <code>copy</code> — independent data</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-046-slices-basics.html" class="nav-link prev">Slices — Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-048-slices-package.html" class="nav-link next">slices Package</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

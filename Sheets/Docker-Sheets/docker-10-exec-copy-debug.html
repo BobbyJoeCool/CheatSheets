@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 10: Exec, Copy &amp; Debugging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s10">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>Exec, Copy &amp; Debugging</h1>
+			<div class="sheet-desc">docker exec -it sh · exec -u root · attach vs exec · docker cp · docker debug · commit · exit codes 125 / 126 / 127</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Getting Into a Container</h2>
+						<div class="description">
+							<code>docker exec</code> starts a <strong>new process</strong> inside a running container — usually a shell for poking around. <code>docker attach</code> instead connects your terminal to the <strong>main process</strong> (PID 1), so Ctrl-C there can stop the container. <code>docker cp</code> copies files in or out, even from stopped containers, and <code>docker debug</code> gives you a full toolbox shell in slim images that have no shell at all.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">exec vs attach</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>exec</code> — new process; exiting it leaves the container running</li>
+							<li class="note-item"><code>attach</code> — main process's stdin/stdout; detach with <code>Ctrl-P Ctrl-Q</code></li>
+							<li class="note-item"><code>exec</code> only works on <strong>running</strong> containers</li>
+							<li class="note-item">Use <code>docker logs -f</code> rather than <code>attach</code> to watch output</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Exec, Copy, Debug</h2>
+						<pre><code class="language-bash">docker exec -it web sh                  # shell (bash may not exist)
+docker exec -it web bash
+docker exec -it -u root web sh          # as root, even if image uses USER
+docker exec web cat /etc/os-release     # one command, no TTY
+docker exec -e DEBUG=1 -w /app web ./check.sh
+docker exec -it db psql -U postgres     # open a DB client inside
+
+docker cp web:/etc/nginx/nginx.conf .   # container → host
+docker cp ./site/. web:/usr/share/nginx/html/   # host → container
+docker cp web:/var/log - | tar -t       # stream a tar archive
+
+docker debug web                        # toolbox shell (Desktop)
+docker debug myimage:1.0                # debug an image without running it
+docker commit web web-snapshot:debug    # save container state as an image</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item">Distroless/scratch images have no <code>sh</code>, so <code>exec</code> fails; use <code>docker debug</code></div>
+							<div class="explain-item"><code>docker debug</code> changes to a running container are real; for images they're discarded</div>
+							<div class="explain-item"><code>docker cp</code> paths: trailing <code>/.</code> copies a folder's <strong>contents</strong></div>
+							<div class="explain-item"><code>docker commit</code> is for debugging snapshots, not for building images</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Exit Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-exit">
+						<h2 class="section-title">Exit Codes</h2>
+						<table>
+							<thead><tr><th>Code</th><th>Meaning</th><th>Usual fix</th></tr></thead>
+							<tbody>
+								<tr><td>0</td><td class="desc">Success</td><td class="desc">—</td></tr>
+								<tr><td>1</td><td class="desc">App error</td><td class="desc">Read <code>docker logs</code></td></tr>
+								<tr><td>125</td><td class="desc"><code>docker run</code> itself failed</td><td class="desc">Bad flag, name taken, daemon error</td></tr>
+								<tr><td>126</td><td class="desc">Command found but not executable</td><td class="desc"><code>chmod +x</code>, wrong format</td></tr>
+								<tr><td>127</td><td class="desc">Command not found</td><td class="desc">Typo or missing in image (<code>bash</code> on Alpine)</td></tr>
+								<tr><td>137</td><td class="desc">SIGKILL (128+9)</td><td class="desc">OOM or <code>docker kill</code>/stop timeout</td></tr>
+								<tr><td>139</td><td class="desc">Segfault (128+11)</td><td class="desc">App crash, wrong architecture</td></tr>
+								<tr><td>143</td><td class="desc">SIGTERM (128+15)</td><td class="desc">Normal <code>docker stop</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>docker exec -it app bash</code> on Alpine — <code>bash</code> isn't installed; use <code>sh</code></li>
+							<li class="note-item">Fixing a bug inside a running container with <code>exec</code> — lost on the next deploy; change the Dockerfile</li>
+							<li class="note-item">Pressing Ctrl-C while attached — stops the main process and often the container</li>
+							<li class="note-item"><code>docker cp ./dir web:/app</code> vs <code>./dir/.</code> — the first nests <code>dir</code> inside <code>/app</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Check <code>docker inspect -f '{{.State.ExitCode}}'</code> before digging through logs</li>
+							<li class="note-item">Use <code>docker exec web env</code> to confirm env vars actually reached the app</li>
+							<li class="note-item">Crash on start? Override the command: <code>docker run -it --entrypoint sh myimage</code></li>
+							<li class="note-item">Exit 139 on Apple silicon often means an amd64-only image; add <code>--platform</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>exec -it … sh</code> — shell in a running container</li>
+							<li class="note-item"><code>cp src dest</code> — files in/out (<code>name:/path</code>)</li>
+							<li class="note-item"><code>debug</code> — toolbox for slim images</li>
+							<li class="note-item"><code>125/126/127/137</code> — docker, not-exec, not-found, killed</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-09-logs-inspecting.html">Logs &amp; Inspecting</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-11-resource-limits-runtime.html" title="Resource Limits &amp; Runtime Options">Resource Limits</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 28: Cleanup &amp; Troubleshooting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>Cleanup &amp; Troubleshooting</h1>
+			<div class="sheet-desc">system df · system prune -a --volumes · builder prune · logging drivers / log-opts · port already allocated · socket permission denied · no space left</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Keeping Docker Healthy</h2>
+						<div class="description">
+							Docker never deletes images, stopped containers, volumes or build cache on its own, so disks fill up over time. <code>docker system df</code> shows where the space went and the <code>prune</code> commands reclaim it. Most other problems come down to a handful of error messages, listed below with their usual fixes.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">What prune Removes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>container prune</code> — stopped containers</li>
+							<li class="note-item"><code>image prune</code> — dangling images (<code>-a</code>: all unused)</li>
+							<li class="note-item"><code>volume prune</code> — unused anonymous volumes (<code>-a</code>: named too)</li>
+							<li class="note-item"><code>builder prune</code> — build cache</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Reclaiming Space</h2>
+						<pre><code class="language-bash">docker system df                      # images, containers, volumes, cache
+docker system df -v                   # per-object detail
+docker system prune                   # stopped containers, dangling images,
+                                      # unused networks, dangling build cache
+docker system prune -a                # + all images not used by a container
+docker system prune -a --volumes      # + unused volumes (data loss!)
+docker image prune -a --filter "until=168h"   # unused and older than 7 days
+docker builder prune --filter until=72h       # cache older than 3 days
+
+# Where the space lives
+sudo du -sh /var/lib/docker/*         # Linux Engine</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-f</code> skips the confirmation prompt (careful in scripts)</div>
+							<div class="explain-item"><code>--filter until=</code> and <code>label=</code> work on most prune commands</div>
+							<div class="explain-item">Desktop: the VM disk doesn't shrink automatically; prune, then check Settings</div>
+							<div class="explain-item">Rotate logs: <code>--log-driver local</code> or <code>--log-opt max-size=10m</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Errors Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-errors">
+						<h2 class="section-title">Common Errors</h2>
+						<table>
+							<thead><tr><th>Message</th><th>Cause → fix</th></tr></thead>
+							<tbody>
+								<tr><td>port is already allocated</td><td class="desc">Something uses the host port → change <code>-p</code> or stop it (<code>lsof -i :8080</code>)</td></tr>
+								<tr><td>permission denied …docker.sock</td><td class="desc">User not in <code>docker</code> group → <code>usermod -aG docker $USER</code>, re-login</td></tr>
+								<tr><td>Cannot connect to the Docker daemon</td><td class="desc">Daemon/Desktop not running or wrong context/<code>DOCKER_HOST</code></td></tr>
+								<tr><td>no space left on device</td><td class="desc">Disk full → <code>system df</code>, prune, raise Desktop disk limit</td></tr>
+								<tr><td>exec format error</td><td class="desc">Wrong CPU architecture → <code>--platform</code> or multi-arch build</td></tr>
+								<tr><td>pull access denied / not found</td><td class="desc">Typo, private repo or not logged in → <code>docker login</code></td></tr>
+								<tr><td>toomanyrequests</td><td class="desc">Docker Hub rate limit → log in or use a mirror</td></tr>
+								<tr><td>OCI runtime create failed</td><td class="desc">Bad entrypoint/mount path → read the full message</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>docker system prune -a --volumes</code> on a server — deletes database volumes not attached to a running container</li>
+							<li class="note-item">Fixing socket errors with <code>sudo chmod 666 /var/run/docker.sock</code> — gives every user root access</li>
+							<li class="note-item">Leaving <code>json-file</code> unrotated — a chatty container can fill the disk</li>
+							<li class="note-item">Restarting Docker to clear an error without reading it — the message usually names the exact cause</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Schedule <code>docker image prune -a --filter until=168h -f</code> on CI runners</li>
+							<li class="note-item">Set default log rotation in <code>daemon.json</code> for every container (Sheet 03)</li>
+							<li class="note-item"><code>docker events</code> + <code>docker logs</code> + <code>docker inspect</code> answer most "why did it stop?" questions</li>
+							<li class="note-item"><code>journalctl -u docker</code> shows daemon errors on Linux; <code>docker desktop logs</code> on Desktop</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>system df</code> — see usage</li>
+							<li class="note-item"><code>system prune [-a] [--volumes]</code> — reclaim</li>
+							<li class="note-item"><code>builder prune</code> — clear build cache</li>
+							<li class="note-item"><code>--log-opt max-size</code> — rotate logs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-27-swarm-stacks-secrets-overlay.html" title="Stacks, Secrets &amp; Overlay Networks">Stacks &amp; Secrets</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-29-security-best-practices.html" title="Security &amp; Best Practices">Security</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

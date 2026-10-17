@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 22: Compose Service Configuration</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Compose Service Configuration</h1>
+			<div class="sheet-desc">ports · environment / env_file · command / entrypoint · restart · healthcheck · depends_on: condition · deploy.resources</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Keys Table -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Service Keys</h2>
+						<div class="description">
+							Almost every <code>docker run</code> flag has a matching key under a service. The most useful extra is <code>depends_on</code> with <strong>conditions</strong>: combined with a <code>healthcheck</code>, Compose waits until a dependency is actually ready (not just started) before starting the services that need it.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section id="tbl-keys">
+						<h2 class="section-title">More Keys → docker run</h2>
+						<table>
+							<thead><tr><th>Compose key</th><th>docker run</th></tr></thead>
+							<tbody>
+								<tr><td>container_name</td><td class="kw">--name</td></tr>
+								<tr><td>user</td><td class="kw">--user</td></tr>
+								<tr><td>working_dir</td><td class="kw">-w</td></tr>
+								<tr><td>read_only</td><td class="kw">--read-only</td></tr>
+								<tr><td>cap_drop</td><td class="kw">--cap-drop</td></tr>
+								<tr><td>extra_hosts</td><td class="kw">--add-host</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Fully Configured Service</h2>
+						<pre><code class="language-yaml">services:
+  api:
+    build: ./api
+    image: acme/api:dev
+    ports: ["127.0.0.1:8080:3000"]
+    env_file: [.env, .env.local]
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    command: ["npm", "run", "dev"]
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources: { limits: { cpus: "1.5", memory: 512M } }
+  db:
+    image: postgres:17
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>127.0.0.1:</code> — publish on localhost only</div>
+							<div class="explain-item"><code>${LOG_LEVEL:-info}</code> — from shell/<code>.env</code>, default <code>info</code></div>
+							<div class="explain-item"><code>service_healthy</code> — wait for db's healthcheck to pass</div>
+							<div class="explain-item"><code>service_completed_successfully</code> — wait for a one-shot job (migrations) to exit 0</div>
+							<div class="explain-item"><code>service_started</code> — the default: just started</div>
+							<div class="explain-item"><code>CMD</code> runs exec form; <code>CMD-SHELL</code> runs through <code>sh -c</code></div>
+							<div class="explain-item"><code>init: true</code> — same as <code>--init</code></div>
+							<div class="explain-item"><code>limits</code> — same as <code>--cpus</code> / <code>--memory</code>; <code>environment</code> beats <code>env_file</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Plain <code>depends_on: [db]</code> — only waits for the container to <strong>start</strong>, not for Postgres to accept connections</li>
+							<li class="note-item"><code>healthcheck</code> using <code>curl</code> in an image without it — service never becomes healthy</li>
+							<li class="note-item">Setting <code>container_name</code> — prevents scaling and clashes across projects</li>
+							<li class="note-item">Unquoted <code>cpus: 1.5</code> or <code>"8080:80"</code> mistakes — quote numbers-with-colons and decimals</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Pair every <code>depends_on</code> you care about with a <code>healthcheck</code> on the dependency</li>
+							<li class="note-item">Run migrations as a one-shot service and gate the app on <code>service_completed_successfully</code></li>
+							<li class="note-item">Use <code>restart: unless-stopped</code> for anything that should come back after a reboot</li>
+							<li class="note-item">Short env syntax <code>- LOG_LEVEL</code> passes the value straight from your shell</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ports</code> / <code>environment</code> / <code>env_file</code> — basics</li>
+							<li class="note-item"><code>depends_on.condition</code> — real startup order</li>
+							<li class="note-item"><code>healthcheck</code> — readiness probe</li>
+							<li class="note-item"><code>deploy.resources.limits</code> — CPU/memory caps</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-21-compose-basics.html">Compose Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-23-compose-volumes-networks-secrets.html" title="Compose Volumes, Networks &amp; Secrets">Compose Volumes &amp; Secrets</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

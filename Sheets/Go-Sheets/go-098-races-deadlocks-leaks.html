@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 098: Races, Deadlocks &amp; Leaks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s098">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 098</div>
+			<h1>Races, Deadlocks &amp; Leaks</h1>
+			<div class="sheet-desc">go test -race / go run -race · data-race examples · "all goroutines are asleep - deadlock!" · goroutine leaks (blocked sends) · goroutineleak pprof profile (1.27) · testing/synctest (1.25) · GOTRACEBACK</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Races, Deadlocks &amp; Leaks</h2>
+						<div class="description">Concurrency bugs come in three main forms. A <strong>data race</strong> is unsynchronized access to the same memory with at least one write; the <strong>race detector</strong> (<code>-race</code>) finds them at runtime. A <strong>deadlock</strong> is when goroutines wait on each other forever. A <strong>goroutine leak</strong> is a goroutine blocked forever that's never cleaned up. Go 1.27's <strong><code>goroutineleak</code> profile</strong> and <code>testing/synctest</code> help find the last two.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>-race</code> slows code 2-20× but finds real bugs; use it in CI tests</li>
+							<li class="note-item">The runtime only detects deadlock when <strong>all</strong> goroutines are blocked</li>
+							<li class="note-item">Leaks show up as a growing <code>runtime.NumGoroutine()</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Spot the Bug</h2>
+						<pre class="language-go"><code class="language-go">count := 0                              // DATA RACE
+for range 100 { go func() { count++ }() } // fix: atomic / mutex
+
+ch := make(chan int)
+ch &lt;- 1     // fatal error: all goroutines are asleep - deadlock!
+
+func search(q string) string {          // LEAK
+    ch := make(chan string)             // fix: make(chan string, 1)
+    go func() { ch &lt;- slowLookup(q) }()
+    select {
+    case r := &lt;-ch: return r
+    case &lt;-time.After(time.Second): return "" // sender stuck
+    }
+}
+
+func TestTimeout(t *testing.T) {        // deterministic time
+    synctest.Test(t, func(t *testing.T) {
+        go worker()
+        time.Sleep(time.Hour)           // instant: fake clock
+        synctest.Wait()                 // until all goroutines block
+    })
+}
+// $ go test -race ./...    ·   /debug/pprof/goroutineleak (1.27)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>count++</code> from many goroutines — read-modify-write race</div>
+							<div class="explain-item">send with no receiver — blocks main forever</div>
+							<div class="explain-item">timeout path leaves the sender blocked: leak</div>
+							<div class="explain-item">buffer of 1 lets the sender finish and exit</div>
+							<div class="explain-item"><code>synctest.Test</code> — virtual time, <code>Wait</code> for quiescence</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — <code>-race</code> has no built-in JVM equivalent</li>
+							<li class="note-item"><strong>Rust</strong> — races caught at compile time there; here at runtime</li>
+							<li class="note-item"><strong>Python</strong> — no GIL protection; races are real</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tools Table | Prevention Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-tools">
+						<h2 class="section-title">Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Finds</th></tr></thead>
+							<tbody>
+								<tr><td>go test -race</td><td class="desc">data races</td></tr>
+								<tr><td>go vet</td><td class="desc">copylocks, lostcancel</td></tr>
+								<tr><td>pprof goroutine</td><td class="desc">stack of every goroutine</td></tr>
+								<tr><td>goroutineleak profile</td><td class="desc">leaked goroutines (1.27)</td></tr>
+								<tr><td>testing/synctest</td><td class="desc">timing-dependent tests</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-prevention">
+						<h2 class="section-title">Prevention</h2>
+						<table>
+							<thead><tr><th>Bug</th><th>Habit</th></tr></thead>
+							<tbody>
+								<tr><td>race</td><td class="desc">share via channels or lock</td></tr>
+								<tr><td>deadlock</td><td class="desc">consistent lock order</td></tr>
+								<tr><td>leak</td><td class="desc">ctx + buffered result chan</td></tr>
+								<tr><td>flaky test</td><td class="desc">synctest, not Sleep</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Running <code>-race</code> only locally; enable it in CI where tests exercise concurrency</li>
+							<li class="note-item">Assuming "it works on my machine" means no race; races are timing-dependent</li>
+							<li class="note-item">Fixing flaky concurrent tests with longer <code>time.Sleep</code> calls</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Expose <code>net/http/pprof</code> on an internal port to inspect goroutines in production</li>
+							<li class="note-item">Use <code>go.uber.org/goleak</code> in <code>TestMain</code> to fail tests that leak goroutines</li>
+							<li class="note-item">Lock multiple mutexes in a fixed global order to avoid deadlocks</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>-race</code> — detect data races</li>
+							<li class="note-item">deadlock — all goroutines blocked</li>
+							<li class="note-item">leak — blocked goroutine never exits</li>
+							<li class="note-item"><code>synctest</code> / <code>goroutineleak</code> — newer tools</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-097-concurrency-patterns.html" class="nav-link prev">Concurrency Patterns</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-099-testing-basics.html" class="nav-link next">Testing — Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

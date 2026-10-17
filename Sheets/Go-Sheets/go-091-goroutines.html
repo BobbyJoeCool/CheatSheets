@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Go — Sheet 091: Goroutines</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/go-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s091">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 091</div>
+			<h1>Goroutines</h1>
+			<div class="sheet-desc">go f() · go func() { … }() · cheap (KB-sized stacks) · main returning kills all goroutines · GOMAXPROCS (container-aware, 1.25) · runtime.NumGoroutine · "share memory by communicating" · unrecovered panic crashes the process</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Goroutines</h2>
+						<div class="description">A goroutine is a function running <strong>concurrently</strong> with others, started with the <code>go</code> keyword. Goroutines are cheap (they start with a few KB of stack that grows as needed) and the runtime multiplexes them onto OS threads, so programs routinely run <strong>thousands</strong>. When <code>main</code> returns, the program exits, even if goroutines are still running.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>go f(x)</code> evaluates <code>x</code> now, runs <code>f</code> later</li>
+							<li class="note-item">No handle or return value: communicate via channels or shared state + sync</li>
+							<li class="note-item"><code>GOMAXPROCS</code> = OS threads running Go code; container-aware since 1.25</li>
+							<li class="note-item">An unrecovered panic in <strong>any</strong> goroutine crashes the whole program</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Notes -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Starting &amp; Waiting</h2>
+						<pre class="language-go"><code class="language-go">func worker(id int, wg *sync.WaitGroup) {
+    defer wg.Done()
+    time.Sleep(100 * time.Millisecond)
+    fmt.Println("worker", id, "done")
+}
+var wg sync.WaitGroup
+for i := range 3 {
+    wg.Add(1)
+    go worker(i, &amp;wg)               // pass pointer, never copy wg
+}
+wg.Wait()                           // block until all Done
+
+var wg2 sync.WaitGroup
+for _, url := range urls {
+    wg2.Go(func() { fetch(url) })   // Go 1.25: Add + go + Done
+}
+wg2.Wait()
+go func(msg string) { fmt.Println(msg) }("hello") // anonymous
+fmt.Println(runtime.NumGoroutine(), runtime.GOMAXPROCS(0))</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>go worker(…)</code> — returns immediately; worker runs concurrently</div>
+							<div class="explain-item"><code>wg.Add(1)</code> before <code>go</code>, <code>defer wg.Done()</code> inside</div>
+							<div class="explain-item"><code>wg.Wait()</code> — waits for the counter to reach zero</div>
+							<div class="explain-item"><code>wg.Go(f)</code> — 1.25 shortcut, no Add/Done bookkeeping</div>
+							<div class="explain-item"><code>GOMAXPROCS(0)</code> — query without changing</div>
+						</div>
+					</section>
+					<section class="section-notes section-compare" id="compare">
+						<h2 class="section-title">Coming From…</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Java</strong> — goroutine ≈ virtual thread</li>
+							<li class="note-item"><strong>Python</strong> — real parallelism; no GIL</li>
+							<li class="note-item"><strong>JS</strong> — no event loop; blocking calls are fine</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Goroutine Vs Thread Table | Coordination Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-goroutine-vs-thread">
+						<h2 class="section-title">Goroutine vs Thread</h2>
+						<table>
+							<thead><tr><th>Aspect</th><th>Goroutine</th></tr></thead>
+							<tbody>
+								<tr><td>start cost</td><td class="desc">~2 KB stack, µs</td></tr>
+								<tr><td>scheduling</td><td class="desc">Go runtime (M:N)</td></tr>
+								<tr><td>count</td><td class="desc">100k+ is normal</td></tr>
+								<tr><td>identity</td><td class="desc">no public ID</td></tr>
+								<tr><td>stop</td><td class="desc">cooperatively (context)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-coordination">
+						<h2 class="section-title">Coordination</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Tool</th></tr></thead>
+							<tbody>
+								<tr><td>wait for N tasks</td><td class="desc"><code>sync.WaitGroup</code></td></tr>
+								<tr><td>collect errors</td><td class="desc"><code>errgroup.Group</code></td></tr>
+								<tr><td>pass results</td><td class="desc">channels</td></tr>
+								<tr><td>cancel</td><td class="desc"><code>context.Context</code></td></tr>
+								<tr><td>protect state</td><td class="desc"><code>sync.Mutex</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>wg.Add(1)</code> inside the goroutine; <code>Wait</code> may run before it and return early</li>
+							<li class="note-item">Exiting <code>main</code> without waiting, so goroutines are killed mid-work</li>
+							<li class="note-item">Starting goroutines with no way to stop them (leaks, sheet 098)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer <code>wg.Go(f)</code> (1.25) or <code>errgroup</code> over manual Add/Done</li>
+							<li class="note-item">Every goroutine should have a clear owner and exit condition</li>
+							<li class="note-item">Recover panics at the top of long-lived worker goroutines</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>go f()</code> — start a goroutine</li>
+							<li class="note-item"><code>sync.WaitGroup</code> / <code>wg.Go</code> — wait for completion</li>
+							<li class="note-item">cheap &amp; many — M:N scheduling</li>
+							<li class="note-item"><code>main</code> returns → program exits</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="go-090-unsafe-cgo.html" class="nav-link prev">unsafe &amp; cgo</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Go Reference · 112 Sheets</a>
+				<a href="go-092-channels.html" class="nav-link next">Channels</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+	</body>
+</html>

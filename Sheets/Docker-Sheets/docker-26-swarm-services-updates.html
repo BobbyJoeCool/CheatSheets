@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Docker — Sheet 26: Swarm Services &amp; Rolling Updates</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/docker-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Swarm Services &amp; Rolling Updates</h1>
+			<div class="sheet-desc">docker service create / ls / ps · service scale · replicated vs global · --update-parallelism · --update-delay · service rollback · --constraint</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Services and Tasks</h2>
+						<div class="description">
+							A <strong>service</strong> is the desired state: image, replica count, ports, limits. Swarm turns it into <strong>tasks</strong>, each running one container on some node, and replaces tasks that fail. Changing a service (new image, env, limits) triggers a <strong>rolling update</strong> that replaces tasks a few at a time and can roll back automatically on failure.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Service Modes</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>replicated</strong> — run N copies anywhere (default)</li>
+							<li class="note-item"><strong>global</strong> — exactly one per node (agents, log shippers)</li>
+							<li class="note-item">Service name = DNS name on its overlay networks</li>
+							<li class="note-item"><code>service create</code> flags mirror <code>docker run</code> flags</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Create, Scale, Update</h2>
+						<pre><code class="language-bash">docker service create --name web --replicas 3 -p 8080:80 \
+  --limit-memory 256M --constraint node.role==worker nginx:1.27
+docker service ls                         # replicas: 3/3
+docker service ps web                     # tasks + which node they're on
+docker service logs -f web                # logs from all tasks
+docker service scale web=6
+docker service update \
+  --image nginx:1.28 \
+  --update-parallelism 2 --update-delay 10s \
+  --update-order start-first \
+  --update-failure-action rollback web
+docker service rollback web               # back to previous spec
+
+docker service create --mode global --name agent \
+  --mount type=bind,src=/var/log,dst=/host/log,ro datadog/agent
+docker service rm web</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>--constraint</code> — only schedule where the expression is true</div>
+							<div class="explain-item"><code>--update-parallelism 2</code> — replace 2 tasks at a time</div>
+							<div class="explain-item"><code>--update-delay 10s</code> — pause between batches</div>
+							<div class="explain-item"><code>start-first</code> — start new task before stopping old (no gap)</div>
+							<div class="explain-item"><code>--update-failure-action rollback</code> — undo automatically on failure</div>
+							<div class="explain-item"><code>--mode global</code> — one task per node</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+
+			<!-- Row 3: Constraints Table | Updflags Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-constraints">
+						<h2 class="section-title">Placement Constraints</h2>
+						<table>
+							<thead><tr><th>Expression</th><th>Matches</th></tr></thead>
+							<tbody>
+								<tr><td>node.role==manager</td><td class="desc">Manager nodes</td></tr>
+								<tr><td>node.labels.zone==east</td><td class="desc">Nodes with that label</td></tr>
+								<tr><td>node.platform.arch==aarch64</td><td class="desc">ARM nodes</td></tr>
+								<tr><td>--placement-pref spread=node.labels.zone</td><td class="desc">Spread across zones</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-updflags">
+						<h2 class="section-title">Other Update Flags</h2>
+						<table>
+							<thead><tr><th>Flag</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>--env-add K=V / --env-rm K</td><td class="desc">Change env vars</td></tr>
+								<tr><td>--publish-add 9090:90</td><td class="desc">Add a published port</td></tr>
+								<tr><td>--replicas-max-per-node 1</td><td class="desc">Spread replicas</td></tr>
+								<tr><td>--health-cmd / --health-interval</td><td class="desc">Override HEALTHCHECK</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Updating with <code>--image nginx:latest</code> when the tag hasn't changed — Swarm sees no change; use versioned tags</li>
+							<li class="note-item">No HEALTHCHECK — Swarm considers a task healthy as soon as it starts, so bad releases roll out fully</li>
+							<li class="note-item">Constraints no node satisfies — tasks sit in <code>Pending</code>; check <code>docker service ps --no-trunc web</code></li>
+							<li class="note-item">Expecting <code>docker ps</code> on a manager to show all containers — it shows only that node; use <code>service ps</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Always set <code>--update-failure-action rollback</code> plus a healthcheck for safe deploys</li>
+							<li class="note-item"><code>start-first</code> gives zero-downtime updates if you have spare capacity</li>
+							<li class="note-item"><code>docker service ps web --filter desired-state=running</code> hides old, shut-down tasks</li>
+							<li class="note-item">Prefer stacks (Sheet 27) over long <code>service create</code> commands</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>service create/scale/rm</code> — manage services</li>
+							<li class="note-item"><code>service ps</code> / <code>logs</code> — tasks across nodes</li>
+							<li class="note-item"><code>service update --image</code> — rolling update</li>
+							<li class="note-item"><code>service rollback</code> — previous version</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="docker-25-swarm-setup-nodes.html">Swarm Setup &amp; Nodes</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Docker Reference · 31 Sheets</a>
+				<a class="nav-link next" href="docker-27-swarm-stacks-secrets-overlay.html" title="Stacks, Secrets &amp; Overlay Networks">Stacks &amp; Secrets</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>
