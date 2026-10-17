@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<!--
+			QUICK REFERENCE — ALL LANGUAGES
+			Fully dynamic: reads the collection cards from the root index.html, fetches each
+			collection's manifest.json, and shows every page whose title contains
+			"Quick Reference", in site order. A new collection or new QR sheet shows up here
+			with no edits. Each sheet renders inside its own shadow root with its own
+			stylesheets, so per-set #sNN rules can't collide. The sheet number in each header
+			is replaced with the language name.
+		-->
+		<title>Quick Reference — All Languages</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/print-all.css" />
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js" defer></script>
+		<style>
+			#lang-jump {
+				background: var(--bg-section);
+				color: var(--text-primary);
+				border: 1px solid var(--border-section);
+				border-radius: 4px;
+				font-family: var(--font-code);
+				font-size: 10px;
+				padding: 3px 6px;
+			}
+			.qr-host {
+				display: block;
+				scroll-margin-top: 56px;
+			}
+			@media print {
+				.qr-host {
+					break-after: page;
+					page-break-after: always;
+				}
+				.qr-host:last-child {
+					break-after: auto;
+					page-break-after: auto;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div id="print-bar">
+			<a href="../../index.html" id="back-link">← All Sheets</a>
+			<span id="bar-title">QUICK REFERENCE · ALL LANGUAGES</span>
+			<span id="status"></span>
+			<select id="lang-jump" aria-label="Jump to language" disabled>
+				<option value="">Jump to…</option>
+			</select>
+			<button id="print-btn" type="button" disabled>Print All</button>
+		</div>
+
+		<div id="sheets-container"></div>
+
+		<script>
+			const QR = /quick\s*ref/i;
+			const SHEET_CSS = ['../CSS/print-all.css'];
+			const container = document.getElementById('sheets-container');
+			const status = document.getElementById('status');
+			const btn = document.getElementById('print-btn');
+			const jump = document.getElementById('lang-jump');
+			const parser = new DOMParser();
+
+			// Collections in site order: [{ name, dir }] from the root index cards
+			async function collections() {
+				const rootUrl = new URL('../../index.html', location.href);
+				const doc = parser.parseFromString(await fetch(rootUrl).then(r => r.text()), 'text/html');
+				return [...doc.querySelectorAll('.sheet-section .card')].map(card => ({
+					name: card.querySelector('h3')?.textContent.trim() || '',
+					dir: new URL(card.getAttribute('href').replace(/[^/]*$/, ''), rootUrl),
+				}));
+			}
+
+			const BADGE_CSS = `
+				.page-footer nav { justify-content: center; }
+				.qr-set-badge {
+					font-family: var(--font-code);
+					font-size: 13px;
+					font-weight: 700;
+					letter-spacing: 0.06em;
+					text-transform: uppercase;
+					color: var(--accent-purple);
+					background: rgba(126, 87, 194, 0.12);
+					border: 1px solid rgba(126, 87, 194, 0.45);
+					border-radius: 4px;
+					padding: 4px 22px;
+					text-decoration: none;
+					white-space: nowrap;
+				}
+				@media print {
+					.qr-set-badge { color: var(--accent-purple); border-color: var(--accent-purple); background: rgba(94, 53, 177, 0.06); }
+				}`;
+
+			async function renderSheet(url, lang, setIndex) {
+				const doc = parser.parseFromString(await fetch(url).then(r => r.text()), 'text/html');
+				const host = document.createElement('div');
+				host.className = 'qr-host';
+				const root = host.attachShadow({ mode: 'open' });
+				const loads = [];
+				const hrefs = [...doc.querySelectorAll('head link[rel="stylesheet"]')].map(l => l.getAttribute('href'));
+				for (const href of [...hrefs, ...SHEET_CSS.map(h => new URL(h, location.href).href)]) {
+					const l = document.createElement('link');
+					l.rel = 'stylesheet';
+					l.href = new URL(href, url).href;
+					loads.push(new Promise(res => (l.onload = l.onerror = res)));
+					root.appendChild(l);
+				}
+				doc.querySelectorAll('head style').forEach(s => root.appendChild(s.cloneNode(true)));
+				doc.querySelectorAll('script').forEach(s => s.remove());
+				const page = document.createElement('div');
+				page.className = 'sheet-page';
+				if (doc.body.id) page.id = doc.body.id;
+				page.innerHTML = doc.body.innerHTML;
+				page.querySelectorAll('[href]').forEach(a => a.setAttribute('href', new URL(a.getAttribute('href'), url).href));
+				page.querySelectorAll('[src]').forEach(e => e.setAttribute('src', new URL(e.getAttribute('src'), url).href));
+				const num = page.querySelector('.sheet-number');
+				if (num) num.textContent = lang;
+				// Footer: replace prev / home / next links with one large badge for the collection
+				const nav = page.querySelector('.page-footer nav');
+				if (nav) {
+					const toc = nav.querySelector('.nav-toc');
+					const badge = document.createElement('a');
+					badge.className = 'qr-set-badge';
+					badge.href = toc?.getAttribute('href') || setIndex;
+					badge.textContent = `${lang} Reference`;
+					nav.replaceChildren(badge);
+				}
+				const style = document.createElement('style');
+				style.textContent = BADGE_CSS;
+				root.appendChild(style);
+				root.appendChild(page);
+				return { host, page, loads };
+			}
+
+			async function build() {
+				status.textContent = 'Finding quick references…';
+				const sets = await collections();
+				const found = await Promise.all(sets.map(async s => {
+					try {
+						const { pages } = await fetch(new URL('manifest.json', s.dir)).then(r => r.json());
+						return { ...s, pages: pages.filter(p => QR.test(p.title)) };
+					} catch {
+						return { ...s, pages: [] };
+					}
+				}));
+				const todo = found.filter(s => s.pages.length);
+				const total = todo.reduce((n, s) => n + s.pages.length, 0);
+				let done = 0;
+				const loads = [];
+				for (const s of todo) {
+					const anchor = 'qr-' + s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+					jump.add(new Option(`${s.name} (${s.pages.length})`, anchor));
+					for (const [i, p] of s.pages.entries()) {
+						const r = await renderSheet(new URL(p.file, s.dir), s.name, new URL('index.html', s.dir).href);
+						if (i === 0) r.host.id = anchor;
+						container.appendChild(r.host);
+						loads.push(...r.loads);
+						if (window.Prism) Prism.highlightAllUnder(r.page);
+						status.textContent = `${++done} / ${total}`;
+					}
+				}
+				await Promise.all(loads);
+				void document.body.offsetHeight;
+				await document.fonts.ready;
+				status.textContent = `${total} sheets · ${todo.length} languages`;
+				btn.disabled = jump.disabled = false;
+			}
+
+			btn.addEventListener('click', () => window.print());
+			jump.addEventListener('change', () => {
+				if (jump.value) document.getElementById(jump.value).scrollIntoView();
+				jump.value = '';
+			});
+			document.addEventListener('DOMContentLoaded', () =>
+				build().catch(err => (status.textContent = 'Error: ' + err.message))
+			);
+		</script>
+	</body>
+</html>
