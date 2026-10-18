@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 74: Query Optimization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s74">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 74</div>
+			<h1>Query Optimization</h1>
+			<div class="sheet-desc">SARGable predicates · SELECT * · N+1 · ANALYZE · VACUUM · statistics</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Making Queries Fast</h2>
+						<div class="description">Most slow queries come from a few causes. <strong>Non-SARGable</strong> predicates wrap the column in a function or arithmetic, so its index can't be used; rewrite them as ranges on the bare column. **<code>SELECT *</code><strong> drags unneeded columns and blocks index-only scans. The </strong>N+1<strong> pattern runs one query per row from app code instead of one set-based query. The planner relies on </strong>statistics<strong>, refreshed by </strong><code>ANALYZE</code><strong>; PostgreSQL's </strong><code>VACUUM</code>** clears dead row versions so tables and indexes stay lean.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Optimization Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Measure first: <code>EXPLAIN ANALYZE</code> (<a class="sheet-ref" href="sql-73-explain-query-plans.html">sheet 73</a>)</li>
+							<li class="note-item">SARGable = Search ARGument able: usable by an index</li>
+							<li class="note-item">Autovacuum normally runs <code>VACUUM</code> and <code>ANALYZE</code> for you</li>
+							<li class="note-item">Fewer round trips beat faster single queries</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">Same rules in MongoDB: index the filter fields</li>
+							<li class="note-item">Project only needed fields: <code>find(q, { name: 1 })</code></li>
+							<li class="note-item">Avoid unanchored <code>$regex</code> and <code>$where</code> on big collections</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Common Fixes</h2>
+						<pre class="language-sql"><code class="language-sql">-- ✗ function on the column: index unusable
+SELECT order_id FROM orders
+WHERE  extract(YEAR FROM order_date) = 2026;
+-- ✓ range on the bare column
+SELECT order_id FROM orders
+WHERE  order_date &gt;= '2026-01-01'
+  AND  order_date &lt;  '2027-01-01';
+
+-- ✗ math on the column    ✓ math on the constant
+WHERE  price * 1.08 &gt; 100   -- →  WHERE price &gt; 100 / 1.08
+
+-- ✗ every column           ✓ only what's needed
+SELECT * FROM orders WHERE customer_id = 42;
+SELECT order_id, total FROM orders WHERE customer_id = 42;
+
+-- ✗ N+1 from app code: one query per customer
+SELECT * FROM orders WHERE customer_id = $1;  -- × 500
+-- ✓ one query for all of them
+SELECT * FROM orders WHERE customer_id = ANY ($1);
+
+-- Fresh statistics; clean up dead rows (PG)
+ANALYZE orders;
+VACUUM (ANALYZE) orders;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>extract(…)</code> hides <code>order_date</code> from its index</div>
+							<div class="explain-item">Moving the math to the constant side keeps the index usable</div>
+							<div class="explain-item"><code>= ANY ($1)</code> takes an array of ids in one round trip</div>
+							<div class="explain-item"><code>VACUUM (ANALYZE)</code> — reclaim space and refresh stats</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>ANALYZE</code>, <code>VACUUM</code>; autovacuum on by default</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>ANALYZE TABLE</code>, <code>OPTIMIZE TABLE</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>UPDATE STATISTICS</code>; index rebuild / reorganize</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>ANALYZE</code>, <code>VACUUM</code>, <code>PRAGMA optimize</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// ✗ N+1: one query per customer
+for (const c of customers)
+  c.orders = await prisma.order.findMany(
+    { where: { customerId: c.id } });
+// ✓ one batched query for all customers
+await prisma.customer.findMany({ include: { orders: true } });</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-sargable-rewrites">
+						<h2 class="section-title">SARGable Rewrites</h2>
+						<table>
+							<thead><tr><th>✗ Slow</th><th>✓ Index-friendly</th></tr></thead>
+							<tbody>
+								<tr><td>date(ts) = '2026-10-18'</td><td class="desc"><code>ts &gt;= '2026-10-18' AND ts &lt; '2026-10-19'</code></td></tr>
+								<tr><td>lower(email) = 'x'</td><td class="desc">expression index on <code>lower(email)</code> (<a class="sheet-ref" href="sql-72-index-types-strategies.html">sheet 72</a>)</td></tr>
+								<tr><td>name LIKE '%lamp'</td><td class="desc">trigram index or full-text (<a class="sheet-ref" href="sql-80-full-text-search.html">sheet 80</a>)</td></tr>
+								<tr><td>coalesce(x, 0) = 5</td><td class="desc"><code>x = 5</code></td></tr>
+								<tr><td>col::text = '42'</td><td class="desc"><code>col = 42</code></td></tr>
+								<tr><td>a = 1 OR b = 2</td><td class="desc"><code>UNION</code> of two indexed queries</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-checklist">
+						<h2 class="section-title">Checklist</h2>
+						<table>
+							<thead><tr><th>Check</th><th>Look at</th></tr></thead>
+							<tbody>
+								<tr><td>is an index used?</td><td class="desc"><code>EXPLAIN</code> node types</td></tr>
+								<tr><td>estimates right?</td><td class="desc">estimated vs actual rows</td></tr>
+								<tr><td>round trips?</td><td class="desc">query log / APM</td></tr>
+								<tr><td>fetching too much?</td><td class="desc"><code>SELECT *</code>, missing <code>LIMIT</code></td></tr>
+								<tr><td>table bloated?</td><td class="desc"><code>n_dead_tup</code> in <code>pg_stat_user_tables</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Adding indexes before reading the plan</li>
+							<li class="note-item">Fixing N+1 with caching instead of a better query</li>
+							<li class="note-item">Turning off autovacuum to "save resources"</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Enable <code>pg_stat_statements</code> to find the costliest queries</li>
+							<li class="note-item">Batch writes; paginate reads (<a class="sheet-ref" href="sql-16-limiting-pagination.html">sheet 16</a>)</li>
+							<li class="note-item">Re-run <code>ANALYZE</code> after big loads or deletes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep predicates SARGable</li>
+							<li class="note-item">Select only needed columns</li>
+							<li class="note-item">Kill N+1; keep stats fresh</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-73-explain-query-plans.html" class="nav-link prev">Reading Query Plans</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 74 Sheets</a>
+				<span style="visibility: hidden" class="nav-link next">—</span>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

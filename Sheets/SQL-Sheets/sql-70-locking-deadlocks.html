@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 70: Locking &amp; Deadlocks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s70">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 70</div>
+			<h1>Locking &amp; Deadlocks</h1>
+			<div class="sheet-desc">FOR UPDATE · FOR SHARE · SKIP LOCKED · NOWAIT · LOCK TABLE · deadlock · advisory lock</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Coordinating Writers</h2>
+						<div class="description">Writers lock the rows they change until <code>COMMIT</code>. When you <strong>read a row and then update it</strong> based on what you saw, take the lock up front with <strong><code>SELECT … FOR UPDATE</code></strong> so no one changes it in between. <strong><code>NOWAIT</code></strong> errors instead of waiting; <strong><code>SKIP LOCKED</code></strong> skips rows others hold, which turns a table into a safe <strong>job queue</strong>. A <strong>deadlock</strong> happens when two transactions each wait for the other's lock; the database aborts one of them.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Lock Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Plain <code>SELECT</code> takes no row locks (MVCC)</li>
+							<li class="note-item">Locks are held until the transaction ends</li>
+							<li class="note-item">Lock rows in a consistent order to avoid deadlocks</li>
+							<li class="note-item">Advisory locks are app-defined, named by a number</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: single-document atomic updates avoid read-then-write locks:</li>
+							<li class="note-item"><code>findOneAndUpdate({ _id, stock: { $gte: 1 } }, { $inc: { stock: -1 } })</code></li>
+							<li class="note-item">SQL can do the same: <code>UPDATE … WHERE stock &gt;= 1</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Row Locks</h2>
+						<pre class="language-sql"><code class="language-sql">-- Read-then-write: lock the row first
+BEGIN;
+SELECT stock FROM products
+WHERE  product_id = 7
+FOR UPDATE;                    -- others wait here
+UPDATE products SET stock = stock - 1
+WHERE  product_id = 7;
+COMMIT;                        -- lock released
+
+-- Fail fast instead of waiting
+SELECT * FROM orders
+WHERE  order_id = 101 FOR UPDATE NOWAIT;
+
+-- Workers each claim a different paid order
+UPDATE orders SET status = 'shipped'
+WHERE  order_id = (SELECT order_id FROM orders
+                   WHERE  status = 'paid'
+                   ORDER  BY order_date
+                   LIMIT  1
+                   FOR UPDATE SKIP LOCKED)
+RETURNING order_id;
+
+-- Deadlock: A locks 1 then 2, B locks 2 then 1
+-- → ERROR: deadlock detected (one is aborted)
+
+LOCK TABLE products IN SHARE MODE;  -- whole table
+SELECT pg_advisory_xact_lock(42);   -- app mutex</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>FOR UPDATE</code> blocks other writers and other <code>FOR UPDATE</code>s</div>
+							<div class="explain-item"><code>NOWAIT</code> raises an error if the row is already locked</div>
+							<div class="explain-item"><code>SKIP LOCKED</code> hands each worker an unlocked row</div>
+							<div class="explain-item"><code>pg_advisory_xact_lock</code> is released at commit</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>FOR UPDATE / SHARE</code>, <code>NOWAIT</code>, <code>SKIP LOCKED</code>, advisory</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>FOR UPDATE / SHARE</code>, <code>NOWAIT</code>, <code>SKIP LOCKED</code>; <code>GET_LOCK()</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc">hints <code>WITH (UPDLOCK, ROWLOCK, READPAST)</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">no row locks; one writer (<code>BEGIN IMMEDIATE</code>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.$transaction(async (tx) =&gt; {
+  const [p] = await tx.$queryRaw`
+    SELECT stock FROM products
+    WHERE  product_id = ${id} FOR UPDATE`;
+  // check p.stock, then update with tx
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-row-lock-modes-pg">
+						<h2 class="section-title">Row Lock Modes (PG)</h2>
+						<table>
+							<thead><tr><th>Clause</th><th>Blocks</th></tr></thead>
+							<tbody>
+								<tr><td>FOR UPDATE</td><td class="desc">updates, deletes, other row locks</td></tr>
+								<tr><td>FOR NO KEY UPDATE</td><td class="desc">same, but allows FK checks (<code>UPDATE</code> default)</td></tr>
+								<tr><td>FOR SHARE</td><td class="desc">updates and deletes; other <code>FOR SHARE</code> OK</td></tr>
+								<tr><td>FOR KEY SHARE</td><td class="desc">only deletes and key changes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-avoiding-deadlocks">
+						<h2 class="section-title">Avoiding Deadlocks</h2>
+						<table>
+							<thead><tr><th>Do</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>lock rows in a fixed order (by id)</td><td class="desc">no circular waits</td></tr>
+								<tr><td>keep transactions short</td><td class="desc">fewer overlapping locks</td></tr>
+								<tr><td>index FK columns</td><td class="desc">avoid wide lock scans</td></tr>
+								<tr><td>retry on `40P01`</td><td class="desc">the victim can safely rerun</td></tr>
+								<tr><td>`lock_timeout`</td><td class="desc">give up instead of hanging</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Read, decide in the app, write: two buyers get the last item</li>
+							<li class="note-item">Locking rows in different orders in different code paths</li>
+							<li class="note-item"><code>LOCK TABLE</code> on a busy table during peak hours</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer one atomic <code>UPDATE … WHERE</code> over read-then-write</li>
+							<li class="note-item">Use <code>SKIP LOCKED</code> for queues instead of polling flags</li>
+							<li class="note-item">Watch <code>pg_locks</code> / <code>pg_stat_activity</code> when things hang</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>FOR UPDATE</code> · <code>FOR SHARE</code></li>
+							<li class="note-item"><code>NOWAIT</code> · <code>SKIP LOCKED</code></li>
+							<li class="note-item">Deadlock → one aborts; retry</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-69-isolation-levels.html" class="nav-link prev">Isolation Levels</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 74 Sheets</a>
+				<a href="sql-71-indexes-basics.html" class="nav-link next">Index Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

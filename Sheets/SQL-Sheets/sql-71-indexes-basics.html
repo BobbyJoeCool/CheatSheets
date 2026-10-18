@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 71: Index Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s71">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 71</div>
+			<h1>Index Basics</h1>
+			<div class="sheet-desc">CREATE INDEX · UNIQUE INDEX · composite index · B-tree · INCLUDE · DROP INDEX</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Finding Rows Without Scanning</h2>
+						<div class="description">An <strong>index</strong> is a separate, sorted structure (usually a <strong>B-tree</strong>) that maps column values to rows, so the database can jump to matches instead of reading the whole table. It speeds up <code>WHERE</code>, joins, <code>ORDER BY</code> and <code>MIN</code>/<code>MAX</code>, at the cost of <strong>slower writes</strong> and extra disk. A <strong>composite index</strong> sorts by several columns in order; <strong><code>INCLUDE</code></strong> adds payload columns so a query can be answered from the index alone. Primary keys and unique constraints create indexes automatically.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Index Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Every <code>INSERT</code>/<code>UPDATE</code> maintains every index</li>
+							<li class="note-item">Foreign keys are <strong>not</strong> indexed automatically (PG)</li>
+							<li class="note-item">Small tables don't need indexes; scans are fine</li>
+							<li class="note-item">Confirm use with <code>EXPLAIN</code> (<a class="sheet-ref" href="sql-73-explain-query-plans.html">sheet 73</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>createIndex({ customerId: 1, orderDate: -1 })</code></li>
+							<li class="note-item">Same compound-prefix rule and the same write cost</li>
+							<li class="note-item"><code>_id</code> is indexed automatically</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Creating Indexes</h2>
+						<pre class="language-sql"><code class="language-sql">CREATE INDEX orders_customer_id_idx
+  ON orders (customer_id);
+
+-- Composite: equality column first, then sort column
+CREATE INDEX orders_cust_date_idx
+  ON orders (customer_id, order_date DESC);
+
+SELECT order_id, order_date
+FROM   orders
+WHERE  customer_id = 42
+ORDER  BY order_date DESC
+LIMIT  10;                     -- index finds + sorts
+
+-- Unique index (like a UNIQUE constraint)
+CREATE UNIQUE INDEX products_name_uq
+  ON products (lower(name));
+
+-- Covering: extra columns for index-only scans
+CREATE INDEX orders_status_idx
+  ON orders (status) INCLUDE (total);
+
+-- Build without blocking writes (PostgreSQL)
+CREATE INDEX CONCURRENTLY customers_city_idx
+  ON customers (city);
+
+DROP INDEX IF EXISTS customers_city_idx;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>customer_id = 42</code> narrows to one customer's entries</div>
+							<div class="explain-item"><code>order_date DESC</code> in the index means no sort step</div>
+							<div class="explain-item"><code>INCLUDE (total)</code> lets <code>SELECT total … WHERE status = …</code> skip the table</div>
+							<div class="explain-item"><code>CONCURRENTLY</code> is slower but doesn't lock out writes</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">B-tree default; <code>INCLUDE</code>; <code>CONCURRENTLY</code></td></tr>
+								<tr><td>MySQL</td><td class="desc">InnoDB rows are clustered by the PK; FKs auto-indexed</td></tr>
+								<tr><td>SQL Server</td><td class="desc">one clustered index per table; <code>INCLUDE</code>; <code>ONLINE = ON</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">B-tree indexes; no <code>INCLUDE</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-none"><code class="language-none">model Order {
+  customerId Int
+  orderDate  DateTime
+  @@index([customerId, orderDate(sort: Desc)])
+}</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-what-a-b-tree-helps">
+						<h2 class="section-title">What a B-tree Helps</h2>
+						<table>
+							<thead><tr><th>Query shape</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>equality</td><td class="desc"><code>WHERE email = 'a@x.com'</code></td></tr>
+								<tr><td>range</td><td class="desc"><code>WHERE order_date &gt;= '2026-10-01'</code></td></tr>
+								<tr><td>prefix match</td><td class="desc"><code>WHERE name LIKE 'Desk%'</code></td></tr>
+								<tr><td>sorting</td><td class="desc"><code>ORDER BY order_date DESC LIMIT 10</code></td></tr>
+								<tr><td>min / max</td><td class="desc"><code>SELECT max(order_date)</code></td></tr>
+								<tr><td>joins</td><td class="desc"><code>JOIN orders o ON o.customer_id = c.customer_id</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-what-indexes-cost">
+						<h2 class="section-title">What Indexes Cost</h2>
+						<table>
+							<thead><tr><th>Cost</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>writes</td><td class="desc">every index updated per row</td></tr>
+								<tr><td>space</td><td class="desc">often 10–50% of the table each</td></tr>
+								<tr><td>memory</td><td class="desc">hot indexes compete for cache</td></tr>
+								<tr><td>unused ones</td><td class="desc">pure cost: find and drop them</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Indexing every column "just in case"</li>
+							<li class="note-item">Composite index in the wrong column order</li>
+							<li class="note-item">Forgetting FK indexes, making joins and deletes slow</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Index what your <code>WHERE</code>, <code>JOIN</code> and <code>ORDER BY</code> use</li>
+							<li class="note-item">PG: <code>pg_stat_user_indexes.idx_scan = 0</code> finds unused indexes</li>
+							<li class="note-item">Use <code>CONCURRENTLY</code> on production tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CREATE [UNIQUE] INDEX name ON t (cols)</code></li>
+							<li class="note-item">Faster reads, slower writes</li>
+							<li class="note-item">Composite order matters</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-70-locking-deadlocks.html" class="nav-link prev">Locking &amp; Deadlocks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 74 Sheets</a>
+				<a href="sql-72-index-types-strategies.html" class="nav-link next">Index Types &amp; Strategies</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

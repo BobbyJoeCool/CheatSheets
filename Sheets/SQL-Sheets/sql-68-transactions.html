@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 68: Transactions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s68">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 68</div>
+			<h1>Transactions</h1>
+			<div class="sheet-desc">BEGIN · COMMIT · ROLLBACK · SAVEPOINT · autocommit · ACID</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">All or Nothing</h2>
+						<div class="description">A <strong>transaction</strong> groups statements so they succeed or fail <strong>as a unit</strong>. <strong><code>BEGIN</code></strong> starts one, <strong><code>COMMIT</code></strong> makes every change permanent and visible, and <strong><code>ROLLBACK</code></strong> undoes them all. Outside an explicit transaction, most clients run in <strong>autocommit</strong> mode: each statement commits by itself. A <strong><code>SAVEPOINT</code></strong> marks a point you can roll back to without abandoning the whole transaction. Together this gives the <strong>ACID</strong> guarantees.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Transaction Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Other sessions don't see your changes until <code>COMMIT</code></li>
+							<li class="note-item">PG: after an error, roll back before continuing</li>
+							<li class="note-item">Keep transactions short: they hold locks</li>
+							<li class="note-item">PG DDL is transactional too (<code>CREATE</code>, <code>ALTER</code>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: a single-document write is always atomic</li>
+							<li class="note-item">Multi-document transactions (4.0+): <code>session.withTransaction(async () =&gt; …)</code></li>
+							<li class="note-item">Design documents so one write covers one change</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">BEGIN … COMMIT</h2>
+						<pre class="language-sql"><code class="language-sql">BEGIN;
+UPDATE products SET stock = stock - 2
+WHERE  product_id = 7;
+INSERT INTO orders (customer_id, total)
+VALUES (42, 79.98);
+COMMIT;              -- both changes become visible
+
+BEGIN;
+DELETE FROM order_items WHERE order_id = 101;
+ROLLBACK;            -- as if it never happened
+-- Partial rollback with a savepoint
+BEGIN;
+INSERT INTO customers (name, email)
+VALUES ('Ada', 'ada@example.com');
+SAVEPOINT before_order;
+INSERT INTO orders (customer_id, total)
+VALUES (99999, 10);  -- ERROR: foreign key violation
+ROLLBACK TO SAVEPOINT before_order;
+INSERT INTO orders (customer_id, total) VALUES (1, 10);
+COMMIT;              -- customer + valid order saved
+-- PostgreSQL: an error poisons the transaction
+BEGIN;
+SELECT 1 / 0;        -- ERROR
+SELECT 1;            -- ERROR: transaction is aborted
+ROLLBACK;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Stock and order change together, or not at all</div>
+							<div class="explain-item"><code>ROLLBACK</code> discards everything since <code>BEGIN</code></div>
+							<div class="explain-item"><code>ROLLBACK TO SAVEPOINT</code> undoes only the failed part</div>
+							<div class="explain-item">PG refuses further statements until <code>ROLLBACK</code></div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>BEGIN</code> / <code>START TRANSACTION</code>; transactional DDL</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>START TRANSACTION</code>; DDL commits implicitly</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>BEGIN TRAN</code>; <code>SAVE TRAN s</code>; set <code>XACT_ABORT ON</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>BEGIN IMMEDIATE</code> to take the write lock up front</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.$transaction(async (tx) =&gt; {
+  await tx.product.update({
+    where: { id: 7 }, data: { stock: { decrement: 2 } },
+  });
+  await tx.order.create({
+    data: { customerId: 42, total: 79.98 },
+  });
+});  // a thrown error → automatic ROLLBACK</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-acid">
+						<h2 class="section-title">ACID</h2>
+						<table>
+							<thead><tr><th>Letter</th><th>Guarantee</th></tr></thead>
+							<tbody>
+								<tr><td>Atomicity</td><td class="desc">all statements apply, or none do</td></tr>
+								<tr><td>Consistency</td><td class="desc">constraints hold before and after</td></tr>
+								<tr><td>Isolation</td><td class="desc">concurrent transactions don't interfere (<a class="sheet-ref" href="sql-69-isolation-levels.html">sheet 69</a>)</td></tr>
+								<tr><td>Durability</td><td class="desc">committed data survives a crash</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-statements">
+						<h2 class="section-title">Statements</h2>
+						<table>
+							<thead><tr><th>Statement</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>BEGIN · START TRANSACTION</td><td class="desc">start a transaction</td></tr>
+								<tr><td>COMMIT</td><td class="desc">save and end</td></tr>
+								<tr><td>ROLLBACK</td><td class="desc">undo and end</td></tr>
+								<tr><td>SAVEPOINT s</td><td class="desc">mark a point</td></tr>
+								<tr><td>ROLLBACK TO SAVEPOINT s</td><td class="desc">undo back to the mark</td></tr>
+								<tr><td>RELEASE SAVEPOINT s</td><td class="desc">forget the mark</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Leaving a transaction open (idle in transaction) and blocking others</li>
+							<li class="note-item">Calling an external API inside a transaction</li>
+							<li class="note-item">Assuming MySQL can roll back a <code>CREATE TABLE</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Do slow work before <code>BEGIN</code>; keep the transaction tight</li>
+							<li class="note-item">Retry on serialization or deadlock errors (<a class="sheet-ref" href="sql-69-isolation-levels.html">sheet 69</a>, <a class="sheet-ref" href="sql-70-locking-deadlocks.html">sheet 70</a>)</li>
+							<li class="note-item">Set <code>idle_in_transaction_session_timeout</code> in PostgreSQL</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>BEGIN</code> → statements → <code>COMMIT</code> / <code>ROLLBACK</code></li>
+							<li class="note-item"><code>SAVEPOINT</code> for partial undo</li>
+							<li class="note-item">ACID</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-67-triggers.html" class="nav-link prev">Triggers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 74 Sheets</a>
+				<a href="sql-69-isolation-levels.html" class="nav-link next">Isolation Levels</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

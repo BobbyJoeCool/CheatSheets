@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 72: Index Types &amp; Strategies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s72">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 72</div>
+			<h1>Index Types &amp; Strategies</h1>
+			<div class="sheet-desc">partial index · expression index · leftmost prefix · GIN · GiST · BRIN · hash</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Choosing the Right Index</h2>
+						<div class="description">A composite B-tree helps queries that use its <strong>leftmost columns</strong>: <code>(customer_id, status)</code> serves <code>customer_id</code> alone or both, but not <code>status</code> alone. A <strong>partial index</strong> covers only rows matching a <code>WHERE</code>, so it stays small. An <strong>expression index</strong> stores <code>lower(email)</code> so a query on <code>lower(email)</code> can use it. PostgreSQL also offers other index <strong>types</strong>: <strong>GIN</strong> for arrays, JSONB and text search, <strong>GiST</strong> for ranges and geometry, <strong>BRIN</strong> for huge naturally ordered tables, <strong>Hash</strong> for equality only.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Strategy Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Equality columns first, then range / sort columns</li>
+							<li class="note-item">The query must repeat the partial index's condition</li>
+							<li class="note-item">The expression in <code>WHERE</code> must match the index exactly</li>
+							<li class="note-item">PG 18 skip scan can use <code>(a, b)</code> for <code>b</code> alone, sometimes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>partialFilterExpression</code> = partial index</li>
+							<li class="note-item">Also text, wildcard, <code>2dsphere</code> and TTL indexes</li>
+							<li class="note-item">Compound indexes follow the same prefix rule</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Index Strategies</h2>
+						<pre class="language-sql"><code class="language-sql">-- Partial: only the rows you query
+CREATE INDEX orders_pending_idx
+  ON orders (order_date)
+  WHERE status = 'pending';
+
+-- Expression: matches lower(email) lookups
+CREATE INDEX customers_email_lower_idx
+  ON customers (lower(email));
+SELECT * FROM customers
+WHERE  lower(email) = 'ada@example.com';
+
+-- Leftmost prefix
+CREATE INDEX orders_cust_status_idx
+  ON orders (customer_id, status);
+-- WHERE customer_id = 1                  ✓
+-- WHERE customer_id = 1 AND status = 'x' ✓
+-- WHERE status = 'paid'                  ✗ mostly
+
+-- GIN trigram: fast '%lamp%' searches
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX products_name_trgm
+  ON products USING gin (name gin_trgm_ops);
+
+-- BRIN: tiny index for huge, date-ordered tables
+CREATE INDEX orders_date_brin
+  ON orders USING brin (order_date);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">The partial index skips every shipped and paid order</div>
+							<div class="explain-item"><code>WHERE lower(email) = …</code> matches the indexed expression</div>
+							<div class="explain-item">A phone book sorted by last name can't find first names</div>
+							<div class="explain-item">BRIN stores min/max per block range: KBs, not GBs</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">B-tree, Hash, GIN, GiST, SP-GiST, BRIN; partial + expression</td></tr>
+								<tr><td>MySQL</td><td class="desc">B-tree, <code>FULLTEXT</code>, <code>SPATIAL</code>; functional (8.0.13+); no partial</td></tr>
+								<tr><td>SQL Server</td><td class="desc">filtered indexes (<code>WHERE</code>), columnstore, computed columns</td></tr>
+								<tr><td>SQLite</td><td class="desc">partial and expression indexes; B-tree only</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-none"><code class="language-none">model Product {
+  name String
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+// partial / expression indexes: edit the migration SQL</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-index-types-postgresql">
+						<h2 class="section-title">Index Types (PostgreSQL)</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Good for</th><th>Operators</th></tr></thead>
+							<tbody>
+								<tr><td>B-tree</td><td class="desc">most columns; sorting</td><td class="desc"><code>= &lt; &gt; BETWEEN LIKE 'a%'</code></td></tr>
+								<tr><td>Hash</td><td class="desc">equality only</td><td class="desc"><code>=</code></td></tr>
+								<tr><td>GIN</td><td class="desc">arrays, jsonb, full text, trigram</td><td class="desc"><code>@&gt; ? @@ %</code></td></tr>
+								<tr><td>GiST</td><td class="desc">ranges, geometry, nearest</td><td class="desc"><code>&amp;&amp; &lt;-&gt;</code></td></tr>
+								<tr><td>BRIN</td><td class="desc">huge append-only tables</td><td class="desc"><code>&lt; &gt; BETWEEN</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-strategy-checklist">
+						<h2 class="section-title">Strategy Checklist</h2>
+						<table>
+							<thead><tr><th>Situation</th><th>Try</th></tr></thead>
+							<tbody>
+								<tr><td>most rows excluded by one flag</td><td class="desc">partial index</td></tr>
+								<tr><td>function in `WHERE`</td><td class="desc">expression index</td></tr>
+								<tr><td>filter + sort</td><td class="desc">composite <code>(filter, sort)</code></td></tr>
+								<tr><td>query reads few columns</td><td class="desc"><code>INCLUDE</code> / covering index</td></tr>
+								<tr><td>`'%word%'` search</td><td class="desc">trigram GIN</td></tr>
+								<tr><td>append-only log by time</td><td class="desc">BRIN</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Putting a range column before an equality column</li>
+							<li class="note-item">Partial index whose condition queries don't repeat</li>
+							<li class="note-item">GIN indexes on write-heavy tables without measuring</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Design indexes from real queries, not from tables</li>
+							<li class="note-item">One good composite beats three single-column indexes</li>
+							<li class="note-item">Re-check plans after adding an index (<a class="sheet-ref" href="sql-73-explain-query-plans.html">sheet 73</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Leftmost prefix rule</li>
+							<li class="note-item">Partial · expression · covering</li>
+							<li class="note-item">GIN · GiST · BRIN · Hash</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-71-indexes-basics.html" class="nav-link prev">Index Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 74 Sheets</a>
+				<a href="sql-73-explain-query-plans.html" class="nav-link next">Reading Query Plans</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>
