@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 47: Running Totals &amp; Moving Averages</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s47">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 47</div>
+			<h1>Running Totals &amp; Moving Averages</h1>
+			<div class="sheet-desc">SUM() OVER · running total · moving average · cumulative count · percent of total</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Cumulative and Sliding Calculations</h2>
+						<div class="description">Add <code>ORDER BY</code> to an aggregate's window and it becomes <strong>cumulative</strong>: <code>sum(x) OVER (ORDER BY d)</code> is a <strong>running total</strong>. Add a frame like <code>ROWS BETWEEN 6 PRECEDING AND CURRENT ROW</code> and it becomes a <strong>moving</strong> (sliding) calculation such as a 7-day average. Combined with <code>GROUP BY</code>, you can window over aggregates: <code>sum(sum(total)) OVER (…)</code> is a running total of daily totals. <code>sum(x) OVER ()</code> gives the grand total for <strong>percent of total</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Running Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Default frame with <code>ORDER BY</code> includes <strong>ties</strong> (peers)</li>
+							<li class="note-item">Use <code>ROWS</code> for exact row-count windows</li>
+							<li class="note-item">Moving windows need one row per period: fill gaps first</li>
+							<li class="note-item">Aggregates inside windows: <code>sum(count(*)) OVER (…)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>window: { documents: ['unbounded', 'current'] }</code> → running total</li>
+							<li class="note-item"><code>window: { range: [-6, 0], unit: 'day' }</code> → 7-day window</li>
+							<li class="note-item">Inside <code>$setWindowFields</code> with <code>sortBy</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Running &amp; Moving</h2>
+						<pre class="language-sql"><code class="language-sql">-- Running total of revenue by day
+SELECT order_date, sum(total) AS day_total,
+       sum(sum(total)) OVER (ORDER BY order_date)
+         AS running
+FROM   orders
+GROUP  BY order_date;
+
+-- 7-row moving average of daily totals
+SELECT order_date, day_total,
+       avg(day_total) OVER (ORDER BY order_date
+         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ma7
+FROM  (SELECT order_date, sum(total) AS day_total
+       FROM orders GROUP BY order_date) d;
+
+-- Cumulative count and percent of total
+SELECT category, count(*) AS n,
+       sum(count(*)) OVER (ORDER BY count(*) DESC) AS cum,
+       round(100.0 * count(*) / sum(count(*)) OVER (), 1)
+         AS pct
+FROM   products
+GROUP  BY category;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>sum(sum(total))</code> — window over the grouped daily sums</div>
+							<div class="explain-item">One row per day, so no ties share a running value</div>
+							<div class="explain-item"><code>6 PRECEDING</code> + current row = 7 rows</div>
+							<div class="explain-item"><code>OVER ()</code> — grand total for the percentage</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>RANGE BETWEEN INTERVAL '6 days' PRECEDING …</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>RANGE INTERVAL 6 DAY PRECEDING</code> supported</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>RANGE</code> only with <code>UNBOUNDED</code> / <code>CURRENT ROW</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>RANGE</code> with numeric offsets (3.28+)</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">let run = 0;
+const days = await prisma.order.groupBy({
+  by: ['orderDate'], _sum: { total: true },
+  orderBy: { orderDate: 'asc' },
+});
+const withRunning = days.map(d =&gt;
+  ({ ...d, running: (run += Number(d._sum.total)) }));</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-patterns">
+						<h2 class="section-title">Patterns</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Window</th></tr></thead>
+							<tbody>
+								<tr><td>running total</td><td class="desc"><code>sum(x) OVER (ORDER BY d)</code></td></tr>
+								<tr><td>running total per group</td><td class="desc"><code>… OVER (PARTITION BY g ORDER BY d)</code></td></tr>
+								<tr><td>moving average, 7 rows</td><td class="desc"><code>avg(x) OVER (… ROWS 6 PRECEDING)</code></td></tr>
+								<tr><td>moving sum, 7 days</td><td class="desc"><code>… RANGE INTERVAL '6 days' PRECEDING</code></td></tr>
+								<tr><td>percent of total</td><td class="desc"><code>x / sum(x) OVER ()</code></td></tr>
+								<tr><td>percent of group</td><td class="desc"><code>x / sum(x) OVER (PARTITION BY g)</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-example">
+						<h2 class="section-title">Example</h2>
+						<table>
+							<thead><tr><th>day</th><th>total</th><th>running</th><th>ma3</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc">10</td><td class="desc">10</td><td class="desc">10.0</td></tr>
+								<tr><td>2</td><td class="desc">20</td><td class="desc">30</td><td class="desc">15.0</td></tr>
+								<tr><td>3</td><td class="desc">30</td><td class="desc">60</td><td class="desc">20.0</td></tr>
+								<tr><td>4</td><td class="desc">0</td><td class="desc">60</td><td class="desc">16.7</td></tr>
+								<tr><td>5</td><td class="desc">50</td><td class="desc">110</td><td class="desc">26.7</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Ties on the sort key making several rows share a running total</li>
+							<li class="note-item">Moving averages over data with missing days</li>
+							<li class="note-item">Integer percent math: <code>100 * a / b</code> truncating</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Fill missing days with a date spine first (<a class="sheet-ref" href="sql-34-cross-self-joins.html">sheet 34</a>)</li>
+							<li class="note-item">Use <code>ROWS</code> unless you want ties grouped</li>
+							<li class="note-item">Round only the displayed result</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>sum() OVER (ORDER BY …)</code> — running</li>
+							<li class="note-item"><code>ROWS n PRECEDING</code> — moving</li>
+							<li class="note-item"><code>OVER ()</code> — percent of total</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-46-offset-value-functions.html" class="nav-link prev">Offset &amp; Value Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 49 Sheets</a>
+				<a href="sql-48-window-frames.html" class="nav-link next">Window Frames</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

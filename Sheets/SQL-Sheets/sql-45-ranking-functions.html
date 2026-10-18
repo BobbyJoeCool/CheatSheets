@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 45: Ranking Functions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s45">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 45</div>
+			<h1>Ranking Functions</h1>
+			<div class="sheet-desc">ROW_NUMBER · RANK · DENSE_RANK · NTILE · PERCENT_RANK · CUME_DIST</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Numbering and Ranking Rows</h2>
+						<div class="description">Ranking functions number rows by the window's <strong><code>ORDER BY</code></strong>. They differ only in how they treat <strong>ties</strong>. <strong><code>row_number</code></strong> gives every row a unique number (ties broken arbitrarily); <strong><code>rank</code></strong> gives ties the same number and then <strong>skips</strong> (1, 2, 2, 4); <strong><code>dense_rank</code></strong> doesn't skip (1, 2, 2, 3). <strong><code>ntile(n)</code></strong> splits rows into <code>n</code> nearly equal buckets; <strong><code>percent_rank</code></strong> and <strong><code>cume_dist</code></strong> express position as a fraction from 0 to 1.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Ranking Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Ranking needs <code>ORDER BY</code> inside <code>OVER</code></li>
+							<li class="note-item"><code>row_number</code> with ties is non-deterministic</li>
+							<li class="note-item">Add a unique tie-breaker for stable numbering</li>
+							<li class="note-item"><code>ntile</code> puts extra rows in the first buckets</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB <code>$setWindowFields</code> outputs: <code>$documentNumber</code>, <code>$rank</code>, <code>$denseRank</code></li>
+							<li class="note-item">Same tie behavior as SQL's three functions</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Ranking</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT name, price,
+       row_number()   OVER w AS rn,
+       rank()         OVER w AS rnk,
+       dense_rank()   OVER w AS drnk,
+       ntile(4)       OVER w AS quartile,
+       percent_rank() OVER w AS pct,
+       cume_dist()    OVER w AS cume
+FROM   products
+WINDOW w AS (ORDER BY price DESC);
+
+-- Rank salaries within each department
+SELECT dept_id, first_name, salary,
+       dense_rank() OVER (PARTITION BY dept_id
+                          ORDER BY salary DESC) AS pos
+FROM   employees;
+
+-- Stable numbering: break ties on the key
+SELECT order_id, order_date,
+       row_number() OVER (ORDER BY order_date, order_id)
+         AS seq
+FROM   orders;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">All six share one named window <code>w</code></div>
+							<div class="explain-item"><code>PARTITION BY dept_id</code> restarts the ranking per department</div>
+							<div class="explain-item"><code>dense_rank</code> — "2nd highest salary" stays 2 with ties at 1st</div>
+							<div class="explain-item"><code>order_id</code> makes <code>seq</code> the same on every run</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<div class="dialect-same">Same in all four (MySQL 8.0+, SQLite 3.25+). <code>QUALIFY</code> for filtering on a rank exists only in DuckDB, Snowflake and BigQuery (<a class="sheet-ref" href="sql-49-window-patterns.html">sheet 49</a>).</div>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const ranked = (await prisma.product.findMany({
+  orderBy: { price: 'desc' },
+})).map((p, i) =&gt; ({ ...p, rn: i + 1 }));
+// row_number in JS; rank / dense_rank → $queryRaw</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-same-data-each-function">
+						<h2 class="section-title">Same Data, Each Function</h2>
+						<table>
+							<thead><tr><th>price</th><th>row_num</th><th>rank</th><th>dense</th><th>pct_rank</th><th>cume</th></tr></thead>
+							<tbody>
+								<tr><td>50</td><td class="desc">1</td><td class="desc">1</td><td class="desc">1</td><td class="desc">0</td><td class="desc">0.25</td></tr>
+								<tr><td>40</td><td class="desc">2</td><td class="desc">2</td><td class="desc">2</td><td class="desc">0.33</td><td class="desc">0.75</td></tr>
+								<tr><td>40</td><td class="desc">3</td><td class="desc">2</td><td class="desc">2</td><td class="desc">0.33</td><td class="desc">0.75</td></tr>
+								<tr><td>30</td><td class="desc">4</td><td class="desc">4</td><td class="desc">3</td><td class="desc">1</td><td class="desc">1</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pick-one">
+						<h2 class="section-title">Pick One</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>unique sequence, paging</td><td class="desc"><code>row_number()</code></td></tr>
+								<tr><td>competition ranking (1, 2, 2, 4)</td><td class="desc"><code>rank()</code></td></tr>
+								<tr><td>Nth highest value</td><td class="desc"><code>dense_rank()</code></td></tr>
+								<tr><td>quartiles, deciles</td><td class="desc"><code>ntile(4)</code> · <code>ntile(10)</code></td></tr>
+								<tr><td>percentile position</td><td class="desc"><code>percent_rank()</code> · <code>cume_dist()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Expecting <code>row_number</code> ties to come out the same each run</li>
+							<li class="note-item">Using <code>rank</code> for "Nth highest" and skipping N after ties</li>
+							<li class="note-item">Forgetting <code>ORDER BY</code> inside <code>OVER</code> (error or meaningless)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Always end the window's <code>ORDER BY</code> with a unique column</li>
+							<li class="note-item">Filter on rank in an outer query or CTE (<a class="sheet-ref" href="sql-49-window-patterns.html">sheet 49</a>)</li>
+							<li class="note-item"><code>percent_rank = (rank − 1) / (rows − 1)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>row_number</code> — unique</li>
+							<li class="note-item"><code>rank</code> — ties, gaps · <code>dense_rank</code> — ties, no gaps</li>
+							<li class="note-item"><code>ntile</code> · <code>percent_rank</code> · <code>cume_dist</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-44-window-function-basics.html" class="nav-link prev">Window Function Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 49 Sheets</a>
+				<a href="sql-46-offset-value-functions.html" class="nav-link next">Offset &amp; Value Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>
