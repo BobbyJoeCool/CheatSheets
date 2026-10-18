@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 39: Correlated Subqueries</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s39">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 39</div>
+			<h1>Correlated Subqueries</h1>
+			<div class="sheet-desc">correlated subquery · outer reference · EXISTS · per-row evaluation · rewrite as join</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Subqueries That Look Outward</h2>
+						<div class="description">A <strong>correlated subquery</strong> refers to a column of the <strong>outer</strong> query (<code>p.category</code> below), so logically it runs <strong>once per outer row</strong>. That's how you compare each row with its own group: products priced above <strong>their category's</strong> average, or each customer's latest order date. Planners often rewrite these into joins, but not always. When one is slow, rewrite it as a <strong>join to a grouped derived table</strong>, a <strong>window function</strong> or a <code>LATERAL</code> join (<a class="sheet-ref" href="sql-37-lateral-apply.html">sheet 37</a>).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">You can't run a correlated subquery on its own</li>
+							<li class="note-item"><code>EXISTS</code> subqueries are almost always correlated</li>
+							<li class="note-item">Outer aliases must be unique to avoid confusion</li>
+							<li class="note-item">Slow? Check the plan for a per-row SubPlan (<a class="sheet-ref" href="sql-73-explain-query-plans.html">sheet 73</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB <code>$lookup</code> with <code>let</code> + a <code>pipeline</code> using <code>$expr</code> is correlated</li>
+							<li class="note-item">Each document's values feed the inner pipeline</li>
+							<li class="note-item">Same per-document cost: index the inner match field</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Correlated Subqueries</h2>
+						<pre class="language-sql"><code class="language-sql">-- Products above their own category's average
+SELECT p.name, p.category, p.price
+FROM   products p
+WHERE  p.price &gt; (SELECT avg(x.price)
+                  FROM   products x
+                  WHERE  x.category = p.category);
+
+-- Rewrite 1: join a grouped derived table
+SELECT p.name, p.category, p.price
+FROM   products p
+JOIN  (SELECT category, avg(price) AS avg_price
+       FROM   products GROUP BY category) a
+  ON   a.category = p.category
+WHERE  p.price &gt; a.avg_price;
+
+-- Rewrite 2: window function, one pass
+SELECT name, category, price
+FROM  (SELECT *, avg(price) OVER w AS cat_avg
+       FROM products WINDOW w AS (PARTITION BY category)) t
+WHERE  price &gt; cat_avg;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>x.category = p.category</code> — the outer reference</div>
+							<div class="explain-item">Logically the subquery reruns for every product row</div>
+							<div class="explain-item">Rewrite 1 computes each average once, then joins</div>
+							<div class="explain-item">Rewrite 2 attaches the average to every row (<a class="sheet-ref" href="sql-44-window-function-basics.html">sheet 44</a>)</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">flattens <code>EXISTS</code> / <code>IN</code>; scalar ones run per row</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>subquery_to_derived</code> switch can rewrite (off by default)</td></tr>
+								<tr><td>SQL Server</td><td class="desc">usually rewrites them into joins itself</td></tr>
+								<tr><td>SQLite</td><td class="desc">runs per row; index the inner <code>WHERE</code> column</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// Relation filters compile to correlated EXISTS
+await prisma.customer.findMany({
+  where: { orders: { some: { total: { gt: 500 } } } },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-correlated-vs-not">
+						<h2 class="section-title">Correlated vs Not</h2>
+						<table>
+							<thead><tr><th></th><th>Uncorrelated</th><th>Correlated</th></tr></thead>
+							<tbody>
+								<tr><td>references outer query</td><td class="desc">no</td><td class="desc">yes</td></tr>
+								<tr><td>runs</td><td class="desc">once</td><td class="desc">per outer row (logically)</td></tr>
+								<tr><td>can run alone</td><td class="desc">yes</td><td class="desc">no</td></tr>
+								<tr><td>typical use</td><td class="desc">constant, <code>IN</code> list</td><td class="desc">per-row compare, <code>EXISTS</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-rewrite-options">
+						<h2 class="section-title">Rewrite Options</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Rewrite as</th><th>Sheet</th></tr></thead>
+							<tbody>
+								<tr><td>compare to group aggregate</td><td class="desc">join grouped derived table</td><td class="center"><a class="sheet-ref" href="sql-40-derived-tables.html">40</a></td></tr>
+								<tr><td>compare to group aggregate</td><td class="desc">window function</td><td class="center"><a class="sheet-ref" href="sql-44-window-function-basics.html">44</a></td></tr>
+								<tr><td>latest row per parent</td><td class="desc"><code>LATERAL</code> / <code>DISTINCT ON</code></td><td class="center"><a class="sheet-ref" href="sql-37-lateral-apply.html">37</a></td></tr>
+								<tr><td>has any / has none</td><td class="desc"><code>EXISTS</code> / <code>NOT EXISTS</code></td><td class="center"><a class="sheet-ref" href="sql-36-semi-anti-joins.html">36</a></td></tr>
+								<tr><td>count per parent</td><td class="desc"><code>LEFT JOIN … GROUP BY</code></td><td class="center"><a class="sheet-ref" href="sql-33-outer-joins.html">33</a></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Reusing the same alias inside and outside (<code>p</code> and <code>p</code>)</li>
+							<li class="note-item">A per-row scalar subquery over a big table with no index</li>
+							<li class="note-item">Assuming every engine flattens it into a join</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Index the inner lookup column (<code>orders.customer_id</code>)</li>
+							<li class="note-item">Compare plans of the subquery and rewritten forms</li>
+							<li class="note-item">Keep correlated subqueries for clarity on small sets</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Inner query references outer row</li>
+							<li class="note-item">Logically runs per row</li>
+							<li class="note-item">Rewrite with joins or windows when slow</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-38-subqueries-scalar-in.html" class="nav-link prev">Subqueries — Scalar &amp; IN</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 43 Sheets</a>
+				<a href="sql-40-derived-tables.html" class="nav-link next">Derived Tables</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

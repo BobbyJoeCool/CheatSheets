@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 43: Set Operations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s43">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 43</div>
+			<h1>Set Operations</h1>
+			<div class="sheet-desc">UNION · UNION ALL · INTERSECT · EXCEPT · MINUS · column &amp; type compatibility · ORDER BY placement</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Combining Result Sets</h2>
+						<div class="description">Set operators combine the rows of two queries <strong>vertically</strong>. <strong><code>UNION ALL</code></strong> stacks them as they are; <strong><code>UNION</code></strong> stacks and removes duplicates; <strong><code>INTERSECT</code></strong> keeps rows present in both; <strong><code>EXCEPT</code></strong> (Oracle: <code>MINUS</code>) keeps rows in the first but not the second. Both queries must return the <strong>same number of columns</strong> with compatible types, matched by position. Column names come from the first query, and one <code>ORDER BY</code> at the end sorts the whole result.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Set Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>UNION ALL</code> is cheapest: no duplicate check</li>
+							<li class="note-item"><code>INTERSECT</code> binds tighter than <code>UNION</code> / <code>EXCEPT</code></li>
+							<li class="note-item">Set operators treat NULLs as equal</li>
+							<li class="note-item">Joins combine sideways; set ops combine downward</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>$unionWith</code> appends another collection (UNION ALL)</li>
+							<li class="note-item"><code>$setUnion</code>, <code>$setIntersection</code>, <code>$setDifference</code> work on arrays</li>
+							<li class="note-item">No <code>INTERSECT</code> between collections; use <code>$lookup</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Set Operations</h2>
+						<pre class="language-sql"><code class="language-sql">-- Everyone we can email
+SELECT email, 'customer' AS kind FROM customers
+UNION ALL
+SELECT email, 'employee'         FROM employees
+ORDER  BY email;               -- sorts everything
+
+SELECT city FROM customers WHERE country = 'US'
+UNION                          -- no duplicates
+SELECT city FROM customers WHERE country = 'CA';
+
+-- Customers who ordered in both September and October
+SELECT customer_id FROM orders
+WHERE  date_trunc('month', order_date) = '2026-09-01'
+INTERSECT
+SELECT customer_id FROM orders
+WHERE  date_trunc('month', order_date) = '2026-10-01';
+
+-- Products never ordered
+SELECT product_id FROM products
+EXCEPT
+SELECT product_id FROM order_items;
+
+-- Parentheses control grouping
+(SELECT 1 UNION SELECT 2) EXCEPT SELECT 2;     -- 1</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>kind</code> labels which query each row came from</div>
+							<div class="explain-item"><code>ORDER BY</code> after the last query sorts the combined rows</div>
+							<div class="explain-item"><code>INTERSECT</code> returns each matching customer once</div>
+							<div class="explain-item"><code>EXCEPT</code> = rows in the first result missing from the second</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">all four, plus <code>INTERSECT ALL</code> / <code>EXCEPT ALL</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>INTERSECT</code> / <code>EXCEPT</code> since 8.0.31</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>UNION [ALL]</code>, <code>INTERSECT</code>, <code>EXCEPT</code> (no <code>ALL</code>)</td></tr>
+								<tr><td>SQLite</td><td class="desc">all four; no parentheses around the parts</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const [cs, es] = await Promise.all([
+  prisma.customer.findMany({ select: { email: true } }),
+  prisma.employee.findMany({ select: { email: true } }),
+]);
+const everyone = [...cs, ...es];   // UNION ALL in JS</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-operators">
+						<h2 class="section-title">Operators</h2>
+						<table>
+							<thead><tr><th>Operator</th><th>Returns</th><th>Duplicates</th></tr></thead>
+							<tbody>
+								<tr><td>UNION ALL</td><td class="desc">all rows of both</td><td class="desc">kept</td></tr>
+								<tr><td>UNION</td><td class="desc">all rows of both</td><td class="desc">removed</td></tr>
+								<tr><td>INTERSECT</td><td class="desc">rows in both</td><td class="desc">removed</td></tr>
+								<tr><td>EXCEPT · MINUS</td><td class="desc">rows in first, not second</td><td class="desc">removed</td></tr>
+								<tr><td>INTERSECT / EXCEPT ALL</td><td class="desc">multiset versions (PG)</td><td class="desc">counted</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-rules">
+						<h2 class="section-title">Rules</h2>
+						<table>
+							<thead><tr><th>Rule</th><th>Detail</th></tr></thead>
+							<tbody>
+								<tr><td>column count</td><td class="desc">must match</td></tr>
+								<tr><td>types</td><td class="desc">compatible by position</td></tr>
+								<tr><td>names</td><td class="desc">taken from the first query</td></tr>
+								<tr><td>ORDER BY / LIMIT</td><td class="desc">once, at the very end</td></tr>
+								<tr><td>grouping</td><td class="desc">parentheses (not in SQLite)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>UNION</code> when <code>UNION ALL</code> was meant: slower, rows vanish</li>
+							<li class="note-item">Columns in a different order in the second query</li>
+							<li class="note-item"><code>ORDER BY</code> inside the first query (error or ignored)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Default to <code>UNION ALL</code>; add dedupe only if needed</li>
+							<li class="note-item">Add a literal <code>kind</code> column to tell sources apart</li>
+							<li class="note-item"><code>NOT EXISTS</code> is often faster than <code>EXCEPT</code> on big tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>UNION [ALL]</code> · <code>INTERSECT</code> · <code>EXCEPT</code></li>
+							<li class="note-item">Same column count, compatible types</li>
+							<li class="note-item">One <code>ORDER BY</code> at the end</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-42-recursive-ctes.html" class="nav-link prev">Recursive CTEs</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 43 Sheets</a>
+				<span style="visibility: hidden" class="nav-link next">—</span>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

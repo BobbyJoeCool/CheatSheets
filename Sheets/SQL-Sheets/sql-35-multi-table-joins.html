@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 35: Multi-Table Joins</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>Multi-Table Joins</h1>
+			<div class="sheet-desc">3+ table joins · junction table · join fan-out · duplicate rows · join order</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Chaining Joins</h2>
+						<div class="description">Joins chain left to right: each <code>JOIN</code> adds a table to the rows built so far. A <strong>junction table</strong> (<code>order_items</code>) links two tables in a many-to-many relationship, so going from orders to products takes two joins. The big risk is <strong>fan-out</strong>: joining a parent to a child repeats the parent once per child row, so summing a parent column after the join counts it many times. The fix is to <strong>aggregate the child first</strong>, then join.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Multi-Join Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">The planner picks join order; write it for readers</li>
+							<li class="note-item">Each join should follow a key relationship</li>
+							<li class="note-item">Two child tables at once multiply each other</li>
+							<li class="note-item"><code>DISTINCT</code> hides fan-out; it doesn't fix it</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">Chained <code>$lookup</code> stages work but get slow</li>
+							<li class="note-item">Typical design embeds order items, copying name and price</li>
+							<li class="note-item">Copied data is a snapshot: it doesn't follow later changes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Multi-Table Joins</h2>
+						<pre class="language-sql"><code class="language-sql">-- Order lines with customer and product names
+SELECT o.order_id, c.name AS customer,
+       p.name AS product, i.quantity, i.unit_price
+FROM   orders o
+JOIN   customers   c ON c.customer_id = o.customer_id
+JOIN   order_items i ON i.order_id    = o.order_id
+JOIN   products    p ON p.product_id  = i.product_id
+WHERE  o.order_date &gt;= DATE '2026-10-01';
+
+-- Fan-out: o.total repeats once per order item
+SELECT c.name, sum(o.total) AS spent        -- WRONG
+FROM   customers c
+JOIN   orders o      USING (customer_id)
+JOIN   order_items i USING (order_id)
+GROUP  BY c.name;
+
+-- Fix: aggregate the child first, then join
+SELECT c.name, sum(o.total) AS spent,
+       sum(q.items)          AS items
+FROM   customers c
+JOIN   orders o USING (customer_id)
+JOIN   (SELECT order_id, sum(quantity) AS items
+        FROM order_items GROUP BY order_id) q
+       USING (order_id)
+GROUP  BY c.name;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Each <code>JOIN … ON</code> follows one foreign key</div>
+							<div class="explain-item">An order with 3 items appears 3 times after the item join</div>
+							<div class="explain-item"><code>sum(o.total)</code> then counts that order 3 times</div>
+							<div class="explain-item">The derived table returns one row per order (<a class="sheet-ref" href="sql-40-derived-tables.html">sheet 40</a>)</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">past <code>join_collapse_limit</code> (8) it keeps your order</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>STRAIGHT_JOIN</code> forces the written order</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>OPTION (FORCE ORDER)</code> hint</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>CROSS JOIN</code> forces the order</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.order.findMany({
+  where: { orderDate: { gte: new Date('2026-10-01') } },
+  include: {
+    customer: true,
+    items: { include: { product: true } },
+  },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-join-paths-in-the-shop-schema">
+						<h2 class="section-title">Join Paths in the Shop Schema</h2>
+						<table>
+							<thead><tr><th>From → To</th><th>ON</th></tr></thead>
+							<tbody>
+								<tr><td>orders → customers</td><td class="desc"><code>o.customer_id = c.customer_id</code></td></tr>
+								<tr><td>orders → order_items</td><td class="desc"><code>i.order_id = o.order_id</code></td></tr>
+								<tr><td>order_items → products</td><td class="desc"><code>p.product_id = i.product_id</code></td></tr>
+								<tr><td>employees → departments</td><td class="desc"><code>d.dept_id = e.dept_id</code></td></tr>
+								<tr><td>employees → manager</td><td class="desc"><code>m.emp_id = e.manager_id</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-fan-out-checklist">
+						<h2 class="section-title">Fan-Out Checklist</h2>
+						<table>
+							<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>totals too high</td><td class="desc">parent summed after child join</td><td class="desc">aggregate child first</td></tr>
+								<tr><td>duplicate rows</td><td class="desc">joined two children at once</td><td class="desc">separate subqueries</td></tr>
+								<tr><td>count(*) too big</td><td class="desc">counting joined rows</td><td class="desc"><code>count(DISTINCT key)</code></td></tr>
+								<tr><td>DISTINCT "fixes" it</td><td class="desc">real fan-out underneath</td><td class="desc">find the 1-to-many join</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Summing a parent column after joining its children</li>
+							<li class="note-item">Joining two unrelated child tables in one query</li>
+							<li class="note-item">Missing one join condition among many</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Line up <code>JOIN</code> and <code>ON</code> clauses so missing keys stand out</li>
+							<li class="note-item">Check row counts after each added join</li>
+							<li class="note-item">Pre-aggregate in CTEs, then join the summaries (<a class="sheet-ref" href="sql-41-common-table-expressions.html">sheet 41</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Joins chain table by table</li>
+							<li class="note-item">Junction table = two joins</li>
+							<li class="note-item">Fan-out → aggregate first</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-34-cross-self-joins.html" class="nav-link prev">CROSS JOIN &amp; Self Joins</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 43 Sheets</a>
+				<a href="sql-36-semi-anti-joins.html" class="nav-link next">Semi &amp; Anti Joins</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

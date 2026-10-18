@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 36: Semi &amp; Anti Joins</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>Semi &amp; Anti Joins</h1>
+			<div class="sheet-desc">EXISTS · NOT EXISTS · IN · LEFT JOIN … IS NULL · NOT IN NULL trap</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">"Has Any" and "Has None"</h2>
+						<div class="description">A <strong>semi-join</strong> returns rows from one table that <strong>have at least one</strong> match in another, without duplicating them. Write it with <strong><code>EXISTS</code></strong> or <strong><code>IN</code></strong>. An <strong>anti-join</strong> returns rows with <strong>no</strong> match: <strong><code>NOT EXISTS</code></strong> or <strong><code>LEFT JOIN … WHERE right.key IS NULL</code></strong>. Avoid <strong><code>NOT IN</code></strong> with a subquery: if the subquery returns a single NULL, <code>NOT IN</code> is never true and you get <strong>no rows</strong> at all.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>EXISTS</code> stops at the first match</li>
+							<li class="note-item"><code>SELECT 1</code> inside <code>EXISTS</code> is convention; the list is ignored</li>
+							<li class="note-item">Semi-joins never duplicate the outer row</li>
+							<li class="note-item"><code>NOT EXISTS</code> is NULL-safe; <code>NOT IN</code> isn't</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>$lookup</code>, then <code>$match: { orders: { $ne: [] } }</code> (has any)</li>
+							<li class="note-item"><code>{ orders: { $size: 0 } }</code> for has none</li>
+							<li class="note-item">Or keep an <code>orderCount</code> field on the customer</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">EXISTS, IN &amp; Anti-Joins</h2>
+						<pre class="language-sql"><code class="language-sql">-- Semi-join: customers who have ordered
+SELECT c.name
+FROM   customers c
+WHERE  EXISTS (SELECT 1 FROM orders o
+               WHERE o.customer_id = c.customer_id);
+
+SELECT name FROM customers
+WHERE  customer_id IN (SELECT customer_id FROM orders);
+
+-- Anti-join: customers who never ordered
+SELECT c.name
+FROM   customers c
+WHERE  NOT EXISTS (SELECT 1 FROM orders o
+                   WHERE o.customer_id = c.customer_id);
+
+SELECT c.name
+FROM   customers c
+LEFT   JOIN orders o ON o.customer_id = c.customer_id
+WHERE  o.order_id IS NULL;
+
+-- NOT IN trap: employees who manage nobody
+SELECT first_name FROM employees
+WHERE  emp_id NOT IN (SELECT manager_id FROM employees);
+-- manager_id has a NULL (the CEO) → 0 rows!
+SELECT first_name FROM employees e
+WHERE  NOT EXISTS (SELECT 1 FROM employees r
+                   WHERE r.manager_id = e.emp_id);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>EXISTS</code> and <code>IN</code> return each customer once, however many orders</div>
+							<div class="explain-item"><code>o.order_id IS NULL</code> keeps only unmatched left rows</div>
+							<div class="explain-item"><code>x NOT IN (1, NULL)</code> is UNKNOWN for every <code>x</code></div>
+							<div class="explain-item"><code>NOT EXISTS</code> ignores the NULL and works</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">plans <code>EXISTS</code> / <code>NOT EXISTS</code> as semi / anti joins</td></tr>
+								<tr><td>MySQL</td><td class="desc">semi- and anti-join optimizations (8.0.17+)</td></tr>
+								<tr><td>SQL Server</td><td class="desc">same results; <code>NOT EXISTS</code> plans cleanly</td></tr>
+								<tr><td>SQLite</td><td class="desc">runs <code>EXISTS</code> per row: index the inner column</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.customer.findMany({
+  where: { orders: { some: {} } },   // EXISTS
+});
+await prisma.customer.findMany({
+  where: { orders: { none: {} } },   // NOT EXISTS
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-patterns">
+						<h2 class="section-title">Patterns</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Returns</th><th>NULL-safe?</th></tr></thead>
+							<tbody>
+								<tr><td>EXISTS (…)</td><td class="desc">rows with a match</td><td class="desc">yes</td></tr>
+								<tr><td>IN (subquery)</td><td class="desc">rows with a match</td><td class="desc">yes</td></tr>
+								<tr><td>NOT EXISTS (…)</td><td class="desc">rows with no match</td><td class="desc">yes</td></tr>
+								<tr><td>LEFT JOIN … IS NULL</td><td class="desc">rows with no match</td><td class="desc">yes</td></tr>
+								<tr><td>NOT IN (subquery)</td><td class="desc">rows with no match</td><td class="desc"><strong>no</strong></td></tr>
+								<tr><td>JOIN + DISTINCT</td><td class="desc">rows with a match</td><td class="desc">yes, but slower</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pick-one">
+						<h2 class="section-title">Pick One</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Write</th></tr></thead>
+							<tbody>
+								<tr><td>has at least one</td><td class="desc"><code>EXISTS</code> or <code>IN</code></td></tr>
+								<tr><td>has none</td><td class="desc"><code>NOT EXISTS</code></td></tr>
+								<tr><td>has none + right-side columns</td><td class="desc"><code>LEFT JOIN … IS NULL</code></td></tr>
+								<tr><td>literal list without NULLs</td><td class="desc"><code>NOT IN (1, 2, 3)</code> is fine</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>NOT IN (SELECT nullable_col …)</code> returning nothing</li>
+							<li class="note-item">Using <code>JOIN</code> for "has any" and getting duplicates</li>
+							<li class="note-item">Testing a column that is never NULL in the anti-join <code>IS NULL</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Default to <code>EXISTS</code> / <code>NOT EXISTS</code> for subquery tests</li>
+							<li class="note-item">Index the foreign key the subquery looks up</li>
+							<li class="note-item">In anti-joins, test the right table's primary key <code>IS NULL</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Semi-join — <code>EXISTS</code> / <code>IN</code></li>
+							<li class="note-item">Anti-join — <code>NOT EXISTS</code> / <code>LEFT JOIN … IS NULL</code></li>
+							<li class="note-item">Avoid <code>NOT IN</code> with subqueries</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-35-multi-table-joins.html" class="nav-link prev">Multi-Table Joins</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 43 Sheets</a>
+				<a href="sql-37-lateral-apply.html" class="nav-link next">LATERAL &amp; APPLY</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

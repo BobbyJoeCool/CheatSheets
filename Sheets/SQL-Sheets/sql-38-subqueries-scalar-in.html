@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 38: Subqueries — Scalar &amp; IN</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>Subqueries — Scalar &amp; IN</h1>
+			<div class="sheet-desc">scalar subquery · IN (subquery) · ANY · ALL · subquery in SELECT</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Queries Inside Queries</h2>
+						<div class="description">A <strong>subquery</strong> is a <code>SELECT</code> in parentheses used inside another statement. A <strong>scalar subquery</strong> returns one row and one column, so it can stand in for a value anywhere; zero rows give NULL and two or more rows are an error. A <strong>column subquery</strong> returns a list for <strong><code>IN</code></strong>, <strong><code>ANY</code></strong> or <strong><code>ALL</code></strong>. A subquery that doesn't reference the outer query runs <strong>once</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Subquery Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Always wrap subqueries in parentheses</li>
+							<li class="note-item"><code>= ANY (…)</code> is the same as <code>IN (…)</code></li>
+							<li class="note-item"><code>&gt; ALL</code> of an <strong>empty</strong> set is true for every row</li>
+							<li class="note-item">Referencing the outer query makes it correlated (<a class="sheet-ref" href="sql-39-correlated-subqueries.html">sheet 39</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB has no inline subqueries: run two queries</li>
+							<li class="note-item">Or compute the comparison value in the pipeline:</li>
+							<li class="note-item"><code>$setWindowFields</code> / <code>$group</code>, then <code>$match</code> with <code>$expr</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Scalar &amp; IN Subqueries</h2>
+						<pre class="language-sql"><code class="language-sql">-- Products priced above the average
+SELECT name, price
+FROM   products
+WHERE  price &gt; (SELECT avg(price) FROM products);
+
+-- Scalar subquery as a column
+SELECT name, price,
+       price - (SELECT avg(price) FROM products) AS vs_avg
+FROM   products;
+
+-- IN: orders from Canadian customers
+SELECT order_id, total
+FROM   orders
+WHERE  customer_id IN (SELECT customer_id
+                       FROM   customers
+                       WHERE  country = 'CA');
+
+-- ALL / ANY
+SELECT name FROM products
+WHERE  price &gt; ALL (SELECT price FROM products
+                    WHERE  category = 'Books');
+SELECT name FROM products
+WHERE  price = ANY (SELECT unit_price FROM order_items);
+
+SELECT (SELECT order_id FROM orders);
+-- ERROR: more than one row returned by a subquery</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>(SELECT avg(price) …)</code> runs once; its value is reused</div>
+							<div class="explain-item"><code>IN (SELECT …)</code> builds the list of Canadian customer IDs</div>
+							<div class="explain-item"><code>&gt; ALL (…)</code> — pricier than every book</div>
+							<div class="explain-item">A scalar subquery must return at most one row</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>ANY</code> / <code>ALL</code> also accept arrays: <code>= ANY(ARRAY[1,2])</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>ANY</code>, <code>SOME</code>, <code>ALL</code>; no <code>LIMIT</code> inside <code>IN (…)</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>ANY</code>, <code>SOME</code>, <code>ALL</code>; <code>TOP (1)</code> keeps scalars safe</td></tr>
+								<tr><td>SQLite</td><td class="desc">no <code>ANY</code> / <code>ALL</code> → <code>IN</code>, <code>max()</code>, <code>min()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const { _avg } = await prisma.product.aggregate({
+  _avg: { price: true },
+});
+await prisma.product.findMany({
+  where: { price: { gt: _avg.price ?? 0 } },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-subquery-shapes">
+						<h2 class="section-title">Subquery Shapes</h2>
+						<table>
+							<thead><tr><th>Shape</th><th>Use it as</th><th>Sheet</th></tr></thead>
+							<tbody>
+								<tr><td>scalar (1 × 1)</td><td class="desc">a value in <code>SELECT</code>, <code>WHERE</code>, <code>SET</code></td><td class="center"><a class="sheet-ref" href="sql-38-subqueries-scalar-in.html">38</a></td></tr>
+								<tr><td>column (n × 1)</td><td class="desc"><code>IN</code>, <code>ANY</code>, <code>ALL</code></td><td class="center"><a class="sheet-ref" href="sql-38-subqueries-scalar-in.html">38</a></td></tr>
+								<tr><td>table (n × m)</td><td class="desc"><code>FROM (…) AS t</code></td><td class="center"><a class="sheet-ref" href="sql-40-derived-tables.html">40</a></td></tr>
+								<tr><td>correlated</td><td class="desc">per-row comparison</td><td class="center"><a class="sheet-ref" href="sql-39-correlated-subqueries.html">39</a></td></tr>
+								<tr><td>existence</td><td class="desc"><code>EXISTS (…)</code></td><td class="center"><a class="sheet-ref" href="sql-36-semi-anti-joins.html">36</a></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-any-all">
+						<h2 class="section-title">ANY / ALL</h2>
+						<table>
+							<thead><tr><th>Expression</th><th>True when</th></tr></thead>
+							<tbody>
+								<tr><td>x &gt; ANY (s)</td><td class="desc">x beats at least one value</td></tr>
+								<tr><td>x &gt; ALL (s)</td><td class="desc">x beats every value</td></tr>
+								<tr><td>x = ANY (s)</td><td class="desc">same as <code>x IN (s)</code></td></tr>
+								<tr><td>x &lt;&gt; ALL (s)</td><td class="desc">same as <code>x NOT IN (s)</code> (NULL trap)</td></tr>
+								<tr><td>x &gt; ALL (empty)</td><td class="desc">always true</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">A "scalar" subquery that sometimes returns two rows</li>
+							<li class="note-item"><code>&gt; ALL</code> against an empty set matching everything</li>
+							<li class="note-item">Repeating the same scalar subquery in five places</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Name a repeated subquery once with a CTE (<a class="sheet-ref" href="sql-41-common-table-expressions.html">sheet 41</a>)</li>
+							<li class="note-item">Prefer <code>EXISTS</code> for big correlated lists (<a class="sheet-ref" href="sql-36-semi-anti-joins.html">sheet 36</a>)</li>
+							<li class="note-item">Add <code>LIMIT 1</code> / <code>max()</code> when one row must win</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Scalar → one value</li>
+							<li class="note-item">Column → <code>IN</code> / <code>ANY</code> / <code>ALL</code></li>
+							<li class="note-item">Uncorrelated → runs once</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-37-lateral-apply.html" class="nav-link prev">LATERAL &amp; APPLY</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 43 Sheets</a>
+				<a href="sql-39-correlated-subqueries.html" class="nav-link next">Correlated Subqueries</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>
