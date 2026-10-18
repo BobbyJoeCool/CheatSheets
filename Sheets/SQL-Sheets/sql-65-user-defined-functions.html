@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 65: User-Defined Functions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s65">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 65</div>
+			<h1>User-Defined Functions</h1>
+			<div class="sheet-desc">CREATE FUNCTION · RETURNS · RETURNS TABLE · LANGUAGE sql · plpgsql · IMMUTABLE</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Your Own Functions</h2>
+						<div class="description"><strong><code>CREATE FUNCTION</code></strong> packages logic you can call inside queries, like a built-in. A <strong>scalar</strong> function returns one value; a <strong>table function</strong> (<code>RETURNS TABLE</code>) returns rows and is used in <code>FROM</code>. PostgreSQL functions can be plain <strong><code>LANGUAGE sql</code></strong> (simple, often inlined) or <strong><code>plpgsql</code></strong> with variables, <code>IF</code> and loops. Mark <strong>volatility</strong> honestly: <strong><code>IMMUTABLE</code></strong> functions can be used in indexes, and the planner optimizes around the label.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Function Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Functions run inside the caller's transaction</li>
+							<li class="note-item">They can't <code>COMMIT</code>; procedures can (<a class="sheet-ref" href="sql-66-stored-procedures.html">sheet 66</a>)</li>
+							<li class="note-item">Overloading: same name, different argument types</li>
+							<li class="note-item"><code>$$ … $$</code> quotes the body without escaping</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB has no user-defined query functions in practice</li>
+							<li class="note-item">Logic lives in the app or in Atlas Functions</li>
+							<li class="note-item"><code>$function</code> (server-side JS) exists but is discouraged</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">CREATE FUNCTION</h2>
+						<pre class="language-sql"><code class="language-sql">-- Scalar SQL function (PG 14+ RETURN syntax)
+CREATE FUNCTION with_tax(amount NUMERIC,
+                         rate NUMERIC DEFAULT 0.08)
+RETURNS NUMERIC LANGUAGE sql IMMUTABLE
+RETURN round(amount * (1 + rate), 2);
+
+SELECT name, with_tax(price) FROM products;
+-- Table function
+CREATE FUNCTION customer_orders(p_customer INT)
+RETURNS TABLE (order_id INT, order_date DATE, total NUMERIC)
+LANGUAGE sql STABLE AS $$
+  SELECT order_id, order_date, total
+  FROM   orders
+  WHERE  customer_id = p_customer
+$$;
+SELECT * FROM customer_orders(7);
+
+CREATE OR REPLACE FUNCTION loyalty_tier(p_id INT)
+RETURNS TEXT LANGUAGE plpgsql STABLE AS $$
+DECLARE spent NUMERIC;
+BEGIN
+  SELECT coalesce(sum(total), 0) INTO spent
+  FROM   orders WHERE customer_id = p_id;
+  RETURN CASE WHEN spent &gt;= 1000 THEN 'gold'
+              WHEN spent &gt;= 250  THEN 'silver'
+              ELSE 'bronze' END;
+END $$;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>DEFAULT 0.08</code> — <code>rate</code> can be left out</div>
+							<div class="explain-item"><code>IMMUTABLE</code> — same inputs, same result, no table reads</div>
+							<div class="explain-item"><code>STABLE</code> — reads tables; constant within one statement</div>
+							<div class="explain-item"><code>SELECT … INTO spent</code> stores a query result in a variable</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>LANGUAGE sql</code> / <code>plpgsql</code>; volatility labels</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>CREATE FUNCTION … DETERMINISTIC</code>; scalar only</td></tr>
+								<tr><td>SQL Server</td><td class="desc">scalar + inline table-valued: <code>RETURNS TABLE AS RETURN …</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">none in SQL; register functions from the host language</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const orders = await prisma.$queryRaw`
+  SELECT * FROM customer_orders(${customerId})`;
+const [{ tier }] = await prisma.$queryRaw`
+  SELECT loyalty_tier(${customerId}) AS tier`;</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-volatility">
+						<h2 class="section-title">Volatility</h2>
+						<table>
+							<thead><tr><th>Label</th><th>Promise</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>IMMUTABLE</td><td class="desc">same args → same result, forever</td><td class="desc"><code>with_tax</code>, <code>lower</code></td></tr>
+								<tr><td>STABLE</td><td class="desc">same result within one statement</td><td class="desc"><code>loyalty_tier</code>, <code>now()</code></td></tr>
+								<tr><td>VOLATILE</td><td class="desc">may change every call (default)</td><td class="desc"><code>random()</code>, inserts</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-function-parts">
+						<h2 class="section-title">Function Parts</h2>
+						<table>
+							<thead><tr><th>Part</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>arguments</td><td class="desc"><code>(p_id INT, rate NUMERIC DEFAULT 0.08)</code></td></tr>
+								<tr><td>return type</td><td class="desc"><code>RETURNS NUMERIC</code> · <code>RETURNS TABLE (…)</code></td></tr>
+								<tr><td>language</td><td class="desc"><code>LANGUAGE sql</code> · <code>LANGUAGE plpgsql</code></td></tr>
+								<tr><td>body</td><td class="desc"><code>AS $$ … $$</code> or <code>RETURN expr</code></td></tr>
+								<tr><td>options</td><td class="desc"><code>STRICT</code> · <code>SECURITY DEFINER</code> · <code>PARALLEL SAFE</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Labeling a function <code>IMMUTABLE</code> when it reads tables</li>
+							<li class="note-item">Calling a slow function per row in a big <code>SELECT</code></li>
+							<li class="note-item">Parameter names that clash with column names in PL/pgSQL</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefix parameters (<code>p_</code>) and variables (<code>v_</code>)</li>
+							<li class="note-item">Prefer <code>LANGUAGE sql</code> for simple logic; it can be inlined</li>
+							<li class="note-item">Version functions with your migrations</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CREATE FUNCTION … RETURNS …</code></li>
+							<li class="note-item">Scalar or <code>RETURNS TABLE</code></li>
+							<li class="note-item"><code>IMMUTABLE</code> · <code>STABLE</code> · <code>VOLATILE</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-64-views-materialized-views.html" class="nav-link prev">Views &amp; Materialized Views</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 67 Sheets</a>
+				<a href="sql-66-stored-procedures.html" class="nav-link next">Stored Procedures</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 61: Normalization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s61">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 61</div>
+			<h1>Normalization</h1>
+			<div class="sheet-desc">1NF · 2NF · 3NF · BCNF · functional dependency · denormalization</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">One Fact, One Place</h2>
+						<div class="description"><strong>Normalization</strong> arranges columns so each fact is stored <strong>once</strong>, which prevents <strong>anomalies</strong>: a city changed in one order row but not the others. It's built on <strong>functional dependency</strong>: <code>A → B</code> means knowing <code>A</code> determines <code>B</code> (a <code>customer_id</code> determines the customer's city). Each normal form removes one kind of misplaced dependency. <strong>Denormalization</strong> later copies data back on purpose for speed, as <code>orders.total</code> does in the shop schema.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Design Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Aim for 3NF; it's the practical default</li>
+							<li class="note-item"><code>order_items.unit_price</code> is a price <strong>snapshot</strong>, not a 3NF breach</li>
+							<li class="note-item">Each denormalized copy needs a way to stay in sync</li>
+							<li class="note-item">Normalize first, denormalize with evidence</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">Document databases <strong>denormalize by design</strong></li>
+							<li class="note-item">Embed what's read together; copy names into orders</li>
+							<li class="note-item">The cost moves to updates: change a name in many documents</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Normalizing an Order Table</h2>
+						<pre class="language-sql"><code class="language-sql">-- Unnormalized: repeats and lists
+CREATE TABLE orders_flat (
+  order_id      INT,
+  customer_name TEXT,   -- repeated on every order
+  customer_city TEXT,   -- depends on the customer
+  products      TEXT,   -- 'Lamp, Desk': not atomic
+  prices        TEXT    -- '39.99, 129.00'
+);
+
+-- 1NF: one value per cell → one row per item
+-- 2NF: product name depends on product_id alone,
+--      not the whole (order_id, product_id) key
+--      → move to products
+-- 3NF: customer_city depends on the customer,
+--      not the order → move to customers
+
+-- Result: the shop schema (sheet 04)
+--   customers(customer_id, name, city)
+--   orders(order_id, customer_id → customers)
+--   products(product_id, name, price)
+--   order_items(order_id, product_id, qty, price)
+
+-- Deliberate denormalization: cached total
+UPDATE orders o
+SET    total = (SELECT sum(quantity * unit_price)
+                FROM   order_items i
+                WHERE  i.order_id = o.order_id);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">A list in one cell breaks 1NF: you can't join or index it</div>
+							<div class="explain-item">Partial dependency on part of a composite key breaks 2NF</div>
+							<div class="explain-item">Non-key → non-key (order → customer → city) breaks 3NF</div>
+							<div class="explain-item"><code>total</code> duplicates the items; keep it in sync (<a class="sheet-ref" href="sql-67-triggers.html">sheet 67</a>)</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<div class="dialect-same">Same in all four: normalization is a design discipline, not syntax. Enforce the result with keys and constraints (<a class="sheet-ref" href="sql-56-primary-foreign-keys.html">sheet 56</a>, <a class="sheet-ref" href="sql-57-constraints.html">sheet 57</a>).</div>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-none"><code class="language-none">model Order {
+  id    Int         @id
+  items OrderItem[]   // 1NF: items in their own table
+}
+model OrderItem {
+  orderId   Int
+  productId Int       // name and price live in Product
+  @@id([orderId, productId])
+}</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-normal-forms">
+						<h2 class="section-title">Normal Forms</h2>
+						<table>
+							<thead><tr><th>Form</th><th>Rule</th><th>Typical violation</th></tr></thead>
+							<tbody>
+								<tr><td>1NF</td><td class="desc">atomic values, no repeating groups</td><td class="desc"><code>tags = 'a,b,c'</code></td></tr>
+								<tr><td>2NF</td><td class="desc">1NF + no partial key dependency</td><td class="desc">product name in <code>order_items</code></td></tr>
+								<tr><td>3NF</td><td class="desc">2NF + no non-key → non-key</td><td class="desc">customer city in <code>orders</code></td></tr>
+								<tr><td>BCNF</td><td class="desc">every determinant is a key</td><td class="desc">rare overlapping-key cases</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-anomalies-prevented">
+						<h2 class="section-title">Anomalies Prevented</h2>
+						<table>
+							<thead><tr><th>Anomaly</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>update</td><td class="desc">city changed on some order rows only</td></tr>
+								<tr><td>insert</td><td class="desc">can't add a product until someone orders it</td></tr>
+								<tr><td>delete</td><td class="desc">deleting the last order loses the customer</td></tr>
+								<tr><td>denormalize when</td><td class="desc">reads dominate and the copy is maintained</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Comma-separated lists in a column</li>
+							<li class="note-item">Copying customer details into every order "for convenience"</li>
+							<li class="note-item">Denormalizing before measuring a real problem</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Ask "what does this column depend on?" for every column</li>
+							<li class="note-item">Snapshot values that must not change later (prices, addresses)</li>
+							<li class="note-item">Use materialized views for read-heavy rollups (<a class="sheet-ref" href="sql-64-views-materialized-views.html">sheet 64</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">1NF atomic · 2NF whole key · 3NF nothing but the key</li>
+							<li class="note-item">Prevents update anomalies</li>
+							<li class="note-item">Denormalize deliberately</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-60-databases-schemas-catalog.html" class="nav-link prev">Databases, Schemas &amp; the Catalog</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 67 Sheets</a>
+				<a href="sql-62-relationships-er-modeling.html" class="nav-link next">Relationships &amp; ER Modeling</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 64: Views &amp; Materialized Views</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s64">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 64</div>
+			<h1>Views &amp; Materialized Views</h1>
+			<div class="sheet-desc">CREATE VIEW · OR REPLACE · WITH CHECK OPTION · updatable view · MATERIALIZED VIEW · REFRESH · CONCURRENTLY · indexed view</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Saved Queries</h2>
+						<div class="description">A <strong>view</strong> is a named query you select from like a table. It stores <strong>no data</strong>: each use runs the query, so it's always current. Views hide complexity, give apps a stable interface and limit which columns or rows a role can see. A simple single-table view is <strong>updatable</strong>; <strong><code>WITH CHECK OPTION</code></strong> blocks writes the view couldn't see. A <strong>materialized view</strong> stores the result: fast to read, but stale until you <strong><code>REFRESH</code></strong> it.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">View Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Views can be granted separately from tables (<a class="sheet-ref" href="sql-75-users-roles-privileges.html">sheet 75</a>)</li>
+							<li class="note-item"><code>OR REPLACE</code> can add columns, not drop or retype them</li>
+							<li class="note-item">Filters on a view are pushed into its query</li>
+							<li class="note-item"><code>CONCURRENTLY</code> needs a unique index on the MV</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>db.createView('active', 'customers', [pipeline])</code> — read-only</li>
+							<li class="note-item">On-demand materialized views: an aggregation ending in <code>$merge</code></li>
+							<li class="note-item">Re-run the <code>$merge</code> pipeline to refresh</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Views</h2>
+						<pre class="language-sql"><code class="language-sql">CREATE VIEW active_customers AS
+SELECT customer_id, name, email, city
+FROM   customers
+WHERE  deleted_at IS NULL;
+
+SELECT * FROM active_customers WHERE city = 'Oslo';
+
+CREATE OR REPLACE VIEW order_summary AS
+SELECT o.order_id, c.name, o.order_date, o.total
+FROM   orders o
+JOIN   customers c USING (customer_id);
+
+-- Updatable view that rejects out-of-view rows
+CREATE VIEW ca_customers AS
+SELECT * FROM customers WHERE country = 'CA'
+WITH CHECK OPTION;
+INSERT INTO ca_customers (name, country)
+VALUES ('Zed', 'US');
+-- ERROR: new row violates check option
+
+-- Stored result, refreshed on demand
+CREATE MATERIALIZED VIEW monthly_revenue AS
+SELECT date_trunc('month', order_date) AS month,
+       sum(total) AS revenue
+FROM   orders GROUP BY month;
+CREATE UNIQUE INDEX ON monthly_revenue (month);
+REFRESH MATERIALIZED VIEW CONCURRENTLY monthly_revenue;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>active_customers</code> hides soft-deleted rows (<a class="sheet-ref" href="sql-52-delete-truncate.html">sheet 52</a>)</div>
+							<div class="explain-item"><code>WITH CHECK OPTION</code> — inserts must satisfy <code>country = 'CA'</code></div>
+							<div class="explain-item">The materialized view is computed once and stored</div>
+							<div class="explain-item"><code>CONCURRENTLY</code> refreshes without blocking readers</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">views + <code>MATERIALIZED VIEW</code>, <code>REFRESH … CONCURRENTLY</code></td></tr>
+								<tr><td>MySQL</td><td class="desc">views only; emulate MVs with a table + scheduled event</td></tr>
+								<tr><td>SQL Server</td><td class="desc">indexed views (<code>SCHEMABINDING</code> + clustered index)</td></tr>
+								<tr><td>SQLite</td><td class="desc">read-only views; <code>INSTEAD OF</code> triggers to write</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-none"><code class="language-none">view ActiveCustomer {      // views preview feature
+  id    Int    @unique
+  name  String
+  email String
+}
+// prisma.activeCustomer.findMany() — read-only</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-view-vs-materialized-view">
+						<h2 class="section-title">View vs Materialized View</h2>
+						<table>
+							<thead><tr><th></th><th>View</th><th>Materialized view</th></tr></thead>
+							<tbody>
+								<tr><td>stores data</td><td class="desc">no</td><td class="desc">yes</td></tr>
+								<tr><td>freshness</td><td class="desc">always current</td><td class="desc">as of last refresh</td></tr>
+								<tr><td>read speed</td><td class="desc">same as the query</td><td class="desc">fast; can be indexed</td></tr>
+								<tr><td>refresh</td><td class="desc">—</td><td class="desc"><code>REFRESH MATERIALIZED VIEW</code></td></tr>
+								<tr><td>best for</td><td class="desc">abstraction, security</td><td class="desc">heavy reports, dashboards</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-updatable-view-rules">
+						<h2 class="section-title">Updatable View Rules</h2>
+						<table>
+							<thead><tr><th>Simple view needs</th><th>Example of breaking it</th></tr></thead>
+							<tbody>
+								<tr><td>one table in `FROM`</td><td class="desc">a <code>JOIN</code></td></tr>
+								<tr><td>no aggregates</td><td class="desc"><code>GROUP BY</code>, <code>sum()</code></td></tr>
+								<tr><td>no `DISTINCT` / `LIMIT`</td><td class="desc"><code>SELECT DISTINCT …</code></td></tr>
+								<tr><td>plain columns</td><td class="desc"><code>price * 2 AS p</code> (read-only column)</td></tr>
+								<tr><td>otherwise</td><td class="desc"><code>INSTEAD OF</code> trigger (<a class="sheet-ref" href="sql-67-triggers.html">sheet 67</a>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Stacking views on views until no one can tune the query</li>
+							<li class="note-item">Reading a materialized view as if it were live</li>
+							<li class="note-item"><code>SELECT *</code> in a view: columns are fixed at creation time</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use views as the API for reporting tools</li>
+							<li class="note-item">Schedule MV refreshes (cron, <code>pg_cron</code>) after loads</li>
+							<li class="note-item">List columns explicitly in view definitions</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">View — saved query, no data</li>
+							<li class="note-item">Materialized — stored, needs refresh</li>
+							<li class="note-item"><code>WITH CHECK OPTION</code> guards writes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-63-design-conventions.html" class="nav-link prev">Design Conventions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 67 Sheets</a>
+				<a href="sql-65-user-defined-functions.html" class="nav-link next">User-Defined Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>
