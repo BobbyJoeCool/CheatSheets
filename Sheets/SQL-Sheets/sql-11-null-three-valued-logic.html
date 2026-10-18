@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 11: NULL &amp; Three-Valued Logic</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>NULL &amp; Three-Valued Logic</h1>
+			<div class="sheet-desc">NULL · IS NULL · IS NOT NULL · UNKNOWN · IS DISTINCT FROM · NULL in comparisons</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Unknown Values</h2>
+						<div class="description"><strong>NULL</strong> means "unknown" or "not applicable". It is not zero and not an empty string. Any comparison with NULL returns <strong>UNKNOWN</strong>, and <code>WHERE</code> keeps only rows that are <strong>TRUE</strong>, so <code>city = NULL</code> never matches anything. Test with <strong><code>IS NULL</code></strong>. Most operators return NULL when an input is NULL. <strong><code>IS DISTINCT FROM</code></strong> compares values but treats two NULLs as equal.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">NULL Rules</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>= NULL</code> is always UNKNOWN; use <code>IS NULL</code></li>
+							<li class="note-item"><code>1 + NULL</code> and <code>'a' || NULL</code> are NULL</li>
+							<li class="note-item"><code>TRUE OR NULL</code> is TRUE; <code>FALSE AND NULL</code> is FALSE</li>
+							<li class="note-item">Aggregates skip NULLs (<a class="sheet-ref" href="sql-27-aggregate-functions.html">sheet 27</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB separates a <strong>missing</strong> field from <code>null</code></li>
+							<li class="note-item"><code>{ city: null }</code> matches both; <code>{ city: { $exists: false } }</code> only missing</li>
+							<li class="note-item">No three-valued logic: comparisons are just true or false</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">NULL in Practice</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT NULL = NULL;             -- NULL (unknown)
+SELECT NULL IS NULL;            -- true
+SELECT 1 + NULL, 'a' || NULL;   -- NULL | NULL
+
+-- Customers with no city
+SELECT name FROM customers WHERE city IS NULL;
+SELECT name FROM customers WHERE city = NULL; -- 0 rows!
+
+-- "Not Oslo" silently skips NULL cities
+SELECT count(*) FROM customers WHERE city &lt;&gt; 'Oslo';
+SELECT count(*) FROM customers
+WHERE  city IS DISTINCT FROM 'Oslo';     -- counts NULLs
+
+-- NULL-safe match between columns
+SELECT a.emp_id, b.emp_id
+FROM   employees a
+JOIN   employees b
+  ON   a.manager_id IS NOT DISTINCT FROM b.manager_id
+ AND   a.emp_id &lt; b.emp_id;
+
+SELECT TRUE OR NULL, FALSE AND NULL;   -- true | false</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>city &lt;&gt; 'Oslo'</code> is UNKNOWN for NULL cities, so they drop</div>
+							<div class="explain-item"><code>IS DISTINCT FROM</code> — NULL vs value is TRUE, NULL vs NULL FALSE</div>
+							<div class="explain-item">The self-join pairs employees with the same manager, NULL too</div>
+							<div class="explain-item"><code>OR</code> with a TRUE side is TRUE even if the other is unknown</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>IS [NOT] DISTINCT FROM</code>; <code>'a' || NULL</code> is NULL</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>&lt;=&gt;</code> is NULL-safe equals; <code>CONCAT('a', NULL)</code> is NULL</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>IS [NOT] DISTINCT FROM</code> from 2022; <code>+</code> with NULL is NULL</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>a IS b</code> / <code>a IS NOT b</code> are NULL-safe</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.customer.findMany({
+  where: { city: null },           // IS NULL
+});
+await prisma.customer.findMany({
+  where: { city: { not: null } },  // IS NOT NULL
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-truth-table">
+						<h2 class="section-title">Truth Table</h2>
+						<table>
+							<thead><tr><th>p</th><th>q</th><th>p AND q</th><th>p OR q</th></tr></thead>
+							<tbody>
+								<tr><td>TRUE</td><td class="desc">UNKNOWN</td><td class="desc">UNKNOWN</td><td class="desc">TRUE</td></tr>
+								<tr><td>FALSE</td><td class="desc">UNKNOWN</td><td class="desc">FALSE</td><td class="desc">UNKNOWN</td></tr>
+								<tr><td>UNKNOWN</td><td class="desc">UNKNOWN</td><td class="desc">UNKNOWN</td><td class="desc">UNKNOWN</td></tr>
+								<tr><td>NOT UNKNOWN</td><td class="desc"></td><td class="desc">UNKNOWN</td><td class="desc"></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-where-nulls-bite">
+						<h2 class="section-title">Where NULLs Bite</h2>
+						<table>
+							<thead><tr><th>Situation</th><th>What happens</th></tr></thead>
+							<tbody>
+								<tr><td>COUNT(col)</td><td class="desc">skips NULL rows; <code>COUNT(*)</code> doesn't</td></tr>
+								<tr><td>ORDER BY col</td><td class="desc">NULLs last in PG, first in MySQL / SQL Server / SQLite</td></tr>
+								<tr><td>GROUP BY col</td><td class="desc">all NULLs form one group</td></tr>
+								<tr><td>UNIQUE col</td><td class="desc">many NULLs allowed (SQL Server: only one)</td></tr>
+								<tr><td>x NOT IN (…, NULL)</td><td class="desc">never TRUE → no rows (<a class="sheet-ref" href="sql-36-semi-anti-joins.html">sheet 36</a>)</td></tr>
+								<tr><td>CHECK (x &gt; 0)</td><td class="desc">passes when <code>x</code> is NULL</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Writing <code>= NULL</code> or <code>&lt;&gt; NULL</code></li>
+							<li class="note-item">Losing NULL rows with <code>&lt;&gt;</code> filters</li>
+							<li class="note-item"><code>NOT IN</code> against a subquery that can return NULL</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Decide per column: <code>NOT NULL</code> unless unknown is real</li>
+							<li class="note-item">Use <code>COALESCE</code> for display defaults (<a class="sheet-ref" href="sql-26-conditional-null-functions.html">sheet 26</a>)</li>
+							<li class="note-item">Reach for <code>IS DISTINCT FROM</code> when comparing nullable columns</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">NULL = unknown, not empty</li>
+							<li class="note-item">Comparisons → UNKNOWN; <code>WHERE</code> keeps TRUE only</li>
+							<li class="note-item"><code>IS NULL</code> · <code>IS DISTINCT FROM</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-10-boolean-binary-uuid-enum-types.html" class="nav-link prev">Boolean, Binary, UUID &amp; Enum</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 21 Sheets</a>
+				<a href="sql-12-type-conversion-casting.html" class="nav-link next">Type Conversion &amp; Casting</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

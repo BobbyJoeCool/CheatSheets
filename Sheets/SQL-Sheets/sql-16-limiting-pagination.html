@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 16: Limiting &amp; Pagination</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>Limiting &amp; Pagination</h1>
+			<div class="sheet-desc">LIMIT · OFFSET · FETCH FIRST · TOP · WITH TIES · keyset pagination</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Returning a Page of Rows</h2>
+						<div class="description"><strong><code>LIMIT n</code></strong> returns the first <code>n</code> rows of the sorted result; <strong><code>OFFSET k</code></strong> skips <code>k</code> rows first. The standard spelling is <strong><code>OFFSET k ROWS FETCH NEXT n ROWS ONLY</code></strong>, and SQL Server also has <strong><code>TOP</code></strong>. <code>OFFSET</code> still reads every skipped row, so deep pages get slow and rows shift when data changes. <strong>Keyset pagination</strong> instead filters past the last row you saw, so page 1,000 costs the same as page 1.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Paging Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Always pair a limit with <code>ORDER BY</code></li>
+							<li class="note-item">Sort by a unique key, or pages overlap</li>
+							<li class="note-item"><code>WITH TIES</code> also returns rows tied with the last</li>
+							<li class="note-item">Fetch <code>n + 1</code> rows to know if a next page exists</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>.sort({ _id: 1 }).skip(20).limit(10)</code></li>
+							<li class="note-item"><code>skip</code> has the same deep-page cost as <code>OFFSET</code></li>
+							<li class="note-item">Keyset: <code>find({ _id: { $gt: lastId } }).limit(10)</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Limit &amp; Paginate</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT name, price FROM products
+ORDER  BY price DESC
+LIMIT  10;                              -- top 10
+
+SELECT name, price FROM products
+ORDER  BY price DESC, product_id
+LIMIT  10 OFFSET 20;                    -- page 3
+
+-- Standard form (PG, SQL Server, Oracle)
+SELECT name, price FROM products
+ORDER  BY price DESC
+OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY;
+
+SELECT name, price FROM products
+ORDER  BY price DESC
+FETCH  FIRST 3 ROWS WITH TIES;          -- + ties
+
+-- Keyset: continue after the last row seen
+SELECT order_id, order_date FROM orders
+WHERE  (order_date, order_id) &lt; ('2026-09-30', 4211)
+ORDER  BY order_date DESC, order_id DESC
+LIMIT  20;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>product_id</code> breaks price ties so pages don't overlap</div>
+							<div class="explain-item">Page <code>p</code> of size <code>n</code> → <code>OFFSET (p - 1) * n</code></div>
+							<div class="explain-item"><code>WITH TIES</code> needs <code>ORDER BY</code>; may return more than 3</div>
+							<div class="explain-item">Row comparison <code>(a, b) &lt; (x, y)</code> resumes after the last row</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>LIMIT / OFFSET</code>; <code>FETCH FIRST … WITH TIES</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>LIMIT 10 OFFSET 20</code> or <code>LIMIT 20, 10</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>TOP (10) [WITH TIES]</code>; <code>OFFSET … FETCH</code> needs <code>ORDER BY</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>LIMIT 10 OFFSET 20</code>; no <code>FETCH</code> or <code>TOP</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.order.findMany({
+  orderBy: [{ orderDate: 'desc' }, { id: 'desc' }],
+  take: 20,
+  skip: 1,                 // skip the cursor row
+  cursor: { id: lastId },  // keyset-style paging
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-offset-vs-keyset">
+						<h2 class="section-title">OFFSET vs Keyset</h2>
+						<table>
+							<thead><tr><th></th><th>OFFSET</th><th>Keyset</th></tr></thead>
+							<tbody>
+								<tr><td>jump to page N</td><td class="desc">yes</td><td class="desc">no — next / previous only</td></tr>
+								<tr><td>deep page speed</td><td class="desc">slows as offset grows</td><td class="desc">constant with an index</td></tr>
+								<tr><td>rows inserted meanwhile</td><td class="desc">duplicates or skips</td><td class="desc">stable</td></tr>
+								<tr><td>sort key</td><td class="desc">should be unique</td><td class="desc">must be unique</td></tr>
+								<tr><td>best for</td><td class="desc">admin tables, small sets</td><td class="desc">feeds, APIs, infinite scroll</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-page-math">
+						<h2 class="section-title">Page Math</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Expression</th></tr></thead>
+							<tbody>
+								<tr><td>offset for page p</td><td class="desc"><code>(p - 1) * size</code></td></tr>
+								<tr><td>total pages</td><td class="desc"><code>ceil(count / size)</code></td></tr>
+								<tr><td>has next page?</td><td class="desc">fetch <code>size + 1</code> rows</td></tr>
+								<tr><td>SQL Server top-N</td><td class="desc"><code>SELECT TOP (10) …</code></td></tr>
+								<tr><td>keyset cursor</td><td class="desc">last row's sort key values</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>LIMIT</code> without <code>ORDER BY</code>: a different 10 rows each time</li>
+							<li class="note-item">Sorting by a non-unique column, so rows repeat across pages</li>
+							<li class="note-item">Running <code>count(*)</code> over a huge table for every page</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Index the sort columns in sort order</li>
+							<li class="note-item">Use keyset for anything users scroll through</li>
+							<li class="note-item">Return the cursor (last key) to the client</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>LIMIT</code> / <code>OFFSET</code> · <code>FETCH FIRST</code> · <code>TOP</code></li>
+							<li class="note-item"><code>WITH TIES</code> keeps ties</li>
+							<li class="note-item">Keyset = <code>WHERE key &gt; last</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-15-sorting-order-by.html" class="nav-link prev">Sorting with ORDER BY</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 21 Sheets</a>
+				<a href="sql-17-distinct-duplicates.html" class="nav-link next">DISTINCT &amp; Duplicates</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>
