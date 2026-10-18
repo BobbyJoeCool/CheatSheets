@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 52: DELETE &amp; TRUNCATE</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s52">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 52</div>
+			<h1>DELETE &amp; TRUNCATE</h1>
+			<div class="sheet-desc">DELETE · DELETE … USING · TRUNCATE · RESTART IDENTITY · CASCADE · soft delete</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Removing Rows</h2>
+						<div class="description"><strong><code>DELETE FROM table WHERE …</code></strong> removes matching rows one by one: triggers fire, foreign keys are checked, and it can be rolled back. <strong><code>TRUNCATE</code></strong> empties a whole table at once, much faster, and can reset identity counters; it has no <code>WHERE</code>. Many apps prefer a <strong>soft delete</strong>: set a <code>deleted_at</code> timestamp and filter it out, so history and references survive. Removing the table itself is <code>DROP TABLE</code> (<a class="sheet-ref" href="sql-59-alter-drop.html">sheet 59</a>).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Delete Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">No <code>WHERE</code> = every row</li>
+							<li class="note-item">FK <code>ON DELETE CASCADE</code> deletes child rows too (<a class="sheet-ref" href="sql-56-primary-foreign-keys.html">sheet 56</a>)</li>
+							<li class="note-item">Deleted space is reused later, not returned at once</li>
+							<li class="note-item"><code>TRUNCATE</code> skips row-level triggers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>deleteMany(filter)</code>; <code>drop()</code> removes the collection</li>
+							<li class="note-item">Soft delete: <code>{ $set: { deletedAt: new Date() } }</code></li>
+							<li class="note-item">A TTL index deletes expired documents automatically</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">DELETE &amp; TRUNCATE</h2>
+						<pre class="language-sql"><code class="language-sql">DELETE FROM orders
+WHERE  status = 'cancelled'
+  AND  order_date &lt; DATE '2026-01-01'
+RETURNING order_id;
+
+-- Delete using another table (PostgreSQL)
+DELETE FROM order_items i
+USING  products p
+WHERE  p.product_id = i.product_id
+  AND  p.category = 'Discontinued';
+
+-- Portable form
+DELETE FROM order_items
+WHERE  product_id IN (SELECT product_id FROM products
+                      WHERE  category = 'Discontinued');
+
+-- Empty tables fast
+TRUNCATE order_items, orders RESTART IDENTITY;
+TRUNCATE customers CASCADE;  -- + tables referencing it
+
+-- Soft delete: hide instead of destroy
+ALTER TABLE customers ADD COLUMN deleted_at TIMESTAMPTZ;
+UPDATE customers SET deleted_at = now()
+WHERE  customer_id = 42;
+SELECT * FROM customers WHERE deleted_at IS NULL;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>RETURNING</code> lists exactly what was removed</div>
+							<div class="explain-item"><code>USING</code> joins <code>products</code> to choose which items go</div>
+							<div class="explain-item"><code>RESTART IDENTITY</code> resets the ID counters to 1</div>
+							<div class="explain-item">Soft-deleted rows stay; queries filter them out</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>DELETE … USING</code>; <code>TRUNCATE</code> can roll back</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>DELETE i FROM order_items i JOIN …</code>; <code>TRUNCATE</code> auto-commits</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>DELETE i FROM order_items i JOIN …</code>; no <code>TRUNCATE … CASCADE</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">no <code>TRUNCATE</code>: <code>DELETE FROM t</code> is optimized</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.order.deleteMany({
+  where: {
+    status: 'cancelled',
+    orderDate: { lt: new Date('2026-01-01') },
+  },
+});</code></pre>
+						<ul class="note-list">
+							<li class="note-item">Soft delete: a <code>$extends</code> query extension rewrites deletes into updates</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-delete-vs-truncate-vs-drop">
+						<h2 class="section-title">DELETE vs TRUNCATE vs DROP</h2>
+						<table>
+							<thead><tr><th></th><th>DELETE</th><th>TRUNCATE</th><th>DROP TABLE</th></tr></thead>
+							<tbody>
+								<tr><td>removes</td><td class="desc">matching rows</td><td class="desc">all rows</td><td class="desc">table + data</td></tr>
+								<tr><td>WHERE</td><td class="desc">yes</td><td class="desc">no</td><td class="desc">no</td></tr>
+								<tr><td>row triggers</td><td class="desc">fire</td><td class="desc">don't fire</td><td class="desc">—</td></tr>
+								<tr><td>speed on big tables</td><td class="desc">slow</td><td class="desc">fast</td><td class="desc">fast</td></tr>
+								<tr><td>identity reset</td><td class="desc">no</td><td class="desc">optional</td><td class="desc">—</td></tr>
+								<tr><td>rollback</td><td class="desc">yes</td><td class="desc">PG, SQL Server: yes</td><td class="desc">PG, SQL Server: yes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-soft-delete-checklist">
+						<h2 class="section-title">Soft Delete Checklist</h2>
+						<table>
+							<thead><tr><th>Item</th><th>Do</th></tr></thead>
+							<tbody>
+								<tr><td>column</td><td class="desc"><code>deleted_at TIMESTAMPTZ NULL</code></td></tr>
+								<tr><td>reads</td><td class="desc"><code>WHERE deleted_at IS NULL</code> everywhere</td></tr>
+								<tr><td>uniqueness</td><td class="desc">partial unique index <code>WHERE deleted_at IS NULL</code></td></tr>
+								<tr><td>convenience</td><td class="desc">a view of live rows (<a class="sheet-ref" href="sql-64-views-materialized-views.html">sheet 64</a>)</td></tr>
+								<tr><td>purge</td><td class="desc">hard-delete old rows on a schedule</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>DELETE</code> without <code>WHERE</code> (or with the wrong one)</li>
+							<li class="note-item">Deleting millions of rows in one transaction</li>
+							<li class="note-item">Soft delete without updating unique constraints</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Delete in batches: <code>WHERE id IN (SELECT … LIMIT 10000)</code></li>
+							<li class="note-item">Preview with <code>SELECT count(*)</code> and the same <code>WHERE</code></li>
+							<li class="note-item">Use <code>TRUNCATE</code> for staging tables between loads</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>DELETE … WHERE</code> — some rows</li>
+							<li class="note-item"><code>TRUNCATE</code> — all rows, fast</li>
+							<li class="note-item">Soft delete — <code>deleted_at</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-51-update.html" class="nav-link prev">UPDATE</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 54 Sheets</a>
+				<a href="sql-53-upsert-merge.html" class="nav-link next">Upsert &amp; MERGE</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>
