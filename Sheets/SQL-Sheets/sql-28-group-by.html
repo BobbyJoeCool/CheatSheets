@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 28: GROUP BY</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>GROUP BY</h1>
+			<div class="sheet-desc">GROUP BY · multiple columns · grouping expressions · functional dependency · ONLY_FULL_GROUP_BY</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">One Row per Group</h2>
+						<div class="description"><strong><code>GROUP BY</code></strong> sorts rows into <strong>groups</strong>, one per distinct value (or combination of values) of the listed columns or expressions, and each aggregate is computed <strong>per group</strong>. Every column in <code>SELECT</code> must either appear in <code>GROUP BY</code> or sit inside an aggregate. The exception is <strong>functional dependency</strong>: group by a table's primary key and PostgreSQL and MySQL let you select its other columns too. All NULLs fall into one group.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Grouping Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Selectable: grouped columns, aggregates, constants</li>
+							<li class="note-item">Not selectable: other plain columns (with exceptions)</li>
+							<li class="note-item">Group order isn't output order; add <code>ORDER BY</code></li>
+							<li class="note-item"><code>GROUP BY</code> runs after <code>WHERE</code>, before <code>HAVING</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>{ $group: { _id: '$status', n: { $sum: 1 } } }</code></li>
+							<li class="note-item">Several keys: <code>_id: { country: '$country', city: '$city' }</code></li>
+							<li class="note-item">Group key comes back in <code>_id</code>; rename it with <code>$project</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">GROUP BY</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT status, count(*) AS n, sum(total) AS revenue
+FROM   orders
+GROUP  BY status
+ORDER  BY revenue DESC;
+
+-- Several columns: one group per combination
+SELECT country, city, count(*) AS customers
+FROM   customers
+GROUP  BY country, city;
+
+-- Group by an expression
+SELECT date_trunc('month', order_date) AS month,
+       count(*)                        AS orders
+FROM   orders
+GROUP  BY date_trunc('month', order_date);
+
+-- Join, then group (name depends on the PK)
+SELECT c.customer_id, c.name, count(o.order_id) AS n
+FROM   customers c
+LEFT   JOIN orders o ON o.customer_id = c.customer_id
+GROUP  BY c.customer_id;
+
+SELECT category, name, count(*)
+FROM   products GROUP BY category;
+-- ERROR: column "products.name" must appear in GROUP BY</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">One output row per <code>status</code>, sorted by revenue</div>
+							<div class="explain-item"><code>country, city</code> → a group per unique pair</div>
+							<div class="explain-item"><code>count(o.order_id)</code> counts 0 for customers with no orders</div>
+							<div class="explain-item"><code>name</code> is legal because <code>customer_id</code> is the primary key</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">columns dependent on a grouped PK are allowed</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>ONLY_FULL_GROUP_BY</code> on by default; <code>ANY_VALUE(col)</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc">list every non-aggregated column</td></tr>
+								<tr><td>SQLite</td><td class="desc">allows ungrouped columns (value from any row)</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.order.groupBy({
+  by: ['status'],
+  _count: { _all: true },
+  _sum: { total: true },
+  orderBy: { _sum: { total: 'desc' } },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-input-orders">
+						<h2 class="section-title">Input: orders</h2>
+						<table>
+							<thead><tr><th>order_id</th><th>status</th><th>total</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc">paid</td><td class="desc">20.00</td></tr>
+								<tr><td>2</td><td class="desc">paid</td><td class="desc">30.00</td></tr>
+								<tr><td>3</td><td class="desc">shipped</td><td class="desc">15.00</td></tr>
+								<tr><td>4</td><td class="desc">NULL</td><td class="desc">5.00</td></tr>
+								<tr><td>5</td><td class="desc">shipped</td><td class="desc">NULL</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-output-group-by-status">
+						<h2 class="section-title">Output: GROUP BY status</h2>
+						<table>
+							<thead><tr><th>status</th><th>count(*)</th><th>sum(total)</th></tr></thead>
+							<tbody>
+								<tr><td>paid</td><td class="desc">2</td><td class="desc">50.00</td></tr>
+								<tr><td>shipped</td><td class="desc">2</td><td class="desc">15.00</td></tr>
+								<tr><td>NULL</td><td class="desc">1</td><td class="desc">5.00</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Selecting a column that isn't grouped or aggregated</li>
+							<li class="note-item">Turning off <code>ONLY_FULL_GROUP_BY</code> and getting random values</li>
+							<li class="note-item">Grouping by a display string (<code>to_char</code>) instead of a date</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Group by the key, select the details (functional dependency)</li>
+							<li class="note-item">Aggregate in a CTE, then join for names (<a class="sheet-ref" href="sql-41-common-table-expressions.html">sheet 41</a>)</li>
+							<li class="note-item">Index the grouping columns for big tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>GROUP BY</code> → one row per group</li>
+							<li class="note-item">SELECT = grouped columns + aggregates</li>
+							<li class="note-item">NULLs share one group</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-27-aggregate-functions.html" class="nav-link prev">Aggregate Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 31 Sheets</a>
+				<a href="sql-29-having-conditional-aggregation.html" class="nav-link next">HAVING &amp; Conditional Aggregation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

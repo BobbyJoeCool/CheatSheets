@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 27: Aggregate Functions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>Aggregate Functions</h1>
+			<div class="sheet-desc">COUNT(*) · COUNT(col) · SUM · AVG · MIN · MAX · NULL handling</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Many Rows → One Value</h2>
+						<div class="description">An <strong>aggregate</strong> reduces a set of rows to one value. With no <code>GROUP BY</code>, the whole (filtered) table is one group and you get one row back. **<code>count(*)</code><strong> counts rows; </strong><code>count(col)</code><strong> counts non-NULL values. </strong><code>sum</code><strong>, </strong><code>avg</code><strong>, </strong><code>min</code><strong> and </strong><code>max</code><strong> </strong>ignore NULLs**. Over zero rows, <code>count</code> returns 0 and the others return NULL. <code>min</code> and <code>max</code> work on text and dates as well as numbers.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Aggregate Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>avg</code> divides by the non-NULL count only</li>
+							<li class="note-item">Plain columns + aggregates need <code>GROUP BY</code> (<a class="sheet-ref" href="sql-28-group-by.html">sheet 28</a>)</li>
+							<li class="note-item">Aggregates can't go in <code>WHERE</code>; use <code>HAVING</code> (<a class="sheet-ref" href="sql-29-having-conditional-aggregation.html">sheet 29</a>)</li>
+							<li class="note-item"><code>count(DISTINCT col)</code> counts unique values</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>{ $group: { _id: null, n: { $sum: 1 }, avg: { $avg: '$total' } } }</code></li>
+							<li class="note-item"><code>countDocuments(filter)</code> for a plain count</li>
+							<li class="note-item"><code>$sum</code> / <code>$avg</code> also skip missing and null values</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Aggregates</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT count(*)        AS orders,
+       count(total)    AS with_total,   -- skips NULL
+       sum(total)      AS revenue,
+       avg(total)      AS avg_order,
+       min(order_date) AS first_order,
+       max(order_date) AS last_order
+FROM   orders
+WHERE  status &lt;&gt; 'cancelled';
+
+SELECT count(DISTINCT customer_id) AS buyers
+FROM   orders;
+
+-- NULLs and empty input
+SELECT avg(x), sum(x), count(x), count(*)
+FROM   (VALUES (10), (NULL), (20)) AS t(x);
+-- 15 | 30 | 2 | 3
+SELECT sum(total), count(*) FROM orders WHERE false;
+-- NULL | 0
+
+SELECT avg(coalesce(total, 0)) FROM orders; -- NULL = 0
+SELECT min(name), max(name) FROM products;  -- text
+SELECT customer_id, count(*) FROM orders;
+-- ERROR: must appear in GROUP BY</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>avg</code> of 10, NULL, 20 is 15, not 10</div>
+							<div class="explain-item"><code>sum</code> over no rows is NULL; wrap in <code>coalesce(…, 0)</code></div>
+							<div class="explain-item"><code>coalesce</code> inside <code>avg</code> counts NULLs as zero</div>
+							<div class="explain-item">Adding a plain column requires <code>GROUP BY</code></div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>avg(int)</code> → numeric; <code>bool_and</code>, <code>bool_or</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>AVG(int)</code> → decimal; <code>BIT_AND</code>, <code>BIT_OR</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>AVG(int)</code> → <strong>int</strong>; <code>COUNT_BIG</code> for huge tables</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>total()</code> returns 0.0 instead of NULL</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const s = await prisma.order.aggregate({
+  where: { status: { not: 'cancelled' } },
+  _count: { _all: true },
+  _sum: { total: true },
+  _avg: { total: true },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-aggregates-nulls">
+						<h2 class="section-title">Aggregates &amp; NULLs</h2>
+						<table>
+							<thead><tr><th>Function</th><th>NULLs</th><th>No rows →</th></tr></thead>
+							<tbody>
+								<tr><td>count(*)</td><td class="desc">counted</td><td class="desc">0</td></tr>
+								<tr><td>count(col)</td><td class="desc">skipped</td><td class="desc">0</td></tr>
+								<tr><td>sum(col)</td><td class="desc">skipped</td><td class="desc">NULL</td></tr>
+								<tr><td>avg(col)</td><td class="desc">skipped</td><td class="desc">NULL</td></tr>
+								<tr><td>min · max</td><td class="desc">skipped</td><td class="desc">NULL</td></tr>
+								<tr><td>string_agg (@31)</td><td class="desc">skipped</td><td class="desc">NULL</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-statistics-postgresql">
+						<h2 class="section-title">Statistics (PostgreSQL)</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Gives</th></tr></thead>
+							<tbody>
+								<tr><td>stddev(x) · variance(x)</td><td class="desc">spread (sample)</td></tr>
+								<tr><td>percentile_cont(0.5) WITHIN GROUP (ORDER BY x)</td><td class="desc">median</td></tr>
+								<tr><td>percentile_disc(0.9) WITHIN GROUP (ORDER BY x)</td><td class="desc">90th percentile value</td></tr>
+								<tr><td>mode() WITHIN GROUP (ORDER BY x)</td><td class="desc">most frequent value</td></tr>
+								<tr><td>corr(x, y)</td><td class="desc">correlation −1…1</td></tr>
+								<tr><td>bool_and(x) · bool_or(x)</td><td class="desc">all / any true</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>count(col)</code> when you meant rows, or the reverse</li>
+							<li class="note-item">Letting <code>avg</code> ignore NULLs that really mean 0</li>
+							<li class="note-item">SQL Server <code>AVG(qty)</code> on an int column returning a whole number</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Filter with <code>WHERE</code> before aggregating; it's cheaper</li>
+							<li class="note-item">Use <code>FILTER</code> for several conditional counts (<a class="sheet-ref" href="sql-29-having-conditional-aggregation.html">sheet 29</a>)</li>
+							<li class="note-item">Cast before averaging ints: <code>avg(qty * 1.0)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>count</code> · <code>sum</code> · <code>avg</code> · <code>min</code> · <code>max</code></li>
+							<li class="note-item">NULLs skipped (except <code>count(*)</code>)</li>
+							<li class="note-item">No rows → <code>count</code> 0, others NULL</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-26-conditional-null-functions.html" class="nav-link prev">Conditional &amp; NULL Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 31 Sheets</a>
+				<a href="sql-28-group-by.html" class="nav-link next">GROUP BY</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

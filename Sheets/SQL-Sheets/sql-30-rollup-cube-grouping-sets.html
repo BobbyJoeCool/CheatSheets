@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 30: ROLLUP, CUBE &amp; GROUPING SETS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>ROLLUP, CUBE &amp; GROUPING SETS</h1>
+			<div class="sheet-desc">ROLLUP · CUBE · GROUPING SETS · GROUPING() · subtotals · WITH ROLLUP</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Subtotals in One Query</h2>
+						<div class="description">These extensions run <strong>several groupings at once</strong> and stack the results. <strong><code>GROUPING SETS</code></strong> lists exactly which groupings you want; <strong><code>ROLLUP (a, b)</code></strong> is the hierarchy <code>(a, b)</code>, <code>(a)</code>, <code>()</code> — detail, subtotal, grand total; <strong><code>CUBE (a, b)</code></strong> is every combination. In subtotal rows the rolled-up columns are <strong>NULL</strong>, and <strong><code>GROUPING(col)</code></strong> returns 1 there, so you can tell a subtotal from a real NULL.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>()</code> is the empty grouping: the grand total</li>
+							<li class="note-item"><code>ROLLUP (a, b, c)</code> → 4 levels; order matters</li>
+							<li class="note-item"><code>CUBE</code> with n columns → 2ⁿ groupings</li>
+							<li class="note-item">Sort with <code>GROUPING()</code> to put totals last</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB has no <code>ROLLUP</code></li>
+							<li class="note-item"><code>$facet</code> runs several <code>$group</code> pipelines over the same input in one query</li>
+							<li class="note-item">Or compute the total in the app from the detail rows</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">ROLLUP, CUBE &amp; GROUPING SETS</h2>
+						<pre class="language-sql"><code class="language-sql">-- Revenue by country and city, with subtotals
+SELECT c.country,
+       CASE WHEN GROUPING(c.city) = 1
+            THEN '(subtotal)' ELSE c.city END AS city,
+       sum(o.total) AS revenue
+FROM   orders o
+JOIN   customers c USING (customer_id)
+GROUP  BY ROLLUP (c.country, c.city)
+ORDER  BY c.country, GROUPING(c.city), city;
+
+-- Every combination of department and hire year
+SELECT dept_id,
+       extract(YEAR FROM hire_date) AS yr,
+       count(*)                     AS hires
+FROM   employees
+GROUP  BY CUBE (dept_id, extract(YEAR FROM hire_date));
+
+-- Just the groupings you name
+SELECT status, customer_id, count(*)
+FROM   orders
+GROUP  BY GROUPING SETS ((status), (customer_id), ());</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ROLLUP</code> adds a subtotal per country and one grand total</div>
+							<div class="explain-item"><code>GROUPING(c.city) = 1</code> marks rows where city was rolled up</div>
+							<div class="explain-item">The grand-total row has NULL country and NULL city</div>
+							<div class="explain-item"><code>GROUPING SETS</code> here = 3 separate <code>GROUP BY</code>s, one scan</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>ROLLUP</code>, <code>CUBE</code>, <code>GROUPING SETS</code>, <code>GROUPING()</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>GROUP BY a, b WITH ROLLUP</code> only; no <code>CUBE</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc">all three, plus legacy <code>WITH ROLLUP / CUBE</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">none → <code>UNION ALL</code> of separate <code>GROUP BY</code>s</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const rows = await prisma.$queryRaw`
+  SELECT status, count(*)::int AS n
+  FROM   orders
+  GROUP  BY ROLLUP (status)`;
+// ::int avoids count's bigint → JS BigInt</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-what-each-produces">
+						<h2 class="section-title">What Each Produces</h2>
+						<table>
+							<thead><tr><th>Clause</th><th>Groupings</th></tr></thead>
+							<tbody>
+								<tr><td>ROLLUP (a, b)</td><td class="desc"><code>(a, b)</code> <code>(a)</code> <code>()</code></td></tr>
+								<tr><td>ROLLUP (a, b, c)</td><td class="desc"><code>(a, b, c)</code> <code>(a, b)</code> <code>(a)</code> <code>()</code></td></tr>
+								<tr><td>CUBE (a, b)</td><td class="desc"><code>(a, b)</code> <code>(a)</code> <code>(b)</code> <code>()</code></td></tr>
+								<tr><td>CUBE (a, b, c)</td><td class="desc">all 8 combinations</td></tr>
+								<tr><td>GROUPING SETS ((a), (b))</td><td class="desc"><code>(a)</code> <code>(b)</code> — no total</td></tr>
+								<tr><td>GROUPING SETS ((a), ())</td><td class="desc"><code>(a)</code> + grand total</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-rollup-output">
+						<h2 class="section-title">ROLLUP Output</h2>
+						<table>
+							<thead><tr><th>country</th><th>city</th><th>revenue</th></tr></thead>
+							<tbody>
+								<tr><td>CA</td><td class="desc">Toronto</td><td class="desc">400.00</td></tr>
+								<tr><td>CA</td><td class="desc">(subtotal)</td><td class="desc">400.00</td></tr>
+								<tr><td>US</td><td class="desc">Austin</td><td class="desc">900.00</td></tr>
+								<tr><td>US</td><td class="desc">Boston</td><td class="desc">600.00</td></tr>
+								<tr><td>US</td><td class="desc">(subtotal)</td><td class="desc">1,500.00</td></tr>
+								<tr><td>NULL</td><td class="desc">(subtotal)</td><td class="desc">1,900.00 ← grand total</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Treating subtotal NULLs as missing data</li>
+							<li class="note-item">Getting <code>ROLLUP</code> column order backwards (city before country)</li>
+							<li class="note-item"><code>CUBE</code> on many columns: rows explode</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Label totals with <code>GROUPING()</code>, not <code>coalesce</code></li>
+							<li class="note-item">Keep <code>ROLLUP</code> to 2–3 levels for readable reports</li>
+							<li class="note-item">Format totals in the report tool, not in SQL</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ROLLUP</code> — hierarchy + total</li>
+							<li class="note-item"><code>CUBE</code> — all combinations</li>
+							<li class="note-item"><code>GROUPING SETS</code> — exactly what you list</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-29-having-conditional-aggregation.html" class="nav-link prev">HAVING &amp; Conditional Aggregation</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 31 Sheets</a>
+				<a href="sql-31-string-array-aggregation.html" class="nav-link next">String &amp; Array Aggregation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

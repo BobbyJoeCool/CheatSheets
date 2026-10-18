@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 29: HAVING &amp; Conditional Aggregation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>HAVING &amp; Conditional Aggregation</h1>
+			<div class="sheet-desc">HAVING · WHERE vs HAVING · FILTER (WHERE) · SUM(CASE …) · COUNT(CASE …)</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Filtering Groups</h2>
+						<div class="description"><strong><code>HAVING</code></strong> filters <strong>groups</strong> after aggregation, so it can test aggregates like <code>count(*) &gt;= 3</code>. <strong><code>WHERE</code></strong> filters <strong>rows</strong> before grouping and can't. <strong>Conditional aggregation</strong> computes several filtered totals in one pass: the standard <strong><code>FILTER (WHERE …)</code></strong> clause attaches a condition to one aggregate, and <strong><code>SUM(CASE …)</code></strong> does the same on engines without <code>FILTER</code>. It's how you build pivot-style reports.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Filter Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>WHERE</code> for anything that doesn't need an aggregate</li>
+							<li class="note-item"><code>HAVING</code> without <code>GROUP BY</code> treats all rows as one group</li>
+							<li class="note-item"><code>FILTER</code> reads better than <code>CASE</code></li>
+							<li class="note-item"><code>count(CASE … THEN 1 END)</code> — no <code>ELSE</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: HAVING is a <code>$match</code> stage <strong>after</strong> <code>$group</code></li>
+							<li class="note-item"><code>[{ $group: { _id: '$customerId', n: { $sum: 1 } } }, { $match: { n: { $gte: 3 } } }]</code></li>
+							<li class="note-item">Conditional sums: <code>$sum: { $cond: [cond, 1, 0] }</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">HAVING &amp; FILTER</h2>
+						<pre class="language-sql"><code class="language-sql">-- Customers with 3+ orders
+SELECT customer_id, count(*) AS n
+FROM   orders
+GROUP  BY customer_id
+HAVING count(*) &gt;= 3;
+
+-- WHERE first, then HAVING
+SELECT category, avg(price) AS avg_price
+FROM   products
+WHERE  stock &gt; 0              -- rows
+GROUP  BY category
+HAVING avg(price) &gt; 50;       -- groups
+
+-- One pass, several filtered aggregates
+SELECT customer_id,
+       count(*)                                AS orders,
+       count(*) FILTER (WHERE status = 'paid') AS paid,
+       sum(total) FILTER (
+         WHERE status = 'cancelled')           AS lost
+FROM   orders
+GROUP  BY customer_id;
+
+-- Portable CASE form
+SELECT customer_id,
+       sum(CASE WHEN status = 'paid' THEN 1 ELSE 0 END)
+         AS paid
+FROM   orders
+GROUP  BY customer_id;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>HAVING count(*) &gt;= 3</code> drops small groups</div>
+							<div class="explain-item"><code>stock &gt; 0</code> belongs in <code>WHERE</code>: it's per row</div>
+							<div class="explain-item"><code>FILTER</code> counts only the rows matching its condition</div>
+							<div class="explain-item"><code>CASE</code> returns 1 or 0 per row; <code>sum</code> adds them up</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>FILTER (WHERE …)</code> on any aggregate</td></tr>
+								<tr><td>MySQL</td><td class="desc">no <code>FILTER</code> → <code>SUM(status = 'paid')</code> (true = 1)</td></tr>
+								<tr><td>SQL Server</td><td class="desc">no <code>FILTER</code> → <code>SUM(CASE … END)</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>FILTER</code> supported since 3.30</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.order.groupBy({
+  by: ['customerId'],
+  _count: { _all: true },
+  having: { customerId: { _count: { gte: 3 } } },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-where-vs-having">
+						<h2 class="section-title">WHERE vs HAVING</h2>
+						<table>
+							<thead><tr><th></th><th>WHERE</th><th>HAVING</th></tr></thead>
+							<tbody>
+								<tr><td>filters</td><td class="desc">rows</td><td class="desc">groups</td></tr>
+								<tr><td>runs</td><td class="desc">before <code>GROUP BY</code></td><td class="desc">after <code>GROUP BY</code></td></tr>
+								<tr><td>aggregates allowed</td><td class="desc">no</td><td class="desc">yes</td></tr>
+								<tr><td>uses indexes</td><td class="desc">yes</td><td class="desc">rarely</td></tr>
+								<tr><td>example</td><td class="desc"><code>status = 'paid'</code></td><td class="desc"><code>sum(total) &gt; 500</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pivot-report">
+						<h2 class="section-title">Pivot Report</h2>
+						<table>
+							<thead><tr><th>customer</th><th>orders</th><th>paid</th><th>cancelled</th><th>lost</th></tr></thead>
+							<tbody>
+								<tr><td>7</td><td class="desc">5</td><td class="desc">3</td><td class="desc">1</td><td class="desc">42.00</td></tr>
+								<tr><td>9</td><td class="desc">2</td><td class="desc">2</td><td class="desc">0</td><td class="desc">NULL</td></tr>
+								<tr><td>12</td><td class="desc">4</td><td class="desc">1</td><td class="desc">2</td><td class="desc">88.50</td></tr>
+								<tr><td>→</td><td class="desc"><code>count(*)</code></td><td class="desc"><code>FILTER</code></td><td class="desc"><code>CASE</code></td><td class="desc"><code>sum … FILTER</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Putting row conditions in <code>HAVING</code>: same result, slower</li>
+							<li class="note-item">Using an aggregate in <code>WHERE</code> (error)</li>
+							<li class="note-item"><code>SUM(CASE … END)</code> without <code>ELSE 0</code> and getting NULL</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Read it as: filter rows, group, filter groups</li>
+							<li class="note-item">Build dashboards with one <code>FILTER</code>-based query</li>
+							<li class="note-item">SQL Server: repeat the expression in <code>HAVING</code>, not the alias</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>WHERE</code> → rows · <code>HAVING</code> → groups</li>
+							<li class="note-item"><code>FILTER (WHERE …)</code> per aggregate</li>
+							<li class="note-item"><code>SUM(CASE …)</code> everywhere</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-28-group-by.html" class="nav-link prev">GROUP BY</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 31 Sheets</a>
+				<a href="sql-30-rollup-cube-grouping-sets.html" class="nav-link next">ROLLUP, CUBE &amp; GROUPING SETS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>
