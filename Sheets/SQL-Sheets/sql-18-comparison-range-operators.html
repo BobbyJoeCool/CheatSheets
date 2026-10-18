@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 18: Comparison &amp; Range Operators</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Comparison &amp; Range Operators</h1>
+			<div class="sheet-desc">= · &lt;&gt; · != · &lt; &gt; &lt;= &gt;= · BETWEEN · IN · NOT IN</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Comparing Values</h2>
+						<div class="description"><strong><code>=</code></strong>, <strong><code>&lt;&gt;</code></strong> (standard) or <strong><code>!=</code></strong>, and <strong><code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></strong> compare numbers, text (in collation order) and dates. <strong><code>BETWEEN a AND b</code></strong> is shorthand for <code>&gt;= a AND &lt;= b</code>, so <strong>both ends are included</strong>. <strong><code>IN (…)</code></strong> tests membership in a list or subquery, and <code>NOT IN</code> the reverse. Any comparison with NULL yields UNKNOWN, so those rows are filtered out (<a class="sheet-ref" href="sql-11-null-three-valued-logic.html">sheet 11</a>).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Comparison Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>&lt;&gt;</code> and <code>!=</code> are identical</li>
+							<li class="note-item"><code>BETWEEN 20 AND 10</code> matches nothing: low bound first</li>
+							<li class="note-item"><code>IN ()</code> with an empty list is a syntax error</li>
+							<li class="note-item"><code>NOT IN (…, NULL)</code> never matches (<a class="sheet-ref" href="sql-36-semi-anti-joins.html">sheet 36</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>$eq</code> <code>$ne</code> <code>$gt</code> <code>$gte</code> <code>$lt</code> <code>$lte</code> <code>$in</code> <code>$nin</code></li>
+							<li class="note-item"><code>{ price: { $gte: 10, $lte: 20 } }</code> = <code>BETWEEN 10 AND 20</code></li>
+							<li class="note-item"><code>$ne</code> and <code>$nin</code> also match documents <strong>missing</strong> the field</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Comparisons</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT * FROM products WHERE price = 19.99;
+SELECT * FROM orders   WHERE status &lt;&gt; 'cancelled';
+SELECT * FROM orders   WHERE status != 'cancelled';
+
+SELECT * FROM products
+WHERE  price BETWEEN 10 AND 20;       -- 10 ≤ price ≤ 20
+SELECT * FROM products
+WHERE  price NOT BETWEEN 10 AND 20;
+
+-- DATE column: BETWEEN includes Sept 30
+SELECT * FROM orders
+WHERE  order_date BETWEEN '2026-09-01' AND '2026-09-30';
+
+-- TIMESTAMP column: half-open range instead
+SELECT * FROM customers
+WHERE  created_at &gt;= '2026-09-01'
+  AND  created_at &lt;  '2026-10-01';
+
+SELECT * FROM orders
+WHERE  status IN ('paid', 'shipped');
+SELECT * FROM customers
+WHERE  country NOT IN ('US', 'CA');</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>BETWEEN</code> is inclusive on both ends</div>
+							<div class="explain-item">On timestamps, <code>BETWEEN … '2026-09-30'</code> stops at midnight</div>
+							<div class="explain-item"><code>&gt;= start AND &lt; next_start</code> never misses or double-counts</div>
+							<div class="explain-item"><code>IN (a, b)</code> = <code>x = a OR x = b</code></div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>BETWEEN SYMMETRIC</code> accepts bounds in either order</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>&lt;=&gt;</code> NULL-safe equals; text compare ignores case</td></tr>
+								<tr><td>SQL Server</td><td class="desc">also <code>!&lt;</code> and <code>!&gt;</code> (nonstandard)</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>==</code> also means equals</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.order.findMany({
+  where: {
+    total: { gte: 10, lte: 20 },          // BETWEEN
+    status: { in: ['paid', 'shipped'] },  // IN
+    customerId: { notIn: [7, 9] },        // NOT IN
+  },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Operators Table | Gotchas Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-operators">
+						<h2 class="section-title">Operators</h2>
+						<table>
+							<thead><tr><th>Operator</th><th>Means</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>=</td><td class="desc">equal</td><td class="desc"><code>status = 'paid'</code></td></tr>
+								<tr><td>&lt;&gt; · !=</td><td class="desc">not equal</td><td class="desc"><code>status &lt;&gt; 'paid'</code></td></tr>
+								<tr><td>&lt; · &lt;=</td><td class="desc">less than (or equal)</td><td class="desc"><code>price &lt; 10</code></td></tr>
+								<tr><td>&gt; · &gt;=</td><td class="desc">greater than (or equal)</td><td class="desc"><code>stock &gt;= 1</code></td></tr>
+								<tr><td>BETWEEN a AND b</td><td class="desc">a ≤ x ≤ b</td><td class="desc"><code>price BETWEEN 5 AND 9</code></td></tr>
+								<tr><td>IN (…)</td><td class="desc">matches any listed value</td><td class="desc"><code>id IN (1, 2, 3)</code></td></tr>
+								<tr><td>NOT IN (…)</td><td class="desc">matches none of them</td><td class="desc"><code>country NOT IN ('US')</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-gotchas">
+						<h2 class="section-title">Gotchas</h2>
+						<table>
+							<thead><tr><th>Write</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>BETWEEN 20 AND 10</td><td class="desc">no rows</td></tr>
+								<tr><td>ts BETWEEN d1 AND d2</td><td class="desc">misses the last day after 00:00</td></tr>
+								<tr><td>x NOT IN (1, NULL)</td><td class="desc">no rows</td></tr>
+								<tr><td>'10' &lt; '9'</td><td class="desc">true: text compares by character</td></tr>
+								<tr><td>x = NULL</td><td class="desc">UNKNOWN; use <code>IS NULL</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Reversed <code>BETWEEN</code> bounds returning nothing</li>
+							<li class="note-item"><code>BETWEEN</code> on timestamps losing the final day</li>
+							<li class="note-item">Comparing numbers stored as text</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer half-open ranges for dates and times</li>
+							<li class="note-item">Use <code>IN</code> instead of a chain of <code>OR</code>s</li>
+							<li class="note-item">Use <code>NOT EXISTS</code> over <code>NOT IN</code> with subqueries</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>=</code> <code>&lt;&gt;</code> <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></li>
+							<li class="note-item"><code>BETWEEN</code> — inclusive range</li>
+							<li class="note-item"><code>IN</code> / <code>NOT IN</code> — list membership</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-17-distinct-duplicates.html" class="nav-link prev">DISTINCT &amp; Duplicates</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-19-pattern-matching.html" class="nav-link next">Pattern Matching</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

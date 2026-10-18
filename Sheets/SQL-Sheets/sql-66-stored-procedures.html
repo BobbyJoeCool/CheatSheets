@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 66: Stored Procedures</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s66">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 66</div>
+			<h1>Stored Procedures</h1>
+			<div class="sheet-desc">CREATE PROCEDURE · CALL · EXEC · IN / OUT params · DECLARE · IF / LOOP</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Server-Side Routines</h2>
+						<div class="description">A <strong>stored procedure</strong> is a named block of statements stored in the database and run with <strong><code>CALL</code></strong> (SQL Server: <strong><code>EXEC</code></strong>). Unlike a function it isn't used inside a query, it can return values through <strong><code>OUT</code> parameters</strong>, and in PostgreSQL 11+ it can <strong><code>COMMIT</code></strong> part-way through. Procedures keep multi-step operations ("place an order") in one round trip, close to the data, with variables (<code>DECLARE</code>), branches (<code>IF</code>) and loops.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Procedure Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Runs on the server: one network round trip</li>
+							<li class="note-item">Errors abort it; <code>RAISE EXCEPTION</code> aborts on purpose</li>
+							<li class="note-item"><code>COMMIT</code> inside fails if the caller opened a transaction</li>
+							<li class="note-item">Business logic in SQL is harder to test and version</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB has no stored procedures</li>
+							<li class="note-item">Multi-document work uses driver transactions: <code>session.withTransaction(…)</code></li>
+							<li class="note-item">Logic stays in application code</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">CREATE PROCEDURE</h2>
+						<pre class="language-sql"><code class="language-sql">CREATE PROCEDURE place_order(
+  p_customer INT, p_product INT, p_qty INT,
+  OUT p_order_id INT)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_price NUMERIC;
+BEGIN
+  SELECT price INTO v_price
+  FROM   products
+  WHERE  product_id = p_product
+  FOR UPDATE;                     -- lock the row
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'product % not found', p_product;
+  END IF;
+  INSERT INTO orders (customer_id, total)
+  VALUES (p_customer, v_price * p_qty)
+  RETURNING order_id INTO p_order_id;
+
+  INSERT INTO order_items
+  VALUES (p_order_id, p_product, p_qty, v_price);
+
+  UPDATE products SET stock = stock - p_qty
+  WHERE  product_id = p_product;
+END $$;
+
+CALL place_order(7, 3, 2, NULL);   -- returns p_order_id</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>OUT p_order_id</code> comes back as a result row from <code>CALL</code></div>
+							<div class="explain-item"><code>FOR UPDATE</code> stops two orders overselling stock (<a class="sheet-ref" href="sql-70-locking-deadlocks.html">sheet 70</a>)</div>
+							<div class="explain-item"><code>NOT FOUND</code> is set by the previous <code>SELECT INTO</code></div>
+							<div class="explain-item">Pass <code>NULL</code> as the placeholder for the <code>OUT</code> argument</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>CREATE PROCEDURE</code> (11+), <code>CALL</code>, <code>OUT</code> params (14+)</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>DELIMITER //</code> … <code>CREATE PROCEDURE … BEGIN … END</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>CREATE PROCEDURE … AS BEGIN … END</code>; <code>EXEC p @x = 1</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">no stored procedures</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const [row] = await prisma.$queryRaw`
+  CALL place_order(${customerId}, ${productId},
+                   ${qty}, NULL)`;
+// row.p_order_id holds the OUT value</code></pre>
+						<ul class="note-list">
+							<li class="note-item">Many teams keep this logic in <code>prisma.$transaction(async tx =&gt; …)</code> instead</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Function Vs Procedure Table | Pl Pgsql Building Blocks Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-function-vs-procedure">
+						<h2 class="section-title">Function vs Procedure</h2>
+						<table>
+							<thead><tr><th></th><th>Function</th><th>Procedure</th></tr></thead>
+							<tbody>
+								<tr><td>called with</td><td class="desc"><code>SELECT f()</code> / in queries</td><td class="desc"><code>CALL p()</code> / <code>EXEC p</code></td></tr>
+								<tr><td>returns</td><td class="desc">a value or rows</td><td class="desc"><code>OUT</code> params, result sets</td></tr>
+								<tr><td>transaction control</td><td class="desc">no</td><td class="desc">yes (PG 11+, SQL Server)</td></tr>
+								<tr><td>use for</td><td class="desc">calculations, filters</td><td class="desc">multi-step operations</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pl-pgsql-building-blocks">
+						<h2 class="section-title">PL/pgSQL Building Blocks</h2>
+						<table>
+							<thead><tr><th>Construct</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>variable</td><td class="desc"><code>DECLARE v NUMERIC := 0;</code></td></tr>
+								<tr><td>assign</td><td class="desc"><code>v := v + 1;</code> · <code>SELECT … INTO v</code></td></tr>
+								<tr><td>branch</td><td class="desc"><code>IF … ELSIF … ELSE … END IF;</code></td></tr>
+								<tr><td>loop</td><td class="desc"><code>FOR r IN SELECT … LOOP … END LOOP;</code></td></tr>
+								<tr><td>error</td><td class="desc"><code>RAISE EXCEPTION 'bad %', x;</code></td></tr>
+								<tr><td>catch</td><td class="desc"><code>EXCEPTION WHEN unique_violation THEN …</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Building SQL strings inside procedures (injection, <a class="sheet-ref" href="sql-76-sql-injection-parameterized-queries.html">sheet 76</a>)</li>
+							<li class="note-item">Hiding core business rules where the app team can't see them</li>
+							<li class="note-item">Forgetting row locks in read-then-write logic</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep procedures small and focused on data integrity</li>
+							<li class="note-item">Keep their source in migrations and code review</li>
+							<li class="note-item">Return clear errors with <code>RAISE</code> and SQLSTATE codes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CREATE PROCEDURE</code> · <code>CALL</code> / <code>EXEC</code></li>
+							<li class="note-item"><code>IN</code> / <code>OUT</code> params</li>
+							<li class="note-item">Can control transactions</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-65-user-defined-functions.html" class="nav-link prev">User-Defined Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-67-triggers.html" class="nav-link next">Triggers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

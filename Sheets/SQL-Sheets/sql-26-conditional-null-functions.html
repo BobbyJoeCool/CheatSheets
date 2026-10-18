@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 26: Conditional &amp; NULL Functions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Conditional &amp; NULL Functions</h1>
+			<div class="sheet-desc">COALESCE · NULLIF · GREATEST · LEAST · IFNULL · ISNULL · NVL</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Defaults and Guards</h2>
+						<div class="description"><strong><code>coalesce(a, b, …)</code></strong> returns its first non-NULL argument, so it's the standard way to supply a default. <strong><code>nullif(a, b)</code></strong> does the reverse: it returns NULL when <code>a = b</code>, which turns zeros into NULLs to prevent division errors, or empty strings into real NULLs. <strong><code>greatest</code></strong> and <strong><code>least</code></strong> pick the largest or smallest of their arguments. <code>IFNULL</code>, <code>ISNULL</code> and <code>NVL</code> are two-argument, engine-specific versions of <code>coalesce</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Function Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>coalesce</code> stops at the first non-NULL argument</li>
+							<li class="note-item"><code>x / nullif(y, 0)</code> → NULL instead of an error</li>
+							<li class="note-item"><code>sum()</code> of no rows is NULL; wrap it in <code>coalesce</code></li>
+							<li class="note-item">PG <code>greatest</code> ignores NULLs; MySQL's returns NULL</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>$ifNull: ['$city', 'Unknown']</code> (several args from 5.0)</li>
+							<li class="note-item"><code>$max</code> / <code>$min</code> over an array act as greatest / least</li>
+							<li class="note-item"><code>$cond</code> with <code>$eq</code> mimics <code>nullif</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">COALESCE, NULLIF &amp; Friends</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT name, coalesce(category, 'Uncategorized') AS cat
+FROM   products;
+SELECT coalesce(city, country, 'n/a') FROM customers;
+
+-- Avoid divide-by-zero
+SELECT order_id,
+       sum(unit_price * quantity)
+         / nullif(sum(quantity), 0) AS avg_unit_price
+FROM   order_items
+GROUP  BY order_id;
+
+-- Treat '' as missing, then default
+SELECT coalesce(nullif(trim(city), ''), 'Unknown')
+FROM   customers;
+
+-- Aggregate over zero rows
+SELECT coalesce(sum(total), 0) AS refunded
+FROM   orders
+WHERE  status = 'refunded';
+
+SELECT greatest(10, 20, 5), least(10, 20, 5);  -- 20 | 5
+SELECT name, greatest(price * 0.9, 5.00) AS sale
+FROM   products;                   -- never below 5.00
+SELECT greatest(1, NULL, 3);       -- 3 in PG</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>coalesce(city, country, …)</code> tries each in turn</div>
+							<div class="explain-item"><code>nullif(…, 0)</code> makes the division return NULL, not fail</div>
+							<div class="explain-item"><code>nullif(trim(city), '')</code> turns blanks into NULL first</div>
+							<div class="explain-item"><code>greatest(…, 5.00)</code> puts a floor under a price</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>coalesce</code>, <code>nullif</code>, <code>greatest</code> / <code>least</code> skip NULLs</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>IFNULL(a, b)</code>; <code>GREATEST</code> returns NULL if any arg is</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>ISNULL(a, b)</code> uses <code>a</code>'s type; <code>GREATEST</code> 2022+</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>ifnull(a, b)</code>; <code>max(a, b)</code> / <code>min(a, b)</code> multi-arg</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const { _sum } = await prisma.order.aggregate({
+  _sum: { total: true },
+  where: { status: 'refunded' },
+});
+const refunded = _sum.total ?? 0;   // COALESCE in JS</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Functions Table | Two Argument Versions Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-functions">
+						<h2 class="section-title">Functions</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>coalesce(NULL, NULL, 'x')</td><td class="desc"><code>x</code></td></tr>
+								<tr><td>nullif(5, 5)</td><td class="desc"><code>NULL</code></td></tr>
+								<tr><td>nullif(5, 3)</td><td class="desc"><code>5</code></td></tr>
+								<tr><td>greatest(3, 9, 4)</td><td class="desc"><code>9</code></td></tr>
+								<tr><td>least('b', 'a')</td><td class="desc"><code>a</code></td></tr>
+								<tr><td>coalesce(nullif(s, ''), 'n/a')</td><td class="desc">default for blank or NULL</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-two-argument-versions">
+						<h2 class="section-title">Two-Argument Versions</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Function</th><th>Watch out</th></tr></thead>
+							<tbody>
+								<tr><td>MySQL / SQLite</td><td class="desc"><code>IFNULL(a, b)</code></td><td class="desc">—</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>ISNULL(a, b)</code></td><td class="desc">result typed like <code>a</code>: may truncate</td></tr>
+								<tr><td>Oracle</td><td class="desc"><code>NVL(a, b)</code></td><td class="desc">evaluates both args</td></tr>
+								<tr><td>everywhere</td><td class="desc"><code>COALESCE(a, b)</code></td><td class="desc">standard; prefer it</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">SQL Server <code>ISNULL(code, 'unknown')</code> cut to <code>code</code>'s length</li>
+							<li class="note-item">Showing a NULL <code>sum</code> as blank instead of 0</li>
+							<li class="note-item">Using <code>coalesce</code> to hide bad joins instead of fixing them</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer <code>coalesce</code> everywhere: it's standard and multi-arg</li>
+							<li class="note-item">Turn sentinel values (<code>''</code>, <code>0</code>, <code>-1</code>) into NULL with <code>nullif</code></li>
+							<li class="note-item">Default at display time; keep NULL in storage when it's true</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>coalesce</code> — first non-NULL</li>
+							<li class="note-item"><code>nullif</code> — NULL when equal</li>
+							<li class="note-item"><code>greatest</code> / <code>least</code> — max / min of args</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-25-date-time-functions.html" class="nav-link prev">Date &amp; Time Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-27-aggregate-functions.html" class="nav-link next">Aggregate Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

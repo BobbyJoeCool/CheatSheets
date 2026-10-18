@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 59: ALTER &amp; DROP</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s59">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 59</div>
+			<h1>ALTER &amp; DROP</h1>
+			<div class="sheet-desc">ALTER TABLE · ADD COLUMN · DROP COLUMN · RENAME · ALTER COLUMN TYPE · ADD CONSTRAINT · DROP TABLE</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Changing Structure</h2>
+						<div class="description"><strong><code>ALTER TABLE</code></strong> changes an existing table: add, drop or rename columns, change types and defaults, and add or remove constraints. <strong><code>DROP TABLE</code></strong> removes a table with its data and indexes; it fails if other objects depend on it unless you add <strong><code>CASCADE</code></strong>. On busy production tables, the question is not only *what* to change but <strong>how long it locks</strong>: some changes are instant, others rewrite the whole table.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">ALTER Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">PostgreSQL DDL is transactional: it can roll back</li>
+							<li class="note-item">MySQL and Oracle DDL commit immediately</li>
+							<li class="note-item"><code>IF EXISTS</code> keeps drop scripts re-runnable</li>
+							<li class="note-item">Renames break code that uses the old name</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB has no table structure to alter</li>
+							<li class="note-item">New fields simply appear; backfill with <code>updateMany({}, { $set: { pts: 0 } })</code></li>
+							<li class="note-item"><code>$rename</code> renames a field; <code>$unset</code> removes it</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">ALTER &amp; DROP</h2>
+						<pre class="language-sql"><code class="language-sql">ALTER TABLE customers ADD COLUMN phone VARCHAR(20);
+ALTER TABLE customers
+  ADD COLUMN loyalty_pts INT NOT NULL DEFAULT 0;
+ALTER TABLE customers DROP COLUMN phone;
+ALTER TABLE customers RENAME COLUMN city TO town;
+ALTER TABLE customers RENAME TO clients;
+
+ALTER TABLE products
+  ALTER COLUMN name TYPE VARCHAR(200);
+ALTER TABLE products
+  ALTER COLUMN stock TYPE BIGINT USING stock::bigint;
+ALTER TABLE products ALTER COLUMN category SET NOT NULL;
+ALTER TABLE products ALTER COLUMN stock SET DEFAULT 0;
+
+ALTER TABLE products
+  ADD CONSTRAINT price_pos CHECK (price &gt; 0);
+ALTER TABLE products DROP CONSTRAINT price_pos;
+
+DROP TABLE IF EXISTS big_orders;
+DROP TABLE customers;
+-- ERROR: other objects depend on it (orders FK)
+DROP TABLE customers CASCADE;  -- also drops the FK</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">A constant <code>DEFAULT</code> with <code>ADD COLUMN</code> is instant in PG 11+</div>
+							<div class="explain-item"><code>USING</code> tells PG how to convert existing values</div>
+							<div class="explain-item"><code>SET NOT NULL</code> scans the table to check existing rows</div>
+							<div class="explain-item"><code>CASCADE</code> removes dependent constraints and views</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">transactional DDL; <code>ALTER COLUMN … TYPE … USING</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>MODIFY</code> / <code>CHANGE COLUMN</code>; <code>ALGORITHM=INSTANT</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>ALTER COLUMN c VARCHAR(200) NOT NULL</code>; <code>sp_rename</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">only add / drop / rename column; else rebuild table</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-none"><code class="language-none">model Customer {
+  phone String? @db.VarChar(20)   // new field
+}
+// npx prisma migrate dev --name add_phone
+// → ALTER TABLE "customers" ADD COLUMN "phone" …</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Alter Actions Pg Table | Lock Impact Pg Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-alter-actions-pg">
+						<h2 class="section-title">ALTER Actions (PG)</h2>
+						<table>
+							<thead><tr><th>Action</th><th>Syntax</th></tr></thead>
+							<tbody>
+								<tr><td>add column</td><td class="desc"><code>ADD COLUMN c type …</code></td></tr>
+								<tr><td>drop column</td><td class="desc"><code>DROP COLUMN c</code></td></tr>
+								<tr><td>rename</td><td class="desc"><code>RENAME COLUMN a TO b</code> · <code>RENAME TO t2</code></td></tr>
+								<tr><td>change type</td><td class="desc"><code>ALTER COLUMN c TYPE t USING …</code></td></tr>
+								<tr><td>null / default</td><td class="desc"><code>ALTER COLUMN c SET NOT NULL</code> · <code>SET DEFAULT x</code></td></tr>
+								<tr><td>constraint</td><td class="desc"><code>ADD CONSTRAINT n …</code> · <code>DROP CONSTRAINT n</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-lock-impact-pg">
+						<h2 class="section-title">Lock Impact (PG)</h2>
+						<table>
+							<thead><tr><th>Change</th><th>Cost</th></tr></thead>
+							<tbody>
+								<tr><td>add nullable column</td><td class="desc">instant</td></tr>
+								<tr><td>add column + constant default</td><td class="desc">instant (11+)</td></tr>
+								<tr><td>change column type</td><td class="desc">table rewrite</td></tr>
+								<tr><td>SET NOT NULL</td><td class="desc">full scan</td></tr>
+								<tr><td>add FK / CHECK</td><td class="desc">use <code>NOT VALID</code>, then <code>VALIDATE</code></td></tr>
+								<tr><td>new index</td><td class="desc"><code>CREATE INDEX CONCURRENTLY</code> (<a class="sheet-ref" href="sql-71-indexes-basics.html">sheet 71</a>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Renaming a column the app still reads</li>
+							<li class="note-item">Type changes on huge tables during business hours</li>
+							<li class="note-item"><code>DROP … CASCADE</code> removing more than you meant</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Expand → migrate → contract: add new, backfill, then drop old</li>
+							<li class="note-item">Test migrations on a production-size copy</li>
+							<li class="note-item">Set <code>lock_timeout</code> so DDL gives up instead of blocking</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ALTER TABLE</code> add / drop / rename / type</li>
+							<li class="note-item"><code>DROP TABLE [IF EXISTS] [CASCADE]</code></li>
+							<li class="note-item">Mind locks and rewrites</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-58-auto-increment-sequences.html" class="nav-link prev">Auto-Increment &amp; Sequences</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-60-databases-schemas-catalog.html" class="nav-link next">Databases, Schemas &amp; the Catalog</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

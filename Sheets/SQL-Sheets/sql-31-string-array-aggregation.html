@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 31: String &amp; Array Aggregation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s31">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 31</div>
+			<h1>String &amp; Array Aggregation</h1>
+			<div class="sheet-desc">STRING_AGG · GROUP_CONCAT · ARRAY_AGG · LISTAGG · JSON_AGG · WITHIN GROUP</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Collapsing Rows into Lists</h2>
+						<div class="description">These aggregates join a group's values into <strong>one list</strong> instead of one number. <strong><code>string_agg(x, ', ')</code></strong> builds delimited text; <strong><code>array_agg</code></strong> builds a PostgreSQL array; <strong><code>json_agg</code></strong> builds a JSON array, often of objects from <code>json_build_object</code>, so one query can return API-ready nested data. Add <strong><code>ORDER BY</code></strong> inside the call to control list order, and <code>DISTINCT</code> to drop repeats.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">List Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Without <code>ORDER BY</code> inside, list order is arbitrary</li>
+							<li class="note-item">NULL inputs are skipped by <code>string_agg</code></li>
+							<li class="note-item">MySQL <code>GROUP_CONCAT</code> cuts at 1,024 bytes by default</li>
+							<li class="note-item"><code>json_agg</code> keeps NULLs as <code>null</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>$push</code> collects values into an array inside <code>$group</code></li>
+							<li class="note-item"><code>$addToSet</code> collects distinct values</li>
+							<li class="note-item">With embedded documents the list is often already stored</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">String &amp; Array Aggregation</h2>
+						<pre class="language-sql"><code class="language-sql">-- Comma-separated product names per category
+SELECT category,
+       string_agg(name, ', ' ORDER BY name) AS products
+FROM   products
+GROUP  BY category;
+
+SELECT string_agg(DISTINCT city, ' / ') FROM customers;
+
+-- Arrays (PostgreSQL)
+SELECT customer_id,
+       array_agg(order_id ORDER BY order_date) AS orders
+FROM   orders
+GROUP  BY customer_id;
+
+-- Nested JSON: one row per order with its items
+SELECT o.order_id,
+       json_agg(json_build_object(
+         'product', p.name,
+         'qty',     i.quantity)) AS items
+FROM   orders o
+JOIN   order_items i USING (order_id)
+JOIN   products p    USING (product_id)
+GROUP  BY o.order_id;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ORDER BY name</code> inside the call sorts each list</div>
+							<div class="explain-item"><code>DISTINCT</code> inside drops repeated cities</div>
+							<div class="explain-item"><code>json_build_object</code> makes one JSON object per row</div>
+							<div class="explain-item"><code>json_agg</code> wraps them into an array per order</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>string_agg(x, ',' ORDER BY y)</code>, <code>array_agg</code>, <code>json_agg</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>GROUP_CONCAT(x ORDER BY y SEPARATOR ',')</code>, <code>JSON_ARRAYAGG</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>STRING_AGG(x, ',') WITHIN GROUP (ORDER BY y)</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>group_concat(x, ',')</code>; <code>string_agg</code> + <code>ORDER BY</code> 3.44+</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// The ORM way: load children as nested arrays
+await prisma.order.findMany({
+  include: { items: { include: { product: true } } },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Output Shapes Table | Good Uses Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-output-shapes">
+						<h2 class="section-title">Output Shapes</h2>
+						<table>
+							<thead><tr><th>Call</th><th>One group's result</th></tr></thead>
+							<tbody>
+								<tr><td>string_agg(name, ', ')</td><td class="desc"><code>Desk, Lamp, Shelf</code></td></tr>
+								<tr><td>array_agg(order_id)</td><td class="desc"><code>{12,15,31}</code></td></tr>
+								<tr><td>json_agg(name)</td><td class="desc"><code>["Desk", "Lamp"]</code></td></tr>
+								<tr><td>json_object_agg(k, v)</td><td class="desc"><code>{"a": 1, "b": 2}</code></td></tr>
+								<tr><td>LISTAGG(x, ', ')</td><td class="desc">standard form + <code>WITHIN GROUP</code> (Oracle, Db2)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-good-uses">
+						<h2 class="section-title">Good Uses</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>tag list next to each post</td><td class="desc"><code>string_agg(tag, ', ')</code></td></tr>
+								<tr><td>API response with children</td><td class="desc"><code>json_agg(json_build_object(…))</code></td></tr>
+								<tr><td>IDs to pass to another query</td><td class="desc"><code>array_agg(id)</code></td></tr>
+								<tr><td>CSV-style export line</td><td class="desc"><code>string_agg(col, ',')</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>ORDER BY</code> inside and getting shuffled lists</li>
+							<li class="note-item">MySQL lists silently cut at <code>group_concat_max_len</code></li>
+							<li class="note-item">Splitting the string back apart later: keep arrays or JSON</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Raise <code>group_concat_max_len</code> for long MySQL lists</li>
+							<li class="note-item">Use <code>jsonb_agg</code> when you'll query the result further</li>
+							<li class="note-item"><code>array_agg(DISTINCT x ORDER BY x)</code> for tidy, unique lists</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>string_agg</code> / <code>GROUP_CONCAT</code> → text</li>
+							<li class="note-item"><code>array_agg</code> → array · <code>json_agg</code> → JSON</li>
+							<li class="note-item"><code>ORDER BY</code> inside controls order</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-30-rollup-cube-grouping-sets.html" class="nav-link prev">ROLLUP, CUBE &amp; GROUPING SETS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-32-inner-join.html" class="nav-link next">INNER JOIN</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

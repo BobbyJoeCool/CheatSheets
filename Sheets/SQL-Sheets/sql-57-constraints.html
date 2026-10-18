@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 57: Constraints</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s57">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 57</div>
+			<h1>Constraints</h1>
+			<div class="sheet-desc">NOT NULL · UNIQUE · CHECK · CONSTRAINT name · DEFERRABLE · EXCLUDE</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Rules the Database Enforces</h2>
+						<div class="description">Constraints reject bad data no matter which app or script writes it. <strong><code>NOT NULL</code></strong> requires a value; <strong><code>UNIQUE</code></strong> forbids duplicates (NULLs usually don't count); <strong><code>CHECK</code></strong> requires a condition to be true (or NULL); keys link and identify rows (<a class="sheet-ref" href="sql-56-primary-foreign-keys.html">sheet 56</a>). Name constraints with <strong><code>CONSTRAINT name</code></strong> so errors are readable. PostgreSQL adds <strong><code>DEFERRABLE</code></strong> (check at commit, not per statement) and <strong><code>EXCLUDE</code></strong> (no two rows may overlap, such as double-booked rooms).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Constraint Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CHECK</code> passes when the expression is NULL</li>
+							<li class="note-item"><code>UNIQUE</code> creates an index behind the scenes</li>
+							<li class="note-item">A unique <strong>index</strong> on an expression handles case-insensitive rules</li>
+							<li class="note-item">Adding a constraint validates existing rows</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: unique indexes enforce <code>UNIQUE</code></li>
+							<li class="note-item"><code>$jsonSchema</code> validators cover <code>required</code>, <code>minimum</code>, <code>maximum</code>, <code>enum</code></li>
+							<li class="note-item">Validation can warn instead of reject (<code>validationAction</code>)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Constraints</h2>
+						<pre class="language-sql"><code class="language-sql">CREATE TABLE coupons (
+  code      VARCHAR(20)  NOT NULL,
+  percent   NUMERIC(5,2) NOT NULL,
+  starts_on DATE NOT NULL,
+  ends_on   DATE,
+  CONSTRAINT coupons_code_uq UNIQUE (code),
+  CONSTRAINT coupons_pct_chk
+    CHECK (percent &gt; 0 AND percent &lt;= 100),
+  CONSTRAINT coupons_dates_chk
+    CHECK (ends_on IS NULL OR ends_on &gt; starts_on)
+);
+
+-- Treat NULLs as equal (PostgreSQL 15+)
+ALTER TABLE customers ADD CONSTRAINT email_uq
+  UNIQUE NULLS NOT DISTINCT (email);
+
+-- No overlapping bookings per room
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE TABLE bookings (
+  room   INT,
+  during TSTZRANGE,
+  EXCLUDE USING gist (room WITH =, during WITH &amp;&amp;)
+);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Named checks show up in error messages by name</div>
+							<div class="explain-item"><code>ends_on IS NULL OR …</code> allows open-ended coupons</div>
+							<div class="explain-item"><code>NULLS NOT DISTINCT</code> allows only one NULL email</div>
+							<div class="explain-item"><code>&amp;&amp;</code> means "ranges overlap"; <code>EXCLUDE</code> forbids it per room</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">all of them; <code>NULLS NOT DISTINCT</code> (15+); <code>EXCLUDE</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>CHECK</code> enforced since 8.0.16; no <code>DEFERRABLE</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>UNIQUE</code> allows one NULL; <code>WITH NOCHECK</code> skips old rows</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>CHECK</code>, <code>UNIQUE</code>, <code>NOT NULL</code>; deferrable FKs only</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-none"><code class="language-none">model Coupon {
+  code     String   @unique
+  percent  Decimal  @db.Decimal(5, 2)
+  startsOn DateTime @db.Date
+}
+// CHECK constraints: add them to the migration .sql</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Constraint Types Table | Timing Naming Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-constraint-types">
+						<h2 class="section-title">Constraint Types</h2>
+						<table>
+							<thead><tr><th>Constraint</th><th>Rejects</th></tr></thead>
+							<tbody>
+								<tr><td>NOT NULL</td><td class="desc">missing values</td></tr>
+								<tr><td>UNIQUE (cols)</td><td class="desc">duplicate values or combinations</td></tr>
+								<tr><td>CHECK (expr)</td><td class="desc">rows where <code>expr</code> is false</td></tr>
+								<tr><td>PRIMARY KEY</td><td class="desc">duplicates and NULLs</td></tr>
+								<tr><td>FOREIGN KEY</td><td class="desc">references to missing rows</td></tr>
+								<tr><td>EXCLUDE (PG)</td><td class="desc">rows that conflict by any operator</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-timing-naming">
+						<h2 class="section-title">Timing &amp; Naming</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>NOT DEFERRABLE</td><td class="desc">checked per statement (default)</td></tr>
+								<tr><td>DEFERRABLE INITIALLY DEFERRED</td><td class="desc">checked at <code>COMMIT</code></td></tr>
+								<tr><td>NOT VALID (PG)</td><td class="desc">skip existing rows; <code>VALIDATE</code> later</td></tr>
+								<tr><td>PG default names</td><td class="desc"><code>orders_pkey</code>, <code>orders_customer_id_fkey</code></td></tr>
+								<tr><td>suggested style</td><td class="desc"><code>&lt;table&gt;_&lt;cols&gt;_&lt;pk|fk|uq|chk&gt;</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Checking rules only in app code</li>
+							<li class="note-item">Expecting <code>CHECK (x &gt; 0)</code> to reject NULL</li>
+							<li class="note-item">Adding a constraint to a huge table at peak time</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Case-insensitive unique: <code>UNIQUE INDEX … (lower(email))</code></li>
+							<li class="note-item">Add big constraints as <code>NOT VALID</code>, then <code>VALIDATE</code> (PG)</li>
+							<li class="note-item">Use <code>DEFERRABLE</code> for circular or swap-style updates</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>NOT NULL</code> · <code>UNIQUE</code> · <code>CHECK</code></li>
+							<li class="note-item">Name them: <code>CONSTRAINT x …</code></li>
+							<li class="note-item"><code>DEFERRABLE</code> · <code>EXCLUDE</code> (PG)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-56-primary-foreign-keys.html" class="nav-link prev">Primary &amp; Foreign Keys</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-58-auto-increment-sequences.html" class="nav-link next">Auto-Increment &amp; Sequences</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

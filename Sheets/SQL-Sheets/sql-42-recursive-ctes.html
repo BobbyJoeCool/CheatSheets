@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 42: Recursive CTEs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s42">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 42</div>
+			<h1>Recursive CTEs</h1>
+			<div class="sheet-desc">WITH RECURSIVE · anchor member · recursive member · UNION ALL · hierarchy · CYCLE</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Queries That Repeat</h2>
+						<div class="description">A <strong>recursive CTE</strong> refers to itself. It has two parts joined by <strong><code>UNION ALL</code></strong>: the <strong>anchor</strong> runs once and produces the starting rows; the <strong>recursive member</strong> joins the table to the rows produced in the previous round, and repeats until it adds nothing. That's how SQL walks <strong>trees and graphs</strong> of unknown depth (org charts, category trees, bill of materials) and generates series.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Recursion Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Anchor first, then <code>UNION ALL</code>, then the recursive part</li>
+							<li class="note-item">Recursion stops when a round returns no rows</li>
+							<li class="note-item">Column types must match in both parts</li>
+							<li class="note-item">Always include a stop condition or cycle check</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>$graphLookup</code> walks a tree in one stage</li>
+							<li class="note-item"><code>{ from: 'employees', startWith: '$_id', connectFromField: '_id', connectToField: 'managerId', as: 'reports', maxDepth: 5 }</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">WITH RECURSIVE</h2>
+						<pre class="language-sql"><code class="language-sql">-- Everyone under employee 1, with depth
+WITH RECURSIVE chain AS (
+  SELECT emp_id, first_name, manager_id, 1 AS depth
+  FROM   employees
+  WHERE  emp_id = 1                         -- anchor
+  UNION ALL
+  SELECT e.emp_id, e.first_name, e.manager_id, c.depth+1
+  FROM   employees e
+  JOIN   chain c ON e.manager_id = c.emp_id -- recursive
+)
+SELECT * FROM chain ORDER BY depth;
+-- Breadcrumb path from the top
+WITH RECURSIVE path AS (
+  SELECT emp_id, first_name::text AS trail
+  FROM   employees WHERE manager_id IS NULL
+  UNION ALL
+  SELECT e.emp_id, p.trail || ' &gt; ' || e.first_name
+  FROM   employees e
+  JOIN   path p ON e.manager_id = p.emp_id
+)
+SELECT * FROM path;
+
+-- 1 to 10 without generate_series
+WITH RECURSIVE n(i) AS (
+  SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i &lt; 10)
+SELECT i FROM n;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Round 1: the anchor returns employee 1</div>
+							<div class="explain-item">Each round adds the direct reports of the last round</div>
+							<div class="explain-item"><code>::text</code> makes both parts the same type for <code>||</code></div>
+							<div class="explain-item"><code>WHERE i &lt; 10</code> is the stop condition</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>WITH RECURSIVE</code>; <code>SEARCH</code> and <code>CYCLE</code> clauses (14+)</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>WITH RECURSIVE</code>; <code>cte_max_recursion_depth</code> = 1000</td></tr>
+								<tr><td>SQL Server</td><td class="desc">plain <code>WITH</code>; <code>OPTION (MAXRECURSION n)</code>, default 100</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>WITH RECURSIVE</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const tree = await prisma.$queryRaw`
+  WITH RECURSIVE chain AS (…)
+  SELECT * FROM chain`;
+// nested include only reaches a fixed depth:
+// include: { reports: { include: { reports: true } } }</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Parts Table | Guards Against Loops Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-parts">
+						<h2 class="section-title">Parts</h2>
+						<table>
+							<thead><tr><th>Part</th><th>Role</th></tr></thead>
+							<tbody>
+								<tr><td>WITH RECURSIVE name</td><td class="desc">declares the self-reference</td></tr>
+								<tr><td>anchor SELECT</td><td class="desc">starting rows, runs once</td></tr>
+								<tr><td>UNION ALL</td><td class="desc">append each round's rows</td></tr>
+								<tr><td>recursive SELECT</td><td class="desc">joins to <code>name</code> = last round</td></tr>
+								<tr><td>stop</td><td class="desc">no new rows, or a <code>WHERE</code> limit</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-guards-against-loops">
+						<h2 class="section-title">Guards Against Loops</h2>
+						<table>
+							<thead><tr><th>Guard</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>depth limit</td><td class="desc"><code>WHERE depth &lt; 20</code> in the recursive part</td></tr>
+								<tr><td>CYCLE (PG 14+)</td><td class="desc"><code>) CYCLE emp_id SET is_cycle USING route</code></td></tr>
+								<tr><td>path check</td><td class="desc"><code>WHERE NOT e.emp_id = ANY (path_ids)</code></td></tr>
+								<tr><td>UNION (not ALL)</td><td class="desc">drops repeated rows; stops simple cycles</td></tr>
+								<tr><td>engine limit</td><td class="desc"><code>MAXRECURSION</code> / <code>cte_max_recursion_depth</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">No stop condition on cyclic data: runs until a limit hits</li>
+							<li class="note-item">Type mismatch between anchor and recursive part</li>
+							<li class="note-item">SQL Server: writing <code>WITH RECURSIVE</code> (syntax error)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Track <code>depth</code> and a path array for debugging</li>
+							<li class="note-item">Index the parent column (<code>manager_id</code>)</li>
+							<li class="note-item">For deep, frequent tree reads consider <code>ltree</code> or closure tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Anchor + <code>UNION ALL</code> + recursive part</li>
+							<li class="note-item">Walks trees of any depth</li>
+							<li class="note-item">Always guard against cycles</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-41-common-table-expressions.html" class="nav-link prev">Common Table Expressions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-43-set-operations.html" class="nav-link next">Set Operations</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

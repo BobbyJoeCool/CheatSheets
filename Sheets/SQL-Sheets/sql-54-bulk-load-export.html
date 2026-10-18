@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 54: Bulk Loading &amp; Export</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s54">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 54</div>
+			<h1>Bulk Loading &amp; Export</h1>
+			<div class="sheet-desc">COPY · \copy · LOAD DATA INFILE · BULK INSERT · .import · CSV</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Moving Data In and Out in Bulk</h2>
+						<div class="description">For thousands or millions of rows, use the engine's <strong>bulk path</strong> instead of <code>INSERT</code>: PostgreSQL <strong><code>COPY</code></strong>, MySQL <strong><code>LOAD DATA</code></strong>, SQL Server <strong><code>BULK INSERT</code></strong> / <code>bcp</code>, SQLite's <strong><code>.import</code></strong>. They stream rows with far less overhead. Watch <strong>where the file lives</strong>: server-side commands read files on the database server, while client-side ones (<code>\copy</code>, <code>LOAD DATA LOCAL</code>) read files on your machine. Most of them also export.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Bulk Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Server-side file access needs extra privileges</li>
+							<li class="note-item"><code>\copy</code> is a psql command: one line, no <code>;</code></li>
+							<li class="note-item">Load into a staging table, validate, then insert</li>
+							<li class="note-item">CSV quirks: header row, quotes, NULL marker</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>mongoimport --type csv --headerline -d shop -c products products.csv</code></li>
+							<li class="note-item"><code>mongoexport</code> writes JSON or CSV</li>
+							<li class="note-item"><code>insertMany(docs, { ordered: false })</code> for app-side batches</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Load &amp; Export</h2>
+						<pre class="language-sql"><code class="language-sql">-- PostgreSQL: file on the server
+COPY products (name, category, price, stock)
+FROM '/srv/import/products.csv'
+WITH (FORMAT csv, HEADER true);
+
+-- psql: file on your machine (one line, no ;)
+\copy products FROM 'products.csv' CSV HEADER
+\copy (SELECT * FROM orders) TO 'orders.csv' CSV HEADER
+
+-- MySQL
+LOAD DATA LOCAL INFILE 'products.csv'
+INTO TABLE products
+FIELDS TERMINATED BY ',' ENCLOSED BY '"'
+IGNORE 1 LINES (name, category, price, stock);
+
+-- SQL Server
+BULK INSERT products FROM 'C:\data\products.csv'
+WITH (FORMAT = 'CSV', FIRSTROW = 2);
+
+-- SQLite shell
+.import --csv --skip 1 products.csv products</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>HEADER true</code> skips the first line on input</div>
+							<div class="explain-item"><code>\copy</code> streams through the client connection</div>
+							<div class="explain-item"><code>IGNORE 1 LINES</code> — MySQL's header skip</div>
+							<div class="explain-item"><code>--skip 1</code> — skip the header in the SQLite shell</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>COPY</code> (server) / <code>\copy</code> (client); csv, text, binary</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>LOAD DATA [LOCAL]</code>; <code>SELECT … INTO OUTFILE</code>; <code>local_infile=1</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>BULK INSERT</code>, <code>bcp</code>, <code>OPENROWSET(BULK …)</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>.import --csv</code>; export with <code>.mode csv</code> + <code>.once</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// createMany sends multi-row INSERTs
+await prisma.product.createMany({
+  data: rows,             // parsed from the CSV
+  skipDuplicates: true,   // ON CONFLICT DO NOTHING
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Faster Loads Table | Export Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-faster-loads">
+						<h2 class="section-title">Faster Loads</h2>
+						<table>
+							<thead><tr><th>Technique</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>load into a staging table</td><td class="desc">validate before touching real data</td></tr>
+								<tr><td>drop / recreate indexes</td><td class="desc">build each index once, not per row</td></tr>
+								<tr><td>one transaction per batch</td><td class="desc">fewer commits</td></tr>
+								<tr><td>UNLOGGED table (PG)</td><td class="desc">skips WAL for scratch data</td></tr>
+								<tr><td>disable triggers (carefully)</td><td class="desc">no per-row work</td></tr>
+								<tr><td>ANALYZE afterwards</td><td class="desc">fresh statistics (<a class="sheet-ref" href="sql-74-query-optimization.html">sheet 74</a>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-export">
+						<h2 class="section-title">Export</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Command</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>\copy (query) TO 'f.csv' CSV HEADER</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>SELECT … INTO OUTFILE '/tmp/f.csv'</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>bcp "query" queryout f.csv -c -t,</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>.headers on</code> <code>.mode csv</code> <code>.once f.csv</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using server-side <code>COPY</code> with a path on your laptop</li>
+							<li class="note-item">Loading straight into production tables with bad rows</li>
+							<li class="note-item">Forgetting <code>ANALYZE</code> after a big load</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep loads idempotent: truncate staging, reload, merge (<a class="sheet-ref" href="sql-53-upsert-merge.html">sheet 53</a>)</li>
+							<li class="note-item">Match column order explicitly in the command</li>
+							<li class="note-item">Use <code>NULL ''</code> / <code>NULL AS</code> options for empty fields</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>COPY</code> / <code>\copy</code> · <code>LOAD DATA</code> · <code>BULK INSERT</code> · <code>.import</code></li>
+							<li class="note-item">Server file vs client file</li>
+							<li class="note-item">Staging table, then merge</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-53-upsert-merge.html" class="nav-link prev">Upsert &amp; MERGE</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-55-create-table.html" class="nav-link next">CREATE TABLE</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

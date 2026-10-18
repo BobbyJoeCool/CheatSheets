@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 33: Outer Joins</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s33">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 33</div>
+			<h1>Outer Joins</h1>
+			<div class="sheet-desc">LEFT JOIN · RIGHT JOIN · FULL OUTER JOIN · NULL-extended rows · ON vs WHERE filter</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Keeping Unmatched Rows</h2>
+						<div class="description">An <strong>outer join</strong> keeps rows that have <strong>no match</strong> and fills the other side's columns with <strong>NULL</strong>. <strong><code>LEFT JOIN</code></strong> keeps every row from the left table; <strong><code>RIGHT JOIN</code></strong> every row from the right; <strong><code>FULL OUTER JOIN</code></strong> both. The trap is where you filter: a condition on the right table belongs in <strong><code>ON</code></strong>. Put it in <code>WHERE</code> and the NULL rows fail it, which silently turns the outer join back into an inner join.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Outer Join Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>LEFT JOIN</code> = <code>LEFT OUTER JOIN</code></li>
+							<li class="note-item"><code>RIGHT JOIN</code> is a <code>LEFT JOIN</code> with tables swapped</li>
+							<li class="note-item">Count the right side's key, not <code>*</code>, to get zeros</li>
+							<li class="note-item"><code>WHERE right.id IS NULL</code> → rows with no match (<a class="sheet-ref" href="sql-36-semi-anti-joins.html">sheet 36</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>$lookup</code> already behaves like a <strong>left</strong> outer join</li>
+							<li class="note-item">No match → an empty array, not a dropped document</li>
+							<li class="note-item"><code>$unwind</code> with <code>preserveNullAndEmptyArrays: true</code> keeps them</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Outer Joins</h2>
+						<pre class="language-sql"><code class="language-sql">-- Every customer, with orders if any
+SELECT c.name, o.order_id, o.total
+FROM   customers c
+LEFT   JOIN orders o ON o.customer_id = c.customer_id;
+
+-- Order count per customer, including zero
+SELECT c.name, count(o.order_id) AS orders
+FROM   customers c
+LEFT   JOIN orders o ON o.customer_id = c.customer_id
+GROUP  BY c.customer_id, c.name;
+
+-- Filter the right table in ON
+SELECT c.name, o.order_id
+FROM   customers c
+LEFT   JOIN orders o
+  ON   o.customer_id = c.customer_id
+ AND   o.status = 'paid';    -- all customers kept
+-- WHERE o.status = 'paid'   -- would drop them
+
+-- Every department, even with no staff
+SELECT d.name, e.first_name
+FROM   employees e
+RIGHT  JOIN departments d ON d.dept_id = e.dept_id;
+
+SELECT c.customer_id, o.order_id
+FROM   customers c
+FULL   OUTER JOIN orders o
+  ON   o.customer_id = c.customer_id;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Customers with no orders get NULL <code>order_id</code> and <code>total</code></div>
+							<div class="explain-item"><code>count(o.order_id)</code> → 0 for them; <code>count(*)</code> would say 1</div>
+							<div class="explain-item"><code>o.status</code> in <code>ON</code> limits which orders attach</div>
+							<div class="explain-item"><code>FULL OUTER</code> also keeps orders with no customer</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>LEFT</code>, <code>RIGHT</code>, <code>FULL</code> all supported</td></tr>
+								<tr><td>MySQL</td><td class="desc">no <code>FULL OUTER JOIN</code> → <code>LEFT … UNION … RIGHT</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc">all three; old <code>*=</code> syntax is gone</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>RIGHT</code> and <code>FULL</code> since 3.39</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.customer.findMany({
+  include: {
+    orders: { where: { status: 'paid' } },
+  },
+});  // every customer; orders = [] when none match</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Which Rows Survive Table | On Vs Where In A Left Join Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-which-rows-survive">
+						<h2 class="section-title">Which Rows Survive</h2>
+						<table>
+							<thead><tr><th>Join</th><th>Unmatched left</th><th>Unmatched right</th></tr></thead>
+							<tbody>
+								<tr><td>INNER</td><td class="desc">dropped</td><td class="desc">dropped</td></tr>
+								<tr><td>LEFT</td><td class="desc">kept, right side NULL</td><td class="desc">dropped</td></tr>
+								<tr><td>RIGHT</td><td class="desc">dropped</td><td class="desc">kept, left side NULL</td></tr>
+								<tr><td>FULL OUTER</td><td class="desc">kept</td><td class="desc">kept</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-on-vs-where-in-a-left-join">
+						<h2 class="section-title">ON vs WHERE in a LEFT JOIN</h2>
+						<table>
+							<thead><tr><th>Condition on the right table</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>in ON</td><td class="desc">limits matches; every left row stays</td></tr>
+								<tr><td>in WHERE</td><td class="desc">removes NULL rows → acts as INNER</td></tr>
+								<tr><td>WHERE right.key IS NULL</td><td class="desc">only left rows with no match</td></tr>
+								<tr><td>WHERE right.col IS NULL OR …</td><td class="desc">keeps them; usually means ON</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Filtering the right table in <code>WHERE</code> after a <code>LEFT JOIN</code></li>
+							<li class="note-item"><code>count(*)</code> showing 1 order for customers with none</li>
+							<li class="note-item">Mixing <code>LEFT</code> and <code>RIGHT</code> in one query; rewrite as all <code>LEFT</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Default to <code>LEFT JOIN</code> and put the "keep all" table first</li>
+							<li class="note-item">Wrap nullable outputs in <code>coalesce</code> for display</li>
+							<li class="note-item">Check row counts before and after adding a join</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>LEFT</code> / <code>RIGHT</code> / <code>FULL</code> keep unmatched rows</li>
+							<li class="note-item">Missing side → NULLs</li>
+							<li class="note-item">Right-table filters go in <code>ON</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-32-inner-join.html" class="nav-link prev">INNER JOIN</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-34-cross-self-joins.html" class="nav-link next">CROSS JOIN &amp; Self Joins</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

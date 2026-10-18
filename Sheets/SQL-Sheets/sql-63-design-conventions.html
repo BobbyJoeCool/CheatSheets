@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 63: Design Conventions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s63">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 63</div>
+			<h1>Design Conventions</h1>
+			<div class="sheet-desc">snake_case · surrogate vs natural key · created_at / updated_at · soft delete · FK naming</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">House Rules That Pay Off</h2>
+						<div class="description">Consistent conventions make a schema predictable. Use <strong><code>snake_case</code></strong> names, which never need quotes. Give most tables a <strong>surrogate key</strong> (a meaningless identity or UUID) and enforce the <strong>natural key</strong> (email, SKU) with a unique constraint, so business values can change without rewriting foreign keys. Add <strong><code>created_at</code> / <code>updated_at</code></strong> timestamps, name foreign keys <strong><code>&lt;table&gt;_id</code></strong>, and decide up front how deletes work (hard or <strong>soft</strong>).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Convention Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Pick plural (<code>orders</code>) or singular and stick to it</li>
+							<li class="note-item">Booleans as questions: <code>is_active</code>, <code>has_paid</code></li>
+							<li class="note-item">Store money as <code>NUMERIC</code>, times as <code>TIMESTAMPTZ</code></li>
+							<li class="note-item">Avoid reserved words: <code>user</code>, <code>order</code>, <code>group</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB convention: <code>camelCase</code> fields and the surrogate <code>_id</code></li>
+							<li class="note-item">Mongoose <code>timestamps: true</code> adds <code>createdAt</code> / <code>updatedAt</code></li>
+							<li class="note-item">Soft delete with <code>deletedAt</code> the same way</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Table Following the Conventions</h2>
+						<pre class="language-sql"><code class="language-sql">CREATE TABLE support_tickets (
+  ticket_id   BIGINT GENERATED ALWAYS AS IDENTITY
+              PRIMARY KEY,               -- surrogate
+  public_ref  TEXT NOT NULL UNIQUE,      -- natural key
+  customer_id INT NOT NULL
+              REFERENCES customers,      -- &lt;table&gt;_id
+  subject     TEXT NOT NULL,
+  is_closed   BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at  TIMESTAMPTZ                -- soft delete
+);
+CREATE INDEX support_tickets_customer_id_idx
+  ON support_tickets (customer_id);
+
+-- Keep updated_at current
+CREATE FUNCTION touch() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at := now(); RETURN NEW; END $$;
+CREATE TRIGGER support_tickets_touch
+  BEFORE UPDATE ON support_tickets
+  FOR EACH ROW EXECUTE FUNCTION touch();</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>ticket_id</code> never changes; <code>public_ref</code> is what users see</div>
+							<div class="explain-item">FK named after the table it points to: <code>customer_id</code></div>
+							<div class="explain-item">Index name: <code>&lt;table&gt;_&lt;column&gt;_idx</code></div>
+							<div class="explain-item">The trigger stamps <code>updated_at</code> on every update (<a class="sheet-ref" href="sql-67-triggers.html">sheet 67</a>)</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">unquoted names fold to lower case: use <code>snake_case</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>ON UPDATE CURRENT_TIMESTAMP</code> keeps <code>updated_at</code> current</td></tr>
+								<tr><td>SQL Server</td><td class="desc">PascalCase is common; <code>dbo</code> schema; trigger for <code>updated_at</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">no <code>ON UPDATE</code>; use a trigger</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-none"><code class="language-none">model SupportTicket {
+  id        BigInt    @id @default(autoincrement())
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  @@map("support_tickets")
+}</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Naming Table | Surrogate Vs Natural Key Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-naming">
+						<h2 class="section-title">Naming</h2>
+						<table>
+							<thead><tr><th>Thing</th><th>Convention</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>table</td><td class="desc">plural snake_case</td><td class="desc"><code>order_items</code></td></tr>
+								<tr><td>primary key</td><td class="desc"><code>&lt;singular&gt;_id</code> or <code>id</code></td><td class="desc"><code>order_id</code></td></tr>
+								<tr><td>foreign key</td><td class="desc"><code>&lt;referenced&gt;_id</code></td><td class="desc"><code>customer_id</code></td></tr>
+								<tr><td>boolean</td><td class="desc"><code>is_</code> / <code>has_</code></td><td class="desc"><code>is_closed</code></td></tr>
+								<tr><td>timestamp</td><td class="desc"><code>&lt;event&gt;_at</code></td><td class="desc"><code>shipped_at</code></td></tr>
+								<tr><td>index / constraint</td><td class="desc"><code>&lt;table&gt;_&lt;cols&gt;_&lt;kind&gt;</code></td><td class="desc"><code>orders_status_idx</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-surrogate-vs-natural-key">
+						<h2 class="section-title">Surrogate vs Natural Key</h2>
+						<table>
+							<thead><tr><th></th><th>Surrogate</th><th>Natural</th></tr></thead>
+							<tbody>
+								<tr><td>example</td><td class="desc"><code>ticket_id</code> 4812</td><td class="desc"><code>email</code>, SKU, ISBN</td></tr>
+								<tr><td>changes</td><td class="desc">never</td><td class="desc">sometimes</td></tr>
+								<tr><td>size</td><td class="desc">small, fixed</td><td class="desc">varies</td></tr>
+								<tr><td>meaning</td><td class="desc">none</td><td class="desc">business meaning</td></tr>
+								<tr><td>use</td><td class="desc">PK + FKs</td><td class="desc"><code>UNIQUE</code> constraint</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Mixed styles: <code>CustomerID</code>, <code>order_id</code>, <code>productid</code></li>
+							<li class="note-item">Naming a table <code>user</code> or <code>order</code> and quoting forever</li>
+							<li class="note-item">Email as the primary key, then a customer changes it</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Write the conventions down in the repo</li>
+							<li class="note-item">Let a linter (sqlfluff, squawk) enforce them</li>
+							<li class="note-item">Prisma <code>@map</code> / <code>@@map</code> bridges camelCase code and snake_case tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>snake_case</code>, <code>&lt;table&gt;_id</code>, <code>&lt;event&gt;_at</code></li>
+							<li class="note-item">Surrogate PK + unique natural key</li>
+							<li class="note-item"><code>created_at</code> / <code>updated_at</code> / <code>deleted_at</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-62-relationships-er-modeling.html" class="nav-link prev">Relationships &amp; ER Modeling</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-64-views-materialized-views.html" class="nav-link next">Views &amp; Materialized Views</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

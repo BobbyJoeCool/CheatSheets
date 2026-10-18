@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 76: SQL Injection &amp; Parameterized Queries</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s76">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 76</div>
+			<h1>SQL Injection &amp; Parameterized Queries</h1>
+			<div class="sheet-desc">parameterized query · $1 · ? · @param · PREPARE · EXECUTE · dynamic SQL · quote_ident</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Never Build SQL from Input</h2>
+						<div class="description"><strong>SQL injection</strong> happens when user input is pasted into SQL text, so the input can change the query itself: <code>' OR '1'='1</code> returns every row, and worse inputs drop tables. The fix is <strong>parameters</strong>: the SQL text contains placeholders (<code>$1</code>, <code>?</code>, <code>@email</code>) and the values travel <strong>separately</strong>, so they are always treated as data. Parameters work for <strong>values only</strong>; table or column names must come from a whitelist or be quoted with <strong><code>quote_ident</code> / <code>format('%I')</code></strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Injection Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Escaping by hand is fragile; parameters aren't</li>
+							<li class="note-item">Prepared statements also cache the plan</li>
+							<li class="note-item">Dynamic SQL in functions is just as vulnerable</li>
+							<li class="note-item">Least privilege limits the damage (<a class="sheet-ref" href="sql-75-users-roles-privileges.html">sheet 75</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">NoSQL injection: a body of <code>{ "email": { "$ne": null } }</code> matches everyone</li>
+							<li class="note-item">Cast inputs to expected types before building filters</li>
+							<li class="note-item">Reject keys starting with <code>$</code>; avoid <code>$where</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Parameters, Not Concatenation</h2>
+						<pre class="language-sql"><code class="language-sql">-- ✗ App code that builds SQL from input:
+--   "… WHERE email = '" + input + "'"
+--   input:  ' OR '1'='1   → every customer
+--   input:  '; DROP TABLE orders; --
+
+-- ✓ Placeholders; values are sent separately
+SELECT * FROM customers WHERE email = $1;     -- PG
+SELECT * FROM customers WHERE email = ?;      -- MySQL
+SELECT * FROM customers WHERE email = @email; -- SQL Svr
+
+-- Server-side prepared statement
+PREPARE find_customer (text) AS
+  SELECT * FROM customers WHERE email = $1;
+EXECUTE find_customer('ada@example.com');
+DEALLOCATE find_customer;
+
+-- Dynamic SQL inside the database
+CREATE FUNCTION count_rows(tbl text) RETURNS bigint
+LANGUAGE plpgsql AS $$
+DECLARE n bigint;
+BEGIN
+  EXECUTE format('SELECT count(*) FROM %I', tbl) INTO n;
+  RETURN n;
+END $$;
+-- %I quotes identifiers; pass values with USING</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">The injected quote closes the string and adds <code>OR true</code></div>
+							<div class="explain-item">A placeholder value can't change the query's structure</div>
+							<div class="explain-item"><code>PREPARE</code> parses once; <code>EXECUTE</code> supplies values</div>
+							<div class="explain-item"><code>format('%I', tbl)</code> = <code>quote_ident(tbl)</code></div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>$1, $2</code>; <code>PREPARE</code> / <code>EXECUTE</code>; <code>format('%I %L')</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>?</code>; <code>PREPARE s FROM '…'; EXECUTE s USING @v</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>@name</code>; <code>sp_executesql N'…', N'@e nvarchar(255)', @e</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>?</code>, <code>?1</code>, <code>:name</code>, <code>@name</code>, <code>$name</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// ✓ tagged template → sent as $1
+await prisma.$queryRaw`
+  SELECT * FROM customers WHERE email = ${email}`;
+// ✗ string building → injectable
+await prisma.$queryRawUnsafe(
+  `SELECT * FROM customers WHERE email = '${email}'`);</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Placeholders By Driver Table | Not A Parameter Do This Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-placeholders-by-driver">
+						<h2 class="section-title">Placeholders by Driver</h2>
+						<table>
+							<thead><tr><th>Driver</th><th>Style</th></tr></thead>
+							<tbody>
+								<tr><td>node-postgres (pg)</td><td class="desc"><code>$1</code>, <code>$2</code></td></tr>
+								<tr><td>mysql2</td><td class="desc"><code>?</code></td></tr>
+								<tr><td>Python DB-API (psycopg)</td><td class="desc"><code>%s</code> · <code>%(name)s</code></td></tr>
+								<tr><td>JDBC</td><td class="desc"><code>?</code></td></tr>
+								<tr><td>.NET (SqlClient)</td><td class="desc"><code>@name</code></td></tr>
+								<tr><td>Go database/sql</td><td class="desc"><code>$1</code> (pq) · <code>?</code> (mysql)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-not-a-parameter-do-this">
+						<h2 class="section-title">Not a Parameter? Do This</h2>
+						<table>
+							<thead><tr><th>Dynamic part</th><th>Safe approach</th></tr></thead>
+							<tbody>
+								<tr><td>table / column name</td><td class="desc">whitelist, or <code>quote_ident</code> / <code>%I</code></td></tr>
+								<tr><td>sort direction</td><td class="desc">map <code>'asc'</code>/<code>'desc'</code> to fixed SQL</td></tr>
+								<tr><td>IN list</td><td class="desc">one array param: <code>= ANY ($1)</code></td></tr>
+								<tr><td>LIMIT / OFFSET</td><td class="desc">a normal parameter</td></tr>
+								<tr><td>LIKE pattern</td><td class="desc">parameter + escape <code>%</code> and <code>_</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Template strings with <code>${…}</code> passed to raw-unsafe APIs</li>
+							<li class="note-item">Escaping quotes by hand and missing a case</li>
+							<li class="note-item">Trusting "internal" input (headers, cookies, CSV files)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Ban <code>$queryRawUnsafe</code> and friends in code review</li>
+							<li class="note-item">Run the app with a role that can't drop tables</li>
+							<li class="note-item">Test with <code>'</code>, <code>--</code> and <code>;</code> in every input</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Values → parameters, always</li>
+							<li class="note-item">Names → whitelist / <code>quote_ident</code></li>
+							<li class="note-item"><code>$1</code> · <code>?</code> · <code>@name</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-75-users-roles-privileges.html" class="nav-link prev">Users, Roles &amp; Privileges</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-77-backup-restore.html" class="nav-link next">Backup &amp; Restore</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

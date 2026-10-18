@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 34: CROSS JOIN &amp; Self Joins</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>CROSS JOIN &amp; Self Joins</h1>
+			<div class="sheet-desc">CROSS JOIN · Cartesian product · self join · employee/manager · pairs · date spine</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Every Combination, and a Table with Itself</h2>
+						<div class="description"><strong><code>CROSS JOIN</code></strong> pairs <strong>every</strong> row of one table with every row of another (the Cartesian product): 3 sizes × 2 colors = 6 rows. It's useful for building grids and calendars, and dangerous by accident. A <strong>self join</strong> joins a table to itself under two aliases, which is how you follow <code>employees.manager_id</code> back to <code>employees</code>, or compare rows within one table. A <strong>date spine</strong> (one row per day) left-joined to your data shows days with zero activity.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Row count of a cross join = m × n</li>
+							<li class="note-item">A self join needs two different aliases</li>
+							<li class="note-item"><code>a.id &lt; b.id</code> lists each pair once</li>
+							<li class="note-item">For the previous row, use <code>LAG</code> (<a class="sheet-ref" href="sql-46-offset-value-functions.html">sheet 46</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB has no cross join</li>
+							<li class="note-item">Self references use <code>$lookup</code> on the same collection</li>
+							<li class="note-item">Whole hierarchies: <code>$graphLookup</code> (<a class="sheet-ref" href="sql-42-recursive-ctes.html">sheet 42</a>)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">CROSS &amp; Self Joins</h2>
+						<pre class="language-sql"><code class="language-sql">-- Every size with every color: 3 × 2 = 6 rows
+SELECT s.size, c.color
+FROM   (VALUES ('S'), ('M'), ('L')) AS s(size)
+CROSS  JOIN (VALUES ('red'), ('blue')) AS c(color);
+
+-- Self join: employee and manager
+SELECT e.first_name AS employee,
+       m.first_name AS manager
+FROM   employees e
+LEFT   JOIN employees m ON m.emp_id = e.manager_id;
+
+-- Same-category product pairs, each pair once
+SELECT a.name, b.name
+FROM   products a
+JOIN   products b
+  ON   a.category   = b.category
+ AND   a.product_id &lt; b.product_id;
+
+-- Date spine: every day, even with no orders
+SELECT d::date AS day, count(o.order_id) AS orders
+FROM   generate_series(DATE '2026-10-01',
+                       DATE '2026-10-31',
+                       INTERVAL '1 day') AS d
+LEFT   JOIN orders o ON o.order_date = d::date
+GROUP  BY d
+ORDER  BY d;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>VALUES … AS s(size)</code> — an inline table with a column name</div>
+							<div class="explain-item"><code>LEFT JOIN</code> keeps the top boss, whose <code>manager_id</code> is NULL</div>
+							<div class="explain-item"><code>&lt;</code> instead of <code>&lt;&gt;</code> avoids (A, B) and (B, A) duplicates</div>
+							<div class="explain-item"><code>generate_series</code> builds the 31 days to join against</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>CROSS JOIN</code>; <code>generate_series</code> for spines</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>CROSS JOIN</code>; recursive CTE for spines (<a class="sheet-ref" href="sql-42-recursive-ctes.html">sheet 42</a>)</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>CROSS JOIN</code>; <code>GENERATE_SERIES</code> (2022+)</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>CROSS JOIN</code> also forces join order</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// schema: a self-relation named "Manager"
+await prisma.employee.findMany({
+  include: {
+    manager: { select: { firstName: true } },
+  },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Row Counts Table | Uses Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-row-counts">
+						<h2 class="section-title">Row Counts</h2>
+						<table>
+							<thead><tr><th>Join</th><th>Rows (m left, n right)</th></tr></thead>
+							<tbody>
+								<tr><td>CROSS JOIN</td><td class="desc">m × n</td></tr>
+								<tr><td>INNER JOIN on a key</td><td class="desc">≤ number of matches</td></tr>
+								<tr><td>self join, all pairs a ≠ b</td><td class="desc">n × (n − 1)</td></tr>
+								<tr><td>self join, a &lt; b</td><td class="desc">n × (n − 1) / 2</td></tr>
+								<tr><td>date spine LEFT JOIN</td><td class="desc">≥ number of days</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-uses">
+						<h2 class="section-title">Uses</h2>
+						<table>
+							<thead><tr><th>Join</th><th>Good for</th></tr></thead>
+							<tbody>
+								<tr><td>CROSS JOIN</td><td class="desc">size × color grids, store × day calendars</td></tr>
+								<tr><td>CROSS JOIN 1-row table</td><td class="desc">attach a constant or setting to every row</td></tr>
+								<tr><td>self join</td><td class="desc">manager chains, comparing rows in one table</td></tr>
+								<tr><td>self join on dates</td><td class="desc">consecutive events (prefer <code>LAG</code>)</td></tr>
+								<tr><td>spine + LEFT JOIN</td><td class="desc">charts with no missing days</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Accidental cross join from a missing <code>ON</code>: millions of rows</li>
+							<li class="note-item">Self join with <code>&lt;&gt;</code> returning every pair twice</li>
+							<li class="note-item">Using <code>INNER</code> for the manager join and losing the CEO</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Check <code>count(*)</code> on any join that looks slow</li>
+							<li class="note-item">Name self-join aliases by role: <code>e</code>mployee, <code>m</code>anager</li>
+							<li class="note-item">Keep a calendar table for reporting spines</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CROSS JOIN</code> — all combinations</li>
+							<li class="note-item">Self join — two aliases, one table</li>
+							<li class="note-item">Spine + <code>LEFT JOIN</code> — no gaps</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-33-outer-joins.html" class="nav-link prev">Outer Joins</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-35-multi-table-joins.html" class="nav-link next">Multi-Table Joins</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 37: LATERAL &amp; APPLY</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>LATERAL &amp; APPLY</h1>
+			<div class="sheet-desc">LATERAL · CROSS APPLY · OUTER APPLY · top-N per row · set-returning functions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">A Subquery per Row</h2>
+						<div class="description">A normal subquery in <code>FROM</code> can't see the other tables in the same <code>FROM</code>. <strong><code>LATERAL</code></strong> lifts that rule: the subquery runs <strong>once per outer row</strong> and may reference its columns, like a <code>for each</code> loop. That makes <strong>top-N per group</strong> easy: the 3 latest orders for each customer. SQL Server calls the same thing <strong><code>CROSS APPLY</code></strong> (inner) and <strong><code>OUTER APPLY</code></strong> (keeps rows with no result).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">LATERAL Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CROSS JOIN LATERAL</code> drops rows with no result</li>
+							<li class="note-item"><code>LEFT JOIN LATERAL … ON true</code> keeps them</li>
+							<li class="note-item">Index the inner lookup or each row scans</li>
+							<li class="note-item">Window functions also do top-N (<a class="sheet-ref" href="sql-49-window-patterns.html">sheet 49</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB <code>$lookup</code> with a <code>pipeline</code> runs per document:</li>
+							<li class="note-item"><code>pipeline: [{ $match: { $expr: … } }, { $sort: { date: -1 } }, { $limit: 3 }]</code></li>
+							<li class="note-item">That's the same top-N-per-parent idea</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">LATERAL &amp; APPLY</h2>
+						<pre class="language-sql"><code class="language-sql">-- Latest 3 orders per customer
+SELECT c.name, r.order_id, r.order_date
+FROM   customers c
+CROSS  JOIN LATERAL (
+         SELECT o.order_id, o.order_date
+         FROM   orders o
+         WHERE  o.customer_id = c.customer_id
+         ORDER  BY o.order_date DESC
+         LIMIT  3) AS r;
+
+-- Keep customers with no orders
+SELECT c.name, r.order_id, r.total
+FROM   customers c
+LEFT   JOIN LATERAL (
+         SELECT order_id, total FROM orders o
+         WHERE  o.customer_id = c.customer_id
+         ORDER  BY order_date DESC
+         LIMIT  1) AS r ON true;
+
+-- SQL Server equivalent
+SELECT c.name, r.order_id
+FROM   customers c
+CROSS  APPLY (SELECT TOP (3) order_id FROM orders o
+              WHERE  o.customer_id = c.customer_id
+              ORDER  BY order_date DESC) AS r;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>c.customer_id</code> inside the subquery is the lateral reference</div>
+							<div class="explain-item"><code>LIMIT 3</code> applies per customer, not to the whole result</div>
+							<div class="explain-item"><code>ON true</code> — the subquery already did the matching</div>
+							<div class="explain-item"><code>CROSS APPLY</code> ≈ <code>CROSS JOIN LATERAL</code></div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>JOIN LATERAL</code>; <code>FROM</code> functions are implicitly lateral</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>LATERAL</code> derived tables since 8.0.14</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>CROSS APPLY</code> / <code>OUTER APPLY</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">no <code>LATERAL</code> → window functions or a correlated subquery</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.customer.findMany({
+  include: {
+    orders: { orderBy: { orderDate: 'desc' }, take: 3 },
+  },
+});  // top-N per parent without raw SQL</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Equivalents Table | When To Use Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-equivalents">
+						<h2 class="section-title">Equivalents</h2>
+						<table>
+							<thead><tr><th>PostgreSQL / MySQL</th><th>SQL Server</th></tr></thead>
+							<tbody>
+								<tr><td>CROSS JOIN LATERAL (…) r</td><td class="desc">CROSS APPLY (…) r</td></tr>
+								<tr><td>LEFT JOIN LATERAL (…) r ON true</td><td class="desc">OUTER APPLY (…) r</td></tr>
+								<tr><td>FROM t, LATERAL f(t.col)</td><td class="desc">CROSS APPLY f(t.col)</td></tr>
+								<tr><td>unnest(t.arr)</td><td class="desc">CROSS APPLY OPENJSON(t.js)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-when-to-use">
+						<h2 class="section-title">When to Use</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Tool</th></tr></thead>
+							<tbody>
+								<tr><td>top N rows per parent</td><td class="desc"><code>LATERAL … LIMIT n</code></td></tr>
+								<tr><td>several columns from one latest row</td><td class="desc"><code>LATERAL … LIMIT 1</code></td></tr>
+								<tr><td>expand an array / JSON per row</td><td class="desc"><code>LATERAL unnest()</code> / <code>jsonb_array_elements</code></td></tr>
+								<tr><td>rank across the whole set</td><td class="desc">window function (<a class="sheet-ref" href="sql-45-ranking-functions.html">sheet 45</a>)</td></tr>
+								<tr><td>single value per row</td><td class="desc">scalar subquery (<a class="sheet-ref" href="sql-38-subqueries-scalar-in.html">sheet 38</a>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CROSS JOIN LATERAL</code> silently dropping parents with no rows</li>
+							<li class="note-item">No index on the inner <code>WHERE</code> column: one scan per outer row</li>
+							<li class="note-item">Using <code>LATERAL</code> where a simple join would do</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Index <code>(customer_id, order_date DESC)</code> for top-N lookups</li>
+							<li class="note-item">Use <code>LIMIT 1</code> lateral to fetch several columns of the latest row</li>
+							<li class="note-item">Compare plans with the <code>ROW_NUMBER()</code> version (<a class="sheet-ref" href="sql-49-window-patterns.html">sheet 49</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>LATERAL</code> — subquery sees outer row</li>
+							<li class="note-item"><code>CROSS / OUTER APPLY</code> in SQL Server</li>
+							<li class="note-item">Top-N per group made simple</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-36-semi-anti-joins.html" class="nav-link prev">Semi &amp; Anti Joins</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-38-subqueries-scalar-in.html" class="nav-link next">Subqueries — Scalar &amp; IN</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

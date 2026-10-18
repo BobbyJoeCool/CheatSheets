@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 25: Date &amp; Time Functions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Date &amp; Time Functions</h1>
+			<div class="sheet-desc">NOW() · CURRENT_DATE · EXTRACT · DATE_TRUNC · INTERVAL · DATEADD / DATEDIFF · TO_CHAR · AT TIME ZONE</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Working with Dates</h2>
+						<div class="description"><strong><code>now()</code></strong> and <strong><code>current_date</code></strong> give the current moment and day (fixed for the whole transaction). <strong><code>extract(part FROM d)</code></strong> pulls out a year, month, weekday or hour. <strong><code>date_trunc('month', d)</code></strong> rounds down to the start of a unit, which is how you group by month. Add or subtract <strong><code>INTERVAL</code>s</strong> for date math, format with <strong><code>to_char</code></strong>, and convert zones with <strong><code>AT TIME ZONE</code></strong>. This is the area where dialects differ most.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Date Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>now()</code> is the transaction start; <code>clock_timestamp()</code> is live</li>
+							<li class="note-item"><code>date - date</code> → whole days (PG)</li>
+							<li class="note-item"><code>DOW</code>: 0 = Sunday; <code>ISODOW</code>: 1 = Monday</li>
+							<li class="note-item">Group by <code>date_trunc</code>, not by <code>to_char</code> text</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>$dateTrunc</code>, <code>$dateAdd</code>, <code>$dateDiff</code>, <code>$dateToString</code></li>
+							<li class="note-item">Each takes a <code>timezone</code> option, e.g. <code>'America/Chicago'</code></li>
+							<li class="note-item"><code>$year</code>, <code>$month</code>, <code>$dayOfWeek</code> extract parts</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Date &amp; Time Functions</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT now(), current_date, current_timestamp;
+
+SELECT extract(YEAR FROM order_date) AS yr,
+       extract(DOW  FROM order_date) AS dow
+FROM   orders;
+
+-- Revenue per month
+SELECT date_trunc('month', order_date) AS month,
+       sum(total)                      AS revenue
+FROM   orders
+GROUP  BY month
+ORDER  BY month;
+
+SELECT order_date + INTERVAL '30 days' AS due FROM orders;
+SELECT DATE '2026-12-25' - CURRENT_DATE AS days_left;
+SELECT to_char(DATE '2026-10-18', 'Dy DD Mon YYYY');
+-- Sun 18 Oct 2026
+SELECT now() AT TIME ZONE 'Asia/Tokyo';
+
+-- The last 7 full days
+SELECT * FROM orders
+WHERE  order_date &gt;= CURRENT_DATE - 7
+  AND  order_date &lt;  CURRENT_DATE;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>date_trunc('month', …)</code> → the 1st of the month at 00:00</div>
+							<div class="explain-item"><code>GROUP BY month</code> — PG allows the output alias here</div>
+							<div class="explain-item"><code>date - date</code> returns an integer number of days</div>
+							<div class="explain-item"><code>AT TIME ZONE</code> on <code>TIMESTAMPTZ</code> → local wall-clock time</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>date_trunc</code>, <code>+ INTERVAL</code>, <code>age</code>, <code>to_char</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>DATE_ADD(d, INTERVAL 30 DAY)</code>, <code>DATEDIFF</code>, <code>DATE_FORMAT</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>DATEADD(day, 30, d)</code>, <code>DATEDIFF</code>, <code>DATETRUNC</code> (2022)</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>date(d, '+30 days')</code>, <code>strftime('%Y-%m', d)</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const since = new Date(Date.now() - 7 * 86_400_000);
+await prisma.order.findMany({
+  where: { orderDate: { gte: since } },
+});
+// grouping by date_trunc → $queryRaw</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Extract Fields Table | Same Task Four Engines Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-extract-fields">
+						<h2 class="section-title">EXTRACT Fields</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Returns</th></tr></thead>
+							<tbody>
+								<tr><td>YEAR MONTH DAY</td><td class="desc">calendar parts</td></tr>
+								<tr><td>QUARTER · WEEK</td><td class="desc">1–4 · ISO 1–53</td></tr>
+								<tr><td>DOW · ISODOW</td><td class="desc">0 = Sun · 1 = Mon</td></tr>
+								<tr><td>DOY</td><td class="desc">day of year</td></tr>
+								<tr><td>HOUR MINUTE</td><td class="desc">time parts</td></tr>
+								<tr><td>EPOCH</td><td class="desc">Unix seconds</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-same-task-four-engines">
+						<h2 class="section-title">Same Task, Four Engines</h2>
+						<table>
+							<thead><tr><th>Task</th><th>PG</th><th>MySQL</th><th>SQL Server</th><th>SQLite</th></tr></thead>
+							<tbody>
+								<tr><td>now</td><td class="desc"><code>now()</code></td><td class="desc"><code>NOW()</code></td><td class="desc"><code>SYSDATETIME()</code></td><td class="desc"><code>datetime('now')</code></td></tr>
+								<tr><td>+30 days</td><td class="desc"><code>d + 30</code></td><td class="desc"><code>d + INTERVAL 30 DAY</code></td><td class="desc"><code>DATEADD(day,30,d)</code></td><td class="desc"><code>date(d,'+30 days')</code></td></tr>
+								<tr><td>days a→b</td><td class="desc"><code>b - a</code></td><td class="desc"><code>DATEDIFF(b,a)</code></td><td class="desc"><code>DATEDIFF(day,a,b)</code></td><td class="desc"><code>julianday</code> diff</td></tr>
+								<tr><td>YYYY-MM</td><td class="desc"><code>to_char(d,'YYYY-MM')</code></td><td class="desc"><code>DATE_FORMAT(d,'%Y-%m')</code></td><td class="desc"><code>FORMAT(d,'yyyy-MM')</code></td><td class="desc"><code>strftime('%Y-%m',d)</code></td></tr>
+								<tr><td>month start</td><td class="desc"><code>date_trunc('month',d)</code></td><td class="desc"><code>DATE_FORMAT(d,'%Y-%m-01')</code></td><td class="desc"><code>DATETRUNC(month,d)</code></td><td class="desc"><code>date(d,'start of month')</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Grouping on <code>to_char(d, 'Mon')</code>: every year's October merges</li>
+							<li class="note-item"><code>WHERE date(created_at) = …</code> blocking the index</li>
+							<li class="note-item">Mixing up <code>DATEDIFF</code> argument order between engines</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Filter with half-open ranges on the raw column</li>
+							<li class="note-item">Keep zone conversion at the edges (display, reports)</li>
+							<li class="note-item">Generate missing days with <code>generate_series</code> (<a class="sheet-ref" href="sql-79-arrays-generated-series.html">sheet 79</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>now()</code> · <code>current_date</code></li>
+							<li class="note-item"><code>extract</code> · <code>date_trunc</code></li>
+							<li class="note-item"><code>+ INTERVAL</code> · <code>age</code> · <code>to_char</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-24-numeric-functions.html" class="nav-link prev">Numeric Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-26-conditional-null-functions.html" class="nav-link next">Conditional &amp; NULL Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

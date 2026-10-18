@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 67: Triggers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s67">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 67</div>
+			<h1>Triggers</h1>
+			<div class="sheet-desc">CREATE TRIGGER · BEFORE / AFTER · FOR EACH ROW · NEW / OLD · INSTEAD OF · audit trigger</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Code That Runs on Change</h2>
+						<div class="description">A <strong>trigger</strong> runs automatically when rows are inserted, updated or deleted. <strong><code>BEFORE</code></strong> triggers can inspect and change the incoming row (<strong><code>NEW</code></strong>) or cancel it; <strong><code>AFTER</code></strong> triggers react once the change is made, which suits <strong>audit logs</strong>; <strong><code>INSTEAD OF</code></strong> triggers make views writable. <code>FOR EACH ROW</code> fires per changed row, <code>FOR EACH STATEMENT</code> once per statement. In PostgreSQL the logic lives in a <strong>trigger function</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Trigger Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>NEW</code> = row after the change; <code>OLD</code> = row before</li>
+							<li class="note-item">Triggers fire for every writer: apps, scripts, ORMs</li>
+							<li class="note-item">They run inside the same transaction</li>
+							<li class="note-item">Hidden side effects surprise people: document them</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB <strong>change streams</strong> (<code>collection.watch()</code>) react after commits</li>
+							<li class="note-item">Atlas Triggers run functions on changes</li>
+							<li class="note-item">No <code>BEFORE</code> triggers: validate in the app or with <code>$jsonSchema</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Audit Trigger</h2>
+						<pre class="language-sql"><code class="language-sql">CREATE TABLE price_history (
+  product_id INT,
+  old_price  NUMERIC(10,2),
+  new_price  NUMERIC(10,2),
+  changed_at TIMESTAMPTZ DEFAULT now(),
+  changed_by TEXT DEFAULT current_user
+);
+
+-- Trigger function: runs once per changed row
+CREATE FUNCTION log_price() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO price_history
+         (product_id, old_price, new_price)
+  VALUES (OLD.product_id, OLD.price, NEW.price);
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER products_price_audit
+AFTER UPDATE OF price ON products
+FOR EACH ROW
+WHEN (OLD.price IS DISTINCT FROM NEW.price)
+EXECUTE FUNCTION log_price();
+
+UPDATE products SET price = 42 WHERE product_id = 7;
+SELECT * FROM price_history;   -- one new row</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>RETURNS trigger</code> — a special function type for triggers</div>
+							<div class="explain-item"><code>UPDATE OF price</code> — only when <code>price</code> is in the <code>SET</code> list</div>
+							<div class="explain-item"><code>WHEN (…)</code> skips updates that didn't change the value</div>
+							<div class="explain-item"><code>RETURN NEW</code> is required for row triggers (ignored in <code>AFTER</code>)</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">trigger function + <code>EXECUTE FUNCTION</code>; statement-level too</td></tr>
+								<tr><td>MySQL</td><td class="desc">inline body <code>FOR EACH ROW BEGIN … END</code>; row-level only</td></tr>
+								<tr><td>SQL Server</td><td class="desc">statement-level; <code>inserted</code> / <code>deleted</code> pseudo-tables</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>BEGIN … END</code> body; <code>NEW.</code> / <code>OLD.</code>; <code>INSTEAD OF</code> on views</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// Database triggers fire for Prisma writes too.
+// App-side hooks run only for Prisma calls:
+const db = prisma.$extends({ query: { product: {
+  async update({ args, query }) { /* log */ return query(args); },
+} } });</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Timing Table | New Old By Event Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-timing">
+						<h2 class="section-title">Timing</h2>
+						<table>
+							<thead><tr><th>Timing</th><th>Can</th><th>Typical use</th></tr></thead>
+							<tbody>
+								<tr><td>BEFORE</td><td class="desc">change or reject <code>NEW</code></td><td class="desc">defaults, normalizing, validation</td></tr>
+								<tr><td>AFTER</td><td class="desc">see the final row</td><td class="desc">audit logs, counters, notifications</td></tr>
+								<tr><td>INSTEAD OF</td><td class="desc">replace the write</td><td class="desc">updatable complex views</td></tr>
+								<tr><td>FOR EACH STATEMENT</td><td class="desc">run once per statement</td><td class="desc">bulk bookkeeping</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-new-old-by-event">
+						<h2 class="section-title">NEW / OLD by Event</h2>
+						<table>
+							<thead><tr><th>Event</th><th>NEW</th><th>OLD</th></tr></thead>
+							<tbody>
+								<tr><td>INSERT</td><td class="desc">the new row</td><td class="desc">—</td></tr>
+								<tr><td>UPDATE</td><td class="desc">row after</td><td class="desc">row before</td></tr>
+								<tr><td>DELETE</td><td class="desc">—</td><td class="desc">the deleted row</td></tr>
+								<tr><td>TRUNCATE</td><td class="desc">no row triggers fire</td><td class="desc"></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Business logic hidden in triggers nobody knows about</li>
+							<li class="note-item">Triggers that update the same table and recurse</li>
+							<li class="note-item">Slow <code>AFTER</code> triggers turning bulk updates into crawls</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use triggers for integrity and auditing, not workflows</li>
+							<li class="note-item">Name them <code>&lt;table&gt;_&lt;purpose&gt;</code> and list them in docs</li>
+							<li class="note-item">PG: <code>pg_trigger_depth()</code> guards against recursion</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>BEFORE</code> / <code>AFTER</code> / <code>INSTEAD OF</code></li>
+							<li class="note-item"><code>NEW</code> / <code>OLD</code> row values</li>
+							<li class="note-item">Fire for every writer</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-66-stored-procedures.html" class="nav-link prev">Stored Procedures</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-68-transactions.html" class="nav-link next">Transactions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

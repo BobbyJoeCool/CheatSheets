@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 51: UPDATE</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>UPDATE</h1>
+			<div class="sheet-desc">UPDATE · SET · WHERE · UPDATE … FROM · UPDATE JOIN · RETURNING · OUTPUT</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Changing Rows</h2>
+						<div class="description"><strong><code>UPDATE table SET col = expr WHERE …</code></strong> changes every row the <code>WHERE</code> matches, and <strong>every row in the table</strong> if you leave <code>WHERE</code> off. Expressions on the right see the <strong>old</strong> values, so <code>SET stock = stock - 1</code> works and two columns can swap. To update from another table, PostgreSQL and SQLite use <strong><code>UPDATE … FROM</code></strong>, MySQL and SQL Server join in the update. <strong><code>RETURNING</code></strong> shows the changed rows.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">UPDATE Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">No <code>WHERE</code> = every row</li>
+							<li class="note-item">All <code>SET</code> expressions read the old row</li>
+							<li class="note-item">The result reports how many rows changed</li>
+							<li class="note-item">Run the <code>WHERE</code> as a <code>SELECT</code> first</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>updateMany({ category: 'Books' }, { $mul: { price: 1.05 } })</code></li>
+							<li class="note-item"><code>$set</code>, <code>$inc</code>, <code>$unset</code> change single fields</li>
+							<li class="note-item"><code>findOneAndUpdate</code> returns the document, like <code>RETURNING</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">UPDATE</h2>
+						<pre class="language-sql"><code class="language-sql">UPDATE products
+SET    price = price * 1.05
+WHERE  category = 'Books';
+
+UPDATE products
+SET    price = 24.99,
+       stock = stock + 10
+WHERE  product_id = 7
+RETURNING product_id, price, stock;
+
+-- Update from another table (PostgreSQL, SQLite)
+UPDATE orders o
+SET    total = s.amt
+FROM  (SELECT order_id, sum(quantity * unit_price) AS amt
+       FROM   order_items
+       GROUP  BY order_id) s
+WHERE  s.order_id = o.order_id;
+
+-- Portable: correlated subquery
+UPDATE orders o
+SET    total = (SELECT sum(quantity * unit_price)
+                FROM   order_items i
+                WHERE  i.order_id = o.order_id);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>price * 1.05</code> reads each row's current price</div>
+							<div class="explain-item"><code>RETURNING</code> lists the rows after the change</div>
+							<div class="explain-item"><code>FROM</code> joins the pre-aggregated item totals</div>
+							<div class="explain-item">The subquery form sets NULL for orders with no items</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>UPDATE … FROM</code>; <code>RETURNING</code> (PG 18: <code>OLD</code> / <code>NEW</code>)</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>UPDATE orders o JOIN s ON … SET …</code>; <code>LIMIT</code> allowed</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>UPDATE o SET … FROM orders o JOIN …</code>; <code>OUTPUT</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>UPDATE … FROM</code> (3.33+); <code>RETURNING</code> (3.35+)</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.product.updateMany({
+  where: { category: 'Books' },
+  data: { price: { multiply: 1.05 } },
+});                             // → { count: 12 }
+await prisma.product.update({
+  where: { id: 7 }, data: { price: 24.99 },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Set Forms Table | Safe Updates Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-set-forms">
+						<h2 class="section-title">SET Forms</h2>
+						<table>
+							<thead><tr><th>Write</th><th>Means</th></tr></thead>
+							<tbody>
+								<tr><td>SET a = 1</td><td class="desc">constant</td></tr>
+								<tr><td>SET a = a + 1</td><td class="desc">based on the old value</td></tr>
+								<tr><td>SET (a, b) = (1, 2)</td><td class="desc">row form (PG, SQLite)</td></tr>
+								<tr><td>SET a = DEFAULT</td><td class="desc">reset to the default</td></tr>
+								<tr><td>SET a = (SELECT …)</td><td class="desc">from a scalar subquery</td></tr>
+								<tr><td>SET a = CASE … END</td><td class="desc">different value per row (<a class="sheet-ref" href="sql-21-case-expressions.html">sheet 21</a>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-safe-updates">
+						<h2 class="section-title">Safe Updates</h2>
+						<table>
+							<thead><tr><th>Step</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>preview</td><td class="desc">same <code>WHERE</code> in a <code>SELECT count(*)</code></td></tr>
+								<tr><td>isolate</td><td class="desc"><code>BEGIN;</code> … check … <code>COMMIT;</code> (<a class="sheet-ref" href="sql-68-transactions.html">sheet 68</a>)</td></tr>
+								<tr><td>confirm</td><td class="desc"><code>RETURNING</code> / <code>OUTPUT</code> the rows</td></tr>
+								<tr><td>guard</td><td class="desc">MySQL <code>--safe-updates</code> blocks keyless updates</td></tr>
+								<tr><td>undo</td><td class="desc"><code>ROLLBACK;</code> before you commit</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>WHERE</code> and updating every row</li>
+							<li class="note-item">Expecting <code>SET a = b, b = a</code> to fail (it swaps)</li>
+							<li class="note-item">Correlated update setting NULL where no source row exists</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Wrap risky updates in a transaction and check the count</li>
+							<li class="note-item">Update in batches on huge tables to keep locks short</li>
+							<li class="note-item">Add <code>AND col IS DISTINCT FROM new</code> to skip no-op writes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>UPDATE t SET … WHERE …</code></li>
+							<li class="note-item">Right side sees old values</li>
+							<li class="note-item"><code>FROM</code> / <code>JOIN</code> to use other tables</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-50-insert.html" class="nav-link prev">INSERT</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-52-delete-truncate.html" class="nav-link next">DELETE &amp; TRUNCATE</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

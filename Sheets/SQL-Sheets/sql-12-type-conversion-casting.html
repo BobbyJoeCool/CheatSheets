@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 12: Type Conversion &amp; Casting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Type Conversion &amp; Casting</h1>
+			<div class="sheet-desc">CAST · :: · CONVERT · TRY_CAST · implicit conversion · type affinity</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Changing Types</h2>
+						<div class="description"><strong><code>CAST(x AS type)</code></strong> is the standard way to convert; PostgreSQL also accepts <strong><code>x::type</code></strong>. When types differ the engine may convert <strong>implicitly</strong>: PostgreSQL is strict and errors on mismatches it can't resolve, while MySQL and SQLite quietly turn <code>'12abc'</code> into <code>12</code>. SQL Server's <strong><code>TRY_CAST</code></strong> and <strong><code>TRY_CONVERT</code></strong> return NULL instead of failing. For formatted text and dates, use <strong>formatting functions</strong> (<code>to_char</code>, <code>to_date</code>) rather than plain casts.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Casting Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Numeric → integer <strong>rounds</strong> in PG and MySQL, <strong>truncates</strong> in SQL Server and SQLite</li>
+							<li class="note-item">Text → number fails on bad input (PG, SQL Server)</li>
+							<li class="note-item">A cast on a column in <code>WHERE</code> can block an index (<a class="sheet-ref" href="sql-74-query-optimization.html">sheet 74</a>)</li>
+							<li class="note-item">PG 16+: <code>pg_input_is_valid(text, type)</code> tests first</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Casting</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT CAST('42' AS INTEGER) + 1;          -- 43
+SELECT '42'::int, '3.14'::numeric(4,2);    -- PG shorthand
+SELECT CAST(9.99 AS INTEGER);              -- 10
+SELECT CAST('2026-10-18' AS DATE);
+SELECT order_id::text || '-A' FROM orders;
+SELECT CAST('abc' AS INTEGER);
+-- ERROR: invalid input syntax for type integer
+
+-- Check before casting
+SELECT pg_input_is_valid('abc', 'integer');  -- false
+SELECT CASE WHEN qty ~ '^[0-9]+$'
+            THEN qty::int END AS qty
+FROM   staging_rows;
+
+-- Format and parse with functions
+SELECT to_char(1234.5, 'FM9,999.00');      -- 1,234.50
+SELECT to_number('1,234.50', '9G999D99');  -- 1234.50
+SELECT to_date('18/10/2026', 'DD/MM/YYYY');
+SELECT to_timestamp(1760000000);           -- epoch → tz</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>::</code> — PostgreSQL-only shorthand for <code>CAST</code></div>
+							<div class="explain-item"><code>CAST(9.99 AS INTEGER)</code> rounds to 10; it doesn't truncate</div>
+							<div class="explain-item"><code>~ '^[0-9]+$'</code> — regex guard so the cast can't fail (<a class="sheet-ref" href="sql-19-pattern-matching.html">sheet 19</a>)</div>
+							<div class="explain-item"><code>FM</code> drops padding; <code>G</code> and <code>D</code> are locale separators</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>CAST</code> and <code>::</code>; strict about mismatched types</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>CAST(x AS SIGNED / DECIMAL(10,2) / CHAR)</code>; loose</td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>TRY_CAST</code>, <code>TRY_CONVERT</code>, <code>CONVERT(varchar, d, 23)</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">type affinity: <code>CAST</code> never errors; <code>'abc'</code> → <code>0</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// Prisma validates input types before SQL runs.
+// For casts inside a query, drop to raw SQL:
+const rows = await prisma.$queryRaw`
+  SELECT order_id::text AS id, total::float8 AS amt
+  FROM   orders`;</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Common Casts Pg Table | Implicit Conversion Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-common-casts-pg">
+						<h2 class="section-title">Common Casts (PG)</h2>
+						<table>
+							<thead><tr><th>Want</th><th>Write</th></tr></thead>
+							<tbody>
+								<tr><td>text → integer</td><td class="desc"><code>'42'::int</code></td></tr>
+								<tr><td>numeric → integer</td><td class="desc"><code>round(x)::int</code> (explicit)</td></tr>
+								<tr><td>anything → text</td><td class="desc"><code>x::text</code></td></tr>
+								<tr><td>text → date</td><td class="desc"><code>'2026-10-18'::date</code></td></tr>
+								<tr><td>timestamp → date</td><td class="desc"><code>created_at::date</code></td></tr>
+								<tr><td>boolean → integer</td><td class="desc"><code>is_paid::int</code> → 0 / 1</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-implicit-conversion">
+						<h2 class="section-title">Implicit Conversion</h2>
+						<table>
+							<thead><tr><th>Expression</th><th>PG</th><th>MySQL</th><th>SQLite</th></tr></thead>
+							<tbody>
+								<tr><td>'5' + 3</td><td class="desc">8</td><td class="desc">8</td><td class="desc">8</td></tr>
+								<tr><td>'abc' + 1</td><td class="desc">error</td><td class="desc">1 + warning</td><td class="desc">1</td></tr>
+								<tr><td>5 / 2</td><td class="desc">2</td><td class="desc">2.5000</td><td class="desc">2</td></tr>
+								<tr><td>1 = '1'</td><td class="desc">true</td><td class="desc">1</td><td class="desc">0 (false)</td></tr>
+								<tr><td>'10' &lt; '9'</td><td class="desc">true</td><td class="desc">1</td><td class="desc">1</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">MySQL <code>CAST(x AS INT)</code>; the target must be <code>SIGNED</code></li>
+							<li class="note-item">Casting a column in <code>WHERE</code> and losing the index</li>
+							<li class="note-item">Relying on MySQL turning bad text into 0 instead of failing</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Cast the literal, not the column: <code>WHERE d = '2026-10-18'::date</code></li>
+							<li class="note-item">Validate staging data before casting the whole table</li>
+							<li class="note-item">Prefer <code>to_char</code> / <code>FORMAT</code> for display, casts for logic</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CAST(x AS t)</code> · <code>x::t</code> · <code>TRY_CAST</code></li>
+							<li class="note-item">Implicit rules differ by engine</li>
+							<li class="note-item">Format with functions, not casts</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-11-null-three-valued-logic.html" class="nav-link prev">NULL &amp; Three-Valued Logic</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-13-select-basics.html" class="nav-link next">SELECT Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 14: Filtering with WHERE</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>Filtering with WHERE</h1>
+			<div class="sheet-desc">WHERE · AND · OR · NOT · parentheses · precedence · aliases in WHERE</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Keeping Some Rows</h2>
+						<div class="description"><strong><code>WHERE</code></strong> keeps only the rows whose condition is <strong>TRUE</strong> (not FALSE, not UNKNOWN). Join conditions with <strong><code>AND</code></strong>, <strong><code>OR</code></strong> and <strong><code>NOT</code></strong>. <code>AND</code> binds tighter than <code>OR</code>, exactly like <code>*</code> before <code>+</code>, so mixing them without <strong>parentheses</strong> is the classic filtering bug. <code>WHERE</code> runs before <code>SELECT</code>, which is why output aliases aren't visible here.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">WHERE Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Rows where the condition is NULL are dropped</li>
+							<li class="note-item">Precedence: <code>NOT</code> → <code>AND</code> → <code>OR</code></li>
+							<li class="note-item">The planner picks evaluation order, not you</li>
+							<li class="note-item">Test a filter with <code>SELECT</code> before <code>UPDATE</code> / <code>DELETE</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB filter documents have the same shape:</li>
+							<li class="note-item"><code>{ $or: [{ category: 'Books' }, { category: 'Games' }], price: { $lt: 10 } }</code></li>
+							<li class="note-item">Top-level fields are ANDed together</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">WHERE</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT name, price FROM products
+WHERE  price &gt; 20;
+
+SELECT * FROM orders
+WHERE  status = 'paid'
+  AND  order_date &gt;= DATE '2026-01-01';
+
+-- AND binds first: not what it looks like
+SELECT * FROM products
+WHERE  category = 'Books' OR category = 'Games'
+  AND  price &lt; 10;   -- Books OR (Games AND &lt; 10)
+
+SELECT * FROM products
+WHERE  (category = 'Books' OR category = 'Games')
+  AND  price &lt; 10;
+
+SELECT * FROM customers
+WHERE  NOT (country = 'US' OR country = 'CA');
+
+-- Output alias isn't visible: repeat the expression
+SELECT name, price * 0.9 AS sale FROM products
+WHERE  price * 0.9 &lt; 20;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Without parentheses, cheap Books slip through at any price</div>
+							<div class="explain-item"><code>NOT (a OR b)</code> = <code>NOT a AND NOT b</code> (De Morgan)</div>
+							<div class="explain-item"><code>sale</code> doesn't exist yet when <code>WHERE</code> runs</div>
+							<div class="explain-item">Wrap the query in a CTE (<a class="sheet-ref" href="sql-41-common-table-expressions.html">sheet 41</a>) to filter on an alias</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>=</code> on text is case-sensitive; <code>WHERE is_active</code> works</td></tr>
+								<tr><td>MySQL</td><td class="desc">default collation is case-insensitive: <code>'a' = 'A'</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc">case-insensitive by default; bit needs <code>= 1</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>=</code> case-sensitive; <code>LIKE</code> isn't; aliases allowed in <code>WHERE</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.product.findMany({
+  where: {
+    OR: [{ category: 'Books' }, { category: 'Games' }],
+    price: { lt: 10 },          // ANDed with the OR
+  },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Precedence High Low Table | Condition Kinds Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-precedence-high-low">
+						<h2 class="section-title">Precedence (high → low)</h2>
+						<table>
+							<thead><tr><th>Level</th><th>Operators</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc"><code>( … )</code></td></tr>
+								<tr><td>2</td><td class="desc"><code>*</code> <code>/</code> <code>%</code> then <code>+</code> <code>-</code> <code>||</code></td></tr>
+								<tr><td>3</td><td class="desc"><code>=</code> <code>&lt;&gt;</code> <code>&lt;</code> <code>&gt;</code> <code>LIKE</code> <code>IN</code> <code>BETWEEN</code> <code>IS</code></td></tr>
+								<tr><td>4</td><td class="desc"><code>NOT</code></td></tr>
+								<tr><td>5</td><td class="desc"><code>AND</code></td></tr>
+								<tr><td>6</td><td class="desc"><code>OR</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-condition-kinds">
+						<h2 class="section-title">Condition Kinds</h2>
+						<table>
+							<thead><tr><th>Kind</th><th>Example</th><th>Sheet</th></tr></thead>
+							<tbody>
+								<tr><td>comparison</td><td class="desc"><code>price &gt;= 10</code></td><td class="center"><a class="sheet-ref" href="sql-18-comparison-range-operators.html">18</a></td></tr>
+								<tr><td>range</td><td class="desc"><code>price BETWEEN 10 AND 20</code></td><td class="center"><a class="sheet-ref" href="sql-18-comparison-range-operators.html">18</a></td></tr>
+								<tr><td>list</td><td class="desc"><code>status IN ('paid', 'shipped')</code></td><td class="center"><a class="sheet-ref" href="sql-18-comparison-range-operators.html">18</a></td></tr>
+								<tr><td>pattern</td><td class="desc"><code>name LIKE 'Desk%'</code></td><td class="center"><a class="sheet-ref" href="sql-19-pattern-matching.html">19</a></td></tr>
+								<tr><td>null test</td><td class="desc"><code>shipped_at IS NULL</code></td><td class="center"><a class="sheet-ref" href="sql-11-null-three-valued-logic.html">11</a></td></tr>
+								<tr><td>subquery</td><td class="desc"><code>EXISTS (SELECT …)</code></td><td class="center"><a class="sheet-ref" href="sql-36-semi-anti-joins.html">36</a></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Mixing <code>AND</code> and <code>OR</code> without parentheses</li>
+							<li class="note-item">Referencing a <code>SELECT</code> alias in <code>WHERE</code></li>
+							<li class="note-item">Forgetting <code>WHERE</code> on an <code>UPDATE</code> or <code>DELETE</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Always parenthesize <code>OR</code> groups, even when not required</li>
+							<li class="note-item">Put each condition on its own line, <code>AND</code> at the start</li>
+							<li class="note-item">Write date ranges half-open: <code>&gt;= start AND &lt; end</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>WHERE</code> keeps TRUE rows only</li>
+							<li class="note-item"><code>AND</code> before <code>OR</code>; use parentheses</li>
+							<li class="note-item">No output aliases in <code>WHERE</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-13-select-basics.html" class="nav-link prev">SELECT Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-15-sorting-order-by.html" class="nav-link next">Sorting with ORDER BY</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

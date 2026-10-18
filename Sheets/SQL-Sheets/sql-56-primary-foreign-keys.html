@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 56: Primary &amp; Foreign Keys</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s56">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 56</div>
+			<h1>Primary &amp; Foreign Keys</h1>
+			<div class="sheet-desc">PRIMARY KEY · composite key · FOREIGN KEY · REFERENCES · ON DELETE CASCADE · SET NULL</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Identity and Relationships</h2>
+						<div class="description">A <strong>primary key</strong> uniquely identifies each row and is never NULL; a table has one, made of one column or several (<strong>composite</strong>). A <strong>foreign key</strong> says "this column's value must exist as a key in that table", so orders can't point at missing customers. <strong><code>ON DELETE</code></strong> decides what happens to child rows when the parent goes: block it, <strong><code>CASCADE</code></strong> the delete, or <strong><code>SET NULL</code></strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Key Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">PK = <code>UNIQUE</code> + <code>NOT NULL</code>, plus an index</li>
+							<li class="note-item">FK columns allow NULL unless you forbid it</li>
+							<li class="note-item">Default action: <code>NO ACTION</code> (blocks the delete)</li>
+							<li class="note-item">Index FK columns yourself in PG and SQL Server</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB <code>_id</code> is the primary key: unique and immutable</li>
+							<li class="note-item">No foreign keys: references are plain values</li>
+							<li class="note-item">Orphans are possible; the app (or embedding) prevents them</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Keys</h2>
+						<pre class="language-sql"><code class="language-sql">CREATE TABLE order_items (
+  order_id   INT NOT NULL,
+  product_id INT NOT NULL,
+  quantity   INT NOT NULL,
+  PRIMARY KEY (order_id, product_id),
+  FOREIGN KEY (order_id) REFERENCES orders
+    ON DELETE CASCADE,       -- items die with order
+  FOREIGN KEY (product_id) REFERENCES products
+    ON DELETE RESTRICT       -- keep sold products
+);
+
+-- Column shorthand
+CREATE TABLE employees (
+  emp_id     INT PRIMARY KEY,
+  dept_id    INT REFERENCES departments
+               ON DELETE SET NULL,
+  manager_id INT REFERENCES employees (emp_id)
+);
+
+-- Named constraint, added later
+ALTER TABLE orders
+  ADD CONSTRAINT orders_customer_fk
+  FOREIGN KEY (customer_id) REFERENCES customers;
+
+INSERT INTO orders (customer_id, total) VALUES (99999, 10);
+-- ERROR: … violates foreign key constraint
+--        "orders_customer_fk"</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>(order_id, product_id)</code> — each product once per order</div>
+							<div class="explain-item"><code>CASCADE</code> deletes an order's items with the order</div>
+							<div class="explain-item"><code>SET NULL</code> keeps employees when a department is removed</div>
+							<div class="explain-item"><code>manager_id</code> references the same table (self-reference)</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">FKs aren't indexed automatically; <code>DEFERRABLE</code> (<a class="sheet-ref" href="sql-57-constraints.html">sheet 57</a>)</td></tr>
+								<tr><td>MySQL</td><td class="desc">InnoDB indexes FK columns automatically</td></tr>
+								<tr><td>SQL Server</td><td class="desc">no auto FK index; no multiple cascade paths</td></tr>
+								<tr><td>SQLite</td><td class="desc">FKs ignored until <code>PRAGMA foreign_keys = ON</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.orderItem.create({
+  data: {
+    order:   { connect: { id: 101 } },  // FK must exist
+    product: { connect: { id: 7 } },
+    quantity: 2, unitPrice: 39.99,
+  },
+});</code></pre>
+						<ul class="note-list">
+							<li class="note-item">Schema: <code>onDelete: Cascade</code> in <code>@relation</code>; composite PK <code>@@id([orderId, productId])</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: On Delete On Update Table | Key Kinds Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-on-delete-on-update">
+						<h2 class="section-title">ON DELETE / ON UPDATE</h2>
+						<table>
+							<thead><tr><th>Action</th><th>Child rows when parent changes</th></tr></thead>
+							<tbody>
+								<tr><td>NO ACTION (default)</td><td class="desc">error, checked at end of statement</td></tr>
+								<tr><td>RESTRICT</td><td class="desc">error, checked immediately</td></tr>
+								<tr><td>CASCADE</td><td class="desc">deleted / updated too</td></tr>
+								<tr><td>SET NULL</td><td class="desc">FK set to NULL</td></tr>
+								<tr><td>SET DEFAULT</td><td class="desc">FK set to its default</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-key-kinds">
+						<h2 class="section-title">Key Kinds</h2>
+						<table>
+							<thead><tr><th>Kind</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>single-column PK</td><td class="desc"><code>customer_id</code></td></tr>
+								<tr><td>composite PK</td><td class="desc"><code>(order_id, product_id)</code></td></tr>
+								<tr><td>foreign key</td><td class="desc"><code>orders.customer_id → customers</code></td></tr>
+								<tr><td>self-reference</td><td class="desc"><code>employees.manager_id → employees</code></td></tr>
+								<tr><td>surrogate vs natural</td><td class="desc">ID number vs real-world value (<a class="sheet-ref" href="sql-63-design-conventions.html">sheet 63</a>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">No index on FK columns: slow joins and cascades</li>
+							<li class="note-item"><code>CASCADE</code> on a parent you didn't expect to wipe children</li>
+							<li class="note-item">SQLite without <code>PRAGMA foreign_keys = ON</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Name constraints (<code>orders_customer_fk</code>) for clear errors</li>
+							<li class="note-item">Use <code>RESTRICT</code> for history you must keep</li>
+							<li class="note-item">Load parents before children in data imports</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">PK — unique, not NULL, one per table</li>
+							<li class="note-item">FK — value must exist in the parent</li>
+							<li class="note-item"><code>ON DELETE</code> — restrict, cascade, set null</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-55-create-table.html" class="nav-link prev">CREATE TABLE</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-57-constraints.html" class="nav-link next">Constraints</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

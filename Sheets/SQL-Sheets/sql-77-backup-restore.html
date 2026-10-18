@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 77: Backup &amp; Restore</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s77">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 77</div>
+			<h1>Backup &amp; Restore</h1>
+			<div class="sheet-desc">pg_dump · pg_restore · mysqldump · .backup · BACKUP DATABASE · point-in-time recovery</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Getting Data Back</h2>
+						<div class="description">A <strong>logical backup</strong> (<code>pg_dump</code>, <code>mysqldump</code>) writes SQL or an archive you can restore anywhere, even into a newer version. A <strong>physical backup</strong> copies the data files and, together with the transaction log (PostgreSQL WAL, MySQL binlog, SQL Server log backups), allows <strong>point-in-time recovery</strong>: restore to the second before a bad <code>DELETE</code>. A backup only counts once you've <strong>restored it successfully</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Backup Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Logical dumps are consistent snapshots</li>
+							<li class="note-item">Roles and settings need separate dumps (<code>pg_dumpall -g</code>)</li>
+							<li class="note-item">Big databases: physical backups restore faster</li>
+							<li class="note-item">Store copies off the database server</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>mongodump</code> / <code>mongorestore</code> (BSON)</li>
+							<li class="note-item">Atlas: continuous backups with point-in-time restore</li>
+							<li class="note-item"><code>mongoexport</code> isn't a backup: JSON loses types</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Backup &amp; Restore</h2>
+						<pre class="language-bash"><code class="language-bash"># PostgreSQL: one database, compressed custom format
+pg_dump -Fc -d shop -f shop.dump
+pg_restore -d shop_restored --clean --if-exists shop.dump
+pg_dump -d shop --schema-only &gt; schema.sql
+pg_dump -d shop -t orders --data-only &gt; orders.sql
+pg_dumpall --globals-only &gt; roles.sql
+
+# MySQL
+mysqldump --single-transaction --routines shop &gt; shop.sql
+mysql shop_restored &lt; shop.sql
+
+# SQLite: safe copy of a live database
+sqlite3 shop.db ".backup 'shop-2026-10-18.db'"
+sqlite3 shop.db "VACUUM INTO 'shop-compact.db'"
+
+# PostgreSQL point-in-time recovery (config)
+#   archive_mode = on
+#   archive_command = 'cp %p /archive/%f'
+#   restore: recovery_target_time = '2026-10-18 09:59'
+
+# SQL Server (T-SQL, run in sqlcmd)
+# BACKUP DATABASE shop TO DISK = '/backup/shop.bak';
+# RESTORE DATABASE shop FROM DISK = '/backup/shop.bak'
+#   WITH REPLACE;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-Fc</code> — custom format: compressed, selective restore</div>
+							<div class="explain-item"><code>--clean --if-exists</code> drops objects before recreating</div>
+							<div class="explain-item"><code>--single-transaction</code> — consistent InnoDB dump, no locks</div>
+							<div class="explain-item"><code>.backup</code> copies safely while the database is in use</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>pg_dump</code> / <code>pg_restore</code>; PITR = base backup + WAL</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>mysqldump</code>; MySQL Shell <code>util.dumpInstance()</code>; binlog PITR</td></tr>
+								<tr><td>SQL Server</td><td class="desc">full / differential / log; <code>RESTORE … WITH STOPAT</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>.backup</code>, <code>VACUUM INTO</code>, or copy the file when idle</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-bash"><code class="language-bash"># Prisma moves schema, not data
+npx prisma migrate deploy        # schema on a fresh DB
+pg_restore --data-only -d shop shop.dump</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Backup Types Table | Good Practice Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-backup-types">
+						<h2 class="section-title">Backup Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>What</th><th>Restores to</th></tr></thead>
+							<tbody>
+								<tr><td>logical dump</td><td class="desc">SQL / archive of objects + rows</td><td class="desc">the dump time</td></tr>
+								<tr><td>physical / base</td><td class="desc">copy of data files</td><td class="desc">the backup time</td></tr>
+								<tr><td>+ log archive</td><td class="desc">WAL / binlog / log backups</td><td class="desc">any point in time</td></tr>
+								<tr><td>disk snapshot</td><td class="desc">volume snapshot (cloud)</td><td class="desc">the snapshot time</td></tr>
+								<tr><td>replica</td><td class="desc">live copy on another server</td><td class="desc">not a backup: copies mistakes</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-good-practice">
+						<h2 class="section-title">Good Practice</h2>
+						<table>
+							<thead><tr><th>Rule</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>3-2-1</td><td class="desc">3 copies, 2 media, 1 off-site</td></tr>
+								<tr><td>test restores</td><td class="desc">untested backups fail when needed</td></tr>
+								<tr><td>encrypt</td><td class="desc">dumps contain all your data</td></tr>
+								<tr><td>automate + monitor</td><td class="desc">alerts when a job fails</td></tr>
+								<tr><td>document RPO / RTO</td><td class="desc">how much loss, how long down</td></tr>
+								<tr><td>keep several generations</td><td class="desc">a corrupt night doesn't overwrite the good one</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Never trying a restore until the outage</li>
+							<li class="note-item">Treating a replica as a backup</li>
+							<li class="note-item">Dumping data but not roles, extensions or settings</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Restore into a scratch database on a schedule</li>
+							<li class="note-item">Keep dumps from the version you'll restore with</li>
+							<li class="note-item">Use managed PITR in the cloud when you can</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Logical: <code>pg_dump</code> · <code>mysqldump</code> · <code>.backup</code></li>
+							<li class="note-item">Physical + logs → point in time</li>
+							<li class="note-item">Test the restore</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-76-sql-injection-parameterized-queries.html" class="nav-link prev">SQL Injection &amp; Parameters</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-78-json.html" class="nav-link next">JSON</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 21: CASE Expressions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>CASE Expressions</h1>
+			<div class="sheet-desc">simple CASE · searched CASE · ELSE · CASE in ORDER BY · CASE in aggregates · IIF</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">If / Else Inside a Query</h2>
+						<div class="description"><strong><code>CASE</code></strong> is SQL's if/else. It's an <strong>expression</strong>, so it returns a value and can go anywhere a value can: <code>SELECT</code>, <code>WHERE</code>, <code>ORDER BY</code>, <code>GROUP BY</code>, inside an aggregate, or in <code>UPDATE … SET</code>. A <strong>searched</strong> <code>CASE</code> tests any condition; a <strong>simple</strong> <code>CASE</code> compares one value to a list. Branches are checked top to bottom and the <strong>first match wins</strong>; with no match and no <code>ELSE</code>, the result is NULL.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">CASE Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">All branches must return compatible types</li>
+							<li class="note-item">Missing <code>ELSE</code> → NULL</li>
+							<li class="note-item">Simple <code>CASE x WHEN NULL</code> never matches</li>
+							<li class="note-item"><code>IIF(c, a, b)</code> is shorthand (SQL Server, SQLite)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>$cond: { if: …, then: …, else: … }</code></li>
+							<li class="note-item"><code>$switch: { branches: [{ case, then }], default }</code> for many branches</li>
+							<li class="note-item">Both work only inside aggregation pipelines</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">CASE</h2>
+						<pre class="language-sql"><code class="language-sql">-- Searched CASE: any conditions
+SELECT name, price,
+       CASE WHEN price &gt;= 100 THEN 'premium'
+            WHEN price &gt;= 20  THEN 'standard'
+            ELSE 'budget'
+       END AS tier
+FROM   products;
+
+-- Simple CASE: compare one value
+SELECT order_id,
+       CASE status WHEN 'paid'    THEN 'Paid'
+                   WHEN 'shipped' THEN 'On its way'
+                   ELSE 'Other' END AS label
+FROM   orders;
+
+-- Inside aggregates: several counts in one pass
+SELECT count(CASE WHEN status = 'paid' THEN 1 END) AS paid,
+       sum(CASE WHEN status = 'cancelled'
+                THEN total ELSE 0 END)   AS lost
+FROM   orders;
+-- In ORDER BY and UPDATE
+SELECT name FROM products
+ORDER  BY CASE WHEN stock = 0 THEN 1 ELSE 0 END, name;
+UPDATE products
+SET    price = CASE WHEN category = 'Books'
+                    THEN price * 0.9 ELSE price END;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Order matters: a 150 price stops at <code>premium</code></div>
+							<div class="explain-item"><code>count(CASE … THEN 1 END)</code> counts only matches (no ELSE)</div>
+							<div class="explain-item"><code>ORDER BY CASE</code> pushes out-of-stock items to the end</div>
+							<div class="explain-item"><code>ELSE price</code> keeps other rows unchanged</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>CASE</code> only; <code>FILTER (WHERE …)</code> for aggregates</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>CASE</code> and <code>IF(cond, a, b)</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>CASE</code>, <code>IIF(c, a, b)</code>, <code>CHOOSE(i, a, b, …)</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>CASE</code> and <code>iif(c, a, b)</code> (3.32+)</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// Prisma has no CASE builder: use raw SQL
+const rows = await prisma.$queryRaw`
+  SELECT name,
+         CASE WHEN price &gt;= 100 THEN 'premium'
+              ELSE 'standard' END AS tier
+  FROM   products`;</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Two Forms Table | Where Case Goes Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-two-forms">
+						<h2 class="section-title">Two Forms</h2>
+						<table>
+							<thead><tr><th>Form</th><th>Syntax</th></tr></thead>
+							<tbody>
+								<tr><td>searched</td><td class="desc"><code>CASE WHEN cond THEN a … ELSE z END</code></td></tr>
+								<tr><td>simple</td><td class="desc"><code>CASE x WHEN v1 THEN a … ELSE z END</code></td></tr>
+								<tr><td>shorthand</td><td class="desc"><code>IIF(cond, a, b)</code> · <code>IF(cond, a, b)</code></td></tr>
+								<tr><td>NULL default</td><td class="desc"><code>COALESCE(x, 'n/a')</code> (<a class="sheet-ref" href="sql-26-conditional-null-functions.html">sheet 26</a>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-where-case-goes">
+						<h2 class="section-title">Where CASE Goes</h2>
+						<table>
+							<thead><tr><th>Clause</th><th>Example use</th></tr></thead>
+							<tbody>
+								<tr><td>SELECT</td><td class="desc">derive a label or bucket</td></tr>
+								<tr><td>WHERE</td><td class="desc">conditional filter (keep it simple)</td></tr>
+								<tr><td>ORDER BY</td><td class="desc">custom sort order</td></tr>
+								<tr><td>GROUP BY</td><td class="desc">group by a computed bucket</td></tr>
+								<tr><td>SUM / COUNT</td><td class="desc">conditional totals (<a class="sheet-ref" href="sql-29-having-conditional-aggregation.html">sheet 29</a>)</td></tr>
+								<tr><td>UPDATE SET</td><td class="desc">different change per row</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">No <code>ELSE</code> and an unexpected NULL</li>
+							<li class="note-item">Mixed branch types: <code>THEN 'none'</code> vs <code>THEN 0</code></li>
+							<li class="note-item">Putting a broad <code>WHEN</code> first so later ones never fire</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Most specific <code>WHEN</code> first</li>
+							<li class="note-item">Long code → label mappings belong in a lookup table</li>
+							<li class="note-item">PG: <code>count(*) FILTER (WHERE …)</code> reads better than <code>CASE</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>CASE WHEN … THEN … ELSE … END</code></li>
+							<li class="note-item">First match wins; no match → <code>ELSE</code> or NULL</li>
+							<li class="note-item">Works in any clause</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-20-arithmetic-concatenation-operators.html" class="nav-link prev">Arithmetic &amp; Concatenation</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-22-string-functions-transform.html" class="nav-link next">String Functions — Transform</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

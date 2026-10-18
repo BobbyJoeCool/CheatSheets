@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 48: Window Frames</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s48">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 48</div>
+			<h1>Window Frames</h1>
+			<div class="sheet-desc">ROWS · RANGE · GROUPS · UNBOUNDED PRECEDING · CURRENT ROW · N FOLLOWING · EXCLUDE</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Which Rows the Function Sees</h2>
+						<div class="description">The <strong>frame</strong> is the slice of the partition an aggregate or value function looks at for the current row. <strong><code>ROWS</code></strong> counts physical rows; <strong><code>RANGE</code></strong> uses the distance between <code>ORDER BY</code> values, so rows with equal values (<strong>peers</strong>) move together; <strong><code>GROUPS</code></strong> counts groups of peers. With <code>ORDER BY</code> and no frame, the default is <code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>, which includes the current row's peers. Without <code>ORDER BY</code> the frame is the whole partition.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Frame Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Frames apply to aggregates and value functions only</li>
+							<li class="note-item"><code>lag</code>, <code>lead</code> and ranking functions ignore frames</li>
+							<li class="note-item"><code>RANGE n PRECEDING</code> needs one numeric or date sort key</li>
+							<li class="note-item"><code>EXCLUDE</code> drops the current row, its peers or ties</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>window: { documents: [-1, 1] }</code> = <code>ROWS 1 PRECEDING AND 1 FOLLOWING</code></li>
+							<li class="note-item"><code>window: { range: [-1, 0] }</code> = <code>RANGE</code></li>
+							<li class="note-item">Bounds: numbers, <code>'current'</code>, <code>'unbounded'</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Frames Compared</h2>
+						<pre class="language-sql"><code class="language-sql">WITH s(d, v) AS (
+  VALUES (1, 10), (2, 20), (2, 5), (3, 30))
+SELECT d, v,
+  sum(v) OVER (ORDER BY d) AS dflt,
+  sum(v) OVER (ORDER BY d ROWS
+    BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                           AS rows_run,
+  sum(v) OVER (ORDER BY d ROWS
+    BETWEEN 1 PRECEDING AND 1 FOLLOWING)
+                           AS nbr,
+  sum(v) OVER (ORDER BY d RANGE
+    BETWEEN 1 PRECEDING AND CURRENT ROW)
+                           AS rng,
+  sum(v) OVER (ORDER BY d GROUPS
+    BETWEEN 1 PRECEDING AND CURRENT ROW)
+                           AS grp,
+  sum(v) OVER (ORDER BY d ROWS
+    BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    EXCLUDE CURRENT ROW)   AS others
+FROM s;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">The two <code>d = 2</code> rows are <strong>peers</strong></div>
+							<div class="explain-item"><code>dflt</code> gives both peers 35; <code>rows_run</code> steps 30 → 35</div>
+							<div class="explain-item"><code>RANGE 1 PRECEDING</code> at <code>d = 3</code> covers <code>d</code> 2 to 3</div>
+							<div class="explain-item"><code>others</code> = everything except the current row</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>ROWS</code>, <code>RANGE</code> with offsets, <code>GROUPS</code>, <code>EXCLUDE</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>ROWS</code>, <code>RANGE</code>; no <code>GROUPS</code> or <code>EXCLUDE</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>ROWS</code>; <code>RANGE</code> only <code>UNBOUNDED</code> / <code>CURRENT ROW</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>ROWS</code>, <code>RANGE</code>, <code>GROUPS</code>, <code>EXCLUDE</code> (3.28+)</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const rows = await prisma.$queryRaw`
+  SELECT order_id, avg(total) OVER (ORDER BY order_id
+           ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS ma
+  FROM   orders`;</code></pre>
+						<ul class="note-list">
+							<li class="note-item">Prisma has no window-function API: use <code>$queryRaw</code> or a TypedSQL file</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Output Peers In Listed Order Table | Bounds Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-output-peers-in-listed-order">
+						<h2 class="section-title">Output (peers in listed order)</h2>
+						<table>
+							<thead><tr><th>d</th><th>v</th><th>dflt</th><th>rows_run</th><th>nbr</th><th>rng</th><th>grp</th><th>others</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc">10</td><td class="desc">10</td><td class="desc">10</td><td class="desc">30</td><td class="desc">10</td><td class="desc">10</td><td class="desc">55</td></tr>
+								<tr><td>2</td><td class="desc">20</td><td class="desc">35</td><td class="desc">30</td><td class="desc">35</td><td class="desc">35</td><td class="desc">35</td><td class="desc">45</td></tr>
+								<tr><td>2</td><td class="desc">5</td><td class="desc">35</td><td class="desc">35</td><td class="desc">55</td><td class="desc">35</td><td class="desc">35</td><td class="desc">60</td></tr>
+								<tr><td>3</td><td class="desc">30</td><td class="desc">65</td><td class="desc">65</td><td class="desc">35</td><td class="desc">55</td><td class="desc">55</td><td class="desc">35</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-bounds">
+						<h2 class="section-title">Bounds</h2>
+						<table>
+							<thead><tr><th>Bound</th><th>Means</th></tr></thead>
+							<tbody>
+								<tr><td>UNBOUNDED PRECEDING</td><td class="desc">partition start</td></tr>
+								<tr><td>n PRECEDING / FOLLOWING</td><td class="desc">n units before / after</td></tr>
+								<tr><td>CURRENT ROW</td><td class="desc">this row (RANGE: and peers)</td></tr>
+								<tr><td>UNBOUNDED FOLLOWING</td><td class="desc">partition end</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Relying on the default frame for <code>last_value</code> (<a class="sheet-ref" href="sql-46-offset-value-functions.html">sheet 46</a>)</li>
+							<li class="note-item">Using <code>RANGE</code> and wondering why ties share a value</li>
+							<li class="note-item">SQL Server: <code>RANGE 6 PRECEDING</code> isn't supported</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Write the frame out in full when it matters</li>
+							<li class="note-item"><code>ROWS</code> is also faster than <code>RANGE</code> in SQL Server</li>
+							<li class="note-item">Test frames on a tiny <code>VALUES</code> table like this one</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ROWS</code> · <code>RANGE</code> · <code>GROUPS</code></li>
+							<li class="note-item">Default with <code>ORDER BY</code>: start → current + peers</li>
+							<li class="note-item"><code>EXCLUDE</code> trims the frame</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-47-running-totals-moving-averages.html" class="nav-link prev">Running Totals &amp; Moving Averages</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-49-window-patterns.html" class="nav-link next">Window Function Patterns</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

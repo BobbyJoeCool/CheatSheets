@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 40: Derived Tables</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s40">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 40</div>
+			<h1>Derived Tables</h1>
+			<div class="sheet-desc">FROM (subquery) · required alias · inline view · nested aggregation · aggregate of aggregate</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">A Query as a Table</h2>
+						<div class="description">A <strong>derived table</strong> is a subquery in <code>FROM</code>; the outer query treats its result like a table (it's also called an <strong>inline view</strong>). It's the classic way to <strong>aggregate twice</strong> (average of per-customer counts), to filter on a column you computed, or to pre-aggregate a child table before joining it. Most engines require an <strong>alias</strong> after the parentheses, and every column needs a name.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Alias required in MySQL and SQL Server</li>
+							<li class="note-item">Name computed columns, or alias them <code>AS t(a, b)</code></li>
+							<li class="note-item">The planner usually merges it into the outer query</li>
+							<li class="note-item">Same idea, named up front: a CTE (<a class="sheet-ref" href="sql-41-common-table-expressions.html">sheet 41</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB pipelines nest naturally: <code>$group</code>, then <code>$group</code> again</li>
+							<li class="note-item"><code>[{ $group: { _id: '$customerId', n: { $sum: 1 } } }, { $group: { _id: null, avg: { $avg: '$n' } } }]</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Derived Tables</h2>
+						<pre class="language-sql"><code class="language-sql">-- Average number of orders per customer
+SELECT avg(n) AS avg_orders
+FROM  (SELECT customer_id, count(*) AS n
+       FROM   orders
+       GROUP  BY customer_id) AS per_customer;
+
+-- Filter on a computed column
+SELECT *
+FROM  (SELECT name, price * stock AS stock_value
+       FROM   products) AS t
+WHERE  stock_value &gt; 1000;
+
+-- Largest order per customer, with its date
+SELECT o.customer_id, o.order_id, o.total, o.order_date
+FROM   orders o
+JOIN  (SELECT customer_id, max(total) AS top
+       FROM   orders
+       GROUP  BY customer_id) m
+  ON   m.customer_id = o.customer_id
+ AND   m.top = o.total;
+
+-- Name the columns on the alias
+SELECT t.status, t.n
+FROM  (SELECT status, count(*) FROM orders GROUP BY status)
+       AS t(status, n);</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>avg(count(*))</code> isn't allowed; the derived table splits it in two</div>
+							<div class="explain-item"><code>stock_value</code> exists for the outer <code>WHERE</code></div>
+							<div class="explain-item">Joining back on <code>max(total)</code> returns ties too</div>
+							<div class="explain-item"><code>AS t(status, n)</code> names unnamed columns</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">alias optional since PG 16</td></tr>
+								<tr><td>MySQL</td><td class="desc">"Every derived table must have its own alias"</td></tr>
+								<tr><td>SQL Server</td><td class="desc">alias required; every column must be named</td></tr>
+								<tr><td>SQLite</td><td class="desc">alias optional</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const per = await prisma.order.groupBy({
+  by: ['customerId'],
+  _count: { _all: true },
+});
+const avg = per.reduce((s, r) =&gt; s + r._count._all, 0)
+  / per.length;   // second aggregation in JS</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Uses Table | Derived Table Vs Cte Vs View Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-uses">
+						<h2 class="section-title">Uses</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Pattern</th></tr></thead>
+							<tbody>
+								<tr><td>aggregate of an aggregate</td><td class="desc"><code>SELECT avg(n) FROM (… GROUP BY …) t</code></td></tr>
+								<tr><td>filter on an alias</td><td class="desc"><code>SELECT * FROM (…) t WHERE alias &gt; …</code></td></tr>
+								<tr><td>pre-aggregate before a join</td><td class="desc"><code>JOIN (… GROUP BY key) s USING (key)</code></td></tr>
+								<tr><td>top row per group</td><td class="desc"><code>JOIN (… max(x) …)</code> or <code>ROW_NUMBER()</code> (<a class="sheet-ref" href="sql-49-window-patterns.html">sheet 49</a>)</td></tr>
+								<tr><td>literal rows</td><td class="desc"><code>FROM (VALUES (1,'a'), (2,'b')) AS v(id, s)</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-derived-table-vs-cte-vs-view">
+						<h2 class="section-title">Derived Table vs CTE vs View</h2>
+						<table>
+							<thead><tr><th></th><th>Derived</th><th>CTE</th><th>View</th></tr></thead>
+							<tbody>
+								<tr><td>defined</td><td class="desc">inline in <code>FROM</code></td><td class="desc"><code>WITH</code> at the top</td><td class="desc"><code>CREATE VIEW</code></td></tr>
+								<tr><td>reusable</td><td class="desc">no</td><td class="desc">in one statement</td><td class="desc">everywhere</td></tr>
+								<tr><td>readability</td><td class="desc">nests inward</td><td class="desc">top to bottom</td><td class="desc">hidden</td></tr>
+								<tr><td>sheet</td><td class="center"><a class="sheet-ref" href="sql-40-derived-tables.html">40</a></td><td class="center"><a class="sheet-ref" href="sql-41-common-table-expressions.html">41</a></td><td class="center"><a class="sheet-ref" href="sql-64-views-materialized-views.html">64</a></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting the alias (MySQL, SQL Server error)</li>
+							<li class="note-item">Unnamed expression columns in the derived table</li>
+							<li class="note-item">Nesting three levels deep instead of using a CTE</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Switch to a CTE once nesting passes two levels</li>
+							<li class="note-item">Pre-aggregate children to avoid join fan-out (<a class="sheet-ref" href="sql-35-multi-table-joins.html">sheet 35</a>)</li>
+							<li class="note-item">Push filters into the inner query when you can</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>FROM (SELECT …) AS t</code></li>
+							<li class="note-item">Aggregate twice, filter on aliases</li>
+							<li class="note-item">Alias it (required in many engines)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-39-correlated-subqueries.html" class="nav-link prev">Correlated Subqueries</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-41-common-table-expressions.html" class="nav-link next">Common Table Expressions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

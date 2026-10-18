@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 17: DISTINCT &amp; Duplicates</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>DISTINCT &amp; Duplicates</h1>
+			<div class="sheet-desc">DISTINCT · DISTINCT ON · COUNT(DISTINCT) · finding duplicates · DISTINCT vs GROUP BY</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Removing Repeats</h2>
+						<div class="description"><strong><code>SELECT DISTINCT</code></strong> removes duplicate <strong>output rows</strong>, comparing every selected column (two NULLs count as equal here). <strong><code>COUNT(DISTINCT x)</code></strong> counts unique non-NULL values. PostgreSQL's <strong><code>DISTINCT ON (key)</code></strong> keeps the first row per key according to <code>ORDER BY</code>, a quick way to get "latest order per customer". To <strong>find</strong> duplicate data, group by the columns that should be unique and keep groups with <code>count(*) &gt; 1</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Duplicate Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>DISTINCT</code> applies to the whole row, not one column</li>
+							<li class="note-item">Without aggregates, <code>DISTINCT</code> = <code>GROUP BY</code> all columns</li>
+							<li class="note-item">Deduplicating sorts or hashes the result: not free</li>
+							<li class="note-item">Prevent duplicates with <code>UNIQUE</code> (<a class="sheet-ref" href="sql-57-constraints.html">sheet 57</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>db.customers.distinct('city')</code></li>
+							<li class="note-item">Pipeline: <code>{ $group: { _id: '$city' } }</code></li>
+							<li class="note-item">Unique index: <code>createIndex({ email: 1 }, { unique: true })</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">DISTINCT &amp; Duplicates</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT DISTINCT city FROM customers;
+SELECT DISTINCT city, country FROM customers;
+SELECT count(DISTINCT city) FROM customers;  -- no NULLs
+
+-- Latest order per customer (PostgreSQL)
+SELECT DISTINCT ON (customer_id)
+       customer_id, order_id, order_date
+FROM   orders
+ORDER  BY customer_id, order_date DESC;
+
+-- Find duplicate emails
+SELECT lower(email) AS email, count(*) AS n
+FROM   customers
+GROUP  BY lower(email)
+HAVING count(*) &gt; 1;
+
+-- Delete duplicates, keep the lowest id
+DELETE FROM customers c
+USING  customers d
+WHERE  lower(c.email) = lower(d.email)
+  AND  c.customer_id &gt; d.customer_id;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>DISTINCT city, country</code> — one row per unique pair</div>
+							<div class="explain-item"><code>DISTINCT ON</code> keeps the first row in <code>ORDER BY</code> order</div>
+							<div class="explain-item"><code>ORDER BY</code> must start with the <code>DISTINCT ON</code> columns</div>
+							<div class="explain-item"><code>USING</code> self-join deletes every copy but the oldest</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>DISTINCT ON (…)</code>; <code>DELETE … USING</code></td></tr>
+								<tr><td>MySQL</td><td class="desc">no <code>DISTINCT ON</code> → <code>ROW_NUMBER()</code> (<a class="sheet-ref" href="sql-49-window-patterns.html">sheet 49</a>)</td></tr>
+								<tr><td>SQL Server</td><td class="desc">no <code>DISTINCT ON</code>; delete through a CTE</td></tr>
+								<tr><td>SQLite</td><td class="desc">no <code>DISTINCT ON</code>; <code>MAX()</code> picks that row's columns</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.customer.findMany({
+  distinct: ['city'],
+  select: { city: true },
+  orderBy: { city: 'asc' },
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tools Table | Distinct Vs Group By Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-tools">
+						<h2 class="section-title">Tools</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>unique values</td><td class="desc"><code>SELECT DISTINCT col</code></td></tr>
+								<tr><td>unique combinations</td><td class="desc"><code>SELECT DISTINCT a, b</code></td></tr>
+								<tr><td>count unique</td><td class="desc"><code>count(DISTINCT col)</code></td></tr>
+								<tr><td>one row per group</td><td class="desc"><code>DISTINCT ON</code> / <code>ROW_NUMBER()</code></td></tr>
+								<tr><td>find duplicates</td><td class="desc"><code>GROUP BY … HAVING count(*) &gt; 1</code></td></tr>
+								<tr><td>stop duplicates</td><td class="desc"><code>UNIQUE</code> constraint or index</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-distinct-vs-group-by">
+						<h2 class="section-title">DISTINCT vs GROUP BY</h2>
+						<table>
+							<thead><tr><th>Query</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>SELECT DISTINCT city</td><td class="desc">unique cities</td></tr>
+								<tr><td>SELECT city … GROUP BY city</td><td class="desc">same rows</td></tr>
+								<tr><td>GROUP BY city + count(*)</td><td class="desc">unique cities with counts</td></tr>
+								<tr><td>DISTINCT + aggregate</td><td class="desc">usually a sign you want <code>GROUP BY</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Adding <code>DISTINCT</code> to hide duplicates from a bad join (<a class="sheet-ref" href="sql-35-multi-table-joins.html">sheet 35</a>)</li>
+							<li class="note-item"><code>SELECT DISTINCT *</code> on wide rows: slow and rarely meaningful</li>
+							<li class="note-item"><code>DISTINCT ON</code> without <code>ORDER BY</code>: an arbitrary row wins</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Ask why duplicates exist before removing them</li>
+							<li class="note-item">Clean up duplicates, then add the <code>UNIQUE</code> constraint</li>
+							<li class="note-item">Normalize before comparing: <code>lower(trim(email))</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>DISTINCT</code> — unique output rows</li>
+							<li class="note-item"><code>count(DISTINCT x)</code> — unique values</li>
+							<li class="note-item"><code>DISTINCT ON</code> — first row per key (PG)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-16-limiting-pagination.html" class="nav-link prev">Limiting &amp; Pagination</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-18-comparison-range-operators.html" class="nav-link next">Comparison &amp; Range Operators</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

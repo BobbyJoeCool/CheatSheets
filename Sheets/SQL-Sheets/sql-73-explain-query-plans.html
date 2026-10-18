@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 73: Reading Query Plans</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s73">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 73</div>
+			<h1>Reading Query Plans</h1>
+			<div class="sheet-desc">EXPLAIN · EXPLAIN ANALYZE · Seq Scan · Index Scan · Nested Loop · Hash Join · cost</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">How the Database Runs Your Query</h2>
+						<div class="description"><strong><code>EXPLAIN</code></strong> shows the <strong>plan</strong> the optimizer chose: a tree of steps such as scans, joins and sorts, each with an estimated <strong>cost</strong> and <strong>row count</strong>. <strong><code>EXPLAIN ANALYZE</code></strong> actually runs the query and adds real times and row counts, so you can compare estimates with reality. Read it inside-out: the most indented nodes run first. Large gaps between estimated and actual rows usually mean stale <strong>statistics</strong> (<a class="sheet-ref" href="sql-74-query-optimization.html">sheet 74</a>).</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Plan Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ANALYZE</code> executes the query: careful with writes</li>
+							<li class="note-item">Wrap write statements in <code>BEGIN … ROLLBACK</code></li>
+							<li class="note-item">Cost is in arbitrary units; compare, don't read literally</li>
+							<li class="note-item">A seq scan isn't always bad: small tables, big results</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>db.orders.find({ … }).explain('executionStats')</code></li>
+							<li class="note-item"><code>COLLSCAN</code> = full scan, <code>IXSCAN</code> = index</li>
+							<li class="note-item">Compare <code>totalDocsExamined</code> with <code>nReturned</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">EXPLAIN</h2>
+						<pre class="language-sql"><code class="language-sql">EXPLAIN
+SELECT * FROM orders WHERE customer_id = 42;
+-- Index Scan using orders_customer_id_idx on orders
+--   (cost=0.29..8.31 rows=5 width=40)
+--   Index Cond: (customer_id = 42)
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT c.name, sum(o.total)
+FROM   customers c
+JOIN   orders o USING (customer_id)
+WHERE  o.order_date &gt;= '2026-10-01'
+GROUP  BY c.name;
+-- HashAggregate (actual time=4.1..4.3 rows=120)
+--   -&gt; Hash Join (rows=900) (actual rows=1150)
+--        Hash Cond: (o.customer_id = c.customer_id)
+--        -&gt; Seq Scan on orders o
+--             Filter: (order_date &gt;= '2026-10-01')
+--             Rows Removed by Filter: 48850
+--        -&gt; Hash
+--             -&gt; Seq Scan on customers c
+-- Planning Time: 0.3 ms
+-- Execution Time: 4.6 ms        (output trimmed)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>cost=0.29..8.31</code> — startup cost .. total cost</div>
+							<div class="explain-item"><code>rows=900</code> estimate vs <code>actual rows=1150</code>: close enough</div>
+							<div class="explain-item">48,850 rows removed by a filter → an index candidate</div>
+							<div class="explain-item"><code>Hash Join</code> builds a hash of customers, probes with orders</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>EXPLAIN</code>, <code>EXPLAIN ANALYZE</code> (8.0.18+), <code>FORMAT=TREE</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc">execution plans in SSMS; <code>SET STATISTICS IO, TIME ON</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>EXPLAIN QUERY PLAN SELECT …</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">const prisma = new PrismaClient({
+  adapter, log: [{ emit: 'event', level: 'query' }],
+});
+prisma.$on('query', (e) =&gt; console.log(e.duration, e.query));
+// copy a slow query and EXPLAIN ANALYZE it in psql</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Plan Nodes Table | Numbers To Read Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-plan-nodes">
+						<h2 class="section-title">Plan Nodes</h2>
+						<table>
+							<thead><tr><th>Node</th><th>Means</th><th>Watch for</th></tr></thead>
+							<tbody>
+								<tr><td>Seq Scan</td><td class="desc">read the whole table</td><td class="desc">big table + few rows wanted</td></tr>
+								<tr><td>Index Scan</td><td class="desc">walk index, fetch rows</td><td class="desc">many rows → random I/O</td></tr>
+								<tr><td>Index Only Scan</td><td class="desc">answer from the index</td><td class="desc">good; needs vacuumed table</td></tr>
+								<tr><td>Bitmap Heap Scan</td><td class="desc">collect matches, read pages</td><td class="desc">medium selectivity</td></tr>
+								<tr><td>Nested Loop</td><td class="desc">inner lookup per outer row</td><td class="desc">large outer side</td></tr>
+								<tr><td>Hash Join</td><td class="desc">hash one side, probe other</td><td class="desc">hash spilling to disk</td></tr>
+								<tr><td>Sort / HashAggregate</td><td class="desc">order / group rows</td><td class="desc"><code>external merge</code> = disk</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-numbers-to-read">
+						<h2 class="section-title">Numbers to Read</h2>
+						<table>
+							<thead><tr><th>Field</th><th>Tells you</th></tr></thead>
+							<tbody>
+								<tr><td>cost=a..b</td><td class="desc">startup .. total estimate</td></tr>
+								<tr><td>rows=</td><td class="desc">estimated rows out</td></tr>
+								<tr><td>actual time=a..b</td><td class="desc">ms to first .. last row</td></tr>
+								<tr><td>loops=</td><td class="desc">times the node ran (multiply!)</td></tr>
+								<tr><td>Rows Removed by Filter</td><td class="desc">wasted reads</td></tr>
+								<tr><td>Buffers: shared hit / read</td><td class="desc">cache hits / disk reads</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Tuning from <code>EXPLAIN</code> estimates without <code>ANALYZE</code></li>
+							<li class="note-item">Running <code>EXPLAIN ANALYZE DELETE …</code> outside a rolled-back transaction</li>
+							<li class="note-item">Ignoring <code>loops</code>: per-loop time × loops = real time</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Paste plans into explain.dalibo.com or explain.depesz.com</li>
+							<li class="note-item">Fix the node with the biggest actual time first</li>
+							<li class="note-item">Compare plans before and after each change</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>EXPLAIN</code> — plan · <code>ANALYZE</code> — real run</li>
+							<li class="note-item">Read inner nodes first</li>
+							<li class="note-item">Estimates vs actuals → statistics</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-72-index-types-strategies.html" class="nav-link prev">Index Types &amp; Strategies</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-74-query-optimization.html" class="nav-link next">Query Optimization</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

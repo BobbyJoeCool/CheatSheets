@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 19: Pattern Matching</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Pattern Matching</h1>
+			<div class="sheet-desc">LIKE · % · _ · ESCAPE · ILIKE · SIMILAR TO · ~ · REGEXP</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Matching Text Patterns</h2>
+						<div class="description"><strong><code>LIKE</code></strong> matches text against a pattern where <strong><code>%</code></strong> means "any run of characters" and <strong><code>_</code></strong> means "exactly one character". Use <strong><code>ESCAPE</code></strong> to match a literal <code>%</code> or <code>_</code>. PostgreSQL adds <strong><code>ILIKE</code></strong> (case-insensitive) and full <strong>regular expressions</strong> with <code>~</code>; MySQL has <code>REGEXP</code>. A pattern that <strong>starts with <code>%</code></strong> can't use a normal B-tree index, so it scans the whole table.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Pattern Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>LIKE</code> must match the <strong>whole</strong> string</li>
+							<li class="note-item">Case sensitivity follows the engine and collation</li>
+							<li class="note-item"><code>'Desk%'</code> can use an index; <code>'%desk'</code> can't</li>
+							<li class="note-item">For words in prose, use full-text search (<a class="sheet-ref" href="sql-80-full-text-search.html">sheet 80</a>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>{ name: /lamp/i }</code> or <code>{ $regex: '^Desk', $options: 'i' }</code></li>
+							<li class="note-item">Only an anchored, case-sensitive <code>^prefix</code> regex uses an index</li>
+							<li class="note-item">Atlas Search handles fuzzy and full-text matching</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">LIKE &amp; Regex</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT name FROM products WHERE name LIKE 'Desk%';
+SELECT name FROM products WHERE name LIKE '%lamp%';
+SELECT name FROM products WHERE name LIKE '_at';
+SELECT email FROM customers
+WHERE  email NOT LIKE '%@%.%';
+
+-- Case-insensitive (PostgreSQL)
+SELECT name FROM products WHERE name ILIKE '%LAMP%';
+
+-- Match a literal %
+SELECT name FROM products
+WHERE  name LIKE '%50!%%' ESCAPE '!';   -- contains 50%
+
+-- Regular expressions (PostgreSQL)
+SELECT email FROM customers
+WHERE  email ~* '^[^@\s]+@[^@\s]+\.[a-z]{2,}$';
+SELECT name FROM products WHERE name ~ '^[A-Z]{3}-\d+';
+SELECT regexp_replace(name, '[^A-Za-z ]', '', 'g')
+FROM   customers;                       -- letters only
+SELECT substring(email FROM '@(.*)$')   -- domain
+FROM   customers;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>'_at'</code> — exactly three characters ending in <code>at</code></div>
+							<div class="explain-item"><code>ESCAPE '!'</code> makes <code>!%</code> a literal percent sign</div>
+							<div class="explain-item"><code>~</code> regex · <code>~*</code> case-insensitive · <code>!~</code> doesn't match</div>
+							<div class="explain-item"><code>'g'</code> flag replaces every match, not just the first</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>ILIKE</code>, <code>~</code> <code>~*</code>, <code>SIMILAR TO</code>, <code>regexp_*()</code></td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>LIKE</code> ignores case by collation; <code>REGEXP</code> / <code>REGEXP_LIKE()</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc"><code>LIKE '[a-c]%'</code> sets; <code>REGEXP_LIKE()</code> from 2025</td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>LIKE</code> ignores ASCII case; <code>GLOB</code> uses <code>*</code> <code>?</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">await prisma.product.findMany({
+  where: {
+    name: { contains: 'lamp', mode: 'insensitive' },
+  },  // also startsWith, endsWith
+});</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Like Patterns Table | Regex Quick Reference Table -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-like-patterns">
+						<h2 class="section-title">LIKE Patterns</h2>
+						<table>
+							<thead><tr><th>Pattern</th><th>Matches</th></tr></thead>
+							<tbody>
+								<tr><td>'Desk%'</td><td class="desc">starts with Desk</td></tr>
+								<tr><td>'%lamp'</td><td class="desc">ends with lamp</td></tr>
+								<tr><td>'%lamp%'</td><td class="desc">contains lamp</td></tr>
+								<tr><td>'_at'</td><td class="desc">cat, hat, bat (3 chars)</td></tr>
+								<tr><td>'__-%'</td><td class="desc">2 chars, a dash, anything</td></tr>
+								<tr><td>'%!_%' ESCAPE '!'</td><td class="desc">contains an underscore</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-regex-quick-reference">
+						<h2 class="section-title">Regex Quick Reference</h2>
+						<table>
+							<thead><tr><th>Token</th><th>Means</th></tr></thead>
+							<tbody>
+								<tr><td>^ · $</td><td class="desc">start · end of string</td></tr>
+								<tr><td>. · \d · \s</td><td class="desc">any char · digit · whitespace</td></tr>
+								<tr><td>[abc] · [^abc]</td><td class="desc">one of · none of</td></tr>
+								<tr><td>* · + · ?</td><td class="desc">0+, 1+, 0 or 1 of previous</td></tr>
+								<tr><td>{2,4}</td><td class="desc">between 2 and 4 times</td></tr>
+								<tr><td>(a|b)</td><td class="desc">a or b, captured</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>_</code> is a wildcard: <code>LIKE 'user_1'</code> matches <code>userX1</code></li>
+							<li class="note-item">Leading <code>%</code> on a big table: full scan every time</li>
+							<li class="note-item">Assuming <code>LIKE</code> is case-insensitive in PostgreSQL</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">PG: a <code>pg_trgm</code> GIN index speeds up <code>'%x%'</code> searches (<a class="sheet-ref" href="sql-72-index-types-strategies.html">sheet 72</a>)</li>
+							<li class="note-item">Anchor regexes with <code>^</code> and <code>$</code> when validating</li>
+							<li class="note-item">Clean data once on write instead of regex on every read</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>%</code> any run · <code>_</code> one char</li>
+							<li class="note-item"><code>ILIKE</code> / <code>~*</code> — case-insensitive (PG)</li>
+							<li class="note-item">Leading <code>%</code> → no index</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-18-comparison-range-operators.html" class="nav-link prev">Comparison &amp; Range Operators</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 82 Sheets</a>
+				<a href="sql-20-arithmetic-concatenation-operators.html" class="nav-link next">Arithmetic &amp; Concatenation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>
