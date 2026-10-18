@@ -6,6 +6,21 @@ Built as a personal reference library and a practical exercise in agentic AI-ass
 
 ---
 
+## Screenshots
+
+![Landing page: collections grouped by category, each with a sheet count](Assets/Screenshots/index.png)
+
+| A sheet on screen (dark mode) | The same sheet at print time (light mode, 8.5" × 11") |
+|---|---|
+| ![Git "Committing" sheet in dark mode](Assets/Screenshots/sheet-git.png) | ![Git "Committing" sheet in print mode](Assets/Screenshots/sheet-git-print.png) |
+| **Per-collection table of contents with Print All** | **Another sheet: Docker architecture** |
+| ![Python collection table of contents](Assets/Screenshots/collection.png) | ![Docker introduction sheet](Assets/Screenshots/sheet-docker.png) |
+
+<p align="center"><img src="Assets/Screenshots/mobile.png" alt="Landing page on a phone" width="260"></p>
+<p align="center"><em>Responsive layout on a phone.</em></p>
+
+---
+
 ## Purpose
 
 1. **Quick reference** — concise, accurate summaries of languages and concepts used in school and self-study.
