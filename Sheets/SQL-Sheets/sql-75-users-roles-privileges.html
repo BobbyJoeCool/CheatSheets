@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 75: Users, Roles &amp; Privileges</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s75">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 75</div>
+			<h1>Users, Roles &amp; Privileges</h1>
+			<div class="sheet-desc">CREATE ROLE · CREATE USER · GRANT · REVOKE · least privilege · ALTER DEFAULT PRIVILEGES</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Who Can Do What</h2>
+						<div class="description">Databases control access with <strong>roles</strong>. A role that can log in is a user; a role that can't is a group you grant to others. <strong><code>GRANT</code></strong> gives privileges (<code>SELECT</code>, <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>EXECUTE</code> …) on tables, schemas, sequences or functions; <strong><code>REVOKE</code></strong> takes them back. Follow <strong>least privilege</strong>: the app's login gets only the data access it needs, migrations run as a separate owner role, and analysts get read-only access.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Privilege Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Grants on existing tables don't cover future ones</li>
+							<li class="note-item"><code>ALTER DEFAULT PRIVILEGES</code> handles new tables</li>
+							<li class="note-item">Table owners and superusers bypass grants</li>
+							<li class="note-item">Row-level security filters rows per user (PG)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB RBAC: <code>db.createUser({ user, pwd, roles: [{ role: 'read', db: 'shop' }] })</code></li>
+							<li class="note-item">Built-in roles: <code>read</code>, <code>readWrite</code>, <code>dbAdmin</code></li>
+							<li class="note-item">Custom roles can grant actions per collection</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Roles &amp; Grants</h2>
+						<pre class="language-sql"><code class="language-sql">-- Group role: read-only access to the schema
+CREATE ROLE readonly NOLOGIN;
+GRANT CONNECT ON DATABASE shop TO readonly;
+GRANT USAGE  ON SCHEMA public TO readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public
+  TO readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT ON TABLES TO readonly;   -- future
+
+-- A login that inherits it
+CREATE ROLE analyst LOGIN PASSWORD 'change-me';
+GRANT readonly TO analyst;
+
+-- App login: data only, no DDL
+CREATE ROLE app_rw LOGIN PASSWORD 'from-vault';
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON ALL TABLES IN SCHEMA public TO app_rw;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public
+  TO app_rw;
+REVOKE DELETE ON orders FROM app_rw;
+
+-- Only some columns
+GRANT SELECT (customer_id, name, city)
+  ON customers TO support;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>NOLOGIN</code> — a group role; nobody signs in as it</div>
+							<div class="explain-item"><code>USAGE ON SCHEMA</code> is needed before any table access</div>
+							<div class="explain-item">Sequence <code>USAGE</code> lets inserts take identity values</div>
+							<div class="explain-item">Column grants hide <code>email</code> from the support role</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc">roles only (<code>CREATE USER</code> = role + <code>LOGIN</code>); RLS policies</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>CREATE USER 'app'@'%' IDENTIFIED BY …</code>; roles (8.0+)</td></tr>
+								<tr><td>SQL Server</td><td class="desc">logins (server) + users (database); <code>db_datareader</code></td></tr>
+								<tr><td>SQLite</td><td class="desc">no users: protect the file instead</td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-bash"><code class="language-bash"># The app connects as the least-privileged role
+DATABASE_URL="postgresql://app_rw:…@db:5432/shop"
+# Run `prisma migrate deploy` with an owner role,
+# in CI, not with the app's credentials</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-common-privileges">
+						<h2 class="section-title">Common Privileges</h2>
+						<table>
+							<thead><tr><th>Privilege</th><th>Allows</th></tr></thead>
+							<tbody>
+								<tr><td>SELECT</td><td class="desc">read rows (and columns, if listed)</td></tr>
+								<tr><td>INSERT · UPDATE · DELETE</td><td class="desc">change data</td></tr>
+								<tr><td>TRUNCATE · REFERENCES</td><td class="desc">empty table · create FKs to it</td></tr>
+								<tr><td>USAGE (schema, sequence)</td><td class="desc">look inside · take values</td></tr>
+								<tr><td>CREATE (schema, database)</td><td class="desc">create objects in it</td></tr>
+								<tr><td>EXECUTE (function)</td><td class="desc">call it</td></tr>
+								<tr><td>CONNECT (database)</td><td class="desc">open a connection</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-least-privilege-setup">
+						<h2 class="section-title">Least-Privilege Setup</h2>
+						<table>
+							<thead><tr><th>Role</th><th>Gets</th></tr></thead>
+							<tbody>
+								<tr><td>owner / migrator</td><td class="desc">owns objects; runs DDL</td></tr>
+								<tr><td>app_rw</td><td class="desc">DML on tables, sequence usage</td></tr>
+								<tr><td>readonly</td><td class="desc"><code>SELECT</code> (and future tables)</td></tr>
+								<tr><td>support</td><td class="desc">selected columns or a view (<a class="sheet-ref" href="sql-64-views-materialized-views.html">sheet 64</a>)</td></tr>
+								<tr><td>per-tenant users</td><td class="desc">row-level security policies</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">The app connecting as a superuser or owner</li>
+							<li class="note-item">Granting on <code>ALL TABLES</code> but forgetting future tables</li>
+							<li class="note-item">Shared logins that make audits meaningless</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Grant to group roles, then add people to groups</li>
+							<li class="note-item">Keep passwords in a secret store; rotate them</li>
+							<li class="note-item">PG RLS: <code>CREATE POLICY … USING (tenant_id = …)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Roles = users + groups</li>
+							<li class="note-item"><code>GRANT</code> / <code>REVOKE</code> privileges</li>
+							<li class="note-item">Least privilege per role</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-74-query-optimization.html" class="nav-link prev">Query Optimization</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 80 Sheets</a>
+				<a href="sql-76-sql-injection-parameterized-queries.html" class="nav-link next">SQL Injection &amp; Parameters</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SQL — Sheet 80: Full-Text Search</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/sql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s80">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 80</div>
+			<h1>Full-Text Search</h1>
+			<div class="sheet-desc">to_tsvector · to_tsquery · @@ · ts_rank · MATCH … AGAINST · FTS5</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | NoSQL -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Searching Words, Not Characters</h2>
+						<div class="description"><code>LIKE '%lamp%'</code> matches characters; <strong>full-text search</strong> matches <strong>words</strong>. PostgreSQL turns text into a <strong><code>tsvector</code></strong>: normalized word stems ("jumped" → <code>jump</code>) with positions, minus stop words like "the". A <strong><code>tsquery</code></strong> describes what to find (<code>desk &amp; lamp</code>), and <strong><code>@@</code></strong> tests a match. Store the vector in a generated column, index it with <strong>GIN</strong>, and sort by <strong><code>ts_rank</code></strong>. MySQL uses <code>FULLTEXT</code> + <code>MATCH … AGAINST</code>, SQLite the <strong>FTS5</strong> extension.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Search Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">The language config (<code>'english'</code>) controls stemming</li>
+							<li class="note-item"><code>websearch_to_tsquery</code> accepts Google-style input</li>
+							<li class="note-item"><code>setweight</code> ranks title hits above body hits</li>
+							<li class="note-item">Typos need trigram fuzzy matching (<code>pg_trgm</code>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-nosql" id="nosql">
+						<h2 class="section-title">NoSQL Comparison</h2>
+						<ul class="note-list">
+							<li class="note-item">MongoDB: <code>createIndex({ name: 'text' })</code> + <code>find({ $text: { $search: 'desk lamp' } })</code></li>
+							<li class="note-item">Atlas Search (Lucene): relevance, fuzzy, autocomplete</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Dialect + ORM -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">tsvector &amp; tsquery</h2>
+						<pre class="language-sql"><code class="language-sql">SELECT to_tsvector('english',
+                   'The quick brown foxes jumped');
+-- 'brown':3 'fox':4 'jump':5 'quick':2
+
+SELECT name FROM products
+WHERE  to_tsvector('english', name)
+       @@ to_tsquery('english', 'desk &amp; lamp');
+
+-- Store a weighted vector and index it
+ALTER TABLE products ADD COLUMN search tsvector
+  GENERATED ALWAYS AS (
+    setweight(to_tsvector('english', name), 'A') ||
+    setweight(to_tsvector('english',
+              coalesce(category, '')), 'B')
+  ) STORED;
+CREATE INDEX products_search_gin
+  ON products USING gin (search);
+-- Ranked search with user-style input
+SELECT name, ts_rank(search, q) AS rank
+FROM   products,
+       websearch_to_tsquery('english',
+                            'led lamp -wood') AS q
+WHERE  search @@ q
+ORDER  BY rank DESC
+LIMIT  10;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Stop word "the" is dropped; "foxes" stems to <code>fox</code></div>
+							<div class="explain-item"><code>&amp;</code> = AND inside <code>to_tsquery</code></div>
+							<div class="explain-item">Name matches (weight A) outrank category matches (B)</div>
+							<div class="explain-item"><code>-wood</code> excludes; quotes would require a phrase</div>
+						</div>
+					</section>
+					<section class="section-dialect" id="dialect">
+						<h2 class="section-title">Dialect Notes</h2>
+						<table>
+							<thead><tr><th>Engine</th><th>Syntax / behavior</th></tr></thead>
+							<tbody>
+								<tr><td>PostgreSQL</td><td class="desc"><code>tsvector</code>, <code>tsquery</code>, <code>@@</code>, GIN; <code>pg_trgm</code> for typos</td></tr>
+								<tr><td>MySQL</td><td class="desc"><code>FULLTEXT</code> index; <code>MATCH (col) AGAINST ('…' IN BOOLEAN MODE)</code></td></tr>
+								<tr><td>SQL Server</td><td class="desc">full-text catalog; <code>CONTAINS</code>, <code>FREETEXT</code></td></tr>
+								<tr><td>SQLite</td><td class="desc"><code>CREATE VIRTUAL TABLE … USING fts5(…)</code>; <code>MATCH</code>, <code>bm25()</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+					<section class="section-orm" id="orm">
+						<h2 class="section-title">In an ORM</h2>
+						<pre class="language-typescript"><code class="language-typescript">// preview feature: fullTextSearchPostgres
+await prisma.product.findMany({
+  where: { name: { search: 'desk &amp; lamp' } },
+});
+// ranked search with weights → $queryRaw</code></pre>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Tables -->
+			<div class="row row-tables" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-tsquery-syntax">
+						<h2 class="section-title">tsquery Syntax</h2>
+						<table>
+							<thead><tr><th>Write</th><th>Matches</th></tr></thead>
+							<tbody>
+								<tr><td>desk &amp; lamp</td><td class="desc">both words</td></tr>
+								<tr><td>desk | lamp</td><td class="desc">either word</td></tr>
+								<tr><td>!wood</td><td class="desc">not wood</td></tr>
+								<tr><td>led &lt;-&gt; lamp</td><td class="desc">"led" right before "lamp"</td></tr>
+								<tr><td>lam:*</td><td class="desc">words starting with lam</td></tr>
+								<tr><td>websearch: "led lamp" -wood</td><td class="desc">phrase, minus wood</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-which-search">
+						<h2 class="section-title">Which Search?</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>exact prefix (`'Desk%'`)</td><td class="desc">B-tree + <code>LIKE</code></td></tr>
+								<tr><td>substring anywhere</td><td class="desc">trigram GIN (<code>pg_trgm</code>)</td></tr>
+								<tr><td>words, stemming, ranking</td><td class="desc">full-text (<code>tsvector</code>)</td></tr>
+								<tr><td>typo tolerance</td><td class="desc">trigram <code>similarity()</code> / <code>%</code></td></tr>
+								<tr><td>large-scale relevance tuning</td><td class="desc">a search engine (Elasticsearch, Meilisearch)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>LIKE '%word%'</code> on large text columns</li>
+							<li class="note-item">Mixing language configs between vector and query</li>
+							<li class="note-item">Computing <code>to_tsvector</code> per row at query time on big tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Store the vector in a generated column with a GIN index</li>
+							<li class="note-item">Use <code>websearch_to_tsquery</code> for user input</li>
+							<li class="note-item"><code>ts_headline</code> highlights matches for display</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>tsvector</code> @@ <code>tsquery</code></li>
+							<li class="note-item">GIN index + <code>ts_rank</code></li>
+							<li class="note-item">MySQL <code>MATCH</code> · SQLite FTS5</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="sql-79-arrays-generated-series.html" class="nav-link prev">Arrays &amp; Generated Series</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SQL Reference · 80 Sheets</a>
+				<span style="visibility: hidden" class="nav-link next">—</span>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>
