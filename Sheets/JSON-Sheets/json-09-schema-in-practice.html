@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JSON — 09: JSON Schema in Practice</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/json-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s09">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 09</div>
+			<h1>JSON Schema in Practice</h1>
+			<div class="sheet-desc">$schema drafts · if / then / else · dependentRequired · unevaluatedProperties · Ajv · jsonschema</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description + Notes + Explain | Code + Code + Code -->
+			<div class="row row-code-explain" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Beyond the Core Keywords</h2>
+						<div class="description">
+							Sheet 04 covers <code>type</code>, <code>properties</code> and <code>required</code>. Real payloads also need <strong>conditional rules</strong> (“if it’s a card payment, a card number is required”), <strong>dependencies between fields</strong>, and a way to reject unknown keys that still works when schemas are combined with <code>allOf</code>. This sheet covers those keywords, the differences between drafts that break schemas copied from old tutorials, and how to run validation in JavaScript (<strong>Ajv</strong>) and Python (<strong>jsonschema</strong>).
+						</div>
+					</section>
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Which Draft?</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>$schema</code> decides the rules; validators default to different drafts if it is missing</li>
+							<li class="note-item"><strong>draft-07</strong> — still the most common in tutorials and older tools</li>
+							<li class="note-item"><strong>2019-09</strong> — added <code>$defs</code>, <code>dependentRequired</code>, <code>unevaluatedProperties</code></li>
+							<li class="note-item"><strong>2020-12</strong> — current; <code>prefixItems</code> replaced the array form of <code>items</code></li>
+							<li class="note-item">OpenAPI 3.1 uses 2020-12; OpenAPI 3.0 uses a modified draft-04/05 subset</li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>"if"</code> — a subschema; when the data matches it, <code>"then"</code> applies, otherwise <code>"else"</code></div>
+							<div class="explain-item"><code>"required": ["method"]</code> inside <code>if</code> — without it, a payload with no <code>method</code> matches <code>if</code> and gets the card rule</div>
+							<div class="explain-item"><code>"dependentRequired"</code> — if <code>billing</code> is present, <code>zip</code> must be too</div>
+							<div class="explain-item"><code>"unevaluatedProperties": false</code> — rejects keys no subschema (including <code>allOf</code> / <code>if</code> branches) looked at</div>
+							<div class="explain-item"><code>Ajv2020</code> — the default <code>ajv</code> import only understands draft-07; 2020-12 schemas need the <code>ajv/dist/2020</code> build</div>
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-code" id="code-schema">
+						<h2 class="section-title">Conditional Payment Schema (2020-12)</h2>
+						<pre><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "method":  { "enum": ["card", "bank"] },
+    "card":    { "type": "string", "pattern": "^[0-9]{16}$" },
+    "iban":    { "type": "string" },
+    "billing": { "type": "string" },
+    "zip":     { "type": "string" }
+  },
+  "required": ["method"],
+  "if":   { "properties": { "method": { "const": "card" } },
+            "required": ["method"] },
+  "then": { "required": ["card"] },
+  "else": { "required": ["iban"] },
+  "dependentRequired": { "billing": ["zip"] },
+  "unevaluatedProperties": false
+}
+</code></pre>
+					</section>
+					<section class="section-code" id="code-ajv">
+						<h2 class="section-title">Validating It</h2>
+						<pre><code class="language-javascript">// JavaScript — Ajv (npm i ajv ajv-formats)
+import Ajv2020 from "ajv/dist/2020";       // 2020-12 build
+import addFormats from "ajv-formats";
+const ajv = new Ajv2020({ allErrors: true });
+addFormats(ajv);                          // "format": "email" etc.
+const validate = ajv.compile(schema);     // compile once, reuse
+validate({ method: "card" });             // false
+validate.errors[0].message;  // "must have required property 'card'"
+</code></pre>
+					</section>
+					<section class="section-code" id="code-py">
+						<h2 class="section-title"></h2>
+						<pre><code class="language-python"># Python — jsonschema (pip install jsonschema)
+from jsonschema import Draft202012Validator
+v = Draft202012Validator(schema)
+for err in v.iter_errors({"method": "bank", "billing": "x"}):
+    print(err.message)   # 'iban' is a required property
+                         # 'zip' is a dependency of 'billing'
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Draft Changes Table | Conditional Table -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-draft-changes">
+						<h2 class="section-title">Draft Changes That Break Old Schemas</h2>
+						<table>
+							<thead>
+								<tr><th>Old (draft-07)</th><th>Now (2020-12)</th><th>Note</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>definitions</td><td class="desc"><code>$defs</code></td><td class="desc">old name still works in most validators</td></tr>
+								<tr><td>dependencies</td><td class="desc"><code>dependentRequired</code> / <code>dependentSchemas</code></td><td class="desc">split in 2019-09</td></tr>
+								<tr><td>items: [a, b]</td><td class="desc"><code>prefixItems: [a, b]</code></td><td class="desc">tuple validation</td></tr>
+								<tr><td>additionalItems</td><td class="desc"><code>items</code> (after <code>prefixItems</code>)</td><td class="desc">schema for the rest</td></tr>
+								<tr><td>$ref + siblings</td><td class="desc">siblings now apply</td><td class="desc">draft-07 ignored keys next to <code>$ref</code></td></tr>
+								<tr><td>format</td><td class="desc">annotation only</td><td class="desc">opt in to enforce (<code>ajv-formats</code>)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-conditional">
+						<h2 class="section-title">Conditional &amp; Dependency Keywords</h2>
+						<table>
+							<thead>
+								<tr><th>Keyword</th><th>Meaning</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>if / then / else</td><td class="desc">apply <code>then</code> when data matches <code>if</code>, else <code>else</code></td></tr>
+								<tr><td>dependentRequired</td><td class="desc">key A present → keys B, C required</td></tr>
+								<tr><td>dependentSchemas</td><td class="desc">key A present → whole subschema applies</td></tr>
+								<tr><td>const</td><td class="desc">value must equal this exactly</td></tr>
+								<tr><td>unevaluatedProperties</td><td class="desc">rule for keys no subschema evaluated</td></tr>
+								<tr><td>contains / minContains</td><td class="desc">array must hold N items matching a schema</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>additionalProperties: false</code> inside an <code>allOf</code> branch rejects keys defined in the *other* branch — use <code>unevaluatedProperties: false</code> at the top level instead</li>
+							<li class="note-item">Loading a 2020-12 schema with the default Ajv import — it fails with “no schema with key or ref”; import <code>ajv/dist/2020</code></li>
+							<li class="note-item">Writing <code>if</code> without <code>required</code> — a missing field matches every <code>properties</code> check, so the <code>then</code> branch fires unexpectedly</li>
+							<li class="note-item">Calling <code>ajv.compile()</code> on every request — compiling is slow; compile once at startup and reuse the function</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Always set <code>$schema</code> so every tool reads the schema with the same draft rules</li>
+							<li class="note-item">Use <code>allErrors: true</code> for form feedback; leave it off for fast API rejection</li>
+							<li class="note-item">Validate in CI with <code>ajv validate --spec=draft2020 -s schema.json -d "data/*.json"</code> or <code>check-jsonschema --schemafile</code></li>
+							<li class="note-item">Validators: Ajv (JS), <code>jsonschema</code> (Python), networknt (Java), <code>santhosh-tekuri/jsonschema</code> (Go), <code>JsonSchema.Net</code> (.NET)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>if / then / else</code> — conditional rules on the same object</li>
+							<li class="note-item"><code>dependentRequired</code> — one key requires others</li>
+							<li class="note-item"><code>unevaluatedProperties</code> — strict objects that survive <code>allOf</code></li>
+							<li class="note-item"><code>$schema</code> — pin the draft; 2020-12 is current</li>
+							<li class="note-item"><code>Ajv2020</code> / <code>Draft202012Validator</code> — compile once, collect errors</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="json-08-advanced.html">Advanced &amp; Related Formats</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JSON Reference · 15 Sheets</a>
+				<a class="nav-link next" href="json-10-typed-validation.html">Typed Validation in Code</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+
+	</body>
+</html>

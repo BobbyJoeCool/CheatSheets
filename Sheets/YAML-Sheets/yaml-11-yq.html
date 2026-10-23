@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>YAML — 11: yq — Query &amp; Edit YAML</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/yaml-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>yq — Query &amp; Edit YAML</h1>
+			<div class="sheet-desc">yq eval · select() · = · |= · del() · -i · -o=json · ea · * merge · strenv()</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description + Notes + Explain | Code -->
+			<div class="row row-code-explain" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">jq for YAML</h2>
+						<div class="description">
+							<strong>yq</strong> (mikefarah/yq, v4) reads, queries and edits YAML from the command line with jq-like expressions. It keeps <strong>comments and key order</strong> when editing in place, handles multi-document files, and converts between YAML, JSON, XML, TOML, CSV and properties. It is the usual way to bump an image tag, read a value in a CI script, or merge environment-specific config files.
+						</div>
+					</section>
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Before You Start</h2>
+						<ul class="note-list">
+							<li class="note-item">Install: <code>brew install yq</code>, <code>snap install yq</code>, or the single binary from GitHub releases</li>
+							<li class="note-item">Check <code>yq --version</code> — a different Python package also called <code>yq</code> (kislyuk) wraps jq and uses jq syntax</li>
+							<li class="note-item"><code>yq 'expr' file</code> — print result; add <code>-i</code> to write back to the file</li>
+							<li class="note-item">Always single-quote the expression so the shell leaves <code>$</code>, <code>|</code> and <code>*</code> alone</li>
+							<li class="note-item">Output is YAML by default; <code>-o=json</code> for JSON, <code>-r</code> is on by default (no quotes around strings)</li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>.a.b</code> — path; <code>.[0]</code> index; <code>.[]</code> every item; <code>|</code> pipes the result to the next step</div>
+							<div class="explain-item"><code>select(cond)</code> — keep only matching nodes, like <code>WHERE</code></div>
+							<div class="explain-item"><code>=</code> — set to a value; <code>|=</code> — update using the old value (<code>.</code> is the current value)</div>
+							<div class="explain-item"><code>strenv(TAG)</code> — env var as a string; <code>env(TAG)</code> parses it as YAML (so <code>1.10</code> → float)</div>
+							<div class="explain-item"><code>del(path)</code> — remove a key or array item</div>
+							<div class="explain-item"><code>..</code> — recursive descent; <code>select(key == "image")</code> finds that key at any depth</div>
+							<div class="explain-item"><code>ea</code> (eval-all) — load all files at once so they can be combined; default <code>e</code> processes files one by one</div>
+							<div class="explain-item"><code>*</code> — deep merge maps; arrays from the right side <strong>replace</strong> the left (<code>*+</code> appends)</div>
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Everyday Commands</h2>
+						<pre><code class="language-bash"># ── Read ────────────────────────────────────────────────────────
+yq '.spec.replicas' deploy.yaml                 # 3
+yq '.services | keys' compose.yaml              # - api  - db
+yq '.spec.template.spec.containers[0].image' deploy.yaml
+yq '.items[] | select(.kind == "Service") | .metadata.name' all.yaml
+yq 'select(document_index == 1)' multi.yaml     # 2nd document only
+
+# ── Edit in place (-i) ─────────────────────────────────────────
+yq -i '.spec.replicas = 5' deploy.yaml
+yq -i '.image.tag = strenv(TAG)' values.yaml    # env var, kept as string
+yq -i '.version |= . + 1' meta.yaml             # update relative to old value
+yq -i '.tags += ["prod"]' meta.yaml             # append to array
+yq -i 'del(.metadata.annotations)' deploy.yaml
+yq -i '(.. | select(key == "image")) |= sub(":.*", ":1.4.2")' k8s.yaml
+
+# ── Convert ────────────────────────────────────────────────────
+yq -o=json '.' config.yaml &gt; config.json        # YAML → JSON
+yq -p=json -o=yaml '.' data.json                # JSON → YAML
+
+# ── Merge files (later wins) ───────────────────────────────────
+yq ea '. as $f ireduce ({}; . * $f)' base.yaml prod.yaml
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Operators Table | Flags Table | Merge Ops Table -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-operators">
+						<h2 class="section-title">Core Operators</h2>
+						<table>
+							<thead>
+								<tr><th>Operator</th><th>Does</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>keys / length</td><td class="desc">map keys, item count</td></tr>
+								<tr><td>has("k")</td><td class="desc">true if key exists</td></tr>
+								<tr><td>sort_by(.name)</td><td class="desc">sort array of maps</td></tr>
+								<tr><td>unique / unique_by(.x)</td><td class="desc">remove duplicates</td></tr>
+								<tr><td>to_entries / from_entries</td><td class="desc">map ↔ <code>[{key, value}]</code></td></tr>
+								<tr><td>sub("re", "new")</td><td class="desc">regex replace in strings</td></tr>
+								<tr><td>// "default"</td><td class="desc">alternative if null/false</td></tr>
+								<tr><td>... comments=""</td><td class="desc">strip all comments</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-flags">
+						<h2 class="section-title">Flags</h2>
+						<table>
+							<thead>
+								<tr><th>Flag</th><th>Meaning</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>-i</td><td class="desc">edit file in place</td></tr>
+								<tr><td>-o=json|yaml|xml|props|csv</td><td class="desc">output format</td></tr>
+								<tr><td>-p=json|xml|toml|csv</td><td class="desc">input format</td></tr>
+								<tr><td>-I 4</td><td class="desc">indent width</td></tr>
+								<tr><td>-e</td><td class="desc">exit 1 if result is null/false (CI checks)</td></tr>
+								<tr><td>-N</td><td class="desc">no <code>---</code> between documents</td></tr>
+								<tr><td>--front-matter=process</td><td class="desc">edit YAML front matter in Markdown</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-3">
+					<section id="tbl-merge-ops">
+						<h2 class="section-title">Merge Variants</h2>
+						<table>
+							<thead>
+								<tr><th>Operator</th><th>Arrays</th><th>Keys</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>*</td><td class="desc">replace</td><td class="desc">deep merge</td></tr>
+								<tr><td>*+</td><td class="desc">append</td><td class="desc">deep merge</td></tr>
+								<tr><td>*d</td><td class="desc">merge by index</td><td class="desc">deep merge</td></tr>
+								<tr><td>*n</td><td class="desc">replace</td><td class="desc">only add new keys</td></tr>
+								<tr><td>*?</td><td class="desc">replace</td><td class="desc">only update existing keys</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Double-quoting the expression — the shell expands <code>$f</code>, <code>*</code> and backticks before yq sees them</li>
+							<li class="note-item">Using <code>env(VERSION)</code> for versions — <code>1.10</code> becomes the number <code>1.1</code>; use <code>strenv()</code></li>
+							<li class="note-item">Running a jq-syntax command against mikefarah/yq (or the reverse) — check which <code>yq</code> is on the PATH</li>
+							<li class="note-item">Merging with <code>*</code> and expecting lists to combine — they are replaced unless you use <code>*+</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>yq -e '.spec.replicas &gt; 1' deploy.yaml</code> as a CI assertion — non-zero exit when false</li>
+							<li class="note-item">Preview edits without <code>-i</code>, then rerun with <code>-i</code> once the output looks right</li>
+							<li class="note-item"><code>yq -P '.' file.json</code> pretty-prints any supported input as idiomatic YAML</li>
+							<li class="note-item">Pair with <code>kubectl get -o yaml | yq '...'</code> to slice live cluster objects</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>yq '.a.b' f.yaml</code> — read a value</li>
+							<li class="note-item"><code>yq -i '.a = "x"' f.yaml</code> — edit in place, comments kept</li>
+							<li class="note-item"><code>select()</code> / <code>del()</code> / <code>|=</code> — filter, delete, update</li>
+							<li class="note-item"><code>-o=json</code> / <code>-p=json</code> — convert formats</li>
+							<li class="note-item"><code>yq ea '... * ...'</code> — merge files; later wins</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="yaml-10-templating.html">Templating &amp; Config Layering</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">YAML Reference · 14 Sheets</a>
+				<a class="nav-link next" href="yaml-12-editor-schemas-ci.html">Editor Schemas &amp; CI Linting</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+
+	</body>
+</html>

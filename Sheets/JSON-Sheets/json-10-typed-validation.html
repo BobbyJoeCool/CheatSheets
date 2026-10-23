@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JSON — 10: Typed Validation in Code</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/json-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s10">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>Typed Validation in Code</h1>
+			<div class="sheet-desc">z.object · safeParse · z.infer · BaseModel · model_validate_json · ValidationError</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description + Notes + Explain | Code + Code -->
+			<div class="row row-code-explain" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Parse, Don’t Just Cast</h2>
+						<div class="description">
+							<code>JSON.parse()</code> returns <code>any</code> and <code>json.loads()</code> returns a plain <code>dict</code> — the type annotations you put on them are promises, not checks. A <strong>schema library</strong> defines the shape once and gives you both a <strong>runtime check</strong> at the boundary (HTTP body, file, queue message) and a <strong>static type</strong> for the rest of the code. <strong>Zod</strong> is the common choice in TypeScript; <strong>Pydantic</strong> (v2) in Python. Both coerce, apply defaults, and return readable, path-based errors.
+						</div>
+					</section>
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Where to Validate</h2>
+						<ul class="note-list">
+							<li class="note-item">At every trust boundary: request bodies, third-party API responses, config files, queue messages</li>
+							<li class="note-item">Unknown keys: Zod strips them, Pydantic ignores them — both can be made strict</li>
+							<li class="note-item">Coercion: Pydantic converts <code>"1"</code> → <code>1</code> by default (lax mode); Zod never coerces unless you use <code>z.coerce</code></li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>z.object({...})</code> — schema object; <code>z.infer&lt;typeof X&gt;</code> turns it into a TypeScript type</div>
+							<div class="explain-item"><code>.safeParse()</code> — returns <code>{ success, data | error }</code>; never throws</div>
+							<div class="explain-item"><code>.parse()</code> — returns the typed value or throws <code>ZodError</code></div>
+							<div class="explain-item"><code>BaseModel</code> — field annotations are the schema; instantiation validates</div>
+							<div class="explain-item"><code>model_validate_json()</code> — parses bytes/str directly; faster than <code>json.loads</code> then validate</div>
+							<div class="explain-item"><code>e.errors()</code> — list of dicts with <code>loc</code>, <code>msg</code>, <code>type</code>, <code>input</code></div>
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-code" id="code-zod">
+						<h2 class="section-title">TypeScript — Zod</h2>
+						<pre><code class="language-typescript">import { z } from "zod";
+
+const User = z.object({
+  id:    z.number().int().positive(),
+  email: z.string().email(),
+  role:  z.enum(["admin", "viewer"]).default("viewer"),
+  tags:  z.array(z.string()).optional(),
+});
+type User = z.infer&lt;typeof User&gt;;  // { id: number; email: string; ... }
+
+const res = User.safeParse(JSON.parse(body));
+if (!res.success) {
+  res.error.issues;   // [{ path: ["email"], message: "Invalid email", ... }]
+} else {
+  res.data.role;      // "viewer"  (default applied)
+}
+User.parse(data);     // returns User or throws ZodError
+</code></pre>
+					</section>
+					<section class="section-code" id="code-pydantic">
+						<h2 class="section-title">Python — Pydantic v2</h2>
+						<pre><code class="language-python">from typing import Literal
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError
+
+class User(BaseModel):
+    model_config = ConfigDict(extra="forbid")      # reject unknown keys
+    id: int = Field(gt=0)
+    email: EmailStr                                # pip install "pydantic[email]"
+    role: Literal["admin", "viewer"] = "viewer"
+    tags: list[str] | None = None
+
+u = User.model_validate_json(body)    # parse + validate in one step
+u.model_dump_json()                   # back to a JSON string
+User.model_json_schema()              # dict in JSON Schema format
+
+try:
+    User.model_validate({"id": "x", "email": "a@b.io"})
+except ValidationError as e:
+    e.errors()[0]["loc"]              # ('id',)
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Mapping Table | Generators Table -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-mapping">
+						<h2 class="section-title">Same Rule in Zod and Pydantic</h2>
+						<table>
+							<thead>
+								<tr><th>Rule</th><th>Zod</th><th>Pydantic</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>string</td><td class="kw">z.string()</td><td class="kw">str</td></tr>
+								<tr><td>integer &gt; 0</td><td class="kw">z.number().int().positive()</td><td class="kw">int = Field(gt=0)</td></tr>
+								<tr><td>optional</td><td class="kw">.optional()</td><td class="kw">X | None = None</td></tr>
+								<tr><td>default</td><td class="kw">.default("viewer")</td><td class="kw">= "viewer"</td></tr>
+								<tr><td>enum</td><td class="kw">z.enum(["a","b"])</td><td class="kw">Literal["a","b"]</td></tr>
+								<tr><td>array of strings</td><td class="kw">z.array(z.string())</td><td class="kw">list[str]</td></tr>
+								<tr><td>nullable</td><td class="kw">.nullable()</td><td class="kw">X | None</td></tr>
+								<tr><td>custom check</td><td class="kw">.refine(fn, msg)</td><td class="kw">@field_validator</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-generators">
+						<h2 class="section-title">Generate Instead of Hand-Writing</h2>
+						<table>
+							<thead>
+								<tr><th>Tool</th><th>Does</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>z.toJSONSchema()</td><td class="desc">Zod 4 → JSON Schema (Zod 3: <code>zod-to-json-schema</code>)</td></tr>
+								<tr><td>model_json_schema()</td><td class="desc">Pydantic model → JSON Schema</td></tr>
+								<tr><td>json-schema-to-typescript</td><td class="desc">JSON Schema → TS interfaces (<code>json2ts</code>)</td></tr>
+								<tr><td>datamodel-codegen</td><td class="desc">JSON Schema / OpenAPI → Pydantic models</td></tr>
+								<tr><td>quicktype</td><td class="desc">sample JSON → types in 20+ languages</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>const user = JSON.parse(body) as User</code> — a cast checks nothing; a missing field crashes later, far from the cause</li>
+							<li class="note-item">Validating deep inside business logic instead of at the boundary — bad data has already spread</li>
+							<li class="note-item">Forgetting Pydantic’s lax mode — <code>"42"</code> silently becomes <code>42</code>; use <code>strict=True</code> (model or field) when type matters</li>
+							<li class="note-item">Expecting Zod to keep unknown keys — <code>z.object</code> strips them by default; use <code>.passthrough()</code> (v3) / <code>z.looseObject()</code> (v4) to keep</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>safeParse</code> in request handlers and turn <code>issues</code> into a 400/422 response</li>
+							<li class="note-item">Keep the schema as the single source of truth and derive types (<code>z.infer</code>) — never maintain both by hand</li>
+							<li class="note-item">Pydantic’s <code>model_validate_json()</code> skips building an intermediate <code>dict</code> — use it for large bodies</li>
+							<li class="note-item">Use <code>z.coerce.number()</code> for query strings and form fields, which always arrive as text</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>z.object</code> + <code>z.infer</code> — one definition, runtime check + TS type</li>
+							<li class="note-item"><code>safeParse</code> / <code>parse</code> — result object vs. throw</li>
+							<li class="note-item"><code>BaseModel</code> — Python class that validates on creation</li>
+							<li class="note-item"><code>model_validate_json</code> / <code>model_dump_json</code> — JSON in and out</li>
+							<li class="note-item"><code>extra="forbid"</code> / <code>.strict()</code> — reject unknown keys</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="json-09-schema-in-practice.html">JSON Schema in Practice</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JSON Reference · 15 Sheets</a>
+				<a class="nav-link next" href="json-11-openapi.html">OpenAPI &amp; JSON Bodies</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+
+	</body>
+</html>

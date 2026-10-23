@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>YAML — 09: Type Gotchas &amp; Quoting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/yaml-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s09">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 09</div>
+			<h1>Type Gotchas &amp; Quoting</h1>
+			<div class="sheet-desc">Norway problem · yes / no / on / off · octal · sexagesimal · version strings · when to quote</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description + Notes + Explain | Code + Code -->
+			<div class="row row-code-explain" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Plain Scalars Guess Their Type</h2>
+						<div class="description">
+							An unquoted (<strong>plain</strong>) scalar is typed by pattern matching: <code>true</code> becomes a boolean, <code>42</code> an integer, <code>~</code> null. The patterns differ between <strong>YAML 1.1</strong> (PyYAML, Ruby’s Psych, many older tools) and <strong>YAML 1.2</strong> (js-yaml 4, the <code>yaml</code> npm package, ruamel.yaml), so the same file can load differently in two tools. Country codes, version numbers, port mappings and zip codes are the usual victims. The fix is almost always the same: <strong>quote anything that must stay a string</strong>.
+						</div>
+					</section>
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Quick Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Quote values that look like booleans, numbers, dates or nulls but are really text</li>
+							<li class="note-item">Quote strings that start with <code>@</code>, backtick, <code>*</code>, <code>&amp;</code>, <code>!</code>, <code>|</code>, <code>&gt;</code>, <code>%</code>, <code>{</code>, <code>[</code> or <code>#</code></li>
+							<li class="note-item">Quote strings containing <code>: </code> or <code> #</code> — they start a mapping or a comment</li>
+							<li class="note-item">A colon *without* a following space is fine: <code>url: http://x.io:8080</code></li>
+							<li class="note-item">Single quotes are literal (<code>''</code> escapes a quote); double quotes allow <code>\n</code>, <code>\t</code>, <code>\u00e9</code></li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><strong>Norway problem</strong> — <code>NO</code> is a 1.1 boolean, so a list of country codes turns Norway into <code>false</code></div>
+							<div class="explain-item"><code>yes / no / on / off</code> — 1.1 booleans in any case (<code>Yes</code>, <code>OFF</code>); plain strings in 1.2</div>
+							<div class="explain-item"><code>010</code> — 1.1 reads a leading zero as octal; 1.2 needs the <code>0o</code> prefix</div>
+							<div class="explain-item"><code>22:22</code> — 1.1 reads colon-separated digits as base-60; Docker Compose docs tell you to quote ports</div>
+							<div class="explain-item"><code>3.10</code> — a float in every version; GitHub Actions <code>python-version: 3.10</code> installs 3.1</div>
+							<div class="explain-item"><code>on:</code> as a key — PyYAML loads the GitHub Actions trigger key as <code>True</code>; GitHub’s parser doesn’t</div>
+							<div class="explain-item">Empty value and <code>~</code> — both are null; use <code>""</code> for an empty string</div>
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-code" id="code-types">
+						<h2 class="section-title">Same Text, Different Types</h2>
+						<pre><code class="language-yaml">#                         YAML 1.1 (PyYAML)     YAML 1.2 core
+country: NO             # false                 "NO"
+answer:  yes            # true                  "yes"
+switch:  off            # false                 "off"
+octal:   010            # 8                     10
+octal2:  0o10           # "0o10"                8
+port:    22:22          # 1342  (base 60!)      "22:22"
+version: 3.10           # 3.1                   3.1      ← both!
+sci:     1e3            # "1e3"                 1000.0
+date:    2026-10-23     # datetime.date         "2026-10-23"
+zip:     02134          # 1116 (octal)          2134
+empty:                  # None                  null
+tilde:   ~              # None                  null
+
+# Safe in every parser:
+country: "NO"
+version: "3.10"
+port:    "22:22"
+zip:     "02134"
+</code></pre>
+					</section>
+					<section class="section-code" id="code-check">
+						<h2 class="section-title">Checking What a Parser Sees</h2>
+						<pre><code class="language-python">import yaml                        # PyYAML = YAML 1.1 rules
+yaml.safe_load("on: push")         # {True: 'push'}   ← key is a bool!
+yaml.safe_load("v: 3.10")          # {'v': 3.1}
+yaml.safe_load('v: "3.10"')        # {'v': '3.10'}
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Versions Table | Special Starts Table | Quote Styles Table -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-versions">
+						<h2 class="section-title">YAML 1.1 vs 1.2 by Tool</h2>
+						<table>
+							<thead>
+								<tr><th>Tool / library</th><th>Rules</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>PyYAML</td><td class="desc">1.1</td></tr>
+								<tr><td>ruamel.yaml</td><td class="desc">1.2 (default)</td></tr>
+								<tr><td>js-yaml 4 / <code>yaml</code> (npm)</td><td class="desc">1.2 core schema</td></tr>
+								<tr><td>Ruby Psych</td><td class="desc">1.1</td></tr>
+								<tr><td>SnakeYAML (Java)</td><td class="desc">1.1; SnakeYAML Engine = 1.2</td></tr>
+								<tr><td>go-yaml v3</td><td class="desc">1.2 mostly; <code>yes/no</code> → bool only into <code>bool</code> fields</td></tr>
+								<tr><td>Kubernetes (sigs.k8s.io/yaml)</td><td class="desc">1.1 booleans via go-yaml v2</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-special-starts">
+						<h2 class="section-title">Characters That Force Quoting</h2>
+						<table>
+							<thead>
+								<tr><th>Starts with / contains</th><th>Why</th></tr>
+							</thead>
+							<tbody>
+								<tr><td><code>*</code> <code>&amp;</code></td><td class="desc">alias / anchor</td></tr>
+								<tr><td><code>!</code></td><td class="desc">tag</td></tr>
+								<tr><td><code>|</code> <code>&gt;</code></td><td class="desc">block scalar</td></tr>
+								<tr><td><code>{</code> <code>[</code></td><td class="desc">flow mapping / sequence</td></tr>
+								<tr><td><code>@</code> backtick</td><td class="desc">reserved</td></tr>
+								<tr><td><code>%</code></td><td class="desc">directive (at line start)</td></tr>
+								<tr><td><code>- </code> <code>? </code></td><td class="desc">sequence item / complex key</td></tr>
+								<tr><td>contains <code>: </code> or <code> #</code></td><td class="desc">mapping value / comment</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-3">
+					<section id="tbl-quote-styles">
+						<h2 class="section-title">Which Quotes?</h2>
+						<table>
+							<thead>
+								<tr><th>Style</th><th>Escapes</th><th>Use for</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>plain</td><td class="desc">none</td><td class="desc">simple words</td></tr>
+								<tr><td>'single'</td><td class="desc"><code>''</code> only</td><td class="desc">regex, Windows paths, literal text</td></tr>
+								<tr><td>"double"</td><td class="desc"><code>\n</code> <code>\t</code> <code>\"</code> <code>\u…</code></td><td class="desc">special characters, explicit strings</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Trusting a linter-clean file — <code>country: NO</code> is valid YAML; it is just a boolean in 1.1 parsers</li>
+							<li class="note-item">Writing tool versions unquoted (<code>node: 18.10</code>, <code>python-version: 3.10</code>) — they become floats and lose the trailing zero</li>
+							<li class="note-item">Leaving Compose port mappings unquoted — values under 60 like <code>22:22</code> are parsed as base-60 integers by 1.1 parsers</li>
+							<li class="note-item">Using <code>""</code> and empty values interchangeably — an empty value is <code>null</code>, not an empty string</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Enable yamllint’s <code>truthy</code> rule — it flags <code>yes</code>, <code>on</code>, <code>NO</code> and friends</li>
+							<li class="note-item">Round-trip a file through your real parser (<code>python -c "import yaml,sys; print(yaml.safe_load(sys.stdin))" &lt; f.yml</code>) to see the types it gets</li>
+							<li class="note-item">Prefer YAML 1.2 libraries (ruamel.yaml, <code>yaml</code> npm) for new code</li>
+							<li class="note-item">When in doubt, quote — quoting a string never changes its meaning; not quoting sometimes does</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>NO</code> / <code>yes</code> / <code>on</code> — booleans in YAML 1.1; quote country codes and words</li>
+							<li class="note-item"><code>3.10</code> — always a float; quote versions</li>
+							<li class="note-item"><code>22:22</code> / <code>010</code> — base-60 and octal in 1.1; quote ports and zip codes</li>
+							<li class="note-item"><code>~</code> / empty — null; <code>""</code> for empty string</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="yaml-08-tooling.html" title="Tooling, Validation &amp; Language Integration">Tooling &amp; Validation</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">YAML Reference · 14 Sheets</a>
+				<a class="nav-link next" href="yaml-10-templating.html">Templating &amp; Config Layering</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+
+	</body>
+</html>

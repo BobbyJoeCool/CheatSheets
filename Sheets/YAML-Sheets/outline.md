@@ -1,13 +1,14 @@
-# YAML Reference Guide Outline (8 sheets)
+# YAML Reference Guide Outline (14 sheets)
 
 ## Metadata
 
 - **Group it belongs to:** Markup & Notation
 - **Folder Directory:** `Sheets/YAML-Sheets/yaml-##-[slug].html`
 - **Groups:** 1
-- **Sheets:** 8
+- **Sheets:** 14
 - **Drafted Date:** 2026-10-02 (re-drafted after the sheets were live)
 - **Verified-Finalized Date:** 2026-10-02
+- **Expanded:** 2026-10-23 (new topic sheets added before the quick references; quick references renumbered)
 
 ## Basic Information
 
@@ -15,13 +16,15 @@ YAML syntax rules, scalars and collections, multiline strings, anchors and merge
 
 ## Differences in Layout from Basic Structure
 
-None. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+Most sheets use the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+
+New sheets 09–12 combine rows 1–2 to fit (left: Description → Notes → Explain; right: Code).
 
 The set is small enough to be a single group.
 
 ## Groups
 
-### Group 1: All Sheets (Sheets 01–08)
+### Group 1: All Sheets (Sheets 01–14)
 
 | # | Filename | Sheet Title | Key Topics |
 |---|---|---|---|
@@ -33,3 +36,9 @@ The set is small enough to be a single group.
 | 06 | `yaml-06-schema.html` | Schema, Tags & Directives | !! tags · %YAML · %TAG · core schema · custom tags · multi-document · Norway problem |
 | 07 | `yaml-07-real-world.html` | Real-World YAML Patterns | GitHub Actions · Docker Compose · Kubernetes · Ansible · OpenAPI · env config |
 | 08 | `yaml-08-tooling.html` | Tooling, Validation & Language Integration | yamllint · PyYAML · js-yaml · SnakeYAML · YAML↔JSON · validation · editors |
+| 09 | `yaml-09-gotchas.html` | Type Gotchas & Quoting | Norway problem · yes / no / on / off · octal · sexagesimal · version strings · when to quote |
+| 10 | `yaml-10-templating.html` | Templating & Config Layering | ${VAR:-default} · .env · compose override · Helm {{ .Values }} · -f values.yaml · Kustomize overlays |
+| 11 | `yaml-11-yq.html` | yq — Query & Edit YAML | yq eval · select() · = · \|= · del() · -i · -o=json · ea · * merge · strenv() |
+| 12 | `yaml-12-editor-schemas-ci.html` | Editor Schemas & CI Linting | # yaml-language-server: $schema · SchemaStore · yaml.schemas · .yamllint · pre-commit · check-jsonschema |
+| 13 | `yaml-13-quick-reference-syntax-types.html` | Quick Reference — Syntax & Types | structure · scalars · collections · quoting · block scalars · anchors & merges · tags · type gotchas |
+| 14 | `yaml-14-quick-reference-patterns-tooling.html` | Quick Reference — Patterns & Tooling | Docker Compose · GitHub Actions · Kubernetes · yq · yamllint · parsers by language · schemas · YAML vs JSON |

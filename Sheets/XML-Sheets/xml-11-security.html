@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>XML — 11: XML Security</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/xml-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>XML Security</h1>
+			<div class="sheet-desc">XXE · billion laughs · external entities · disallow-doctype-decl · defusedxml · XPath injection</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description + Notes + Explain | Code + Code + Code -->
+			<div class="row row-code-explain" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The DTD Is the Attack Surface</h2>
+						<div class="description">
+							XML parsers support DTD features that most applications never use: <strong>external entities</strong> that pull in files or URLs, and <strong>entity expansion</strong> that can grow a few bytes into gigabytes. Attackers abuse them through any endpoint that parses XML they control — SOAP APIs, SAML logins, file uploads (<code>.docx</code>, <code>.svg</code>), RSS imports. <strong>XXE</strong> (XML External Entity) reads server files or makes the server call internal URLs; <strong>billion laughs</strong> exhausts memory. The fix is the same everywhere: <strong>turn off DTD processing</strong> unless you truly need it.
+						</div>
+					</section>
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Defense Checklist</h2>
+						<ul class="note-list">
+							<li class="note-item">Disallow <code>&lt;!DOCTYPE&gt;</code> entirely — the simplest and safest setting</li>
+							<li class="note-item">If DTDs are needed: disable external entities, external DTD loading and XInclude</li>
+							<li class="note-item">Keep entity-expansion limits on (Java secure processing, libxml2 defaults, Expat ≥ 2.4.1)</li>
+							<li class="note-item">Never build XPath or XQuery strings from user input — pass variables</li>
+							<li class="note-item">Treat uploaded Office files and SVGs as XML input — they are parsed too</li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>SYSTEM "file:///…"</code> — external entity; <code>&amp;xxe;</code> is replaced by the file’s contents in the parsed result</div>
+							<div class="explain-item"><code>SYSTEM "http://…"</code> instead of a file → SSRF: the server fetches internal URLs such as cloud metadata</div>
+							<div class="explain-item"><code>defusedxml</code> — drop-in wrappers for the stdlib parsers that forbid entity declarations and external access</div>
+							<div class="explain-item"><code>resolve_entities=False</code> — lxml keeps <code>&amp;xxe;</code> unexpanded; <code>no_network=True</code> blocks URL fetches</div>
+							<div class="explain-item"><code>disallow-doctype-decl</code> — Xerces/JDK parsers reject any document with a DOCTYPE (OWASP’s recommended setting)</div>
+							<div class="explain-item"><code>FEATURE_SECURE_PROCESSING</code> — turns on the JDK’s entity-expansion and size limits</div>
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-code" id="code-attacks">
+						<h2 class="section-title">Attack Payloads</h2>
+						<pre><code class="language-markup">&lt;!-- XXE: read a local file into the document --&gt;
+&lt;?xml version="1.0"?&gt;
+&lt;!DOCTYPE user [ &lt;!ENTITY xxe SYSTEM "file:///etc/passwd"&gt; ]&gt;
+&lt;user&gt;&lt;name&gt;&amp;xxe;&lt;/name&gt;&lt;/user&gt;
+
+&lt;!-- Billion laughs: 10 levels × 10 refs = 10^9 "lol"s ≈ 3 GB --&gt;
+&lt;!DOCTYPE lolz [
+  &lt;!ENTITY lol  "lol"&gt;
+  &lt;!ENTITY lol1 "&amp;lol;&amp;lol;&amp;lol;&amp;lol;&amp;lol;&amp;lol;&amp;lol;&amp;lol;&amp;lol;&amp;lol;"&gt;
+  &lt;!ENTITY lol2 "&amp;lol1;&amp;lol1;&amp;lol1;&amp;lol1;&amp;lol1;&amp;lol1;&amp;lol1;&amp;lol1;&amp;lol1;&amp;lol1;"&gt;
+  &lt;!-- … lol3 … lol8 the same way … --&gt;
+  &lt;!ENTITY lol9 "&amp;lol8;&amp;lol8;&amp;lol8;&amp;lol8;&amp;lol8;&amp;lol8;&amp;lol8;&amp;lol8;&amp;lol8;&amp;lol8;"&gt;
+]&gt;
+&lt;lolz&gt;&amp;lol9;&lt;/lolz&gt;
+</code></pre>
+					</section>
+					<section class="section-code" id="code-python">
+						<h2 class="section-title">Safe Parsing — Python</h2>
+						<pre><code class="language-python">import defusedxml.ElementTree as ET        # pip install defusedxml
+tree = ET.parse("upload.xml")              # raises EntitiesForbidden on &lt;!ENTITY&gt;
+
+from lxml import etree
+parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+tree = etree.parse("upload.xml", parser)
+</code></pre>
+					</section>
+					<section class="section-code" id="code-java">
+						<h2 class="section-title">Safe Parsing — Java</h2>
+						<pre><code class="language-java">DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
+f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+f.setXIncludeAware(false);
+f.setExpandEntityReferences(false);
+Document doc = f.newDocumentBuilder().parse(input);
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Attacks Table | Settings Table -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-attacks">
+						<h2 class="section-title">Attacks &amp; Defenses</h2>
+						<table>
+							<thead>
+								<tr><th>Attack</th><th>Effect</th><th>Defense</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>XXE (file)</td><td class="desc">reads server files</td><td class="desc">disable DTDs / external entities</td></tr>
+								<tr><td>XXE (SSRF)</td><td class="desc">server calls internal URLs</td><td class="desc">same + <code>no_network</code></td></tr>
+								<tr><td>Blind / OOB XXE</td><td class="desc">exfiltrates via parameter entities</td><td class="desc">disable external DTD loading</td></tr>
+								<tr><td>Billion laughs</td><td class="desc">exponential memory use</td><td class="desc">expansion limits or no DTD</td></tr>
+								<tr><td>XInclude</td><td class="desc">includes local files</td><td class="desc"><code>setXIncludeAware(false)</code></td></tr>
+								<tr><td>XPath injection</td><td class="desc"><code>' or '1'='1</code> bypasses filters</td><td class="desc">XPath variables, not string concat</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-settings">
+						<h2 class="section-title">Safe Settings by Platform</h2>
+						<table>
+							<thead>
+								<tr><th>Platform</th><th>Setting</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>Python stdlib</td><td class="desc">use <code>defusedxml.*</code> equivalents</td></tr>
+								<tr><td>Python lxml</td><td class="desc"><code>resolve_entities=False, no_network=True</code></td></tr>
+								<tr><td>Java DOM / SAX</td><td class="desc"><code>disallow-doctype-decl</code> = true</td></tr>
+								<tr><td>.NET</td><td class="desc"><code>DtdProcessing.Prohibit</code>, <code>XmlResolver = null</code> (default since 4.5.2)</td></tr>
+								<tr><td>PHP</td><td class="desc">libxml ≥ 2.9 safe by default; never pass <code>LIBXML_NOENT</code></td></tr>
+								<tr><td>Browsers</td><td class="desc"><code>DOMParser</code> never loads external entities</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Assuming JSON-only APIs are safe — many frameworks still accept <code>Content-Type: application/xml</code> on the same endpoint</li>
+							<li class="note-item">Parsing SAML responses, <code>.docx</code> or <code>.svg</code> uploads with default parser settings — they are XML documents too</li>
+							<li class="note-item">Passing <code>LIBXML_NOENT</code> (PHP) or <code>--noent</code> (xmllint) “to expand entities” — that is exactly what enables XXE</li>
+							<li class="note-item">Building XPath with string concatenation: <code>"//user[name='" + name + "']"</code> — use bound variables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Search the codebase for every parser factory (<code>DocumentBuilderFactory</code>, <code>XMLInputFactory</code>, <code>etree.XMLParser</code>) and harden each one</li>
+							<li class="note-item">Test endpoints with the XXE payload above pointing at a harmless file you control</li>
+							<li class="note-item">OWASP’s <strong>XXE Prevention Cheat Sheet</strong> lists the exact flags for each Java, .NET and C/C++ parser</li>
+							<li class="note-item">If you only need data, consider JSON for new APIs — it has no entity system to attack</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>XXE</code> — external entities read files / call URLs</li>
+							<li class="note-item"><code>billion laughs</code> — nested entities exhaust memory</li>
+							<li class="note-item"><code>disallow-doctype-decl</code> / <code>DtdProcessing.Prohibit</code> — reject DTDs</li>
+							<li class="note-item"><code>defusedxml</code> — safe drop-in for Python</li>
+							<li class="note-item"><code>XPath variables</code> — never concatenate user input</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="xml-10-practical.html">Practical XML</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">XML Reference · 16 Sheets</a>
+				<a class="nav-link next" href="xml-12-xslt-intermediate.html">XSLT — Variables, Keys &amp; Grouping</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+
+	</body>
+</html>
