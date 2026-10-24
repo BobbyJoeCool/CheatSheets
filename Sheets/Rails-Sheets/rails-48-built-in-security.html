@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 48: Built-in Security</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s48">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 48</div>
+			<h1>Built-in Security</h1>
+			<div class="sheet-desc">protect_from_forgery · CSRF tokens · XSS escaping · sanitize · content_security_policy · filter_parameters · host authorization</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Defenses Rails Gives You</h2>
+						<div class="description">Rails protects against common web attacks by default: <strong>CSRF</strong> tokens on every non-GET form, <strong>auto-escaping</strong> in views, parameterized SQL, signed and encrypted cookies, and filtered logs. You configure a <strong>Content Security Policy</strong>, allowed hosts and SSL in config files. Most vulnerabilities come from opting out of these defaults.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Defaults to Keep</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ActionController::Base</code> verifies CSRF tokens automatically</li>
+							<li class="note-item">Views escape output unless you use <code>raw</code>, <code>html_safe</code> or <code>&lt;%==</code></li>
+							<li class="note-item">Production sets <code>config.force_ssl = true</code> and secure cookies</li>
+							<li class="note-item"><code>config.filter_parameters</code> hides passwords and tokens in logs and errors</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">config/initializers/content_security_policy.rb</h2>
+						<pre><code class="language-ruby">Rails.application.configure do
+  config.content_security_policy do |policy|
+    policy.default_src :self, :https
+    policy.img_src     :self, :https, :data
+    policy.script_src  :self, :https
+    policy.style_src   :self, :https
+    policy.object_src  :none
+    policy.connect_src :self, "wss://example.com"
+  end
+  config.content_security_policy_nonce_generator = -&gt;(request) { request.session.id.to_s }
+  config.content_security_policy_nonce_directives = %w[script-src style-src]
+  # config.content_security_policy_report_only = true   # trial first
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-other-settings">
+						<h2 class="section-title">Other Settings</h2>
+						<pre><code class="language-ruby"># config/initializers/filter_parameter_logging.rb
+Rails.application.config.filter_parameters += [:passw, :email, :secret, :token, :otp, :ssn]
+
+# config/environments/production.rb
+config.hosts &lt;&lt; "example.com" &lt;&lt; /.*\.example\.com/
+config.force_ssl = true
+
+# app/controllers/api/base_controller.rb (token-auth APIs only)
+skip_forgery_protection</code></pre>
+					</section>
+					<section class="section-code" id="code-safe-output">
+						<h2 class="section-title">Safe Output</h2>
+						<pre><code class="language-erb">&lt;%= user.bio %&gt;                                  &lt;%# escaped %&gt;
+&lt;%= sanitize user.bio, tags: %w[b i a], attributes: %w[href] %&gt;
+&lt;%= javascript_tag nonce: true do %&gt;console.log("ok")&lt;% end %&gt;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">CSP — the browser refuses scripts and styles from other sources</div>
+							<div class="explain-item">Nonce — lets your own inline <code>&lt;script&gt;</code> tags run under CSP</div>
+							<div class="explain-item"><code>filter_parameters</code> — partial matches: <code>:passw</code> covers <code>password_confirmation</code></div>
+							<div class="explain-item"><code>config.hosts</code> — blocks DNS rebinding / Host header attacks</div>
+							<div class="explain-item"><code>skip_forgery_protection</code> — only for APIs not using cookies</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Turning off CSRF to fix a broken form → include <code>csrf_meta_tags</code> and <code>authenticity_token</code></li>
+							<li class="note-item"><code>.html_safe</code> on user input → <code>sanitize</code> with an allow-list</li>
+							<li class="note-item">Shipping CSP straight to enforcing → run <code>report_only</code> first</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Attack → Rails Defense | Security Tools -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-attack-rails-defense">
+						<h2 class="section-title">Attack → Rails Defense</h2>
+						<table>
+							<thead><tr><th>Attack</th><th>Defense</th></tr></thead>
+							<tbody>
+								<tr><td>CSRF</td><td class="desc">Authenticity tokens, SameSite cookies</td></tr>
+								<tr><td>XSS</td><td class="desc">Auto-escaping, <code>sanitize</code>, CSP</td></tr>
+								<tr><td>SQL injection</td><td class="desc">Hash conditions, placeholders</td></tr>
+								<tr><td>Mass assignment</td><td class="desc">Strong parameters</td></tr>
+								<tr><td>Session hijacking</td><td class="desc">Encrypted cookies, HTTPS, <code>reset_session</code></td></tr>
+								<tr><td>Open redirect</td><td class="desc"><code>allow_other_host</code>, <code>url_from</code></td></tr>
+								<tr><td>Brute force</td><td class="desc"><code>rate_limit</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-security-tools">
+						<h2 class="section-title">Security Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Checks</th></tr></thead>
+							<tbody>
+								<tr><td>bin/brakeman</td><td class="desc">Static analysis for Rails code</td></tr>
+								<tr><td>bundler-audit</td><td class="desc">Gems with known CVEs</td></tr>
+								<tr><td>importmap audit</td><td class="desc">JS packages with CVEs</td></tr>
+								<tr><td>bin/ci (8.1)</td><td class="desc">Runs the above locally</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Adding <code>skip_forgery_protection</code> to a cookie-authenticated controller</li>
+							<li class="note-item">Interpolating user data into <code>javascript_tag</code> or inline event handlers</li>
+							<li class="note-item">Logging full params in custom code, bypassing <code>filter_parameters</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Run Brakeman in CI; new apps include it in <code>bin/ci</code> and the GitHub workflow</li>
+							<li class="note-item">Add <code>config.action_dispatch.default_headers</code> changes rather than removing secure defaults</li>
+							<li class="note-item">Review the Rails Security Guide before launch</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">CSRF tokens — automatic</li>
+							<li class="note-item">escaping — automatic in ERB</li>
+							<li class="note-item">CSP — configure in initializer</li>
+							<li class="note-item"><code>filter_parameters</code> — clean logs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-47-authorization.html" class="nav-link prev">Authorization</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-49-credentials.html" class="nav-link next">Credentials</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-erb.min.js"></script>
+	</body>
+</html>

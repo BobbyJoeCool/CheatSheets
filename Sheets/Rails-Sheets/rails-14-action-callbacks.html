@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 14: Action Callbacks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>Action Callbacks</h1>
+			<div class="sheet-desc">before_action · after_action · around_action · only: / except: · skip_before_action · halting with render / redirect</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Run Code Around Actions</h2>
+						<div class="description">Controller callbacks (formerly "filters") run before, after or around actions. They load records, enforce authentication, set locale or time zone, and log. If a <code>before_action</code> renders or redirects, the action <strong>does not run</strong>: that is how auth checks halt a request.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Callback Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Callbacks run in the order declared; parent class callbacks first</li>
+							<li class="note-item"><code>only:</code> / <code>except:</code> restrict which actions trigger them</li>
+							<li class="note-item"><code>prepend_before_action</code> puts a callback at the front of the chain</li>
+							<li class="note-item"><code>after_action</code> runs only if the action didn't raise</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/controllers/application_controller.rb</h2>
+						<pre><code class="language-ruby">class ApplicationController &lt; ActionController::Base
+  before_action :require_authentication           # from the auth generator
+  around_action :use_user_time_zone
+
+  private
+
+  def use_user_time_zone(&amp;action)
+    Time.use_zone(Current.user&amp;.time_zone || "UTC", &amp;action)
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-app-controllers-posts-co">
+						<h2 class="section-title">app/controllers/posts_controller.rb</h2>
+						<pre><code class="language-ruby">class PostsController &lt; ApplicationController
+  allow_unauthenticated_access only: %i[index show]  # skips the auth callback
+  before_action :set_post, only: %i[show edit update destroy]
+  before_action :authorize_owner!, only: %i[edit update destroy]
+  after_action  :track_view, only: :show
+
+  private
+
+  def set_post
+    @post = Post.find(params.expect(:id))
+  end
+
+  def authorize_owner!
+    redirect_to @post, alert: "Not yours" unless @post.user == Current.user
+  end                                                 # redirect halts the chain
+
+  def track_view = ViewCounterJob.perform_later(@post)
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>around_action</code> — must <code>yield</code> (or call the block) to run the action</div>
+							<div class="explain-item"><code>allow_unauthenticated_access</code> — generator macro wrapping <code>skip_before_action</code></div>
+							<div class="explain-item"><code>authorize_owner!</code> — redirect inside a before_action stops the action</div>
+							<div class="explain-item"><code>only:</code> — scopes each callback to specific actions</div>
+							<div class="explain-item"><code>after_action</code> — good for side effects; the response is already built</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@post = Post.find(params[:id])</code> repeated in four actions → one <code>before_action :set_post</code></li>
+							<li class="note-item">Auth checks inside each action → a <code>before_action</code> in <code>ApplicationController</code>, skipped where public</li>
+							<li class="note-item">Callbacks with hidden business logic → keep callbacks to setup and guards</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Callback Methods | Options -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-callback-methods">
+						<h2 class="section-title">Callback Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>before_action</td><td class="desc">Load, authenticate, authorize</td></tr>
+								<tr><td>after_action</td><td class="desc">Logging, headers, analytics</td></tr>
+								<tr><td>around_action</td><td class="desc">Wrap: time zone, locale, timing</td></tr>
+								<tr><td>skip_before_action</td><td class="desc">Remove an inherited callback</td></tr>
+								<tr><td>prepend_before_action</td><td class="desc">Run before others</td></tr>
+								<tr><td>append_before_action</td><td class="desc">Same as before_action</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-options">
+						<h2 class="section-title">Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>only:</td><td class="desc"><code>only: %i[edit update]</code></td></tr>
+								<tr><td>except:</td><td class="desc"><code>except: :index</code></td></tr>
+								<tr><td>if: / unless:</td><td class="desc"><code>if: -&gt; { request.format.html? }</code></td></tr>
+								<tr><td>raise: false</td><td class="desc"><code>skip_before_action :x, raise: false</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Skipping auth with <code>skip_before_action :require_authentication</code> and no <code>only:</code>, opening every action</li>
+							<li class="note-item">Setting <code>@post</code> in a callback that doesn't cover all actions using it → <code>nil</code> errors</li>
+							<li class="note-item">Forgetting to <code>yield</code> in an <code>around_action</code>, so the action never runs and nothing renders</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Name guard callbacks with <code>!</code> (<code>authorize_owner!</code>) so their halting role is obvious</li>
+							<li class="note-item">Run <code>bin/rails runner 'p PostsController._process_action_callbacks.map(&amp;:filter)'</code> to see the chain</li>
+							<li class="note-item">Prefer <code>Current</code> attributes over passing the user through many callbacks</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>before_action</code> — guard/load</li>
+							<li class="note-item"><code>around_action</code> — wrap with yield</li>
+							<li class="note-item"><code>render/redirect</code> — halts</li>
+							<li class="note-item"><code>only:</code> / <code>except:</code> — scope</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-13-render-redirect.html" class="nav-link prev">Render &amp; Redirect</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-15-sessions-cookies-flash.html" class="nav-link next">Sessions &amp; Flash</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

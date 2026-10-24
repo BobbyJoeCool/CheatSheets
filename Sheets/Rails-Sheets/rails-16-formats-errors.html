@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 16: Formats &amp; Error Handling</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>Formats &amp; Error Handling</h1>
+			<div class="sheet-desc">respond_to · format.json · format.md + render markdown: (8.1) · rescue_from · RecordNotFound → 404 · public/404.html · exceptions_app</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">One Action, Many Formats</h2>
+						<div class="description"><code>respond_to</code> lets one action answer HTML, JSON, Turbo Stream, CSV or (8.1) Markdown based on the URL extension or <code>Accept</code> header. <code>rescue_from</code> turns exceptions into responses in one place. In production, unhandled errors map to status codes and the static pages in <code>public/</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Format &amp; Error Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Format comes from <code>.json</code> in the URL or the <code>Accept</code> header</li>
+							<li class="note-item">An unlisted format raises <code>ActionController::UnknownFormat</code> (406)</li>
+							<li class="note-item"><code>ActiveRecord::RecordNotFound</code> becomes a <strong>404</strong> in production automatically</li>
+							<li class="note-item">Rails 8.1 can render Markdown: <code>render markdown: @page</code> calls <code>@page.to_markdown</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">respond_to</h2>
+						<pre><code class="language-ruby">def show
+  @post = Post.find(params.expect(:id))
+  respond_to do |format|
+    format.html                                   # show.html.erb
+    format.json { render json: @post }
+    format.csv  { send_data @post.to_csv, filename: "post.csv" }
+    format.md   { render markdown: @post }        # 8.1: needs #to_markdown
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-rescue-from">
+						<h2 class="section-title">rescue_from</h2>
+						<pre><code class="language-ruby">class ApplicationController &lt; ActionController::Base
+  rescue_from ActiveRecord::RecordNotFound, with: :not_found
+  rescue_from Pundit::NotAuthorizedError do
+    redirect_back_or_to root_path, alert: "Not allowed"
+  end
+
+  private
+
+  def not_found
+    respond_to do |format|
+      format.html { render "errors/not_found", status: :not_found }
+      format.json { render json: { error: "not found" }, status: :not_found }
+    end
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-custom-error-pages-confi">
+						<h2 class="section-title">Custom Error Pages (config/application.rb)</h2>
+						<pre><code class="language-ruby">config.exceptions_app = routes   # then: match "/404", to: "errors#not_found", via: :all</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>format.html</code> with no block — renders the default template</div>
+							<div class="explain-item"><code>send_data</code> — stream generated content as a download</div>
+							<div class="explain-item"><code>render markdown:</code> — 8.1, sets <code>text/markdown</code></div>
+							<div class="explain-item"><code>rescue_from ... with:</code> — one handler for every action in the class</div>
+							<div class="explain-item"><code>exceptions_app = routes</code> — render error pages through your own controller</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>begin/rescue</code> around <code>find</code> in every action → let it raise; handle with <code>rescue_from</code> or the 404 page</li>
+							<li class="note-item">Separate <code>show_json</code> actions → one action with <code>respond_to</code></li>
+							<li class="note-item"><code>rescue_from StandardError</code> → rescue specific error classes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Exception → Status (production) | Static Error Pages -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-exception-status-production">
+						<h2 class="section-title">Exception → Status (production)</h2>
+						<table>
+							<thead><tr><th>Exception</th><th>Status</th></tr></thead>
+							<tbody>
+								<tr><td>ActiveRecord::RecordNotFound</td><td class="desc">404</td></tr>
+								<tr><td>ActionController::RoutingError</td><td class="desc">404</td></tr>
+								<tr><td>ActionController::ParameterMissing</td><td class="desc">400</td></tr>
+								<tr><td>ActionController::InvalidAuthenticityToken</td><td class="desc">422</td></tr>
+								<tr><td>ActiveRecord::RecordInvalid</td><td class="desc">422</td></tr>
+								<tr><td>ActionController::UnknownFormat</td><td class="desc">406</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-static-error-pages">
+						<h2 class="section-title">Static Error Pages</h2>
+						<table>
+							<thead><tr><th>File</th><th>Shown For</th></tr></thead>
+							<tbody>
+								<tr><td>public/404.html</td><td class="desc">Not found</td></tr>
+								<tr><td>public/422.html</td><td class="desc">Unprocessable</td></tr>
+								<tr><td>public/500.html</td><td class="desc">Server error</td></tr>
+								<tr><td>public/406-unsupported-browser.html</td><td class="desc"><code>allow_browser</code> rejection</td></tr>
+								<tr><td>public/400.html</td><td class="desc">Bad request</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>rescue_from StandardError</code> hides bugs and swallows errors your error tracker should see</li>
+							<li class="note-item">Expecting the 404 page in development; set <code>config.consider_all_requests_local = false</code> to preview it</li>
+							<li class="note-item">Forgetting <code>format.json</code> in <code>respond_to</code> and getting 406 from API clients</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Report rescued errors with <code>Rails.error.report(e)</code> so they still reach monitoring</li>
+							<li class="note-item">Keep <code>public/500.html</code> plain HTML; it must render even when the app can't</li>
+							<li class="note-item">Use <code>request.format.json?</code> checks sparingly; <code>respond_to</code> is clearer</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>respond_to</code> — per-format responses</li>
+							<li class="note-item"><code>render markdown:</code> — 8.1</li>
+							<li class="note-item"><code>rescue_from</code> — central handlers</li>
+							<li class="note-item"><code>public/*.html</code> — production error pages</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-15-sessions-cookies-flash.html" class="nav-link prev">Sessions &amp; Flash</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-17-controller-concerns.html" class="nav-link next">Concerns &amp; Current</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

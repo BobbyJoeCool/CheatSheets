@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 34: Polymorphic, STI &amp; Delegated Types</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>Polymorphic, STI &amp; Delegated Types</h1>
+			<div class="sheet-desc">polymorphic: true · as: · _type column · single table inheritance · type column · delegated_type</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">One Association, Many Classes</h2>
+						<div class="description">A <strong>polymorphic</strong> <code>belongs_to</code> lets one model attach to several others: comments on posts *and* photos, stored as <code>commentable_type</code> + <code>commentable_id</code>. <strong>Single table inheritance</strong> stores subclasses in one table with a <code>type</code> column. <strong>Delegated types</strong> keep shared columns in one table and type-specific columns in their own tables.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Polymorphic FKs can't have database FK constraints</li>
+							<li class="note-item">STI subclasses share every column; unused ones stay NULL</li>
+							<li class="note-item"><code>delegated_type</code> (6.1+) is Basecamp's approach for feeds of mixed records</li>
+							<li class="note-item">The <code>type</code> column stores the class name string</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Polymorphic</h2>
+						<pre><code class="language-ruby">class Comment &lt; ApplicationRecord
+  belongs_to :commentable, polymorphic: true    # commentable_type, commentable_id
+end
+class Post  &lt; ApplicationRecord; has_many :comments, as: :commentable; end
+class Photo &lt; ApplicationRecord; has_many :comments, as: :commentable; end
+
+# migration: t.references :commentable, polymorphic: true, null: false
+photo.comments.create!(body: "Wow")
+comment.commentable                             # =&gt; #&lt;Photo id: 3&gt;</code></pre>
+					</section>
+					<section class="section-code" id="code-single-table-inheritance">
+						<h2 class="section-title">Single Table Inheritance</h2>
+						<pre><code class="language-ruby">class Vehicle &lt; ApplicationRecord; end           # table vehicles, column type
+class Car   &lt; Vehicle; end
+class Truck &lt; Vehicle
+  validates :payload, presence: true
+end
+
+Car.create!(name: "Civic")                       # type = "Car"
+Vehicle.all                                      # Cars and Trucks
+Truck.all                                        # WHERE type = 'Truck'</code></pre>
+					</section>
+					<section class="section-code" id="code-delegated-type">
+						<h2 class="section-title">Delegated Type</h2>
+						<pre><code class="language-ruby">class Entry &lt; ApplicationRecord                  # entryable_type, entryable_id
+  delegated_type :entryable, types: %w[Message Comment], dependent: :destroy
+end
+class Message &lt; ApplicationRecord
+  has_one :entry, as: :entryable, touch: true
+end
+
+Entry.messages                                   # scope per type
+entry.message?                                   # predicate
+Entry.create!(entryable: Message.new(subject: "Hi"), account: acct)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>polymorphic: true</code> — two columns instead of one FK</div>
+							<div class="explain-item"><code>as: :commentable</code> — the other side of a polymorphic association</div>
+							<div class="explain-item">STI — subclass queries add <code>WHERE type = ...</code> automatically</div>
+							<div class="explain-item"><code>delegated_type</code> — shared table for listing, own tables for details</div>
+							<div class="explain-item">Delegated types avoid STI's sparse NULL columns</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>post_id</code> + <code>photo_id</code> nullable columns on comments → one polymorphic association</li>
+							<li class="note-item">STI with many type-specific columns → delegated types</li>
+							<li class="note-item">Case statements on <code>type</code> strings → subclass methods (polymorphism)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Choosing | Gotchas -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-choosing">
+						<h2 class="section-title">Choosing</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Child attaches to many parent types</td><td class="desc">polymorphic belongs_to</td></tr>
+								<tr><td>Subclasses with nearly identical columns</td><td class="desc">STI</td></tr>
+								<tr><td>Mixed types listed together, different columns</td><td class="desc">delegated_type</td></tr>
+								<tr><td>Shared behavior only, separate tables</td><td class="desc">concern</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-gotchas">
+						<h2 class="section-title">Gotchas</h2>
+						<table>
+							<thead><tr><th>Issue</th><th>Fix</th></tr></thead>
+							<tbody>
+								<tr><td>Renaming a class</td><td class="desc">Update stored <code>*_type</code> / <code>type</code> values</td></tr>
+								<tr><td>No FK on polymorphic</td><td class="desc">Validate presence, clean up in callbacks</td></tr>
+								<tr><td>Column named `type` but not STI</td><td class="desc"><code>self.inheritance_column = nil</code></td></tr>
+								<tr><td>Index for polymorphic</td><td class="desc"><code>[commentable_type, commentable_id]</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Naming a regular column <code>type</code>, which triggers STI and raises <code>SubclassNotFound</code></li>
+							<li class="note-item">Eager loading a polymorphic association with <code>joins</code>; it can't join multiple tables. Use <code>includes</code>/<code>preload</code></li>
+							<li class="note-item">Huge STI tables where each subclass uses different columns</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Override <code>sti_name</code> and <code>find_sti_class</code> to keep stored type names stable across class renames</li>
+							<li class="note-item">Add <code>polymorphic: true, index: true</code> in migrations (the default index covers type + id)</li>
+							<li class="note-item">Start with delegated types for activity feeds or timelines</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>polymorphic: true</code> — many parent types</li>
+							<li class="note-item">STI — subclasses in one table</li>
+							<li class="note-item"><code>delegated_type</code> — shared + specific tables</li>
+							<li class="note-item"><code>as:</code> — the has_many side</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-33-has-one-through.html" class="nav-link prev">has_one &amp; :through</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-35-association-methods.html" class="nav-link next">Association Options</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 45: Notifications &amp; Structured Events</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s45">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 45</div>
+			<h1>Notifications &amp; Structured Events</h1>
+			<div class="sheet-desc">ActiveSupport::Notifications · instrument · subscribe · Rails.event (8.1) · tagged events · Rails.error.report · Rails.logger</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Observing What Rails Does</h2>
+						<div class="description">Rails publishes <strong>instrumentation events</strong> for SQL queries, renders, controller actions, jobs and more. You can subscribe to them for metrics, or instrument your own code. Rails 8.1 adds <strong>structured event reporting</strong> (<code>Rails.event</code>) for machine-readable business and app events, and <code>Rails.error</code> is the unified error reporter.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Event names: <code>sql.active_record</code>, <code>process_action.action_controller</code>, <code>perform.active_job</code> …</li>
+							<li class="note-item">Subscribers run synchronously in the same thread: keep them fast</li>
+							<li class="note-item"><code>Rails.event.notify</code> sends structured events to registered subscribers</li>
+							<li class="note-item"><code>Rails.error.report</code> / <code>handle</code> / <code>record</code> feed error trackers (Sentry, Honeybadger, …)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Subscribe &amp; Instrument</h2>
+						<pre><code class="language-ruby"># config/initializers/instrumentation.rb
+ActiveSupport::Notifications.subscribe("process_action.action_controller") do |event|
+  StatsD.timing("rails.request", event.duration,
+                tags: ["action:#{event.payload[:controller]}##{event.payload[:action]}"])
+end
+
+ActiveSupport::Notifications.instrument("import.csv", rows: rows.size) do
+  CsvImporter.new(file).run
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-structured-events-8-1">
+						<h2 class="section-title">Structured Events (8.1)</h2>
+						<pre><code class="language-ruby">Rails.event.notify("user.signup", user_id: user.id, plan: "pro")
+Rails.event.tagged("checkout") do
+  Rails.event.notify("order.placed", order_id: order.id, total: order.total)
+end
+Rails.event.set_context(request_id: request.request_id)   # added to every event
+
+class LogSubscriber
+  def emit(event) = Rails.logger.info(event.to_json)       # name, payload, tags, context
+end
+Rails.event.subscribe(LogSubscriber.new)</code></pre>
+					</section>
+					<section class="section-code" id="code-errors-logs">
+						<h2 class="section-title">Errors &amp; Logs</h2>
+						<pre><code class="language-ruby">Rails.error.handle(context: { order_id: 1 }) { risky_call }   # report + swallow
+Rails.error.record { risky_call }                             # report + re-raise
+Rails.error.report(e, handled: true)
+Rails.logger.tagged("Billing") { Rails.logger.info "charged" }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>event.duration</code> — milliseconds for the instrumented block</div>
+							<div class="explain-item"><code>instrument</code> — publish your own event around a block</div>
+							<div class="explain-item"><code>Rails.event.notify</code> — name + payload hash, plus tags and context</div>
+							<div class="explain-item"><code>subscribe(obj)</code> — any object with an <code>emit(event)</code> method</div>
+							<div class="explain-item"><code>handle</code> vs <code>record</code> — swallow vs re-raise after reporting</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>puts</code> timing code around slow work → <code>ActiveSupport::Notifications.instrument</code></li>
+							<li class="note-item">Ad-hoc log strings for analytics → <code>Rails.event.notify</code> with a structured payload</li>
+							<li class="note-item"><code>rescue =&gt; e; Sentry.capture(e)</code> → <code>Rails.error.handle</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Useful Built-in Events | Logger Settings -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-useful-built-in-events">
+						<h2 class="section-title">Useful Built-in Events</h2>
+						<table>
+							<thead><tr><th>Event</th><th>Payload Highlights</th></tr></thead>
+							<tbody>
+								<tr><td>sql.active_record</td><td class="desc"><code>sql</code>, <code>name</code>, <code>cached</code></td></tr>
+								<tr><td>process_action.action_controller</td><td class="desc"><code>controller</code>, <code>action</code>, <code>status</code>, <code>db_runtime</code></td></tr>
+								<tr><td>render_template.action_view</td><td class="desc"><code>identifier</code></td></tr>
+								<tr><td>perform.active_job</td><td class="desc"><code>job</code>, <code>adapter</code></td></tr>
+								<tr><td>deliver.action_mailer</td><td class="desc"><code>mailer</code>, <code>to</code></td></tr>
+								<tr><td>cache_read.active_support</td><td class="desc"><code>key</code>, <code>hit</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-logger-settings">
+						<h2 class="section-title">Logger Settings</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>config.log_level</td><td class="desc"><code>:debug</code> … <code>:fatal</code></td></tr>
+								<tr><td>config.log_tags</td><td class="desc"><code>[:request_id]</code> prefixes</td></tr>
+								<tr><td>config.logger</td><td class="desc">Custom / STDOUT logger</td></tr>
+								<tr><td>ActiveSupport::BroadcastLogger</td><td class="desc">Log to several outputs</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Doing slow I/O inside a subscriber, which slows every request that emits the event</li>
+							<li class="note-item">Logging personal data in event payloads without filtering</li>
+							<li class="note-item">Using <code>Rails.error.handle</code> around code whose failure the caller must know about</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>ActiveSupport::Notifications.monotonic_subscribe</code> for accurate timings</li>
+							<li class="note-item">Add <code>request_id</code> to event context so logs, events and errors line up</li>
+							<li class="note-item">Look at Rails' own <code>LogSubscriber</code>s to see payload keys for each event</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>instrument</code> / <code>subscribe</code> — custom metrics</li>
+							<li class="note-item"><code>Rails.event</code> — structured events (8.1)</li>
+							<li class="note-item"><code>Rails.error</code> — unified error reporting</li>
+							<li class="note-item"><code>tagged</code> — contextual logs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-44-active-support.html" class="nav-link prev">Active Support</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-46-authentication-generator.html" class="nav-link next">Auth Generator</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

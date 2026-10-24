@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 75: Production Configuration</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s75">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 75</div>
+			<h1>Production Configuration</h1>
+			<div class="sheet-desc">production.rb · force_ssl / assume_ssl · eager_load · logging to STDOUT · /up health check · config/puma.rb · SQLite in production</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Ready for Real Traffic</h2>
+						<div class="description"><code>config/environments/production.rb</code> turns on eager loading, caching, SSL and STDOUT logging. Puma serves requests with a few threads per process. In Rails 8, <strong>SQLite in production</strong> is a supported default for single-server apps, with separate databases for the Solid Queue, Cache and Cable data.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>RAILS_ENV=production</code> and <code>RAILS_MASTER_KEY</code> must be set</li>
+							<li class="note-item"><code>/up</code> returns 200 when the app boots: point load balancers and Kamal at it</li>
+							<li class="note-item">Puma: <code>RAILS_MAX_THREADS</code> (default 3) and <code>WEB_CONCURRENCY</code> processes</li>
+							<li class="note-item">Run <code>bin/rails db:prepare</code> on deploy (the Docker entrypoint does this)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">config/environments/production.rb (key lines)</h2>
+						<pre><code class="language-ruby">Rails.application.configure do
+  config.enable_reloading = false
+  config.eager_load = true
+  config.consider_all_requests_local = false
+  config.action_controller.perform_caching = true
+  config.public_file_server.headers = { "cache-control" =&gt; "public, max-age=#{1.year.to_i}" }
+  config.active_storage.service = :local
+  config.assume_ssl = true                     # behind a TLS-terminating proxy
+  config.force_ssl  = true                     # redirect + HSTS + secure cookies
+  config.log_tags = [:request_id]
+  config.logger   = ActiveSupport::TaggedLogging.logger(STDOUT)
+  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
+  config.silence_healthcheck_path = "/up"
+  config.cache_store = :solid_cache_store
+  config.active_job.queue_adapter = :solid_queue
+  config.action_mailer.default_url_options = { host: "example.com" }
+  config.hosts = ["example.com", /.*\.example\.com/]
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-config-puma-rb">
+						<h2 class="section-title">config/puma.rb</h2>
+						<pre><code class="language-ruby">threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
+threads threads_count, threads_count
+port ENV.fetch("PORT", 3000)
+workers ENV.fetch("WEB_CONCURRENCY", 1)
+plugin :tmp_restart
+plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]   # jobs inside Puma</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>eager_load</code> — load all code at boot: faster requests, catches autoload errors</div>
+							<div class="explain-item"><code>assume_ssl</code> — trust that the proxy terminated HTTPS</div>
+							<div class="explain-item">STDOUT logging — containers and Kamal collect it</div>
+							<div class="explain-item"><code>silence_healthcheck_path</code> — keep <code>/up</code> out of the logs</div>
+							<div class="explain-item"><code>plugin :solid_queue</code> — one-box deploys run jobs in the web process</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Log files inside containers → STDOUT with tags</li>
+							<li class="note-item">Postgres + Redis for a small single-server app → SQLite + Solid trio (Rails 8 default)</li>
+							<li class="note-item">Custom health endpoints → the built-in <code>/up</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Production Checklist | Sizing Puma -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-production-checklist">
+						<h2 class="section-title">Production Checklist</h2>
+						<table>
+							<thead><tr><th>Item</th><th>Check</th></tr></thead>
+							<tbody>
+								<tr><td>Secrets</td><td class="desc"><code>RAILS_MASTER_KEY</code> set, credentials per env</td></tr>
+								<tr><td>Database</td><td class="desc"><code>db:prepare</code> runs, backups configured</td></tr>
+								<tr><td>Assets</td><td class="desc">Precompiled in the image</td></tr>
+								<tr><td>Storage</td><td class="desc">Persistent volume or S3 for <code>storage/</code></td></tr>
+								<tr><td>Errors</td><td class="desc">Error reporter subscribed to <code>Rails.error</code></td></tr>
+								<tr><td>Email</td><td class="desc">SMTP and <code>default_url_options</code> host</td></tr>
+								<tr><td>Security</td><td class="desc"><code>force_ssl</code>, <code>hosts</code>, Brakeman clean</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sizing-puma">
+						<h2 class="section-title">Sizing Puma</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Guide</th></tr></thead>
+							<tbody>
+								<tr><td>RAILS_MAX_THREADS</td><td class="desc">3 is the Rails default</td></tr>
+								<tr><td>WEB_CONCURRENCY</td><td class="desc">≈ CPU cores</td></tr>
+								<tr><td>DB pool</td><td class="desc">≥ threads per process</td></tr>
+								<tr><td>YJIT</td><td class="desc">On by default (Ruby 3.3+)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Storing SQLite files or uploads inside the container filesystem without a volume; they vanish on deploy</li>
+							<li class="note-item">Setting the DB pool below Puma's thread count → connection timeouts</li>
+							<li class="note-item">Leaving <code>config.hosts</code> empty behind a proxy that forwards arbitrary Host headers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>bin/rails runner -e production 'p Rails.configuration.eager_load'</code> to check config in the image</li>
+							<li class="note-item">Run Litestream or volume snapshots to back up SQLite databases</li>
+							<li class="note-item">Report errors with an error tracker subscribed via <code>Rails.error.subscribe</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>production.rb</code> — prod settings</li>
+							<li class="note-item"><code>force_ssl</code> / <code>assume_ssl</code> — HTTPS</li>
+							<li class="note-item"><code>/up</code> — health check</li>
+							<li class="note-item">Puma threads × workers — capacity</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-74-debugging.html" class="nav-link prev">Debugging</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-76-docker-thruster.html" class="nav-link next">Docker &amp; Thruster</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

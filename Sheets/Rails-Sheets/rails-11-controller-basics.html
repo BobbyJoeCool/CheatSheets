@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 11: Controller Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Controller Basics</h1>
+			<div class="sheet-desc">ApplicationController · actions · instance vars to views · implicit render · request · response · ActionController::Base vs API</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">What a Controller Does</h2>
+						<div class="description">A controller is a Ruby class whose public methods are <strong>actions</strong>. Rails creates a new instance per request, runs the action, then renders a response. Instance variables set in the action are available in the view. If the action doesn't render or redirect, Rails renders the template matching the action name.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Controller Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Name: plural resource + <code>Controller</code> (<code>PostsController</code>) in <code>posts_controller.rb</code></li>
+							<li class="note-item">All controllers inherit from <code>ApplicationController</code>, which inherits <code>ActionController::Base</code></li>
+							<li class="note-item">Only <strong>public</strong> methods are actions; put helpers under <code>private</code></li>
+							<li class="note-item">Each action must respond exactly once: render, redirect or head</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/controllers/posts_controller.rb</h2>
+						<pre><code class="language-ruby">class PostsController &lt; ApplicationController
+  before_action :set_post, only: %i[show edit update destroy]
+
+  def index
+    @posts = Post.order(created_at: :desc)   # renders posts/index
+  end
+
+  def show; end                              # @post from set_post
+
+  def create
+    @post = Post.new(post_params)
+    if @post.save
+      redirect_to @post, notice: "Post created"
+    else
+      render :new, status: :unprocessable_entity
+    end
+  end
+
+  private
+
+  def set_post
+    @post = Post.find(params.expect(:id))
+  end
+
+  def post_params = params.expect(post: [:title, :body])
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-request-response">
+						<h2 class="section-title">Request &amp; Response</h2>
+						<pre><code class="language-ruby">request.path        # "/posts/1"     request.remote_ip
+request.format      # :html / :json  request.get?
+request.headers["User-Agent"]
+response.status     # 200            response.headers["X-Id"] = "1"</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>index</code> — no render call, so <code>app/views/posts/index.html.erb</code> renders</div>
+							<div class="explain-item"><code>redirect_to @post</code> — polymorphic, goes to <code>post_path(@post)</code></div>
+							<div class="explain-item"><code>render :new, status: :unprocessable_entity</code> — re-show the form with errors (422)</div>
+							<div class="explain-item"><code>private</code> — keeps helper methods from becoming routable actions</div>
+							<div class="explain-item"><code>params.expect</code> — Rails 8 strong params (sheet 12)</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Database queries inside views → load data in the action into instance variables</li>
+							<li class="note-item">Fat actions with business rules → move logic into models or plain Ruby objects</li>
+							<li class="note-item">A dozen instance variables per action → pass one object or use a presenter</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Base Classes | Implicit Behavior -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-base-classes">
+						<h2 class="section-title">Base Classes</h2>
+						<table>
+							<thead><tr><th>Class</th><th>Use For</th></tr></thead>
+							<tbody>
+								<tr><td>ActionController::Base</td><td class="desc">HTML apps: views, cookies, flash, CSRF</td></tr>
+								<tr><td>ActionController::API</td><td class="desc">JSON APIs: lean middleware, no views</td></tr>
+								<tr><td>ApplicationController</td><td class="desc">Your app-wide filters and helpers</td></tr>
+								<tr><td>Rails::HealthController</td><td class="desc"><code>/up</code> health check</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-implicit-behavior">
+						<h2 class="section-title">Implicit Behavior</h2>
+						<table>
+							<thead><tr><th>Situation</th><th>Rails Does</th></tr></thead>
+							<tbody>
+								<tr><td>No render / redirect</td><td class="desc">Render <code>controller/action</code> template</td></tr>
+								<tr><td>Template missing</td><td class="desc">HTML: <code>MissingExactTemplate</code> (406); API: 204</td></tr>
+								<tr><td>`RecordNotFound` raised</td><td class="desc">404 page in production</td></tr>
+								<tr><td>Format not handled</td><td class="desc"><code>ActionController::UnknownFormat</code> → 406</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Leaving a helper method public; it becomes an action reachable if a route points at it</li>
+							<li class="note-item">Rendering after redirect in the same action, which raises <code>AbstractController::DoubleRenderError</code></li>
+							<li class="note-item">Returning a 200 on failed validation; Turbo needs 422 to show the re-rendered form</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep actions short: set up, call the model, respond</li>
+							<li class="note-item">Use endless methods (<code>def x = ...</code>) only for true one-liners like <code>post_params</code></li>
+							<li class="note-item">Use <code>request.variant</code> (e.g. <code>:phone</code>) for device-specific templates</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>public method</code> — an action</li>
+							<li class="note-item"><code>@ivars</code> — data for the view</li>
+							<li class="note-item"><code>implicit render</code> — template by name</li>
+							<li class="note-item"><code>private</code> — non-action helpers</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-10-advanced-routing.html" class="nav-link prev">Advanced Routing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-12-strong-parameters.html" class="nav-link next">Strong Parameters</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

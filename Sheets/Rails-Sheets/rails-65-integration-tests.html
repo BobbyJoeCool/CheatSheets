@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 65: Model &amp; Integration Tests</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s65">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 65</div>
+			<h1>Model &amp; Integration Tests</h1>
+			<div class="sheet-desc">model tests · ActionDispatch::IntegrationTest · get / post · assert_response · assert_redirected_to · follow_redirect! · sign_in helper</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Testing Requests End to End</h2>
+						<div class="description">Integration tests send real HTTP requests through the full Rails stack (routing, middleware, controllers, views) without a browser. They are fast and catch most bugs. New apps generate controller tests as <code>ActionDispatch::IntegrationTest</code>, so "controller test" and "integration test" are the same thing today.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>_url</code> helpers: <code>get posts_url</code></li>
+							<li class="note-item">Params go in <code>params:</code>; JSON bodies with <code>as: :json</code></li>
+							<li class="note-item"><code>assert_select</code> checks rendered HTML with CSS selectors</li>
+							<li class="note-item">Log in through the real login route, or a helper that does</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">test/test_helper.rb (sign-in helper)</h2>
+						<pre><code class="language-ruby">class ActionDispatch::IntegrationTest
+  def sign_in_as(user, password: "password")
+    post session_url, params: { email_address: user.email_address, password: }
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-test-controllers-posts-c">
+						<h2 class="section-title">test/controllers/posts_controller_test.rb</h2>
+						<pre><code class="language-ruby">require "test_helper"
+
+class PostsControllerTest &lt; ActionDispatch::IntegrationTest
+  setup { sign_in_as users(:ann) }
+
+  test "lists posts" do
+    get posts_url
+    assert_response :success
+    assert_select "h2", posts(:hello).title
+  end
+
+  test "creates a post" do
+    assert_difference("Post.count") do
+      post posts_url, params: { post: { title: "New", body: "Text" } }
+    end
+    assert_redirected_to post_url(Post.last)
+    follow_redirect!
+    assert_select ".flash", "Post created"
+  end
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>sign_in_as</code> — posts to the real session route (auth generator)</div>
+							<div class="explain-item"><code>assert_select "h2", text</code> — element with that text exists</div>
+							<div class="explain-item"><code>assert_redirected_to</code> — checks the <code>Location</code> header</div>
+							<div class="explain-item"><code>follow_redirect!</code> — perform the next GET</div>
+							<div class="explain-item"><code>get url, as: :json</code> + <code>response.parsed_body</code> — test JSON endpoints</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Old <code>ActionController::TestCase</code> with <code>assigns</code> → integration tests asserting on output</li>
+							<li class="note-item">Stubbing the current user → log in through the real flow</li>
+							<li class="note-item">Testing every branch in system tests → integration tests; save the browser for JS</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Request Helpers | Response Assertions -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-request-helpers">
+						<h2 class="section-title">Request Helpers</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Sends</th></tr></thead>
+							<tbody>
+								<tr><td>get url, params:</td><td class="desc">GET with query string</td></tr>
+								<tr><td>post url, params:</td><td class="desc">Form POST</td></tr>
+								<tr><td>patch / put / delete</td><td class="desc">Other verbs</td></tr>
+								<tr><td>as: :json</td><td class="desc">JSON body + Accept header</td></tr>
+								<tr><td>headers: { ... }</td><td class="desc">Custom headers</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-response-assertions">
+						<h2 class="section-title">Response Assertions</h2>
+						<table>
+							<thead><tr><th>Assertion</th><th>Checks</th></tr></thead>
+							<tbody>
+								<tr><td>assert_response :success</td><td class="desc">2xx</td></tr>
+								<tr><td>assert_response :redirect</td><td class="desc">3xx</td></tr>
+								<tr><td>assert_redirected_to url</td><td class="desc">Location</td></tr>
+								<tr><td>assert_select "css"</td><td class="desc">HTML content</td></tr>
+								<tr><td>assert_turbo_stream</td><td class="desc">Stream actions</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>_path</code> helpers in integration tests; it works but <code>_url</code> matches redirects exactly</li>
+							<li class="note-item">Asserting on instance variables (<code>assigns</code>); test what the user sees</li>
+							<li class="note-item">Forgetting fixtures need a known password digest for sign-in: <code>password_digest: &lt;%= BCrypt::Password.create("password") %&gt;</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Write one happy-path and one failure-path test per action</li>
+							<li class="note-item">Use <code>assert_select "form[action=?]", posts_path</code> to check forms</li>
+							<li class="note-item">Test JSON with <code>as: :json</code> and <code>parsed_body</code> instead of string matching</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>IntegrationTest</code> — full request stack</li>
+							<li class="note-item"><code>get / post</code> — make requests</li>
+							<li class="note-item"><code>assert_response</code> / <code>assert_select</code> — check output</li>
+							<li class="note-item"><code>sign_in_as</code> — real login</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-64-testing-basics.html" class="nav-link prev">Testing Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-66-system-tests.html" class="nav-link next">System Tests</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

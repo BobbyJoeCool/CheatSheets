@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 63: Caching &amp; Solid Cache</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s63">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 63</div>
+			<h1>Caching &amp; Solid Cache</h1>
+			<div class="sheet-desc">Rails.cache.fetch · fragment caching · Russian doll · touch: true · cache keys &amp; versions · Solid Cache · fresh_when / stale?</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Do Expensive Work Once</h2>
+						<div class="description">Rails caches at several levels: <strong>low-level</strong> values with <code>Rails.cache.fetch</code>, <strong>fragments</strong> of views with <code>cache</code>, and whole responses with HTTP conditional GET. Cache keys include the record's <code>updated_at</code> version, so changing a record invalidates its fragments automatically. Rails 8 uses <strong>Solid Cache</strong>, a disk-friendly database-backed store.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Caching is off in development by default; toggle with <code>bin/rails dev:cache</code></li>
+							<li class="note-item">Key-based expiration: no manual deletes when keys include versions</li>
+							<li class="note-item"><code>touch: true</code> on <code>belongs_to</code> bumps the parent so nested fragments refresh</li>
+							<li class="note-item">Solid Cache can hold far more than RAM-based stores because it uses disk</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Low-Level</h2>
+						<pre><code class="language-ruby">Rails.cache.fetch(["weather", city], expires_in: 30.minutes) do
+  WeatherApi.forecast(city)                   # only on a miss
+end
+Rails.cache.write("k", 1); Rails.cache.read("k"); Rails.cache.delete("k")
+Rails.cache.fetch_multi(*posts) { |post| post.expensive_summary }
+Rails.cache.increment("hits")</code></pre>
+					</section>
+					<section class="section-code" id="code-fragments-russian-dolls">
+						<h2 class="section-title">Fragments &amp; Russian Dolls</h2>
+						<pre><code class="language-erb">&lt;% cache @post do %&gt;                             &lt;%# key: views/posts/1-20261023… %&gt;
+  &lt;h1&gt;&lt;%= @post.title %&gt;&lt;/h1&gt;
+  &lt;% @post.comments.each do |comment| %&gt;
+    &lt;% cache comment do %&gt;&lt;%= render comment %&gt;&lt;% end %&gt;
+  &lt;% end %&gt;
+&lt;% end %&gt;
+&lt;%= render partial: "comments/comment", collection: @post.comments, cached: true %&gt;</code></pre>
+					</section>
+					<section class="section-code" id="code-model-config">
+						<h2 class="section-title">Model &amp; Config</h2>
+						<pre><code class="language-ruby">class Comment &lt; ApplicationRecord
+  belongs_to :post, touch: true                 # comment change → post updated_at
+end
+
+# config/environments/production.rb
+config.cache_store = :solid_cache_store</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Array keys — joined; models contribute <code>cache_key_with_version</code></div>
+							<div class="explain-item"><code>fetch_multi</code> — one round trip for many keys</div>
+							<div class="explain-item"><code>cache @post</code> — fragment invalidates when <code>@post.updated_at</code> changes</div>
+							<div class="explain-item">Nested caches reuse inner fragments when only one comment changes</div>
+							<div class="explain-item"><code>touch: true</code> — keeps the outer fragment fresh</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Manual <code>Rails.cache.delete</code> in callbacks → version-based keys</li>
+							<li class="note-item">Caching a loop of renders → collection rendering with <code>cached: true</code></li>
+							<li class="note-item">Memcached/Redis just for cache in a small app → Solid Cache on the database</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Cache Stores | fetch Options -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-cache-stores">
+						<h2 class="section-title">Cache Stores</h2>
+						<table>
+							<thead><tr><th>Store</th><th>Notes</th></tr></thead>
+							<tbody>
+								<tr><td>:solid_cache_store</td><td class="desc">Rails 8 default, DB-backed, large</td></tr>
+								<tr><td>:memory_store</td><td class="desc">Per process; dev/test</td></tr>
+								<tr><td>:redis_cache_store</td><td class="desc">Shared, in-memory</td></tr>
+								<tr><td>:mem_cache_store</td><td class="desc">Memcached</td></tr>
+								<tr><td>:file_store</td><td class="desc">Disk, single host</td></tr>
+								<tr><td>:null_store</td><td class="desc">No caching (tests)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-fetch-options">
+						<h2 class="section-title">fetch Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>expires_in:</td><td class="desc">TTL</td></tr>
+								<tr><td>race_condition_ttl:</td><td class="desc">Avoid dog-piling on expiry</td></tr>
+								<tr><td>force: true</td><td class="desc">Recompute now</td></tr>
+								<tr><td>skip_nil: true</td><td class="desc">Don't cache nil</td></tr>
+								<tr><td>version:</td><td class="desc">Explicit version for recyclable keys</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Caching per-user content under a shared key, leaking data between users</li>
+							<li class="note-item">Forgetting <code>touch: true</code>, so edited comments show stale inside a cached post</li>
+							<li class="note-item">Caching ActiveRecord relations (lazy) instead of computed values</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Include <code>Current.user</code> or locale in keys for personalized fragments</li>
+							<li class="note-item">Use <code>bin/rails dev:cache</code> to test caching locally</li>
+							<li class="note-item">Watch <code>cache_read.active_support</code> events to measure hit rates</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Rails.cache.fetch</code> — compute once</li>
+							<li class="note-item"><code>cache record</code> — fragment caching</li>
+							<li class="note-item"><code>touch: true</code> — Russian dolls</li>
+							<li class="note-item">Solid Cache — default store</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-62-action-cable.html" class="nav-link prev">Action Cable</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-64-testing-basics.html" class="nav-link next">Testing Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-erb.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 42: Raw SQL &amp; Multiple Databases</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s42">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 42</div>
+			<h1>Raw SQL &amp; Multiple Databases</h1>
+			<div class="sheet-desc">find_by_sql · select_all · Arel.sql · connects_to · database.yml roles · replicas · sharding</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Below the ORM, and Beyond One Database</h2>
+						<div class="description">When a query is easier in SQL, <code>find_by_sql</code> returns models and <code>select_all</code> returns rows. Rails also supports <strong>multiple databases</strong>: separate primary databases (Solid Queue, Cache and Cable use this), read <strong>replicas</strong> with automatic switching, and horizontal <strong>shards</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Rails 8 production config already has <code>primary</code>, <code>cache</code>, <code>queue</code> and <code>cable</code> databases</li>
+							<li class="note-item">Models choose a database through an abstract base class with <code>connects_to</code></li>
+							<li class="note-item">Automatic role switching sends GETs to the replica and writes to the primary</li>
+							<li class="note-item">Each database has its own migrations folder (<code>db/queue_migrate</code>, etc.)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Raw SQL</h2>
+						<pre><code class="language-ruby">Post.find_by_sql(["SELECT * FROM posts WHERE views &gt; ? LIMIT 5", 100])
+rows = ActiveRecord::Base.connection.select_all(
+  "SELECT status, COUNT(*) AS n FROM posts GROUP BY status")
+rows.to_a                       # [{"status"=&gt;"live", "n"=&gt;9}, ...]
+ActiveRecord::Base.lease_connection.execute("VACUUM")
+Post.sanitize_sql_array(["title = ?", t])</code></pre>
+					</section>
+					<section class="section-code" id="code-config-database-yml-prod">
+						<h2 class="section-title">config/database.yml (production excerpt)</h2>
+						<pre><code class="language-yaml">production:
+  primary:
+    &lt;&lt;: *default
+    database: storage/production.sqlite3
+  primary_replica:
+    &lt;&lt;: *default
+    database: storage/production_replica.sqlite3
+    replica: true
+  queue:
+    &lt;&lt;: *default
+    database: storage/production_queue.sqlite3
+    migrations_paths: db/queue_migrate</code></pre>
+					</section>
+					<section class="section-code" id="code-models-switching">
+						<h2 class="section-title">Models &amp; Switching</h2>
+						<pre><code class="language-ruby">class ApplicationRecord &lt; ActiveRecord::Base
+  primary_abstract_class
+  connects_to database: { writing: :primary, reading: :primary_replica }
+end
+
+ActiveRecord::Base.connected_to(role: :reading) { Report.heavy_query }
+# config/environments/production.rb
+config.active_record.database_selector = { delay: 2.seconds }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>find_by_sql</code> — returns model instances, with extra selected columns as attributes</div>
+							<div class="explain-item"><code>select_all</code> — <code>ActiveRecord::Result</code>, plain hashes</div>
+							<div class="explain-item"><code>replica: true</code> — read-only, no migrations</div>
+							<div class="explain-item"><code>connected_to(role: :reading)</code> — force queries to the replica</div>
+							<div class="explain-item"><code>database_selector</code> — reads go to the replica unless you wrote recently</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">String-built SQL with interpolation → <code>find_by_sql([sql, *binds])</code></li>
+							<li class="note-item">Heavy reports on the primary → <code>connected_to(role: :reading)</code></li>
+							<li class="note-item">One giant database for jobs and cache → separate Solid databases (the Rails 8 default)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: DB Tasks with Multiple DBs | Sharding -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-db-tasks-with-multiple-dbs">
+						<h2 class="section-title">DB Tasks with Multiple DBs</h2>
+						<table>
+							<thead><tr><th>Task</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>db:migrate</td><td class="desc">All databases</td></tr>
+								<tr><td>db:migrate:queue</td><td class="desc">Only the queue DB</td></tr>
+								<tr><td>db:prepare</td><td class="desc">Create + load each schema</td></tr>
+								<tr><td>g migration X --database=cache</td><td class="desc">Migration for one DB</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sharding">
+						<h2 class="section-title">Sharding</h2>
+						<table>
+							<thead><tr><th>Piece</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>connects_to shards:</td><td class="desc"><code>{ default: {writing: :primary}, eu: {...} }</code></td></tr>
+								<tr><td>connected_to(shard:)</td><td class="desc"><code>connected_to(shard: :eu) { ... }</code></td></tr>
+								<tr><td>shard_selector</td><td class="desc">Middleware picks shard per request</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Reading from a replica right after a write and seeing stale data (replication lag)</li>
+							<li class="note-item">Using <code>execute</code> for SELECTs; the result type varies by adapter. Use <code>select_all</code></li>
+							<li class="note-item">Joining tables that live in different databases; SQL can't join across connections</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep raw SQL in query objects or scopes with tests, not in controllers</li>
+							<li class="note-item">Use <code>ActiveRecord::Base.connection.exec_query</code> when you need column types</li>
+							<li class="note-item">Prefer <code>lease_connection</code> / <code>with_connection</code> (7.2+) over <code>connection</code> in new code</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>find_by_sql</code> — SQL → models</li>
+							<li class="note-item"><code>select_all</code> — SQL → hashes</li>
+							<li class="note-item"><code>connects_to</code> — pick databases</li>
+							<li class="note-item"><code>connected_to</code> — switch role or shard</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-41-transactions-locking.html" class="nav-link prev">Transactions &amp; Locking</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-43-active-model.html" class="nav-link next">Active Model</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 72: Rack &amp; Middleware</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s72">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 72</div>
+			<h1>Rack &amp; Middleware</h1>
+			<div class="sheet-desc">Rack call(env) · bin/rails middleware · config.middleware.use · insert_before · custom middleware · Rack::Attack</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Under the Controller</h2>
+						<div class="description">Rails is a <strong>Rack</strong> application. Every request passes through a stack of <strong>middleware</strong> (static files, logging, sessions, cookies, CSRF headers) before reaching the router. Middleware objects wrap the next app and can inspect or change the request and response, which makes them ideal for cross-cutting concerns like throttling, request ids or maintenance mode.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">A Rack app responds to <code>call(env)</code> and returns <code>[status, headers, body]</code></li>
+							<li class="note-item"><code>bin/rails middleware</code> prints the stack in order</li>
+							<li class="note-item">API-only apps start with a smaller stack</li>
+							<li class="note-item"><code>config.ru</code> is the Rack entry point that runs <code>Rails.application</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">A Custom Middleware</h2>
+						<pre><code class="language-ruby"># lib/middleware/request_timer.rb
+class RequestTimer
+  def initialize(app) = @app = app
+
+  def call(env)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    status, headers, body = @app.call(env)
+    ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
+    headers["server-timing"] = "app;dur=#{ms}"
+    [status, headers, body]
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-registering-reordering">
+						<h2 class="section-title">Registering &amp; Reordering</h2>
+						<pre><code class="language-ruby"># config/application.rb
+require_relative "../lib/middleware/request_timer"
+config.middleware.use RequestTimer
+config.middleware.insert_before Rack::Runtime, Rack::Attack
+config.middleware.insert_after ActionDispatch::Static, Rack::Deflater
+config.middleware.delete Rack::Runtime
+config.middleware.swap ActionDispatch::ShowExceptions, MyShowExceptions</code></pre>
+					</section>
+					<section class="section-code" id="code-rack-attack-throttle">
+						<h2 class="section-title">Rack::Attack Throttle</h2>
+						<pre><code class="language-ruby"># config/initializers/rack_attack.rb
+Rack::Attack.throttle("logins/ip", limit: 5, period: 20.seconds) do |req|
+  req.ip if req.path == "/session" &amp;&amp; req.post?
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>initialize(app)</code> — receive the next app in the chain</div>
+							<div class="explain-item"><code>@app.call(env)</code> — pass the request on, get the response back</div>
+							<div class="explain-item"><code>server-timing</code> — shows in browser dev tools</div>
+							<div class="explain-item"><code>insert_before</code> — position relative to an existing middleware</div>
+							<div class="explain-item">Rack::Attack — throttling and blocklists before Rails runs</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">A <code>before_action</code> that only adds headers to every response → middleware</li>
+							<li class="note-item">Throttling in controllers for everything → <code>rate_limit</code> per action, Rack::Attack app-wide</li>
+							<li class="note-item">Monkey-patching Rails internals → insert or swap middleware</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Notable Default Middleware -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-notable-default-middleware">
+						<h2 class="section-title">Notable Default Middleware</h2>
+						<table>
+							<thead><tr><th>Middleware</th><th>Role</th></tr></thead>
+							<tbody>
+								<tr><td>ActionDispatch::HostAuthorization</td><td class="desc">Allowed hosts</td></tr>
+								<tr><td>ActionDispatch::Static</td><td class="desc">Serve <code>public/</code></td></tr>
+								<tr><td>ActionDispatch::RequestId</td><td class="desc"><code>X-Request-Id</code></td></tr>
+								<tr><td>ActionDispatch::ShowExceptions</td><td class="desc">Error pages</td></tr>
+								<tr><td>ActionDispatch::Cookies</td><td class="desc">Cookie jar</td></tr>
+								<tr><td>ActionDispatch::Session::CookieStore</td><td class="desc">Session</td></tr>
+								<tr><td>ActionDispatch::Flash</td><td class="desc">Flash messages</td></tr>
+								<tr><td>Rack::ETag / ConditionalGet</td><td class="desc">HTTP caching</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Returning a body that isn't enumerable or closing it twice; keep <code>body</code> from the inner app</li>
+							<li class="note-item">Doing database work in middleware for every request including assets</li>
+							<li class="note-item">Adding middleware that reads the whole body for every request (uploads get slow)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep middleware in <code>lib/</code> and <code>require</code> it: <code>app/</code> isn't autoloadable while config loads</li>
+							<li class="note-item">Use <code>ActionDispatch::Request.new(env)</code> for a friendlier request API</li>
+							<li class="note-item">Check order with <code>bin/rails middleware</code> after changes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Rack — <code>call(env)</code> → response</li>
+							<li class="note-item">middleware — wraps the app</li>
+							<li class="note-item"><code>config.middleware</code> — add/reorder</li>
+							<li class="note-item">Rack::Attack — app-wide throttling</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-71-i18n.html" class="nav-link prev">Internationalization</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-73-engines.html" class="nav-link next">Engines &amp; Railties</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

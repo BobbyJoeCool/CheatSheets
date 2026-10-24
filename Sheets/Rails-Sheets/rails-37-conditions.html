@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 37: Conditions in Depth</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>Conditions in Depth</h1>
+			<div class="sheet-desc">hash conditions · ranges · arrays (IN) · where.not · or · where.missing / associated · ? and :named placeholders · SQL injection</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Writing WHERE Clauses Safely</h2>
+						<div class="description">Hash conditions cover most needs: equality, <code>IN</code> lists, ranges and <code>NULL</code>. When you need SQL fragments, pass values through <strong>placeholders</strong> so Rails quotes them. Never interpolate user input into a SQL string.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Condition Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>where(status: nil)</code> → <code>IS NULL</code>; <code>where(id: [1, 2])</code> → <code>IN (1, 2)</code></li>
+							<li class="note-item">Ranges: <code>1..10</code> → <code>BETWEEN</code>; endless <code>10..</code> → <code>&gt;= 10</code></li>
+							<li class="note-item"><code>where.not</code> with NULLs: <code>NOT IN</code> excludes NULL rows; add <code>.or(where(x: nil))</code> if needed</li>
+							<li class="note-item">Conditions on joined tables use the table name as a hash key</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Hash &amp; Range Conditions</h2>
+						<pre><code class="language-ruby">Post.where(status: "live", user_id: [1, 2, 3])
+Post.where(deleted_at: nil)                       # IS NULL
+Post.where(created_at: 1.week.ago..)              # &gt;= 1 week ago
+Post.where(views: ..100)                          # &lt;= 100
+Post.where(published_on: Date.current.all_month)  # BETWEEN month start/end
+Post.where.not(status: "draft")
+Post.where(status: "live").or(Post.where(featured: true))
+Post.joins(:user).where(users: { admin: true })
+Post.where.missing(:comments)                     # LEFT JOIN … IS NULL
+Post.where.associated(:author)                    # INNER JOIN, not null</code></pre>
+					</section>
+					<section class="section-code" id="code-sql-fragments-with-place">
+						<h2 class="section-title">SQL Fragments with Placeholders</h2>
+						<pre><code class="language-ruby">Post.where("title LIKE ?", "%#{Post.sanitize_sql_like(q)}%")
+Post.where("views &gt; :min AND views &lt; :max", min: 10, max: 100)
+Post.where("lower(email) = ?", email.downcase)
+Post.where(Post.arel_table[:views].gt(100))       # Arel
+Post.order(Arel.sql("FIELD(status, 'live', 'draft')"))
+
+# NEVER: Post.where("title = '#{params[:title]}'")</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>all_month</code> — Active Support range helper for dates</div>
+							<div class="explain-item"><code>or</code> — both sides must have compatible joins/selects</div>
+							<div class="explain-item"><code>where.missing</code> / <code>where.associated</code> — no hand-written LEFT JOIN</div>
+							<div class="explain-item"><code>?</code> / <code>:named</code> — Rails quotes and escapes the values</div>
+							<div class="explain-item"><code>Arel.sql</code> — mark a trusted raw ordering string</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">String conditions for simple equality → hash conditions</li>
+							<li class="note-item"><code>"created_at &gt; '#{date}'"</code> → <code>where(created_at: date..)</code></li>
+							<li class="note-item">Manual <code>LEFT OUTER JOIN ... WHERE id IS NULL</code> → <code>where.missing(:assoc)</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Hash → SQL | Injection-Safe Helpers -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-hash-sql">
+						<h2 class="section-title">Hash → SQL</h2>
+						<table>
+							<thead><tr><th>Ruby</th><th>SQL</th></tr></thead>
+							<tbody>
+								<tr><td>where(a: 1)</td><td class="desc"><code>a = 1</code></td></tr>
+								<tr><td>where(a: [1, 2])</td><td class="desc"><code>a IN (1, 2)</code></td></tr>
+								<tr><td>where(a: nil)</td><td class="desc"><code>a IS NULL</code></td></tr>
+								<tr><td>where(a: 1..5)</td><td class="desc"><code>a BETWEEN 1 AND 5</code></td></tr>
+								<tr><td>where(a: 1...5)</td><td class="desc"><code>a &gt;= 1 AND a &lt; 5</code></td></tr>
+								<tr><td>where.not(a: 1)</td><td class="desc"><code>a != 1</code></td></tr>
+								<tr><td>where(users: { x: 1 })</td><td class="desc"><code>users.x = 1</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-injection-safe-helpers">
+						<h2 class="section-title">Injection-Safe Helpers</h2>
+						<table>
+							<thead><tr><th>Helper</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>sanitize_sql_like</td><td class="desc">Escape <code>%</code> and <code>_</code></td></tr>
+								<tr><td>sanitize_sql_array</td><td class="desc">Build a fragment safely</td></tr>
+								<tr><td>connection.quote</td><td class="desc">Quote one value</td></tr>
+								<tr><td>Arel.sql</td><td class="desc">Trusted raw SQL only</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Interpolating <code>params</code> into <code>where</code> or <code>order</code> strings → SQL injection</li>
+							<li class="note-item">Passing user input to <code>order(params[:sort])</code>; allow-list sort columns instead</li>
+							<li class="note-item">Forgetting NULL rows disappear from <code>where.not(status: "draft")</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Allow-list sorting: <code>order(%w[title created_at].include?(s) ? s : :created_at)</code></li>
+							<li class="note-item">Prefer <code>where(..)</code> ranges over string comparisons for dates and numbers</li>
+							<li class="note-item">Run Brakeman (<code>bin/brakeman</code>) to catch unsafe SQL strings</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">hash conditions — <code>=</code>, <code>IN</code>, <code>NULL</code>, ranges</li>
+							<li class="note-item"><code>where.not</code> / <code>or</code> — negate / combine</li>
+							<li class="note-item"><code>?</code> placeholders — quote input</li>
+							<li class="note-item"><code>where.missing</code> — no-child records</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-36-query-basics.html" class="nav-link prev">Query Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-38-joins-eager-loading.html" class="nav-link next">Joins &amp; Eager Loading</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

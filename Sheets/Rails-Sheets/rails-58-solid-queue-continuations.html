@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 58: Solid Queue &amp; Job Continuations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s58">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 58</div>
+			<h1>Solid Queue &amp; Job Continuations</h1>
+			<div class="sheet-desc">Solid Queue · config/queue.yml · recurring.yml · bin/jobs · limits_concurrency · ActiveJob::Continuable (8.1) · step · Mission Control</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Rails 8 Job Backend</h2>
+						<div class="description"><strong>Solid Queue</strong> stores jobs in a database table and runs them with workers, dispatchers for scheduled jobs, and a scheduler for recurring tasks. No Redis needed. Rails 8.1 adds <strong>job continuations</strong>: long jobs are split into <code>step</code>s with cursors so a deploy or restart resumes where it left off instead of starting over.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Run workers with <code>bin/jobs</code>, or inside Puma with <code>SOLID_QUEUE_IN_PUMA=1</code> (single-server default)</li>
+							<li class="note-item">Recurring tasks are defined in <code>config/recurring.yml</code></li>
+							<li class="note-item">Concurrency controls limit how many jobs with the same key run at once</li>
+							<li class="note-item"><strong>Mission Control – Jobs</strong> (gem) is a web UI for queues, failures and retries</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">config/recurring.yml</h2>
+						<pre><code class="language-yaml">production:
+  nightly_digest:
+    class: SendAllDigestsJob
+    queue: mailers
+    schedule: every day at 6am
+  clear_finished_jobs:
+    command: "SolidQueue::Job.clear_finished_in_batches"
+    schedule: every hour at minute 12</code></pre>
+					</section>
+					<section class="section-code" id="code-concurrency-limits">
+						<h2 class="section-title">Concurrency Limits</h2>
+						<pre><code class="language-ruby">class SyncAccountJob &lt; ApplicationJob
+  limits_concurrency to: 1, key: -&gt;(account) { account }, duration: 10.minutes
+  def perform(account) = account.sync!
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-continuations-8-1">
+						<h2 class="section-title">Continuations (8.1)</h2>
+						<pre><code class="language-ruby">class ImportJob &lt; ApplicationJob
+  include ActiveJob::Continuable
+
+  def perform(import)
+    @import = import
+    step :validate do
+      @import.validate!
+    end
+    step :process do |step|
+      @import.rows.find_each(start: step.cursor) do |row|
+        row.process!
+        step.advance! from: row.id          # save progress
+      end
+    end
+    step :finish                            # calls #finish
+  end
+
+  private def finish = @import.complete!
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>schedule:</code> — natural-language schedules parsed by Fugit</div>
+							<div class="explain-item"><code>command:</code> — Ruby string evaluated on schedule, no job class needed</div>
+							<div class="explain-item"><code>limits_concurrency</code> — extra jobs wait (blocked) until the slot frees</div>
+							<div class="explain-item"><code>step.cursor</code> / <code>advance!</code> — checkpoint; resumes after interruption</div>
+							<div class="explain-item">Completed steps are skipped when the job resumes</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">A separate cron box with <code>rails runner</code> → <code>recurring.yml</code></li>
+							<li class="note-item">Redis + Sidekiq for a small app → Solid Queue on the existing database</li>
+							<li class="note-item">One giant job restarting from zero after each deploy → continuation steps</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: config/queue.yml Pieces | Operations -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-config-queue-yml-pieces">
+						<h2 class="section-title">config/queue.yml Pieces</h2>
+						<table>
+							<thead><tr><th>Key</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>dispatchers</td><td class="desc">Move due scheduled jobs to ready</td></tr>
+								<tr><td>workers: queues</td><td class="desc"><code>"*"</code> or <code>[critical, default]</code> order</td></tr>
+								<tr><td>threads / processes</td><td class="desc">Concurrency per worker</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-operations">
+						<h2 class="section-title">Operations</h2>
+						<table>
+							<thead><tr><th>Task</th><th>How</th></tr></thead>
+							<tbody>
+								<tr><td>Web UI</td><td class="desc"><code>mount MissionControl::Jobs::Engine, at: "/jobs"</code></td></tr>
+								<tr><td>Retry failed</td><td class="desc">UI, or <code>SolidQueue::FailedExecution#retry</code></td></tr>
+								<tr><td>Separate DB</td><td class="desc"><code>connects_to</code> the <code>queue</code> database</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Mounting Mission Control without authentication</li>
+							<li class="note-item">Running <code>SOLID_QUEUE_IN_PUMA</code> on several web servers and also a job server, doubling workers by accident</li>
+							<li class="note-item">Expecting continuations to save local variables; only the cursor and completed steps persist</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use separate queues for slow and fast work so one doesn't starve the other</li>
+							<li class="note-item">Keep each continuation step resumable on its own; cursors should be stable ids</li>
+							<li class="note-item">Check failed jobs regularly; Solid Queue keeps them until you retry or discard</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Solid Queue — DB-backed jobs</li>
+							<li class="note-item"><code>recurring.yml</code> — cron replacement</li>
+							<li class="note-item"><code>limits_concurrency</code> — one at a time</li>
+							<li class="note-item">continuations — resumable steps (8.1)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-57-active-job.html" class="nav-link prev">Active Job</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-59-action-mailer.html" class="nav-link next">Action Mailer</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

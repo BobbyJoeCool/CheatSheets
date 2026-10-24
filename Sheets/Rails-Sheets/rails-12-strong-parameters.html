@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 12: Params &amp; Strong Parameters</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Params &amp; Strong Parameters</h1>
+			<div class="sheet-desc">params · params.expect (8.0) · require / permit · nested hashes &amp; arrays · ParameterMissing · action_on_unpermitted_parameters</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Safe Input from Requests</h2>
+						<div class="description"><code>params</code> merges route segments, the query string and the request body into one hash-like <code>ActionController::Parameters</code> object. Before mass-assigning it to a model you must <strong>permit</strong> the keys you allow. Rails 8 adds <code>params.expect</code>, which permits and checks the shape in one call and returns <strong>400 Bad Request</strong> instead of 500 when a client sends the wrong structure.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Params Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">All values are strings (or arrays/hashes of strings)</li>
+							<li class="note-item">Keys can be read as strings or symbols: <code>params[:id] == params["id"]</code></li>
+							<li class="note-item">Passing unpermitted params to <code>Post.new</code> raises <code>ForbiddenAttributesError</code></li>
+							<li class="note-item">Unpermitted keys are dropped and logged in development by default</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Rails 8: expect</h2>
+						<pre><code class="language-ruby">params.expect(:id)                               # "42"  (scalar)
+params.expect(post: [:title, :body])             # permitted hash
+params.expect(post: [:title, tag_ids: []])       # array of scalars
+params.expect(post: [:title, images: [[:url, :alt]]])   # array of hashes
+params.expect(post: [:title, author: [:name, :email]])  # nested hash
+params.expect(post: [:title, settings: {}])      # any keys (use sparingly)</code></pre>
+					</section>
+					<section class="section-code" id="code-classic-require-permit">
+						<h2 class="section-title">Classic require / permit</h2>
+						<pre><code class="language-ruby">params.require(:post).permit(:title, :body, tag_ids: [])
+params.permit(:page, :q)                         # top-level keys
+params.fetch(:filter, {}).permit(:status)        # optional root</code></pre>
+					</section>
+					<section class="section-code" id="code-in-a-controller">
+						<h2 class="section-title">In a Controller</h2>
+						<pre><code class="language-ruby">def post_params
+  params.expect(post: [:title, :body, :published,
+                       comments_attributes: [[:id, :body, :_destroy]]])
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>expect(:id)</code> — fails with 400 if <code>id</code> is missing or is a hash</div>
+							<div class="explain-item"><code>[[:url, :alt]]</code> — double brackets mean "array of hashes" with <code>expect</code></div>
+							<div class="explain-item"><code>tag_ids: []</code> — an array of scalars (checkbox lists)</div>
+							<div class="explain-item"><code>settings: {}</code> — permits any nested keys: only for trusted, free-form data</div>
+							<div class="explain-item"><code>comments_attributes</code> — needed for <code>accepts_nested_attributes_for</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Post.new(params[:post])</code> → <code>Post.new(post_params)</code> with an explicit allow-list</li>
+							<li class="note-item"><code>params.require(:post).permit(...)</code> in new code → <code>params.expect(post: [...])</code></li>
+							<li class="note-item"><code>permit!</code> to "make it work" → list the keys; <code>permit!</code> reopens mass-assignment holes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Form Field → Param Shape | Errors &amp; Settings -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-form-field-param-shape">
+						<h2 class="section-title">Form Field → Param Shape</h2>
+						<table>
+							<thead><tr><th>Field name</th><th>Arrives as</th></tr></thead>
+							<tbody>
+								<tr><td>post[title]</td><td class="desc"><code>{ "post" =&gt; { "title" =&gt; "Hi" } }</code></td></tr>
+								<tr><td>post[tag_ids][]</td><td class="desc"><code>{ "post" =&gt; { "tag_ids" =&gt; ["1", "2"] } }</code></td></tr>
+								<tr><td>post[author][name]</td><td class="desc">nested hash</td></tr>
+								<tr><td>post[images][0][url]</td><td class="desc">hash with index keys (array of hashes)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-errors-settings">
+						<h2 class="section-title">Errors &amp; Settings</h2>
+						<table>
+							<thead><tr><th>Item</th><th>Behavior</th></tr></thead>
+							<tbody>
+								<tr><td>ParameterMissing</td><td class="desc">Required key absent → 400</td></tr>
+								<tr><td>ForbiddenAttributesError</td><td class="desc">Unpermitted params mass-assigned</td></tr>
+								<tr><td>UnpermittedParameters</td><td class="desc">Raised when set to <code>:raise</code></td></tr>
+								<tr><td>action_on_unpermitted_parameters</td><td class="desc"><code>:log</code>, <code>:raise</code> or <code>false</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Permitting <code>:role</code> or <code>:admin</code> in a user form, letting users promote themselves</li>
+							<li class="note-item">Using single brackets for arrays of hashes with <code>expect</code> (<code>images: [:url]</code>); it expects a single hash</li>
+							<li class="note-item">Calling <code>.to_h</code> on unpermitted params, which raises <code>UnfilteredParameters</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Set <code>config.action_controller.action_on_unpermitted_parameters = :raise</code> in development and test to catch typos</li>
+							<li class="note-item">Keep one <code>*_params</code> method per resource, private, at the bottom of the controller</li>
+							<li class="note-item">Permit different keys per role with separate methods (<code>admin_user_params</code>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>params</code> — merged request input</li>
+							<li class="note-item"><code>expect</code> — permit + shape check (8.0)</li>
+							<li class="note-item"><code>permit</code> — the allow-list</li>
+							<li class="note-item"><code>[[...]]</code> — array of hashes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-11-controller-basics.html" class="nav-link prev">Controller Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-13-render-redirect.html" class="nav-link next">Render &amp; Redirect</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

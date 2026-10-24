@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 76: Dockerfile, Puma &amp; Thruster</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s76">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 76</div>
+			<h1>Dockerfile, Puma &amp; Thruster</h1>
+			<div class="sheet-desc">generated Dockerfile · multi-stage build · Thruster · Puma workers / threads · bin/docker-entrypoint · db:prepare on boot</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Generated Container</h2>
+						<div class="description">New Rails apps include a production <strong>Dockerfile</strong>. It builds in stages (gems and assets in a build stage, a slim runtime stage), runs as a non-root user, and starts the app through <strong>Thruster</strong>, a small proxy in front of Puma that adds HTTP/2, X-Sendfile, asset caching and gzip, plus automatic TLS when you don't use another proxy.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">The Dockerfile targets production; use <code>.devcontainer</code> for development</li>
+							<li class="note-item"><code>bin/docker-entrypoint</code> runs <code>db:prepare</code> before the server starts</li>
+							<li class="note-item">Thruster listens on port 80 and forwards to Puma on 3000</li>
+							<li class="note-item">jemalloc is enabled to reduce memory fragmentation</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Dockerfile (abridged)</h2>
+						<pre><code class="language-docker">ARG RUBY_VERSION=3.4.7
+FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
+WORKDIR /rails
+ENV RAILS_ENV="production" BUNDLE_DEPLOYMENT="1" \
+    BUNDLE_PATH="/usr/local/bundle" BUNDLE_WITHOUT="development"
+RUN apt-get update -qq &amp;&amp; apt-get install --no-install-recommends -y \
+    curl libjemalloc2 libvips sqlite3 &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+FROM base AS build
+RUN apt-get update -qq &amp;&amp; apt-get install --no-install-recommends -y build-essential git
+COPY Gemfile Gemfile.lock ./
+RUN bundle install &amp;&amp; bundle exec bootsnap precompile --gemfile
+COPY . .
+RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
+
+FROM base
+COPY --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
+COPY --from=build /rails /rails
+RUN groupadd --system --gid 1000 rails &amp;&amp; \
+    useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash &amp;&amp; \
+    chown -R rails:rails db log storage tmp
+USER 1000:1000
+ENTRYPOINT ["/rails/bin/docker-entrypoint"]
+EXPOSE 80
+CMD ["./bin/thrust", "./bin/rails", "server"]</code></pre>
+					</section>
+					<section class="section-code" id="code-build-run-locally">
+						<h2 class="section-title">Build &amp; Run Locally</h2>
+						<pre><code class="language-bash">docker build -t blog .
+docker run -d -p 80:80 -e RAILS_MASTER_KEY=$(cat config/master.key) \
+  -v blog_storage:/rails/storage --name blog blog</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>AS build</code> — compilers and git stay out of the final image</div>
+							<div class="explain-item"><code>SECRET_KEY_BASE_DUMMY=1</code> — precompile assets without real secrets</div>
+							<div class="explain-item"><code>USER 1000</code> — don't run as root</div>
+							<div class="explain-item"><code>bin/thrust</code> — Thruster wraps the Rails server</div>
+							<div class="explain-item"><code>-v blog_storage:</code> — persist SQLite and uploads</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Hand-written Dockerfiles from blog posts → start from the generated one</li>
+							<li class="note-item">Nginx just for gzip and asset caching → Thruster</li>
+							<li class="note-item">Running migrations by hand after deploy → the entrypoint's <code>db:prepare</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Thruster Features | Environment Variables -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-thruster-features">
+						<h2 class="section-title">Thruster Features</h2>
+						<table>
+							<thead><tr><th>Feature</th><th>Detail</th></tr></thead>
+							<tbody>
+								<tr><td>HTTP/2</td><td class="desc">Multiplexed asset loading</td></tr>
+								<tr><td>Asset caching</td><td class="desc">Long cache headers, in-memory cache</td></tr>
+								<tr><td>Compression</td><td class="desc">gzip responses</td></tr>
+								<tr><td>X-Sendfile</td><td class="desc">Efficient file downloads</td></tr>
+								<tr><td>TLS</td><td class="desc">Let's Encrypt when <code>TLS_DOMAIN</code> is set</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-environment-variables">
+						<h2 class="section-title">Environment Variables</h2>
+						<table>
+							<thead><tr><th>Variable</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>RAILS_MASTER_KEY</td><td class="desc">Decrypt credentials</td></tr>
+								<tr><td>RAILS_MAX_THREADS</td><td class="desc">Puma threads</td></tr>
+								<tr><td>WEB_CONCURRENCY</td><td class="desc">Puma workers</td></tr>
+								<tr><td>SOLID_QUEUE_IN_PUMA</td><td class="desc">Run jobs in web container</td></tr>
+								<tr><td>TLS_DOMAIN</td><td class="desc">Thruster TLS</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Baking <code>master.key</code> into the image; pass it at runtime</li>
+							<li class="note-item">Forgetting the storage volume, so the SQLite database resets on each container replace</li>
+							<li class="note-item">Building on Apple Silicon for amd64 servers without <code>--platform linux/amd64</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep <code>.dockerignore</code> excluding <code>log/</code>, <code>tmp/</code>, <code>storage/</code> and <code>.env*</code></li>
+							<li class="note-item">Bump <code>RUBY_VERSION</code> in the Dockerfile when you change <code>.ruby-version</code></li>
+							<li class="note-item">Use Kamal (sheet 77) instead of raw <code>docker run</code> for real deploys</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">multi-stage Dockerfile — slim image</li>
+							<li class="note-item">Thruster — HTTP/2, caching, TLS</li>
+							<li class="note-item">entrypoint — <code>db:prepare</code></li>
+							<li class="note-item">volume — persist <code>storage/</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-75-production-config.html" class="nav-link prev">Production Config</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-77-kamal.html" class="nav-link next">Kamal</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-docker.min.js"></script>
+	</body>
+</html>
