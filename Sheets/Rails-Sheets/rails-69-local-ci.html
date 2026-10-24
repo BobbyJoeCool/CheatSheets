@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 69: Local CI &amp; Code Quality</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s69">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 69</div>
+			<h1>Local CI &amp; Code Quality</h1>
+			<div class="sheet-desc">bin/ci (8.1) · config/ci.rb · rubocop-rails-omakase · Brakeman · bundler-audit · generated GitHub Actions workflow</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Run CI on Your Machine</h2>
+						<div class="description">Rails 8.1 adds <code>bin/ci</code>, which runs the steps in <code>config/ci.rb</code>: setup, style, security audits and tests. Modern developer machines are fast, so running CI locally before pushing is quick and cheap. New apps also ship <strong>RuboCop</strong> with the Omakase style, <strong>Brakeman</strong>, <strong>bundler-audit</strong> and a GitHub Actions workflow.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>bin/ci</code> stops at the first failing step and prints a summary</li>
+							<li class="note-item">The optional <code>gh signoff</code> step marks the commit green on GitHub</li>
+							<li class="note-item"><code>bin/rubocop -a</code> auto-corrects safe offenses</li>
+							<li class="note-item">Brakeman exits non-zero on new warnings; add an ignore file for accepted ones</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">config/ci.rb</h2>
+						<pre><code class="language-ruby">CI.run do
+  step "Setup", "bin/setup --skip-server"
+  step "Style: Ruby", "bin/rubocop"
+  step "Security: Gem audit", "bin/bundler-audit"
+  step "Security: Importmap audit", "bin/importmap audit"
+  step "Security: Brakeman", "bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error"
+  step "Tests: Rails", "bin/rails test"
+  step "Tests: System", "bin/rails test:system"
+  step "Tests: Seeds", "env RAILS_ENV=test bin/rails db:seed:replant"
+
+  if success?
+    step "Signoff: Ready to merge", "gh signoff"
+  else
+    failure "Signoff: CI failed. Do not merge or deploy.", "Fix the issues and try again."
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-running-the-tools">
+						<h2 class="section-title">Running the Tools</h2>
+						<pre><code class="language-bash">bin/ci                           # everything in config/ci.rb
+bin/rubocop                      # lint
+bin/rubocop -a                   # safe auto-correct
+bin/brakeman -I                  # interactive ignore file
+bin/bundler-audit check --update</code></pre>
+					</section>
+					<section class="section-code" id="code-rubocop-yml">
+						<h2 class="section-title">.rubocop.yml</h2>
+						<pre><code class="language-yaml">inherit_gem:
+  rubocop-rails-omakase: rubocop.yml
+Layout/LineLength:
+  Max: 120</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>step "name", "command"</code> — each step is a shell command</div>
+							<div class="explain-item"><code>success?</code> — true if every step so far passed</div>
+							<div class="explain-item"><code>gh signoff</code> — sets a commit status via the GitHub CLI extension</div>
+							<div class="explain-item"><code>db:seed:replant</code> — proves seeds still run on an empty DB</div>
+							<div class="explain-item"><code>inherit_gem</code> — start from the Omakase style, override sparingly</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Waiting on remote CI for lint failures → run <code>bin/ci</code> before pushing</li>
+							<li class="note-item">Arguing about style in review → RuboCop with the shared config</li>
+							<li class="note-item">Ignoring Brakeman warnings by turning it off → record accepted ones in <code>config/brakeman.ignore</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Quality Tools | Generated CI Files -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-quality-tools">
+						<h2 class="section-title">Quality Tools</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Catches</th></tr></thead>
+							<tbody>
+								<tr><td>RuboCop (omakase)</td><td class="desc">Style and simple bugs</td></tr>
+								<tr><td>Brakeman</td><td class="desc">SQL injection, XSS, unsafe redirects, mass assignment</td></tr>
+								<tr><td>bundler-audit</td><td class="desc">Vulnerable gem versions</td></tr>
+								<tr><td>importmap audit</td><td class="desc">Vulnerable JS pins</td></tr>
+								<tr><td>zeitwerk:check</td><td class="desc">Autoload naming errors</td></tr>
+								<tr><td>Bullet / strict_loading</td><td class="desc">N+1 queries</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-generated-ci-files">
+						<h2 class="section-title">Generated CI Files</h2>
+						<table>
+							<thead><tr><th>File</th><th>Role</th></tr></thead>
+							<tbody>
+								<tr><td>bin/ci</td><td class="desc">Runner (8.1)</td></tr>
+								<tr><td>config/ci.rb</td><td class="desc">Steps (8.1)</td></tr>
+								<tr><td>.github/workflows/ci.yml</td><td class="desc">Remote CI</td></tr>
+								<tr><td>.github/dependabot.yml</td><td class="desc">Gem and Actions updates</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Letting local CI drift from remote CI; keep the steps in <code>config/ci.rb</code> the source of truth</li>
+							<li class="note-item">Auto-correcting with <code>-A</code> (unsafe) without reviewing the diff</li>
+							<li class="note-item">Disabling cops globally to silence one file; use inline <code># rubocop:disable</code> with a reason</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Add <code>bin/rails zeitwerk:check</code> as a step; it catches production-only boot errors</li>
+							<li class="note-item">Run <code>bin/ci</code> in a git pre-push hook</li>
+							<li class="note-item">Keep CI under a few minutes so people actually run it</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>bin/ci</code> — local CI runner (8.1)</li>
+							<li class="note-item"><code>config/ci.rb</code> — the steps</li>
+							<li class="note-item">RuboCop + Brakeman + audits — built in</li>
+							<li class="note-item"><code>gh signoff</code> — mark commit green</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-68-rspec-rails.html" class="nav-link prev">RSpec &amp; FactoryBot</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-70-api-only.html" class="nav-link next">API-Only Apps</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 57: Active Job Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s57">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 57</div>
+			<h1>Active Job Basics</h1>
+			<div class="sheet-desc">ApplicationJob · perform_later · perform_now · set(wait:) · queue_as · retry_on / discard_on · GlobalID arguments</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Background Work</h2>
+						<div class="description"><strong>Active Job</strong> is Rails' common interface for background jobs. You write a job class with a <code>perform</code> method and enqueue it with <code>perform_later</code>; a queue backend runs it in a separate process. Rails 8 uses <strong>Solid Queue</strong> (database-backed) by default, but the same code works with Sidekiq, GoodJob and others.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Jobs live in <code>app/jobs</code>; generate with <code>bin/rails g job SendDigest</code></li>
+							<li class="note-item">Model arguments are serialized as <strong>GlobalID</strong> and re-fetched when the job runs</li>
+							<li class="note-item"><code>enqueue_after_transaction_commit</code> (7.2+) can defer enqueues until commit; check your version's default</li>
+							<li class="note-item">Development and test can use the <code>:async</code> / <code>:test</code> adapters</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/jobs/send_digest_job.rb</h2>
+						<pre><code class="language-ruby">class SendDigestJob &lt; ApplicationJob
+  queue_as :mailers
+  retry_on Net::OpenTimeout, wait: :polynomially_longer, attempts: 5
+  discard_on ActiveJob::DeserializationError        # record was deleted
+
+  def perform(user, since: 1.day.ago)
+    posts = user.followed_posts.where(created_at: since..)
+    DigestMailer.with(user:, posts:).digest.deliver_now if posts.any?
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-enqueuing">
+						<h2 class="section-title">Enqueuing</h2>
+						<pre><code class="language-ruby">SendDigestJob.perform_later(user)                     # as soon as possible
+SendDigestJob.set(wait: 10.minutes).perform_later(user)
+SendDigestJob.set(wait_until: Date.tomorrow.noon, queue: :low).perform_later(user)
+SendDigestJob.perform_now(user)                       # inline, same process
+ActiveJob.perform_all_later(users.map { |u| SendDigestJob.new(u) })   # bulk</code></pre>
+					</section>
+					<section class="section-code" id="code-config-environments-prod">
+						<h2 class="section-title">config/environments/production.rb</h2>
+						<pre><code class="language-ruby">config.active_job.queue_adapter = :solid_queue
+config.solid_queue.connects_to = { database: { writing: :queue } }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>queue_as</code> — choose a queue (workers can prioritize queues)</div>
+							<div class="explain-item"><code>retry_on</code> — retries with backoff, then re-raises after <code>attempts</code></div>
+							<div class="explain-item"><code>discard_on</code> — drop the job silently for that error</div>
+							<div class="explain-item">Passing <code>user</code> — stored as <code>gid://app/User/1</code>, reloaded in the worker</div>
+							<div class="explain-item"><code>perform_all_later</code> — enqueue many in one round trip (7.1+)</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Sending email or calling APIs inside the request → <code>perform_later</code></li>
+							<li class="note-item">Passing serialized hashes of a record → pass the record (GlobalID)</li>
+							<li class="note-item">Rescue-and-sleep loops in jobs → <code>retry_on</code> with <code>wait:</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Argument Types | Callbacks &amp; Hooks -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-argument-types">
+						<h2 class="section-title">Argument Types</h2>
+						<table>
+							<thead><tr><th>Type</th><th>Allowed?</th></tr></thead>
+							<tbody>
+								<tr><td>String, Integer, Float, nil, true/false</td><td class="desc">yes</td></tr>
+								<tr><td>Symbol, Date, Time, BigDecimal, Range</td><td class="desc">yes</td></tr>
+								<tr><td>Hash / Array of the above</td><td class="desc">yes</td></tr>
+								<tr><td>Active Record models</td><td class="desc">yes (GlobalID)</td></tr>
+								<tr><td>Arbitrary objects</td><td class="desc">no: add a custom serializer</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-callbacks-hooks">
+						<h2 class="section-title">Callbacks &amp; Hooks</h2>
+						<table>
+							<thead><tr><th>Callback</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>before_enqueue / after_enqueue</td><td class="desc">Around enqueue</td></tr>
+								<tr><td>before_perform / after_perform</td><td class="desc">Around perform</td></tr>
+								<tr><td>around_perform</td><td class="desc">Wrap execution</td></tr>
+								<tr><td>rescue_from</td><td class="desc">Handle errors in-job</td></tr>
+								<tr><td>after_discard</td><td class="desc">After a job is discarded</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Passing large payloads (whole CSVs) as arguments; store the file and pass an id</li>
+							<li class="note-item">Writing non-idempotent jobs: retries may run them twice</li>
+							<li class="note-item">Using <code>perform_now</code> in requests for slow work, defeating the purpose</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Make jobs small and idempotent; split big work into many jobs or use continuations (sheet 58)</li>
+							<li class="note-item">Use <code>deliver_later</code> for mail; it's an Active Job under the hood</li>
+							<li class="note-item">Enqueue from <code>after_commit</code> callbacks so workers never see uncommitted rows</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>perform_later</code> — enqueue</li>
+							<li class="note-item"><code>set(wait:)</code> — schedule</li>
+							<li class="note-item"><code>retry_on / discard_on</code> — failure policy</li>
+							<li class="note-item">GlobalID — pass models safely</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-56-stimulus.html" class="nav-link prev">Stimulus</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-58-solid-queue-continuations.html" class="nav-link next">Solid Queue</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

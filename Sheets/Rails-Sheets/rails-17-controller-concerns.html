@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 17: Concerns, Helpers &amp; Current</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Concerns, Helpers &amp; Current</h1>
+			<div class="sheet-desc">controller concerns · helper_method · Current &lt; CurrentAttributes · rate_limit (7.2) · allow_browser · etag / fresh_when</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Sharing Controller Behavior</h2>
+						<div class="description"><strong>Concerns</strong> package callbacks and methods to include in several controllers. <code>helper_method</code> exposes a controller method to views. <strong>CurrentAttributes</strong> hold per-request globals (the current user, account, request id) that reset automatically. Rails 7.2 added <code>rate_limit</code> and <code>allow_browser</code> macros.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Controller concerns live in <code>app/controllers/concerns/</code></li>
+							<li class="note-item"><code>Current</code> attributes reset at the start and end of every request and job</li>
+							<li class="note-item"><code>rate_limit</code> stores counters in <code>Rails.cache</code> (Solid Cache by default)</li>
+							<li class="note-item"><code>allow_browser versions: :modern</code> is in new apps' <code>ApplicationController</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/controllers/concerns/paginatable.rb</h2>
+						<pre><code class="language-ruby">module Paginatable
+  extend ActiveSupport::Concern
+
+  included do
+    helper_method :page                        # usable in views
+  end
+
+  def page = [params[:page].to_i, 1].max
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-app-models-current-rb">
+						<h2 class="section-title">app/models/current.rb</h2>
+						<pre><code class="language-ruby">class Current &lt; ActiveSupport::CurrentAttributes
+  attribute :session
+  delegate :user, to: :session, allow_nil: true
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-a-controller-using-them">
+						<h2 class="section-title">A Controller Using Them</h2>
+						<pre><code class="language-ruby">class SessionsController &lt; ApplicationController
+  include Paginatable
+  rate_limit to: 10, within: 3.minutes, only: :create,
+             with: -&gt; { redirect_to new_session_url, alert: "Try again later." }
+end
+
+class ApplicationController &lt; ActionController::Base
+  allow_browser versions: :modern               # 406 for old browsers
+end
+
+def show                                       # conditional GET
+  @post = Post.find(params.expect(:id))
+  fresh_when @post                              # 304 if unchanged
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>included do</code> — runs class-level macros in the including controller</div>
+							<div class="explain-item"><code>helper_method</code> — <code>&lt;%= page %&gt;</code> works in views</div>
+							<div class="explain-item"><code>Current.user</code> — available in models, mailers and jobs for this request</div>
+							<div class="explain-item"><code>rate_limit</code> — 429 by default, or your <code>with:</code> handler</div>
+							<div class="explain-item"><code>fresh_when</code> — sets ETag / Last-Modified and returns 304 when cached</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Copying the same filters into five controllers → a concern</li>
+							<li class="note-item">Passing <code>current_user</code> through every method → <code>Current.user</code></li>
+							<li class="note-item">A hand-rolled Redis throttle for login → <code>rate_limit</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: rate_limit Options | Conditional GET -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-rate-limit-options">
+						<h2 class="section-title">rate_limit Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>to:</td><td class="desc">Max requests</td></tr>
+								<tr><td>within:</td><td class="desc">Window (<code>1.minute</code>)</td></tr>
+								<tr><td>by:</td><td class="desc">Key lambda (default: remote IP)</td></tr>
+								<tr><td>with:</td><td class="desc">Response when exceeded</td></tr>
+								<tr><td>store:</td><td class="desc">Cache store to use</td></tr>
+								<tr><td>name:</td><td class="desc">Separate limits on one controller</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-conditional-get">
+						<h2 class="section-title">Conditional GET</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>fresh_when obj</td><td class="desc">Auto ETag/Last-Modified, render or 304</td></tr>
+								<tr><td>stale?(obj)</td><td class="desc"><code>if stale?(@post) ... end</code> for custom work</td></tr>
+								<tr><td>expires_in 1.hour</td><td class="desc"><code>Cache-Control: max-age</code></td></tr>
+								<tr><td>http_cache_forever</td><td class="desc">Immutable resources</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>Current</code> as a general global for things that outlive a request; it resets between requests</li>
+							<li class="note-item">Treating <code>rate_limit</code> as a security boundary on its own; it depends on the cache and the client IP</li>
+							<li class="note-item">Huge "god" concerns that every controller includes; split by behavior</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>by: -&gt; { Current.user&amp;.id || request.remote_ip }</code> for per-user limits</li>
+							<li class="note-item">Set <code>Current</code> values in a before_action so jobs enqueued in the request can read them</li>
+							<li class="note-item">Use <code>fresh_when</code> on public show pages for cheap 304 responses</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>concern</code> — shared controller code</li>
+							<li class="note-item"><code>helper_method</code> — expose to views</li>
+							<li class="note-item"><code>Current</code> — per-request globals</li>
+							<li class="note-item"><code>rate_limit</code> — throttle actions</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-16-formats-errors.html" class="nav-link prev">Formats &amp; Errors</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-18-erb-basics.html" class="nav-link next">ERB Templates</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

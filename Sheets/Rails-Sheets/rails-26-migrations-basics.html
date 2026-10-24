@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 26: Migrations — Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Migrations — Basics</h1>
+			<div class="sheet-desc">g migration · create_table · t.references · t.timestamps · add_column · change vs up / down · db:migrate · db:rollback</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Versioned Schema Changes</h2>
+						<div class="description">A <strong>migration</strong> is a Ruby class that changes the database schema. Each file is timestamped and runs once; Rails records it in <code>schema_migrations</code>. Most migrations use a single <code>change</code> method that Rails knows how to reverse, so the same file both applies and rolls back the change.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Migration Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Running migrations regenerates <code>db/schema.rb</code>; commit both</li>
+							<li class="note-item">Never edit a migration that already ran on a shared database; add a new one</li>
+							<li class="note-item"><code>t.references :user</code> adds <code>user_id</code>, an index and (with <code>foreign_key: true</code>) a FK</li>
+							<li class="note-item">Default primary key is a <code>bigint</code> <code>id</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">db/migrate/20261023120000_create_posts.rb</h2>
+						<pre><code class="language-ruby">class CreatePosts &lt; ActiveRecord::Migration[8.1]
+  def change
+    create_table :posts do |t|
+      t.string     :title, null: false
+      t.text       :body
+      t.boolean    :published, default: false, null: false
+      t.references :user, null: false, foreign_key: true
+      t.timestamps                          # created_at, updated_at
+    end
+    add_index :posts, :title
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-changing-tables">
+						<h2 class="section-title">Changing Tables</h2>
+						<pre><code class="language-ruby">class AddSlugToPosts &lt; ActiveRecord::Migration[8.1]
+  def change
+    add_column :posts, :slug, :string
+    add_index  :posts, :slug, unique: true
+    rename_column :posts, :body, :content
+    remove_column :posts, :legacy_flag, :boolean   # type keeps it reversible
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-running-them">
+						<h2 class="section-title">Running Them</h2>
+						<pre><code class="language-bash">bin/rails db:migrate                    # run pending
+bin/rails db:rollback STEP=2            # undo last two
+bin/rails db:migrate:status             # up / down list
+bin/rails db:migrate VERSION=20261023120000
+bin/rails db:migrate:redo               # rollback + migrate</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>Migration[8.1]</code> — locks behavior to the Rails version that wrote it</div>
+							<div class="explain-item"><code>null: false</code> — database-level NOT NULL</div>
+							<div class="explain-item"><code>foreign_key: true</code> — real FK constraint</div>
+							<div class="explain-item"><code>remove_column</code> with a type — lets <code>change</code> reverse it</div>
+							<div class="explain-item"><code>db:migrate:redo</code> — quick check that <code>change</code> reverses cleanly</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Editing an old migration to fix a column → write a new migration</li>
+							<li class="note-item">Validations only in the model → add <code>null: false</code>, unique indexes and FKs too</li>
+							<li class="note-item">Writing <code>up</code> / <code>down</code> for simple changes → <code>change</code> with reversible commands</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Column Commands | Database Tasks -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-column-commands">
+						<h2 class="section-title">Column Commands</h2>
+						<table>
+							<thead><tr><th>Command</th><th>Reversible?</th></tr></thead>
+							<tbody>
+								<tr><td>create_table / drop_table (with block)</td><td class="desc">yes</td></tr>
+								<tr><td>add_column / remove_column (with type)</td><td class="desc">yes</td></tr>
+								<tr><td>rename_column / rename_table</td><td class="desc">yes</td></tr>
+								<tr><td>add_index / remove_index (with columns)</td><td class="desc">yes</td></tr>
+								<tr><td>change_column</td><td class="desc">no: use up/down or change_column_null</td></tr>
+								<tr><td>execute "SQL"</td><td class="desc">no: use reversible</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-database-tasks">
+						<h2 class="section-title">Database Tasks</h2>
+						<table>
+							<thead><tr><th>Task</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>db:create / db:drop</td><td class="desc">Create / drop the DB</td></tr>
+								<tr><td>db:prepare</td><td class="desc">Create + load schema or migrate</td></tr>
+								<tr><td>db:reset</td><td class="desc">Drop, create, load schema, seed</td></tr>
+								<tr><td>db:schema:load</td><td class="desc">Load schema.rb (fresh DB)</td></tr>
+								<tr><td>db:seed</td><td class="desc">Run db/seeds.rb</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Running <code>db:reset</code> on a database with real data; it drops everything</li>
+							<li class="note-item">Renaming a migration class or file after it ran; the version number no longer matches</li>
+							<li class="note-item">Adding a <code>null: false</code> column with no default to a table that already has rows</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>bin/rails g migration AddXToY x:type</code> so the body is written for you</li>
+							<li class="note-item">Run <code>db:migrate:redo</code> before pushing to prove the migration rolls back</li>
+							<li class="note-item">Use <code>strong_migrations</code> (gem) to catch locking or unsafe migrations on big tables</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>change</code> — reversible migration</li>
+							<li class="note-item"><code>t.references</code> — FK column + index</li>
+							<li class="note-item"><code>db:migrate</code> / <code>db:rollback</code> — run / undo</li>
+							<li class="note-item">schema.rb — commit it</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-25-active-record-basics.html" class="nav-link prev">Active Record Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-27-migrations-schema.html" class="nav-link next">Schema &amp; Seeds</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

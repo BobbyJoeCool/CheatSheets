@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 60: Active Storage</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s60">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 60</div>
+			<h1>Active Storage</h1>
+			<div class="sheet-desc">has_one_attached · has_many_attached · storage.yml · variants · direct uploads · rails_blob_path · purge_later</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">File Uploads Built In</h2>
+						<div class="description"><strong>Active Storage</strong> attaches files to records and stores them on local disk, S3-compatible services or Google Cloud Storage. Metadata lives in two tables (<code>active_storage_blobs</code> and <code>_attachments</code>), so models need no file columns. Image <strong>variants</strong> are generated on demand with libvips through the <code>image_processing</code> gem.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Install tables with <code>bin/rails active_storage:install</code> (new apps include it)</li>
+							<li class="note-item">Variants need <code>image_processing</code> and libvips (or ImageMagick)</li>
+							<li class="note-item">There are no built-in file validations; check <code>content_type</code> and <code>byte_size</code> yourself</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Model</h2>
+						<pre><code class="language-ruby">class User &lt; ApplicationRecord
+  has_one_attached :avatar do |a|
+    a.variant :thumb, resize_to_limit: [100, 100], preprocessed: true
+  end
+  has_many_attached :documents, dependent: :purge_later
+  validate { errors.add(:avatar, "too big") if avatar.attached? &amp;&amp; avatar.byte_size &gt; 5.megabytes }
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-attaching-displaying">
+						<h2 class="section-title">Attaching &amp; Displaying</h2>
+						<pre><code class="language-ruby">user.avatar.attach(params[:avatar])                     # from a form
+user.avatar.attach(io: File.open("me.png"), filename: "me.png")
+user.avatar.attached?                                   # true
+user.avatar.purge_later                                 # delete async
+User.with_attached_avatar                               # avoid N+1</code></pre>
+					</section>
+					<section class="section-code" id="code-views">
+						<h2 class="section-title">Views</h2>
+						<pre><code class="language-erb">&lt;%= image_tag user.avatar.variant(:thumb) if user.avatar.attached? %&gt;
+&lt;%= link_to "Download", rails_blob_path(doc, disposition: "attachment") %&gt;
+&lt;%= form.file_field :documents, multiple: true, direct_upload: true %&gt;</code></pre>
+					</section>
+					<section class="section-code" id="code-config-storage-yml">
+						<h2 class="section-title">config/storage.yml</h2>
+						<pre><code class="language-yaml">local:
+  service: Disk
+  root: &lt;%= Rails.root.join("storage") %&gt;
+amazon:
+  service: S3
+  access_key_id: &lt;%= Rails.application.credentials.dig(:aws, :access_key_id) %&gt;
+  secret_access_key: &lt;%= Rails.application.credentials.dig(:aws, :secret_access_key) %&gt;
+  bucket: my-app-&lt;%= Rails.env %&gt;
+  region: us-east-1</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>variant :thumb</code> — named variant; <code>preprocessed: true</code> creates it after upload</div>
+							<div class="explain-item"><code>attach(io:, filename:)</code> — attach from code or scripts</div>
+							<div class="explain-item"><code>with_attached_avatar</code> — eager-load attachments and blobs</div>
+							<div class="explain-item"><code>disposition: "attachment"</code> — force download</div>
+							<div class="explain-item"><code>direct_upload: true</code> — browser uploads to the service, skipping your app server</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">A <code>file_path</code> string column and manual uploads → <code>has_one_attached</code></li>
+							<li class="note-item">Resizing images on upload by hand → named variants</li>
+							<li class="note-item">Uploading large files through Puma → direct uploads</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Services | Variant Transformations -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-services">
+						<h2 class="section-title">Services</h2>
+						<table>
+							<thead><tr><th>Service</th><th>Notes</th></tr></thead>
+							<tbody>
+								<tr><td>Disk</td><td class="desc">Local; development or single server</td></tr>
+								<tr><td>S3</td><td class="desc">AWS S3 and compatible (R2, MinIO, Spaces)</td></tr>
+								<tr><td>Mirror</td><td class="desc">Write to several services during migrations</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-variant-transformations">
+						<h2 class="section-title">Variant Transformations</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>resize_to_limit</td><td class="desc">Fit within box, keep ratio</td></tr>
+								<tr><td>resize_to_fill</td><td class="desc">Crop to exact size</td></tr>
+								<tr><td>format: :webp</td><td class="desc">Convert format</td></tr>
+								<tr><td>saver: { quality: 80 }</td><td class="desc">Compression</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Trusting the browser-sent content type; validate and consider <code>content_type</code> analysis</li>
+							<li class="note-item">Rendering <code>image_tag user.avatar</code> when nothing is attached → error; check <code>attached?</code></li>
+							<li class="note-item">Using the local Disk service on multiple app servers; files exist on only one machine</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Serve files through a CDN with <code>config.active_storage.resolve_model_to_route = :rails_storage_proxy</code></li>
+							<li class="note-item">Use <code>has_one_attached ... dependent: :purge_later</code> (the default) so deletes don't block requests</li>
+							<li class="note-item">Add the <code>active_storage_validations</code> gem for declarative file validations</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>has_one_attached</code> — single file</li>
+							<li class="note-item"><code>has_many_attached</code> — many files</li>
+							<li class="note-item">variants — on-demand images</li>
+							<li class="note-item">direct uploads — straight to storage</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-59-action-mailer.html" class="nav-link prev">Action Mailer</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-61-action-text.html" class="nav-link next">Action Text</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-erb.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

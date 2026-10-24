@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 29: Validations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>Validations</h1>
+			<div class="sheet-desc">validates presence / uniqueness / length / format / numericality · validate :custom · errors · valid? · on: :create · validates_with</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Keeping Bad Data Out</h2>
+						<div class="description">Validations run when you call <code>save</code>, <code>create</code>, <code>update</code> or <code>valid?</code>. If any fail, the record collects messages in <code>errors</code> and isn't saved. Rails ships validators for presence, length, format, numericality, uniqueness and more; custom rules go in <code>validate</code> methods.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Validation Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>belongs_to</code> validates presence of the parent by default</li>
+							<li class="note-item"><code>uniqueness</code> runs a SELECT; pair it with a unique index to beat race conditions</li>
+							<li class="note-item">Error messages come from I18n: <code>activerecord.errors.models.user.attributes.email.taken</code></li>
+							<li class="note-item">Skipped by: <code>update_column</code>, <code>insert_all</code>, <code>update_all</code>, <code>save(validate: false)</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/models/user.rb</h2>
+						<pre><code class="language-ruby">class User &lt; ApplicationRecord
+  validates :name,  presence: true, length: { maximum: 50 }
+  validates :email, presence: true, uniqueness: { case_sensitive: false },
+                    format: { with: URI::MailTo::EMAIL_REGEXP }
+  validates :age,   numericality: { only_integer: true, greater_than_or_equal_to: 13 },
+                    allow_nil: true
+  validates :terms, acceptance: true, on: :create
+  validates :password, confirmation: true, length: { minimum: 12 }, if: :password_digest_changed?
+  validate  :birthday_not_in_future
+
+  private
+
+  def birthday_not_in_future
+    errors.add(:birthday, "can't be in the future") if birthday&amp;.future?
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-inspecting-errors">
+						<h2 class="section-title">Inspecting Errors</h2>
+						<pre><code class="language-ruby">u = User.new(email: "bad")
+u.valid?                        # false (runs validations)
+u.errors.full_messages          # ["Name can't be blank", "Email is invalid"]
+u.errors[:email]                # ["is invalid"]
+u.errors.where(:email).first.type   # :invalid
+u.errors.add(:base, "Account locked")</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Multiple validators can share one <code>validates</code> line</div>
+							<div class="explain-item"><code>allow_nil: true</code> — skip the rule when the value is nil</div>
+							<div class="explain-item"><code>on: :create</code> — only for new records (also <code>:update</code> or a custom context)</div>
+							<div class="explain-item"><code>if:</code> / <code>unless:</code> — conditional validation</div>
+							<div class="explain-item"><code>errors.add(:base, ...)</code> — a message not tied to one field</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>if params[:email].blank?</code> checks in controllers → model validations</li>
+							<li class="note-item"><code>validates_presence_of :name</code> (old style) → <code>validates :name, presence: true</code></li>
+							<li class="note-item">Uniqueness validation without an index → add the unique index as the real guard</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Built-in Validators | Contexts &amp; Triggers -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-built-in-validators">
+						<h2 class="section-title">Built-in Validators</h2>
+						<table>
+							<thead><tr><th>Validator</th><th>Example Option</th></tr></thead>
+							<tbody>
+								<tr><td>presence / absence</td><td class="desc"><code>presence: true</code></td></tr>
+								<tr><td>length</td><td class="desc"><code>{ in: 3..20 }</code>, <code>maximum:</code></td></tr>
+								<tr><td>format</td><td class="desc"><code>{ with: /\A\d{5}\z/ }</code></td></tr>
+								<tr><td>numericality</td><td class="desc"><code>{ greater_than: 0 }</code></td></tr>
+								<tr><td>inclusion / exclusion</td><td class="desc"><code>{ in: %w[S M L] }</code></td></tr>
+								<tr><td>uniqueness</td><td class="desc"><code>{ scope: :account_id }</code></td></tr>
+								<tr><td>comparison</td><td class="desc"><code>{ greater_than: :start_date }</code></td></tr>
+								<tr><td>confirmation / acceptance</td><td class="desc">password / terms</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-contexts-triggers">
+						<h2 class="section-title">Contexts &amp; Triggers</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Validates?</th></tr></thead>
+							<tbody>
+								<tr><td>save / create / update</td><td class="desc">yes</td></tr>
+								<tr><td>valid?(:publish)</td><td class="desc">Custom context</td></tr>
+								<tr><td>save(validate: false)</td><td class="desc">no</td></tr>
+								<tr><td>update_attribute</td><td class="desc">no</td></tr>
+								<tr><td>insert_all / upsert_all</td><td class="desc">no</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>^</code> and <code>$</code> in format regexes; they match per line. Use <code>\A</code> and <code>\z</code></li>
+							<li class="note-item">Relying on <code>uniqueness</code> alone; two concurrent requests can both pass</li>
+							<li class="note-item">Validating presence of a boolean with <code>presence: true</code>; <code>false</code> is blank. Use <code>inclusion: { in: [true, false] }</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Put reusable rules in a custom <code>EachValidator</code> class (<code>validates :url, url: true</code>)</li>
+							<li class="note-item">Use <code>validates_with</code> for rules that span several attributes</li>
+							<li class="note-item">Show <code>errors.full_messages_for(:field)</code> next to each input</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>validates</code> — declare rules</li>
+							<li class="note-item"><code>valid?</code> / <code>errors</code> — check and read</li>
+							<li class="note-item"><code>validate</code> — custom method</li>
+							<li class="note-item"><code>on:</code> / <code>if:</code> — conditional rules</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-28-attributes-types.html" class="nav-link prev">Attributes &amp; Types</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-30-model-callbacks.html" class="nav-link next">Model Callbacks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

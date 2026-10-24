@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 38: Joins &amp; Eager Loading</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>Joins &amp; Eager Loading</h1>
+			<div class="sheet-desc">joins · left_outer_joins · includes · preload · eager_load · N+1 queries · strict_loading</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Associations in Queries</h2>
+						<div class="description"><code>joins</code> uses an association to <strong>filter</strong> in SQL. <code>includes</code>, <code>preload</code> and <code>eager_load</code> <strong>load</strong> associated records up front, avoiding the <strong>N+1 problem</strong>: one query for posts plus one per post for its author. Pick based on whether you need to filter by the association, display it, or both.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>joins</code> is INNER JOIN; records without the association disappear</li>
+							<li class="note-item"><code>includes</code> picks <code>preload</code> (separate queries) or <code>eager_load</code> (one LEFT JOIN)</li>
+							<li class="note-item"><code>includes</code> switches to <code>eager_load</code> when you <code>references</code> or filter on the table</li>
+							<li class="note-item">Nested: <code>includes(comments: :author)</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">N+1 and the Fix</h2>
+						<pre><code class="language-ruby"># N+1: 1 query for posts + 1 per post for its author
+Post.limit(20).each { |p| puts p.author.name }
+
+# 2 queries total
+Post.includes(:author).limit(20).each { |p| puts p.author.name }</code></pre>
+					</section>
+					<section class="section-code" id="code-joining-vs-loading">
+						<h2 class="section-title">Joining vs Loading</h2>
+						<pre><code class="language-ruby">Post.joins(:author).where(users: { verified: true })      # filter only
+Post.joins(:comments).distinct                            # posts with comments
+Post.left_outer_joins(:comments).where(comments: { id: nil })
+Post.includes(:author, comments: :user)                   # display nested
+Post.preload(:tags)                                       # always separate queries
+Post.eager_load(:author).where(users: { verified: true }) # one JOIN query
+Post.includes(:author).where(users: { verified: true }).references(:users)
+Post.joins(:author).merge(User.verified)                  # reuse a scope</code></pre>
+					</section>
+					<section class="section-code" id="code-guard-against-n-1">
+						<h2 class="section-title">Guard Against N+1</h2>
+						<pre><code class="language-ruby">Post.strict_loading.first.author     # raises StrictLoadingViolationError
+user.posts.strict_loading!           # on one relation</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>joins</code> — no association objects loaded, just filtering</div>
+							<div class="explain-item"><code>distinct</code> — avoid duplicate posts from one-to-many joins</div>
+							<div class="explain-item"><code>preload</code> — <code>WHERE id IN (...)</code> per association</div>
+							<div class="explain-item"><code>eager_load</code> — single query with LEFT OUTER JOIN</div>
+							<div class="explain-item"><code>merge</code> — apply another model's scope to the joined table</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Looping and calling an association per row → <code>includes</code> up front</li>
+							<li class="note-item"><code>joins</code> + reading <code>post.author</code> in the view → <code>includes</code> (joins doesn't load)</li>
+							<li class="note-item">Hunting N+1s by reading logs → <code>strict_loading</code> in dev or the Bullet gem</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Which Method? | SQL Produced -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-which-method">
+						<h2 class="section-title">Which Method?</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Method</th></tr></thead>
+							<tbody>
+								<tr><td>Filter by association</td><td class="desc">joins</td></tr>
+								<tr><td>Include rows with no association</td><td class="desc">left_outer_joins</td></tr>
+								<tr><td>Show association data</td><td class="desc">includes / preload</td></tr>
+								<tr><td>Filter and show</td><td class="desc">eager_load or includes + references</td></tr>
+								<tr><td>Count per parent</td><td class="desc">joins + group + count, or counter cache</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sql-produced">
+						<h2 class="section-title">SQL Produced</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Queries</th></tr></thead>
+							<tbody>
+								<tr><td>joins(:author)</td><td class="desc">1 · INNER JOIN</td></tr>
+								<tr><td>preload(:author)</td><td class="desc">2 · posts, then users IN (...)</td></tr>
+								<tr><td>eager_load(:author)</td><td class="desc">1 · LEFT OUTER JOIN</td></tr>
+								<tr><td>includes(:author)</td><td class="desc">2 (or 1 if referenced)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>includes</code> then <code>.where("users.verified = 1")</code> without <code>references(:users)</code>, giving "no such column"</li>
+							<li class="note-item">Over-eager loading associations the page never shows</li>
+							<li class="note-item">Forgetting <code>distinct</code> after joining a <code>has_many</code>, which multiplies rows</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Enable <code>config.active_record.strict_loading_by_default = true</code> in development and fix each error</li>
+							<li class="note-item">Use counter caches instead of loading collections just to count them</li>
+							<li class="note-item">Check the log: lines tagged <code>CACHE</code> or repeated <code>SELECT users</code> hint at N+1</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>joins</code> — filter</li>
+							<li class="note-item"><code>includes</code> — load to display</li>
+							<li class="note-item"><code>eager_load</code> — one JOIN query</li>
+							<li class="note-item"><code>strict_loading</code> — catch N+1</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-37-conditions.html" class="nav-link prev">Conditions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-39-calculations.html" class="nav-link next">Calculations</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

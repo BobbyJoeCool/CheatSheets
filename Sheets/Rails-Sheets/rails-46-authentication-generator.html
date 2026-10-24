@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 46: Authentication Generator</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s46">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 46</div>
+			<h1>Authentication Generator</h1>
+			<div class="sheet-desc">g authentication (8.0) · has_secure_password · Session model · Current.user · require_authentication · allow_unauthenticated_access · password reset</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Built-in Login, No Gem Required</h2>
+						<div class="description">Rails 8 ships <code>bin/rails generate authentication</code>, which writes plain, editable code for email/password login: a <code>User</code> with <code>has_secure_password</code>, a database-backed <code>Session</code> model, an <code>Authentication</code> concern, sessions and password-reset controllers, and a mailer. Every controller requires login by default; you opt public actions out.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">What You Get</h2>
+						<ul class="note-list">
+							<li class="note-item">No sign-up form: add a <code>RegistrationsController</code> yourself</li>
+							<li class="note-item">Sessions are rows, so users can be logged out per device</li>
+							<li class="note-item">Login is rate limited (10 tries / 3 minutes) out of the box</li>
+							<li class="note-item">Passwords use bcrypt via <code>has_secure_password</code> (add the <code>bcrypt</code> gem; generator uncomments it)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Generate</h2>
+						<pre><code class="language-bash">bin/rails generate authentication
+bin/rails db:migrate</code></pre>
+					</section>
+					<section class="section-code" id="code-generated-models-trimmed">
+						<h2 class="section-title">Generated Models (trimmed)</h2>
+						<pre><code class="language-ruby">class User &lt; ApplicationRecord
+  has_secure_password
+  has_many :sessions, dependent: :destroy
+  normalizes :email_address, with: -&gt;(e) { e.strip.downcase }
+end
+
+class Session &lt; ApplicationRecord        # user_id, ip_address, user_agent
+  belongs_to :user
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-using-it-in-your-code">
+						<h2 class="section-title">Using It in Your Code</h2>
+						<pre><code class="language-ruby">class PostsController &lt; ApplicationController
+  allow_unauthenticated_access only: %i[index show]
+  def create = @post = Current.user.posts.create!(post_params)
+end
+
+authenticated?                          # helper in views/controllers
+Current.user                            # the signed-in user
+start_new_session_for(user)             # log in (e.g. after sign-up)
+terminate_session                       # log out
+User.authenticate_by(email_address: e, password: p)   # timing-safe lookup</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>has_secure_password</code> — <code>password=</code>, <code>authenticate</code>, confirmation validation</div>
+							<div class="explain-item"><code>allow_unauthenticated_access</code> — skips <code>require_authentication</code></div>
+							<div class="explain-item"><code>Current.user</code> — delegated from <code>Current.session</code></div>
+							<div class="explain-item"><code>authenticate_by</code> — avoids user-enumeration timing differences</div>
+							<div class="explain-item"><code>start_new_session_for</code> — creates a <code>Session</code> row and signed cookie</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Reaching for Devise on day one → start with the generator; add pieces as needed</li>
+							<li class="note-item"><code>User.find_by(email:)&amp;.authenticate(pw)</code> → <code>User.authenticate_by(...)</code></li>
+							<li class="note-item"><code>helper_method :current_user</code> hand-rolled → <code>Current.user</code> from the generator</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Generated Files -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-generated-files">
+						<h2 class="section-title">Generated Files</h2>
+						<table>
+							<thead><tr><th>File</th><th>Role</th></tr></thead>
+							<tbody>
+								<tr><td>app/controllers/concerns/authentication.rb</td><td class="desc">Filters and helpers</td></tr>
+								<tr><td>sessions_controller.rb</td><td class="desc">Login / logout + rate limit</td></tr>
+								<tr><td>passwords_controller.rb</td><td class="desc">Reset via emailed token</td></tr>
+								<tr><td>app/models/current.rb</td><td class="desc"><code>Current.session</code> / <code>user</code></td></tr>
+								<tr><td>passwords_mailer.rb</td><td class="desc">Reset email</td></tr>
+								<tr><td>db/migrate/*_create_users / sessions</td><td class="desc">Tables</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Assuming the generator includes sign-up, email confirmation or OAuth; it doesn't</li>
+							<li class="note-item">Forgetting <code>allow_unauthenticated_access</code> on public pages, sending visitors to the login form</li>
+							<li class="note-item">Exposing whether an email exists in the reset flow; keep the generic message</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Add sign-up with a <code>RegistrationsController</code> that saves a <code>User</code>, then calls <code>start_new_session_for(user)</code></li>
+							<li class="note-item">Add <code>generates_token_for :email_confirmation</code> for confirmation links (sheet 50)</li>
+							<li class="note-item">Show a "log out other devices" page by listing <code>Current.user.sessions</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>g authentication</code> — plain-code login (8.0)</li>
+							<li class="note-item"><code>Current.user</code> — signed-in user</li>
+							<li class="note-item"><code>allow_unauthenticated_access</code> — public actions</li>
+							<li class="note-item"><code>Session</code> rows — revocable logins</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-45-instrumentation-events.html" class="nav-link prev">Notifications &amp; Events</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-47-authorization.html" class="nav-link next">Authorization</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

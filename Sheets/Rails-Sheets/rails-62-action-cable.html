@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 62: Action Cable &amp; Solid Cable</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s62">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 62</div>
+			<h1>Action Cable &amp; Solid Cable</h1>
+			<div class="sheet-desc">channels · stream_from · broadcast · identified_by · cable.yml · Solid Cable · JS consumer</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">WebSockets in Rails</h2>
+						<div class="description"><strong>Action Cable</strong> adds WebSockets: a browser subscribes to a <strong>channel</strong> and the server pushes messages to it. Turbo Streams broadcasting uses Action Cable underneath, so many apps never write a channel. Rails 8 uses <strong>Solid Cable</strong>, which relays messages through the database instead of Redis.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Connection</code> authenticates the socket once; channels authorize subscriptions</li>
+							<li class="note-item">Use channels directly for chat, presence, or custom client-side handling</li>
+							<li class="note-item">Solid Cable polls a table (default every 0.1 s) and trims old messages</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/channels/application_cable/connection.rb</h2>
+						<pre><code class="language-ruby">module ApplicationCable
+  class Connection &lt; ActionCable::Connection::Base
+    identified_by :current_user
+
+    def connect
+      session = Session.find_by(id: cookies.signed[:session_id])
+      self.current_user = session&amp;.user || reject_unauthorized_connection
+    end
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-app-channels-room-channe">
+						<h2 class="section-title">app/channels/room_channel.rb</h2>
+						<pre><code class="language-ruby">class RoomChannel &lt; ApplicationCable::Channel
+  def subscribed
+    @room = current_user.rooms.find(params[:id])
+    stream_for @room
+  end
+
+  def speak(data)                          # called from JS
+    @room.messages.create!(user: current_user, body: data["body"])
+  end
+end
+
+RoomChannel.broadcast_to(room, { body: "Hi", from: "Ann" })   # from anywhere</code></pre>
+					</section>
+					<section class="section-code" id="code-javascript-consumer">
+						<h2 class="section-title">JavaScript Consumer</h2>
+						<pre><code class="language-javascript">import consumer from "channels/consumer"
+const room = consumer.subscriptions.create({ channel: "RoomChannel", id: 7 }, {
+  received(data) { appendMessage(data) },
+  speak(body)    { this.perform("speak", { body }) }
+})</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>cookies.signed[:session_id]</code> — reuse the auth generator's session cookie</div>
+							<div class="explain-item"><code>reject_unauthorized_connection</code> — refuse the socket</div>
+							<div class="explain-item"><code>stream_for @room</code> — subscribe to a stream named for the record</div>
+							<div class="explain-item"><code>perform("speak")</code> — calls the channel's <code>speak</code> method</div>
+							<div class="explain-item"><code>config/cable.yml</code>: <code>adapter: solid_cable</code> — DB-backed pub/sub, no Redis</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Custom channels for "update this list" → Turbo Stream broadcasts</li>
+							<li class="note-item">Polling endpoints with <code>setInterval</code> → Action Cable or Turbo Streams</li>
+							<li class="note-item">Trusting <code>params[:id]</code> in <code>subscribed</code> → scope through <code>current_user</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Adapters | Channel Methods -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-adapters">
+						<h2 class="section-title">Adapters</h2>
+						<table>
+							<thead><tr><th>Adapter</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>solid_cable</td><td class="desc">Rails 8 default, database-backed</td></tr>
+								<tr><td>redis</td><td class="desc">High-volume, existing Redis</td></tr>
+								<tr><td>async / test</td><td class="desc">Development / tests</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-channel-methods">
+						<h2 class="section-title">Channel Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>stream_from "name"</td><td class="desc">Subscribe by string</td></tr>
+								<tr><td>stream_for record</td><td class="desc">Subscribe by model</td></tr>
+								<tr><td>broadcast_to</td><td class="desc">Send to a model stream</td></tr>
+								<tr><td>unsubscribed</td><td class="desc">Cleanup / presence</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Authorizing only in <code>connect</code> and letting any user subscribe to any room id</li>
+							<li class="note-item">Broadcasting from inside a transaction; clients may refetch before commit</li>
+							<li class="note-item">Using the <code>async</code> adapter in production with multiple processes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Start with Turbo Streams; write a channel only when the client needs custom JS handling</li>
+							<li class="note-item">Keep payloads small; send ids or rendered HTML, not whole records</li>
+							<li class="note-item">Test channels with <code>ActionCable::Channel::TestCase</code> and <code>assert_broadcast_on</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Connection — authenticate socket</li>
+							<li class="note-item">Channel — subscribe and act</li>
+							<li class="note-item"><code>broadcast_to</code> — push messages</li>
+							<li class="note-item">Solid Cable — DB-backed default</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-61-action-text.html" class="nav-link prev">Action Text</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-63-caching.html" class="nav-link next">Caching</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

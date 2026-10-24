@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 28: Column Types &amp; the Attribute API</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>Column Types &amp; the Attribute API</h1>
+			<div class="sheet-desc">string / text / decimal / datetime / json · attribute · enum · normalizes (7.1) · store_accessor · serialize · has_json (8.2 edge)</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Typed Attributes</h2>
+						<div class="description">Active Record casts column values to Ruby types: <code>decimal</code> → <code>BigDecimal</code>, <code>datetime</code> → <code>ActiveSupport::TimeWithZone</code>, <code>json</code> → Hash. The <strong>attribute API</strong> adds virtual attributes or overrides a column's type. <code>enum</code> maps integers or strings to named states, and <code>normalizes</code> cleans values before validation and queries.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Type Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Integer columns cast <code>"42"</code> → <code>42</code>, <code>""</code> → <code>nil</code>, <code>"abc"</code> → <code>0</code> (no error; validate numericality)</li>
+							<li class="note-item"><code>enum</code> generates predicates (<code>draft?</code>), bang setters (<code>published!</code>) and scopes</li>
+							<li class="note-item"><code>normalizes</code> also applies to <code>where(email: ...)</code> lookups</li>
+							<li class="note-item">Rails 8.2 (edge) adds <code>has_json</code> for typed JSON settings</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/models/user.rb</h2>
+						<pre><code class="language-ruby">class User &lt; ApplicationRecord
+  enum :role, { member: 0, editor: 1, admin: 2 }, default: :member
+  enum :plan, %w[free pro team].index_by(&amp;:itself), prefix: true
+
+  normalizes :email, with: -&gt;(e) { e.strip.downcase }
+  attribute :newsletter, :boolean, default: true     # virtual or override
+  store_accessor :settings, :theme, :locale         # keys inside a JSON column
+  serialize :legacy_prefs, coder: JSON              # text column holding JSON
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-using-them">
+						<h2 class="section-title">Using Them</h2>
+						<pre><code class="language-ruby">u = User.new(role: :editor, email: "  Ann@X.COM ")
+u.email                    # "ann@x.com"
+u.editor?                  # true
+u.admin!                   # update(role: :admin)
+User.admin                 # scope
+User.where.not(role: :member)
+User.roles                 # {"member"=&gt;0, "editor"=&gt;1, "admin"=&gt;2}
+u.plan_pro?                # prefix: true → plan_*
+u.theme = "dark"           # stored in settings JSON
+User.find_by(email: "ANN@x.com")   # normalized lookup works</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>enum :role, {...}</code> — Rails 7+ syntax with the name as first argument</div>
+							<div class="explain-item"><code>default:</code> — default value for new records</div>
+							<div class="explain-item"><code>prefix: true</code> — avoids name clashes (<code>plan_free?</code>)</div>
+							<div class="explain-item"><code>store_accessor</code> — attribute-style access to JSON keys</div>
+							<div class="explain-item"><code>serialize ... coder: JSON</code> — for legacy text columns</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>STATUSES = %w[draft live]</code> + string comparisons → <code>enum :status</code></li>
+							<li class="note-item"><code>before_validation { self.email = email.downcase }</code> → <code>normalizes :email</code></li>
+							<li class="note-item">Many boolean columns for options → a <code>jsonb</code> settings column with <code>store_accessor</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Migration Type → Ruby | Attribute API -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-migration-type-ruby">
+						<h2 class="section-title">Migration Type → Ruby</h2>
+						<table>
+							<thead><tr><th>Column type</th><th>Ruby class</th></tr></thead>
+							<tbody>
+								<tr><td>string / text</td><td class="desc">String</td></tr>
+								<tr><td>integer / bigint</td><td class="desc">Integer</td></tr>
+								<tr><td>decimal</td><td class="desc">BigDecimal (set <code>precision:</code> / <code>scale:</code>)</td></tr>
+								<tr><td>float</td><td class="desc">Float</td></tr>
+								<tr><td>boolean</td><td class="desc">true / false</td></tr>
+								<tr><td>date · datetime</td><td class="desc">Date · TimeWithZone</td></tr>
+								<tr><td>json / jsonb</td><td class="desc">Hash / Array</td></tr>
+								<tr><td>uuid (PG)</td><td class="desc">String</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-attribute-api">
+						<h2 class="section-title">Attribute API</h2>
+						<table>
+							<thead><tr><th>Call</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>attribute :x, :integer</td><td class="desc">Typed virtual attribute</td></tr>
+								<tr><td>attribute :price, :decimal</td><td class="desc">Override column cast</td></tr>
+								<tr><td>attribute :tags, default: -&gt; { [] }</td><td class="desc">Fresh default each time</td></tr>
+								<tr><td>ActiveRecord::Type.register</td><td class="desc">Custom type class</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Reordering a hash <code>enum</code> mapped to integers; existing rows silently change meaning</li>
+							<li class="note-item">Storing money in <code>float</code> columns; use <code>decimal</code> with scale 2 or integer cents</li>
+							<li class="note-item">Mutating a JSON attribute in place (<code>settings["x"] = 1</code>) without reassigning on old Rails; reassign or use <code>store_accessor</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Prefer string-backed enums (<code>index_by(&amp;:itself)</code>) for readable data and safe reordering</li>
+							<li class="note-item">Add <code>validate: true</code> to <code>enum</code> (7.1+) to get validation errors instead of <code>ArgumentError</code></li>
+							<li class="note-item">Use database defaults and <code>attribute ... default:</code> together so both SQL and Ruby agree</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">type casting — columns → Ruby types</li>
+							<li class="note-item"><code>enum</code> — named states</li>
+							<li class="note-item"><code>normalizes</code> — clean input (7.1)</li>
+							<li class="note-item"><code>attribute</code> — virtual/typed attrs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-27-migrations-schema.html" class="nav-link prev">Schema &amp; Seeds</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-29-validations.html" class="nav-link next">Validations</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

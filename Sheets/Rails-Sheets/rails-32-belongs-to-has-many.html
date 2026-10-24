@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 32: belongs_to &amp; has_many</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s32">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 32</div>
+			<h1>belongs_to &amp; has_many</h1>
+			<div class="sheet-desc">belongs_to · has_many · foreign_key: · dependent: · optional: true · inverse_of: · counter_cache:</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Core Association Pair</h2>
+						<div class="description"><code>belongs_to</code> goes on the model whose table holds the foreign key; <code>has_many</code> goes on the other side. Together they add readers, writers, builders and query methods: <code>post.comments.create!(...)</code>, <code>comment.post</code>. Rails infers the class and key names from the association name.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Association Facts</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>belongs_to</code> is <strong>required</strong> by default; use <code>optional: true</code> to allow nil</li>
+							<li class="note-item">The FK column lives on the <code>belongs_to</code> side: <code>comments.post_id</code></li>
+							<li class="note-item">Association readers are cached; call <code>reload_post</code> / <code>post.comments.reload</code> to refresh</li>
+							<li class="note-item"><code>dependent:</code> decides what happens to children when the parent is destroyed</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Models</h2>
+						<pre><code class="language-ruby">class Post &lt; ApplicationRecord
+  belongs_to :author, class_name: "User", foreign_key: "user_id"
+  has_many   :comments, dependent: :destroy
+  has_many   :approved_comments, -&gt; { where(approved: true) }, class_name: "Comment"
+end
+
+class Comment &lt; ApplicationRecord
+  belongs_to :post, counter_cache: true          # needs posts.comments_count
+  belongs_to :parent, class_name: "Comment", optional: true
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-generated-methods">
+						<h2 class="section-title">Generated Methods</h2>
+						<pre><code class="language-ruby">post.comments                       # relation (lazy)
+post.comments.create!(body: "Nice") # sets post_id
+post.comments.build(body: "Draft")  # unsaved, in memory
+post.comments.size                  # uses counter cache when present
+post.comments.where(approved: false).count
+post.comment_ids                    # [1, 4, 9]
+comment.post                        # parent (cached)
+comment.post = other_post           # reassign
+comment.build_post(title: "x")      # belongs_to builder
+Post.where.associated(:comments)    # posts with at least one comment</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>class_name:</code> / <code>foreign_key:</code> — when the name doesn't match the class</div>
+							<div class="explain-item">Scoped <code>has_many</code> — a lambda adds conditions to an association</div>
+							<div class="explain-item"><code>counter_cache: true</code> — keeps <code>posts.comments_count</code> updated</div>
+							<div class="explain-item"><code>build</code> vs <code>create!</code> — memory only vs saved</div>
+							<div class="explain-item"><code>size</code> — count query, cached count, or loaded length, whichever is cheapest</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Comment.where(post_id: post.id)</code> → <code>post.comments</code></li>
+							<li class="note-item"><code>Comment.create(post_id: post.id, ...)</code> → <code>post.comments.create(...)</code></li>
+							<li class="note-item"><code>post.comments.count</code> in a loop → a <code>counter_cache</code> column</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: dependent: Options | Common Options -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-dependent-options">
+						<h2 class="section-title">dependent: Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>On parent destroy</th></tr></thead>
+							<tbody>
+								<tr><td>:destroy</td><td class="desc">Load and destroy each child (callbacks run)</td></tr>
+								<tr><td>:delete_all</td><td class="desc">One SQL DELETE (no callbacks)</td></tr>
+								<tr><td>:destroy_async</td><td class="desc">Destroy children in a background job</td></tr>
+								<tr><td>:nullify</td><td class="desc">Set child FKs to NULL</td></tr>
+								<tr><td>:restrict_with_error</td><td class="desc">Add error, abort destroy</td></tr>
+								<tr><td>:restrict_with_exception</td><td class="desc">Raise, abort destroy</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-common-options">
+						<h2 class="section-title">Common Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Side</th></tr></thead>
+							<tbody>
+								<tr><td>optional: true</td><td class="desc">belongs_to</td></tr>
+								<tr><td>touch: true</td><td class="desc">belongs_to: bump parent <code>updated_at</code></td></tr>
+								<tr><td>inverse_of:</td><td class="desc">both: share in-memory objects</td></tr>
+								<tr><td>strict_loading: true</td><td class="desc">both: forbid lazy loads</td></tr>
+								<tr><td>through:</td><td class="desc">has_many (sheet 33)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Adding <code>has_many :comments</code> but forgetting the <code>post_id</code> column (use <code>t.references</code>)</li>
+							<li class="note-item">Using <code>dependent: :destroy</code> on huge collections; it loads every row. Consider <code>:destroy_async</code> or <code>:delete_all</code></li>
+							<li class="note-item">Adding <code>counter_cache</code> to an existing table without backfilling: <code>Post.reset_counters(id, :comments)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Pair <code>dependent:</code> with a DB <code>on_delete:</code> FK rule to protect against raw SQL deletes</li>
+							<li class="note-item">Use <code>touch: true</code> on <code>belongs_to</code> to keep parent cache keys fresh</li>
+							<li class="note-item">Check generated methods in the console: <code>Post.reflect_on_association(:comments)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>belongs_to</code> — has the FK</li>
+							<li class="note-item"><code>has_many</code> — the collection side</li>
+							<li class="note-item"><code>dependent:</code> — child cleanup</li>
+							<li class="note-item"><code>counter_cache</code> — cheap counts</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-31-scopes.html" class="nav-link prev">Scopes</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-33-has-one-through.html" class="nav-link next">has_one &amp; :through</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

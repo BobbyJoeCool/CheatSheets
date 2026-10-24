@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 30: Model Callbacks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>Model Callbacks</h1>
+			<div class="sheet-desc">before_validation · before_save · after_create · after_commit · around_save · throw :abort · callback pitfalls</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Hooks in the Record Lifecycle</h2>
+						<div class="description">Callbacks run at points in a record's life: before or after validation, save, create, update and destroy. They are useful for derived values and side effects tied to persistence. Use <code>after_commit</code> for anything outside the database (jobs, emails, cache), because it only runs once the transaction is really committed.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Callback Rules</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>throw :abort</code> in a <code>before_*</code> callback cancels the save or destroy</li>
+							<li class="note-item">Callbacks run inside the save transaction, except <code>after_commit</code> / <code>after_rollback</code></li>
+							<li class="note-item"><code>after_create_commit</code>, <code>after_update_commit</code>, <code>after_destroy_commit</code>, <code>after_save_commit</code> are shortcuts</li>
+							<li class="note-item">Bulk methods (<code>update_all</code>, <code>delete_all</code>, <code>insert_all</code>) skip callbacks</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/models/post.rb</h2>
+						<pre><code class="language-ruby">class Post &lt; ApplicationRecord
+  before_validation :set_slug, if: -&gt; { slug.blank? }
+  before_save       :strip_title
+  before_destroy    :prevent_if_published, prepend: true
+  after_create_commit  -&gt; { NotifyFollowersJob.perform_later(self) }
+  after_update_commit  :expire_cache, if: :saved_change_to_title?
+  around_save       :log_timing
+
+  private
+
+  def set_slug     = self.slug = title.to_s.parameterize
+  def strip_title  = title&amp;.strip!
+  def expire_cache = Rails.cache.delete(["post", id])
+
+  def prevent_if_published
+    throw :abort if published?
+  end
+
+  def log_timing
+    started = Time.current
+    yield                                    # runs the save
+    Rails.logger.info "saved in #{Time.current - started}s"
+  end
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>before_validation</code> — set values before rules check them</div>
+							<div class="explain-item"><code>prepend: true</code> — run before <code>dependent: :destroy</code> callbacks</div>
+							<div class="explain-item"><code>after_create_commit</code> — enqueue jobs only after the row is visible to workers</div>
+							<div class="explain-item"><code>saved_change_to_title?</code> — dirty check that works after save</div>
+							<div class="explain-item"><code>around_save</code> — must <code>yield</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>after_save { Mailer.deliver_later }</code> → <code>after_commit</code> so rolled-back saves don't send mail</li>
+							<li class="note-item">Chains of callbacks doing business workflows → an explicit method or service object</li>
+							<li class="note-item">Callbacks that change other models → be explicit in the caller where it's visible</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Order on create | Other Hooks -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-order-on-create">
+						<h2 class="section-title">Order on create</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Callback</th></tr></thead>
+							<tbody>
+								<tr><td>1</td><td class="desc">before_validation</td></tr>
+								<tr><td>2</td><td class="desc">after_validation</td></tr>
+								<tr><td>3</td><td class="desc">before_save</td></tr>
+								<tr><td>4</td><td class="desc">around_save / before_create</td></tr>
+								<tr><td>5</td><td class="desc">INSERT</td></tr>
+								<tr><td>6</td><td class="desc">after_create</td></tr>
+								<tr><td>7</td><td class="desc">after_save</td></tr>
+								<tr><td>8</td><td class="desc">after_commit (after transaction)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-other-hooks">
+						<h2 class="section-title">Other Hooks</h2>
+						<table>
+							<thead><tr><th>Callback</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>after_initialize</td><td class="desc">Every instantiation (incl. loads)</td></tr>
+								<tr><td>after_find</td><td class="desc">Loaded from DB</td></tr>
+								<tr><td>after_touch</td><td class="desc">After <code>touch</code></td></tr>
+								<tr><td>after_rollback</td><td class="desc">Transaction rolled back</td></tr>
+								<tr><td>before_destroy</td><td class="desc">Before DELETE; can abort</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Enqueuing jobs in <code>after_save</code>; the worker may run before commit and not find the record</li>
+							<li class="note-item">Calling <code>save</code> inside an <code>after_save</code> callback, causing loops or double writes</li>
+							<li class="note-item">Using <code>after_initialize</code> for heavy work; it runs for every loaded record</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep callbacks about the record itself; orchestrate cross-model work explicitly</li>
+							<li class="note-item">Use <code>ActiveRecord.after_all_transactions_commit { }</code> (7.2+) in plain methods for post-commit work</li>
+							<li class="note-item">Inspect a chain with <code>Post._save_callbacks.map(&amp;:filter)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>before_*</code> — prepare or abort</li>
+							<li class="note-item"><code>throw :abort</code> — cancel</li>
+							<li class="note-item"><code>after_commit</code> — side effects</li>
+							<li class="note-item">bulk methods — skip callbacks</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-29-validations.html" class="nav-link prev">Validations</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-31-scopes.html" class="nav-link next">Scopes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

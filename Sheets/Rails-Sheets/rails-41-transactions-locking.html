@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 41: Transactions &amp; Locking</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s41">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 41</div>
+			<h1>Transactions &amp; Locking</h1>
+			<div class="sheet-desc">transaction · ActiveRecord::Rollback · lock · with_lock · lock_version · after_commit · nested transactions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">All or Nothing</h2>
+						<div class="description">A <strong>transaction</strong> groups writes so they all succeed or all roll back. Any exception inside the block rolls back and re-raises; <code>ActiveRecord::Rollback</code> rolls back silently. <strong>Locking</strong> prevents two requests from changing the same row at once: pessimistic locks block, optimistic locks detect conflicts on save.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>save</code> and <code>destroy</code> already run in their own transaction</li>
+							<li class="note-item">Nested <code>transaction</code> blocks join the outer one unless <code>requires_new: true</code></li>
+							<li class="note-item">Jobs, emails and API calls inside a transaction can't be rolled back: use <code>after_commit</code></li>
+							<li class="note-item">Optimistic locking needs an integer <code>lock_version</code> column</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Transactions</h2>
+						<pre><code class="language-ruby">ActiveRecord::Base.transaction do
+  from.update!(balance: from.balance - amount)
+  to.update!(balance: to.balance + amount)
+  Transfer.create!(from:, to:, amount:)
+end                                          # any raise → full rollback
+
+Order.transaction do
+  order.update!(status: "cancelled")
+  raise ActiveRecord::Rollback if order.refund_failed?   # silent rollback
+end
+
+ActiveRecord::Base.transaction do |tx|
+  order.save!
+  tx.after_commit { OrderMailer.confirm(order).deliver_later }  # 7.2+
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-locking">
+						<h2 class="section-title">Locking</h2>
+						<pre><code class="language-ruby">account = Account.lock.find(id)              # SELECT ... FOR UPDATE
+account.with_lock do                         # reload + lock + transaction
+  account.balance -= 10
+  account.save!
+end
+
+# optimistic: posts.lock_version integer, default 0, null: false
+post = Post.find(1)
+post.update(title: "A")                      # lock_version 0 → 1
+stale.update(title: "B")                     # raises ActiveRecord::StaleObjectError</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>update!</code> (bang) — failures raise, so the transaction rolls back</div>
+							<div class="explain-item"><code>ActiveRecord::Rollback</code> — swallowed by <code>transaction</code>, not re-raised</div>
+							<div class="explain-item"><code>tx.after_commit</code> — run code only if this transaction commits</div>
+							<div class="explain-item"><code>with_lock</code> — row lock for the duration of the block</div>
+							<div class="explain-item"><code>StaleObjectError</code> — someone else saved first; reload and retry or show a conflict</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Non-bang <code>update</code> inside a transaction → <code>update!</code> so failures abort</li>
+							<li class="note-item">Sending email inside the block → <code>after_commit</code> or <code>tx.after_commit</code></li>
+							<li class="note-item">Read-modify-write without locking → <code>with_lock</code> or <code>update_counters</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Pessimistic vs Optimistic | Transaction Options -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-pessimistic-vs-optimistic">
+						<h2 class="section-title">Pessimistic vs Optimistic</h2>
+						<table>
+							<thead><tr><th></th><th>Pessimistic · Optimistic</th></tr></thead>
+							<tbody>
+								<tr><td>Mechanism</td><td class="desc"><code>FOR UPDATE</code> row lock · <code>lock_version</code> check</td></tr>
+								<tr><td>On conflict</td><td class="desc">Second request waits · StaleObjectError</td></tr>
+								<tr><td>Best for</td><td class="desc">Short critical sections, money · Forms edited by people</td></tr>
+								<tr><td>Cost</td><td class="desc">Blocking, deadlock risk · Retry / merge UI</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-transaction-options">
+						<h2 class="section-title">Transaction Options</h2>
+						<table>
+							<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>requires_new: true</td><td class="desc">Savepoint for nested block</td></tr>
+								<tr><td>isolation: :serializable</td><td class="desc">Isolation level (outer only)</td></tr>
+								<tr><td>joinable: false</td><td class="desc">Inner blocks can't join</td></tr>
+								<tr><td>lock("FOR UPDATE NOWAIT")</td><td class="desc">Fail fast instead of waiting</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>save</code> (non-bang) inside a transaction and continuing after it returns false</li>
+							<li class="note-item">Doing slow network calls while holding a row lock</li>
+							<li class="note-item">Rescuing exceptions inside the block, which prevents the rollback</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep transactions short and focused on the database</li>
+							<li class="note-item">Use <code>ActiveRecord.after_all_transactions_commit</code> from service objects (7.2+)</li>
+							<li class="note-item">Add a <code>lock_version</code> hidden field in edit forms to detect concurrent edits</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>transaction</code> — all or nothing</li>
+							<li class="note-item"><code>Rollback</code> — silent abort</li>
+							<li class="note-item"><code>with_lock</code> — pessimistic</li>
+							<li class="note-item"><code>lock_version</code> — optimistic</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-40-batches-bulk.html" class="nav-link prev">Batches &amp; Bulk</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-42-raw-sql-multi-db.html" class="nav-link next">Raw SQL &amp; Multi-DB</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

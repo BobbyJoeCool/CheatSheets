@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 70: API-Only Apps &amp; JSON</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s70">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 70</div>
+			<h1>API-Only Apps &amp; JSON</h1>
+			<div class="sheet-desc">rails new --api · ActionController::API · render json: · Jbuilder · as_json · namespaced versions · rack-cors</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Rails as a JSON Backend</h2>
+						<div class="description"><code>rails new --api</code> builds a slimmer app for JSON clients: controllers inherit <code>ActionController::API</code>, browser-only middleware (cookies, flash, CSRF) is removed, and generators skip views. You can also add API controllers to a normal app. JSON comes from <code>render json:</code> with <code>as_json</code>, <strong>Jbuilder</strong> templates, or a serializer gem.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ActionController::API</code> excludes views, cookies, sessions and CSRF by default</li>
+							<li class="note-item">Token auth is common: <code>authenticate_with_http_token</code> or signed tokens</li>
+							<li class="note-item">Version with URL namespaces: <code>/api/v1/...</code></li>
+							<li class="note-item">Browsers calling from another origin need CORS headers (<code>rack-cors</code>)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Routes &amp; Controller</h2>
+						<pre><code class="language-ruby">namespace :api do
+  namespace :v1 do
+    resources :posts, only: %i[index show create], defaults: { format: :json }
+  end
+end
+
+class Api::V1::BaseController &lt; ActionController::API
+  include ActionController::HttpAuthentication::Token::ControllerMethods
+  before_action :authenticate
+
+  private
+
+  def authenticate
+    authenticate_or_request_with_http_token do |token, _opts|
+      @client = ApiClient.find_by(api_key: token)
+    end
+  end
+end
+
+class Api::V1::PostsController &lt; Api::V1::BaseController
+  def index
+    posts = Post.published.order(id: :desc).limit(50)
+    render json: posts.as_json(only: %i[id title], include: { user: { only: :name } })
+  end
+
+  def create
+    post = @client.posts.new(params.expect(post: [:title, :body]))
+    if post.save then render json: post, status: :created, location: api_v1_post_url(post)
+    else render json: { errors: post.errors }, status: :unprocessable_entity end
+  end
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>defaults: { format: :json }</code> — no <code>.json</code> suffix needed</div>
+							<div class="explain-item"><code>authenticate_or_request_with_http_token</code> — parses <code>Authorization: Token ...</code> / <code>Bearer</code></div>
+							<div class="explain-item"><code>as_json(only:, include:)</code> — shape output without a template</div>
+							<div class="explain-item"><code>status: :created, location:</code> — RESTful create response</div>
+							<div class="explain-item">Jbuilder — <code>show.json.jbuilder</code>: <code>json.extract! @post, :id, :title</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>to_json</code> of whole records (leaks columns) → <code>as_json(only:)</code>, Jbuilder or a serializer</li>
+							<li class="note-item">Inconsistent error formats → one <code>rescue_from</code> + error JSON shape in a base controller</li>
+							<li class="note-item">Breaking changes on the same URL → a new <code>v2</code> namespace</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: JSON Options | config/initializers/cors.rb -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-json-options">
+						<h2 class="section-title">JSON Options</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Notes</th></tr></thead>
+							<tbody>
+								<tr><td>render json: obj</td><td class="desc">Calls <code>as_json</code></td></tr>
+								<tr><td>as_json(only:, except:, methods:)</td><td class="desc">Quick shaping</td></tr>
+								<tr><td>Jbuilder</td><td class="desc">Templates, partials, <code>json.cache!</code></td></tr>
+								<tr><td>Alba / Blueprinter</td><td class="desc">Fast serializer classes</td></tr>
+								<tr><td>ActiveModel::Serializers</td><td class="desc">Older, less maintained</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-config-initializers-cors-rb">
+						<h2 class="section-title">config/initializers/cors.rb</h2>
+						<table>
+							<thead><tr><th>Setting</th><th>Example</th></tr></thead>
+							<tbody>
+								<tr><td>origins</td><td class="desc"><code>"app.example.com"</code></td></tr>
+								<tr><td>resource</td><td class="desc"><code>"/api/*"</code></td></tr>
+								<tr><td>headers</td><td class="desc"><code>:any</code></td></tr>
+								<tr><td>methods</td><td class="desc"><code>%i[get post patch delete options]</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Rendering <code>@user.to_json</code>, exposing <code>password_digest</code> and other private columns</li>
+							<li class="note-item">Using cookie auth for a cross-site API without CSRF protection</li>
+							<li class="note-item">Setting CORS <code>origins "*"</code> together with credentials</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Paginate every list endpoint (<code>pagy</code> gem) and return pagination headers</li>
+							<li class="note-item">Return errors as <code>{ errors: { field: [messages] } }</code> consistently</li>
+							<li class="note-item">Use request specs or integration tests with <code>as: :json</code> for every endpoint</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>--api</code> — lean JSON app</li>
+							<li class="note-item"><code>ActionController::API</code> — no browser middleware</li>
+							<li class="note-item"><code>as_json</code> / Jbuilder — shape JSON</li>
+							<li class="note-item"><code>api/v1</code> — version namespace</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-69-local-ci.html" class="nav-link prev">Local CI</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-71-i18n.html" class="nav-link next">Internationalization</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

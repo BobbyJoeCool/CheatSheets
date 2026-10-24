@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 31: Scopes &amp; Model Concerns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s31">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 31</div>
+			<h1>Scopes &amp; Model Concerns</h1>
+			<div class="sheet-desc">scope · scopes with arguments · default_scope (and why to avoid it) · unscoped · class methods returning relations · model concerns</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Named, Chainable Queries</h2>
+						<div class="description">A <strong>scope</strong> names a query so you can chain it: <code>Post.published.recent.limit(5)</code>. Scopes always return a relation, even when the condition is nil. <strong>Model concerns</strong> group scopes, validations and methods shared by several models, such as soft delete or slugs.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Scope Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">A scope is a class method that returns <code>all</code> when its body returns <code>nil</code></li>
+							<li class="note-item">Scopes work on associations: <code>user.posts.published</code></li>
+							<li class="note-item"><code>default_scope</code> applies to every query, including <code>new</code> and associations</li>
+							<li class="note-item"><code>unscoped</code> removes default scopes (and everything else in the chain)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">app/models/post.rb</h2>
+						<pre><code class="language-ruby">class Post &lt; ApplicationRecord
+  include Sluggable
+
+  scope :published, -&gt; { where(published: true) }
+  scope :recent,    -&gt; { order(created_at: :desc) }
+  scope :by_author, -&gt;(user) { where(user: user) if user }
+  scope :since,     -&gt;(time = 1.week.ago) { where(created_at: time..) }
+
+  def self.search(q)                       # class method alternative
+    return all if q.blank?
+    where("title LIKE ?", "%#{sanitize_sql_like(q)}%")
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-app-models-concerns-slug">
+						<h2 class="section-title">app/models/concerns/sluggable.rb</h2>
+						<pre><code class="language-ruby">module Sluggable
+  extend ActiveSupport::Concern
+
+  included do
+    before_validation :set_slug, if: -&gt; { slug.blank? }
+    validates :slug, uniqueness: true
+  end
+
+  class_methods do
+    def find_by_slug!(slug) = find_by!(slug: slug)
+  end
+
+  def to_param = slug
+  private def set_slug = self.slug = title.to_s.parameterize
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-chaining">
+						<h2 class="section-title">Chaining</h2>
+						<pre><code class="language-ruby">Post.published.recent.by_author(Current.user).since.limit(10)
+Post.published.search(params[:q]).page(2)</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>-&gt;(user) { ... if user }</code> — returns nil → acts as <code>all</code></div>
+							<div class="explain-item"><code>time..</code> — endless range: <code>created_at &gt;= time</code></div>
+							<div class="explain-item"><code>sanitize_sql_like</code> — escapes <code>%</code> and <code>_</code> in user input</div>
+							<div class="explain-item"><code>class_methods do</code> — class-level methods from a concern</div>
+							<div class="explain-item"><code>to_param</code> — models with slugs build <code>/posts/my-title</code> URLs</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Repeated <code>where(published: true)</code> in controllers → <code>scope :published</code></li>
+							<li class="note-item"><code>default_scope { where(deleted_at: nil) }</code> → an explicit <code>kept</code> scope</li>
+							<li class="note-item">Copying the same slug code into three models → a concern</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: scope vs class method | default_scope Pitfalls -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-scope-vs-class-method">
+						<h2 class="section-title">scope vs class method</h2>
+						<table>
+							<thead><tr><th></th><th>scope · class method</th></tr></thead>
+							<tbody>
+								<tr><td>Returns nil</td><td class="desc">converted to <code>all</code> · returns nil (breaks chain)</td></tr>
+								<tr><td>Arguments</td><td class="desc">lambda args · normal params</td></tr>
+								<tr><td>Best for</td><td class="desc">one-line conditions · multi-step logic</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-default-scope-pitfalls">
+						<h2 class="section-title">default_scope Pitfalls</h2>
+						<table>
+							<thead><tr><th>Problem</th><th>Result</th></tr></thead>
+							<tbody>
+								<tr><td>Applies to `new`</td><td class="desc">Sets attributes on new records</td></tr>
+								<tr><td>Applies to joins</td><td class="desc">Hidden filters in reports</td></tr>
+								<tr><td>unscoped</td><td class="desc">Also drops association conditions</td></tr>
+								<tr><td>Ordering</td><td class="desc">Breaks <code>reorder</code> expectations</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>.first</code> or <code>.to_a</code> inside a scope; it must return a relation</li>
+							<li class="note-item">Writing <code>where("title LIKE '%#{q}%'")</code> with interpolation (SQL injection)</li>
+							<li class="note-item">Adding <code>default_scope</code> for soft deletes, then fighting it with <code>unscoped</code> everywhere</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Name scopes as adjectives or filters (<code>published</code>, <code>by_author</code>) so chains read like sentences</li>
+							<li class="note-item">Combine with <code>merge</code> to reuse another model's scope in a join: <code>joins(:user).merge(User.active)</code></li>
+							<li class="note-item">Keep concerns cohesive: one behavior per concern</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>scope</code> — named, chainable query</li>
+							<li class="note-item">nil → <code>all</code> — safe optional filters</li>
+							<li class="note-item"><code>default_scope</code> — avoid</li>
+							<li class="note-item">concern — shared model behavior</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-30-model-callbacks.html" class="nav-link prev">Model Callbacks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-32-belongs-to-has-many.html" class="nav-link next">belongs_to &amp; has_many</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

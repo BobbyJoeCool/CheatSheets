@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 47: Authorization</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s47">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 47</div>
+			<h1>Authorization</h1>
+			<div class="sheet-desc">before_action guards · scoping to Current.user · role enums · Pundit policies · authorize / policy_scope · 403 vs 404</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Who May Do What</h2>
+						<div class="description">Authentication answers "who are you"; <strong>authorization</strong> answers "may you do this". Rails has no built-in authorization framework. The simplest reliable approach is <strong>scoping</strong>: load records through the current user's associations. For role and rule-heavy apps, policy objects (Pundit, Action Policy) keep rules testable.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Scoped lookups (<code>Current.user.posts.find(id)</code>) raise 404 for others' records</li>
+							<li class="note-item">Check permissions on the server for every action, not just by hiding buttons</li>
+							<li class="note-item">Return 404 for private records to avoid revealing they exist; 403 when existence is public</li>
+							<li class="note-item">Admin areas: a namespaced base controller with one guard</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Scoping &amp; Guards</h2>
+						<pre><code class="language-ruby">class PostsController &lt; ApplicationController
+  before_action :set_post, only: %i[edit update destroy]
+
+  private
+
+  def set_post
+    @post = Current.user.posts.find(params.expect(:id))   # 404 if not theirs
+  end
+end
+
+class Admin::BaseController &lt; ApplicationController
+  before_action { head :forbidden unless Current.user&amp;.admin? }
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-pundit-policy">
+						<h2 class="section-title">Pundit Policy</h2>
+						<pre><code class="language-ruby">class PostPolicy &lt; ApplicationPolicy
+  def update? = user.admin? || record.user_id == user.id
+  def destroy? = update?
+
+  class Scope &lt; ApplicationPolicy::Scope
+    def resolve = user.admin? ? scope.all : scope.where(user:)
+  end
+end
+
+class PostsController &lt; ApplicationController
+  include Pundit::Authorization
+  def index  = @posts = policy_scope(Post)
+  def update
+    @post = Post.find(params.expect(:id))
+    authorize @post                          # raises NotAuthorizedError
+    @post.update!(post_params)
+    redirect_to @post, status: :see_other
+  end
+end</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Association scoping — authorization by construction</div>
+							<div class="explain-item">Inline <code>before_action</code> block — quick guard for a namespace</div>
+							<div class="explain-item"><code>update?</code> — one predicate per action</div>
+							<div class="explain-item"><code>policy_scope</code> — list only what the user may see</div>
+							<div class="explain-item"><code>policy(@post).update?</code> in views — hide links the user can't use</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Post.find(id)</code> then <code>if post.user != current_user</code> → <code>Current.user.posts.find(id)</code></li>
+							<li class="note-item">Role checks scattered across views and controllers → one policy class per model</li>
+							<li class="note-item"><code>if user.role == "admin"</code> strings → <code>enum :role</code> with <code>admin?</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Approaches | Status Choices -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-approaches">
+						<h2 class="section-title">Approaches</h2>
+						<table>
+							<thead><tr><th>Approach</th><th>Fits</th></tr></thead>
+							<tbody>
+								<tr><td>Association scoping</td><td class="desc">Owner-only data</td></tr>
+								<tr><td>before_action guards</td><td class="desc">A few role checks</td></tr>
+								<tr><td>Pundit</td><td class="desc">Plain Ruby policy objects</td></tr>
+								<tr><td>Action Policy</td><td class="desc">Policies + caching + scoping rules</td></tr>
+								<tr><td>CanCanCan</td><td class="desc">Central <code>Ability</code> file</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-status-choices">
+						<h2 class="section-title">Status Choices</h2>
+						<table>
+							<thead><tr><th>Case</th><th>Respond With</th></tr></thead>
+							<tbody>
+								<tr><td>Not logged in</td><td class="desc">Redirect to login</td></tr>
+								<tr><td>Logged in, not allowed, record public</td><td class="desc">403 Forbidden</td></tr>
+								<tr><td>Record private to someone else</td><td class="desc">404 Not Found</td></tr>
+								<tr><td>API client</td><td class="desc">JSON error + status</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Only hiding the Edit button; a crafted PATCH request still works without a server check</li>
+							<li class="note-item">Loading by id first and authorizing after, then forgetting the check in one action</li>
+							<li class="note-item">Policies that query the database for every list row (N+1 inside <code>update?</code>)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Add <code>after_action :verify_authorized</code> (Pundit) to catch actions missing a check</li>
+							<li class="note-item">Test policies as plain Ruby objects: fast and focused</li>
+							<li class="note-item">Keep roles coarse; express fine rules in policy methods</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">scoping — <code>Current.user.posts.find</code></li>
+							<li class="note-item">guards — <code>before_action</code> checks</li>
+							<li class="note-item">policies — rules per model</li>
+							<li class="note-item">404 / 403 — choose deliberately</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-46-authentication-generator.html" class="nav-link prev">Auth Generator</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-48-built-in-security.html" class="nav-link next">Built-in Security</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

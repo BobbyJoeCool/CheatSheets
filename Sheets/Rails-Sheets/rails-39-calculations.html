@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 39: Calculations &amp; Grouping</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s39">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 39</div>
+			<h1>Calculations &amp; Grouping</h1>
+			<div class="sheet-desc">count · sum · average · minimum / maximum · group · having · select with alias · distinct</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Let the Database Do the Math</h2>
+						<div class="description">Calculation methods run aggregate SQL and return numbers or hashes, without loading records. Add <code>group</code> to get a hash keyed by the grouped value. For several aggregates at once, <code>select</code> with aliases and read them as attributes.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>count</code> → Integer; <code>average</code> → BigDecimal; <code>sum</code> on empty → <code>0</code></li>
+							<li class="note-item">Grouped calculations return a Hash: <code>{ "draft" =&gt; 3, "live" =&gt; 9 }</code></li>
+							<li class="note-item"><code>count</code> on a loaded relation still queries; <code>size</code> uses the loaded array</li>
+							<li class="note-item"><code>having</code> filters groups after aggregation</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Single Values</h2>
+						<pre><code class="language-ruby">Order.count                              # 120
+Order.where(status: "paid").sum(:total)  # 4821.50
+Order.average(:total)                    # 40.18 (BigDecimal)
+Order.minimum(:created_at)
+Order.maximum(:total)
+Order.distinct.count(:user_id)           # unique customers
+Order.calculate(:sum, :total)            # generic form
+Order.async_sum(:total)                  # Promise (7.1+): .value later</code></pre>
+					</section>
+					<section class="section-code" id="code-grouping">
+						<h2 class="section-title">Grouping</h2>
+						<pre><code class="language-ruby">Order.group(:status).count               # {"paid"=&gt;90, "open"=&gt;30}
+Order.group(:user_id).sum(:total)        # {1=&gt;120.0, 2=&gt;87.5}
+Order.group(:user_id).having("SUM(total) &gt; ?", 100).sum(:total)
+Order.group("DATE(created_at)").count    # per day
+Order.joins(:user).group("users.country").count
+Post.left_joins(:comments).group(:id).count("comments.id")</code></pre>
+					</section>
+					<section class="section-code" id="code-multiple-aggregates">
+						<h2 class="section-title">Multiple Aggregates</h2>
+						<pre><code class="language-ruby">stats = Order.select("user_id, COUNT(*) AS orders_count, SUM(total) AS spent")
+             .group(:user_id).order(spent: :desc).limit(5)
+stats.first.spent                        # alias readable as attribute</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>distinct.count(:col)</code> — <code>COUNT(DISTINCT col)</code></div>
+							<div class="explain-item"><code>async_sum</code> — run in the background, read <code>.value</code> when needed</div>
+							<div class="explain-item"><code>having</code> — conditions on aggregated values</div>
+							<div class="explain-item"><code>left_joins</code> + <code>count("comments.id")</code> — zero counts kept</div>
+							<div class="explain-item">Aliased columns become readers on the returned objects</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Order.all.map(&amp;:total).sum</code> → <code>Order.sum(:total)</code></li>
+							<li class="note-item">Counting children in a loop → <code>group(...).count</code> once</li>
+							<li class="note-item">Frequent counts on big tables → counter caches or a rollup table</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Calculation Methods | count vs size vs length -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-calculation-methods">
+						<h2 class="section-title">Calculation Methods</h2>
+						<table>
+							<thead><tr><th>Method</th><th>SQL</th></tr></thead>
+							<tbody>
+								<tr><td>count</td><td class="desc"><code>COUNT(*)</code></td></tr>
+								<tr><td>count(:col)</td><td class="desc"><code>COUNT(col)</code> (non-null)</td></tr>
+								<tr><td>sum(:col)</td><td class="desc"><code>SUM(col)</code></td></tr>
+								<tr><td>average(:col)</td><td class="desc"><code>AVG(col)</code></td></tr>
+								<tr><td>minimum / maximum</td><td class="desc"><code>MIN</code> / <code>MAX</code></td></tr>
+								<tr><td>pluck(Arel.sql("..."))</td><td class="desc">Any expression</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-count-vs-size-vs-length">
+						<h2 class="section-title">count vs size vs length</h2>
+						<table>
+							<thead><tr><th>Method</th><th>Behavior</th></tr></thead>
+							<tbody>
+								<tr><td>count</td><td class="desc">Always runs COUNT query</td></tr>
+								<tr><td>size</td><td class="desc">Counter cache, or length if loaded, else COUNT</td></tr>
+								<tr><td>length</td><td class="desc">Loads all records, counts array</td></tr>
+								<tr><td>empty? / any?</td><td class="desc">Cheap existence check</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Calling <code>.length</code> on an unloaded relation, which loads every row just to count</li>
+							<li class="note-item">Grouping by a column but selecting others not in GROUP BY (PostgreSQL rejects it)</li>
+							<li class="note-item">Treating <code>average</code> results as Floats in JSON; convert with <code>.to_f</code> or format them</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>group_by_day</code> etc. from the <code>groupdate</code> gem for time-series charts</li>
+							<li class="note-item">Add an index on grouped and filtered columns used in dashboards</li>
+							<li class="note-item">Cache expensive aggregates with <code>Rails.cache.fetch</code> keyed on <code>maximum(:updated_at)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>count / sum / average</code> — aggregates</li>
+							<li class="note-item"><code>group(...).count</code> — hash per group</li>
+							<li class="note-item"><code>having</code> — filter groups</li>
+							<li class="note-item"><code>size</code> — cheapest count</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-38-joins-eager-loading.html" class="nav-link prev">Joins &amp; Eager Loading</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-40-batches-bulk.html" class="nav-link next">Batches &amp; Bulk</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>

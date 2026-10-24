@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rails — Sheet 67: Testing Jobs, Mailers &amp; Time</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rails-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s67">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 67</div>
+			<h1>Testing Jobs, Mailers &amp; Time</h1>
+			<div class="sheet-desc">assert_enqueued_with · perform_enqueued_jobs · ActionMailer::TestCase · assert_emails · travel_to · freeze_time</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Side Effects Under Control</h2>
+						<div class="description">Rails' test helpers capture enqueued jobs and sent emails instead of running or delivering them, and let you <strong>travel in time</strong>. Assert that something was enqueued, run it inline when you need its effect, and freeze the clock to test expirations and schedules.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">The test adapter queues jobs without running them</li>
+							<li class="note-item"><code>perform_enqueued_jobs { }</code> runs jobs enqueued inside the block</li>
+							<li class="note-item">Delivered mail collects in <code>ActionMailer::Base.deliveries</code></li>
+							<li class="note-item">Time helpers come from <code>ActiveSupport::Testing::TimeHelpers</code> (included by default)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Code Explained + The Rails Way -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Jobs</h2>
+						<pre><code class="language-ruby">class SignupTest &lt; ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+
+  test "enqueues the welcome email job" do
+    assert_enqueued_with(job: SendDigestJob, args: [users(:ann)], queue: "mailers") do
+      users(:ann).request_digest!
+    end
+  end
+
+  test "runs jobs" do
+    perform_enqueued_jobs do
+      users(:ann).request_digest!
+    end
+    assert_emails 1                   # delivered by the job
+  end
+end</code></pre>
+					</section>
+					<section class="section-code" id="code-mailers">
+						<h2 class="section-title">Mailers</h2>
+						<pre><code class="language-ruby">class UserMailerTest &lt; ActionMailer::TestCase
+  test "welcome" do
+    mail = UserMailer.with(user: users(:ann)).welcome
+    assert_equal ["ann@example.com"], mail.to
+    assert_equal "Welcome, Ann!", mail.subject
+    assert_match "Get started", mail.html_part.body.to_s
+  end
+end
+# anywhere: assert_enqueued_email_with UserMailer, :welcome, params: { user: }</code></pre>
+					</section>
+					<section class="section-code" id="code-time">
+						<h2 class="section-title">Time</h2>
+						<pre><code class="language-ruby">test "reset token expires after 15 minutes" do
+  token = users(:ann).generate_token_for(:password_reset)
+  travel 16.minutes
+  assert_nil User.find_by_token_for(:password_reset, token)
+end
+
+travel_to(Time.zone.local(2026, 12, 25, 9)) { assert Holiday.today? }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>assert_enqueued_with</code> — job class, args and queue</div>
+							<div class="explain-item"><code>perform_enqueued_jobs</code> — run them inline for end-to-end checks</div>
+							<div class="explain-item"><code>mail.html_part.body</code> — multipart content</div>
+							<div class="explain-item"><code>assert_enqueued_email_with</code> — <code>deliver_later</code> was called</div>
+							<div class="explain-item"><code>travel</code> / <code>travel_to</code> — shift the clock; reset after each test</div>
+						</div>
+					</section>
+					<section class="section-notes section-idiom" id="idiom">
+						<h2 class="section-title">The Rails Way</h2>
+						<ul class="note-list">
+							<li class="note-item">Stubbing <code>Time.now</code> by hand → <code>travel_to</code> / <code>freeze_time</code></li>
+							<li class="note-item">Asserting jobs by checking side effects only → <code>assert_enqueued_with</code> first, then a job unit test</li>
+							<li class="note-item">Sending real mail in tests → the <code>:test</code> delivery method (default)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Job Assertions | Mail &amp; Time -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-job-assertions">
+						<h2 class="section-title">Job Assertions</h2>
+						<table>
+							<thead><tr><th>Assertion</th><th>Checks</th></tr></thead>
+							<tbody>
+								<tr><td>assert_enqueued_jobs n</td><td class="desc">Count enqueued</td></tr>
+								<tr><td>assert_enqueued_with</td><td class="desc">Specific job</td></tr>
+								<tr><td>assert_performed_jobs n</td><td class="desc">Count performed</td></tr>
+								<tr><td>perform_enqueued_jobs(only: X)</td><td class="desc">Run selected jobs</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-mail-time">
+						<h2 class="section-title">Mail &amp; Time</h2>
+						<table>
+							<thead><tr><th>Helper</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>assert_emails n { }</td><td class="desc">Delivered count</td></tr>
+								<tr><td>assert_enqueued_emails n</td><td class="desc"><code>deliver_later</code> count</td></tr>
+								<tr><td>travel_to time</td><td class="desc">Set now</td></tr>
+								<tr><td>travel_back</td><td class="desc">Restore (automatic after test)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Testing a job only via <code>perform_enqueued_jobs</code> in a slow integration test; unit-test <code>perform_now</code> too</li>
+							<li class="note-item">Calling <code>Time.now</code> in code under test; <code>travel_to</code> stubs it, but <code>Time.current</code> is the safer habit</li>
+							<li class="note-item">Expecting <code>assert_emails</code> to see <code>deliver_later</code> mail without running jobs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Test jobs directly: <code>SendDigestJob.perform_now(users(:ann))</code></li>
+							<li class="note-item">Use mailer previews for visual checks and tests for content</li>
+							<li class="note-item">Freeze time in tests that format dates to avoid midnight flakes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>assert_enqueued_with</code> — job queued</li>
+							<li class="note-item"><code>perform_enqueued_jobs</code> — run inline</li>
+							<li class="note-item"><code>assert_emails</code> — mail sent</li>
+							<li class="note-item"><code>travel_to</code> — control time</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="rails-66-system-tests.html" class="nav-link prev">System Tests</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Rails Reference · 78 Sheets</a>
+				<a href="rails-68-rspec-rails.html" class="nav-link next">RSpec &amp; FactoryBot</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+	</body>
+</html>
