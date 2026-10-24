@@ -1,11 +1,11 @@
-# Mermaid Reference Guide Outline (44 sheets)
+# Mermaid Reference Guide Outline (46 sheets)
 
 ## Metadata
 
 - **Group it belongs to:** Markup & Notation
 - **Folder Directory:** `Sheets/Mermaid-Sheets/mmd-##-[slug].html`
-- **Groups:** 14
-- **Sheets:** 44
+- **Groups:** 15
+- **Sheets:** 46
 - **Drafted Date:** 2026-10-23
 - **Verified-Finalized Date:**
 
@@ -144,3 +144,10 @@ Timeline is small enough to share sheet 16 with advanced Gantt scheduling. Gantt
 | 42 | `mmd-42-ishikawa.html` | Ishikawa (Fishbone) | ishikawa-beta · problem line · indented causes · sub-causes · 6M categories |
 | 43 | `mmd-43-wardley-map.html` | Wardley Map | wardley-beta · component [vis, evo] · anchor · -> links · evolve · pipeline · (build) / (buy) |
 | 44 | `mmd-44-cynefin.html` | Cynefin | cynefin-beta · complex / complicated · clear / chaotic · confusion · --> transitions |
+
+### Group 15: Quick Reference (Sheets 45–46)
+
+| # | Filename | Sheet Title | Key Topics |
+|---|---|---|---|
+| 45 | `mmd-45-quick-reference-syntax-core.html` | Quick Reference — Core Syntax | skeleton · flowchart · sequence · ER · state · class · gantt · git |
+| 46 | `mmd-46-quick-reference-types-config.html` | Quick Reference — Types & Config | declarations · syntax per type · themes · styling · mmdc |
