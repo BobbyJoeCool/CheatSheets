@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>YAML — 12: Editor Schemas &amp; CI Linting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/yaml-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Editor Schemas &amp; CI Linting</h1>
+			<div class="sheet-desc"># yaml-language-server: $schema · SchemaStore · yaml.schemas · .yamllint · pre-commit · check-jsonschema</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description + Notes + Explain | Code + Code + Code + Code -->
+			<div class="row row-code-explain" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Catch Mistakes Before They Run</h2>
+						<div class="description">
+							Two layers of checking stop most broken YAML. In the <strong>editor</strong>, the Red Hat YAML extension (built on <code>yaml-language-server</code>) validates files against a <strong>JSON Schema</strong> — giving autocomplete, hover docs and red squiggles for wrong keys. Schemas come from <strong>SchemaStore</strong> automatically for common files, or from a comment or setting you add. In <strong>CI</strong>, <code>yamllint</code> checks syntax and style, and schema validators such as <code>check-jsonschema</code>, <code>actionlint</code> and <code>kubeconform</code> check meaning.
+						</div>
+					</section>
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Editor Setup (VS Code)</h2>
+						<ul class="note-list">
+							<li class="note-item">Install <strong>YAML</strong> by Red Hat — works for <code>.yml</code> and <code>.yaml</code></li>
+							<li class="note-item">SchemaStore matching is on by default (<code>yaml.schemaStore.enable</code>): workflows, Compose, Dependabot, etc.</li>
+							<li class="note-item">A modeline comment in the file beats every other schema setting</li>
+							<li class="note-item">Kubernetes: map the built-in <code>kubernetes</code> schema to your manifest globs</li>
+							<li class="note-item">CloudFormation / custom tags: list them in <code>yaml.customTags</code> or every <code>!Ref</code> is an error</li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code># yaml-language-server: $schema=</code> — per-file schema; also accepts a relative path</div>
+							<div class="explain-item"><code>"yaml.schemas"</code> — schema URL or path → glob(s) of files it applies to</div>
+							<div class="explain-item"><code>"kubernetes"</code> — special value for the extension’s built-in Kubernetes schema</div>
+							<div class="explain-item"><code>!Ref scalar</code> — declares a custom tag and the node kind it wraps</div>
+							<div class="explain-item"><code>extends: default</code> — start from yamllint’s default rules; <code>relaxed</code> is looser</div>
+							<div class="explain-item"><code>truthy</code> — flags <code>yes</code>, <code>on</code>, <code>NO</code>; <code>check-keys: false</code> skips mapping keys</div>
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-code" id="code-modeline">
+						<h2 class="section-title">Pick a Schema Per File</h2>
+						<pre><code class="language-yaml"># yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: CI
+on: [push]
+</code></pre>
+					</section>
+					<section class="section-code" id="code-settings">
+						<h2 class="section-title">.vscode/settings.json</h2>
+						<pre><code class="language-json">{
+  "yaml.schemas": {
+    "kubernetes": "k8s/**/*.yaml",
+    "./schemas/app-config.schema.json": "config/*.yaml",
+    "https://json.schemastore.org/github-action.json": "action.yml"
+  },
+  "yaml.customTags": ["!Ref scalar", "!Sub scalar", "!GetAtt scalar", "!If sequence"]
+}
+</code></pre>
+					</section>
+					<section class="section-code" id="code-yamllint">
+						<h2 class="section-title">.yamllint</h2>
+						<pre><code class="language-yaml">extends: default
+rules:
+  line-length: { max: 120, level: warning }
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false          # allow `on:` in GitHub workflows
+  indentation: { spaces: 2, indent-sequences: consistent }
+  document-start: disable
+ignore: |
+  charts/*/templates/          # Helm templates aren't plain YAML
+</code></pre>
+					</section>
+					<section class="section-code" id="code-precommit">
+						<h2 class="section-title">.pre-commit-config.yaml</h2>
+						<pre><code class="language-yaml">repos:
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks: [{ id: yamllint, args: [--strict] }]
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.29.4
+    hooks:
+      - id: check-github-workflows
+      - id: check-jsonschema
+        files: ^config/.*\.yaml$
+        args: [--schemafile, schemas/app-config.schema.json]
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Validators Table | Rules Table -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-validators">
+						<h2 class="section-title">Validators for Specific YAML</h2>
+						<table>
+							<thead>
+								<tr><th>Files</th><th>Tool</th><th>Command</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>any YAML (style/syntax)</td><td class="desc">yamllint</td><td class="desc"><code>yamllint -f github .</code></td></tr>
+								<tr><td>any YAML + JSON Schema</td><td class="desc">check-jsonschema</td><td class="desc"><code>check-jsonschema --schemafile s.json f.yaml</code></td></tr>
+								<tr><td>GitHub workflows</td><td class="desc">actionlint</td><td class="desc"><code>actionlint</code></td></tr>
+								<tr><td>Kubernetes manifests</td><td class="desc">kubeconform</td><td class="desc"><code>kubeconform -strict -summary k8s/</code></td></tr>
+								<tr><td>Compose files</td><td class="desc">docker compose</td><td class="desc"><code>docker compose config -q</code></td></tr>
+								<tr><td>Helm charts</td><td class="desc">helm</td><td class="desc"><code>helm lint ./chart</code></td></tr>
+								<tr><td>CloudFormation</td><td class="desc">cfn-lint</td><td class="desc"><code>cfn-lint template.yaml</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-rules">
+						<h2 class="section-title">Useful yamllint Rules</h2>
+						<table>
+							<thead>
+								<tr><th>Rule</th><th>Catches</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>truthy</td><td class="desc"><code>yes</code> / <code>on</code> / <code>NO</code> booleans</td></tr>
+								<tr><td>key-duplicates</td><td class="desc">same key twice in one mapping</td></tr>
+								<tr><td>indentation</td><td class="desc">mixed or inconsistent indent</td></tr>
+								<tr><td>line-length</td><td class="desc">overlong lines</td></tr>
+								<tr><td>quoted-strings</td><td class="desc">enforce quote style (off by default)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Setting a <code>yaml.schemas</code> glob for a file that also has a modeline — the modeline wins, so the setting looks ignored</li>
+							<li class="note-item">Running yamllint on Helm templates — <code>{{ }}</code> isn’t YAML; ignore <code>templates/</code> and lint <code>helm template</code> output instead</li>
+							<li class="note-item">Disabling <code>truthy</code> entirely to silence <code>on:</code> — use <code>check-keys: false</code> so <code>yes</code>/<code>no</code> values are still caught</li>
+							<li class="note-item">Copying pre-commit <code>rev:</code> values once and never updating — run <code>pre-commit autoupdate</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Write a JSON Schema for your own config files — the editor then autocompletes every key for the whole team</li>
+							<li class="note-item"><code>yamllint -f github</code> prints errors as inline annotations on pull requests</li>
+							<li class="note-item">Run <code>kubeconform</code> with <code>-strict</code> to reject unknown fields that <code>kubectl apply</code> would silently drop</li>
+							<li class="note-item">Commit <code>.vscode/settings.json</code> schema mappings so everyone gets the same validation</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code># yaml-language-server: $schema=</code> — schema for one file</li>
+							<li class="note-item"><code>yaml.schemas</code> — schema → glob mapping in settings</li>
+							<li class="note-item"><code>.yamllint</code> — style and syntax rules for CI</li>
+							<li class="note-item"><code>check-jsonschema</code> / <code>kubeconform</code> / <code>actionlint</code> — schema checks in CI</li>
+							<li class="note-item"><code>pre-commit</code> — run all of them before every commit</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="yaml-11-yq.html">yq — Query &amp; Edit YAML</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">YAML Reference · 14 Sheets</a>
+				<a class="nav-link next" href="yaml-13-quick-reference-syntax-types.html" title="Quick Reference — Syntax &amp; Types">Quick Ref — Syntax &amp; Types</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+
+	</body>
+</html>

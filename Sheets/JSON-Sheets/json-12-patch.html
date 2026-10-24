@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JSON — 12: JSON Patch &amp; Merge Patch</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/json-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>JSON Patch &amp; Merge Patch</h1>
+			<div class="sheet-desc">RFC 6902 · op · path · add · remove · replace · move · copy · test · RFC 7396 merge patch</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Sending Only the Changes</h2>
+						<div class="description">
+							A <code>PATCH</code> request updates part of a resource. JSON has two standard formats for that. <strong>JSON Patch</strong> (RFC 6902) is an ordered <strong>list of operations</strong> — add, remove, replace, move, copy, test — each aimed at a <strong>JSON Pointer</strong> path. <strong>JSON Merge Patch</strong> (RFC 7396) is a <strong>partial document</strong>: send the keys to change, <code>null</code> to delete. Merge Patch is simpler to write; JSON Patch can edit arrays element by element and can fail safely with <code>test</code>.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">JSON Pointer Paths (RFC 6901)</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>""</code> — the whole document; <code>"/name"</code> — top-level key</li>
+							<li class="note-item"><code>"/tags/0"</code> — array index (zero-based); <code>"/tags/-"</code> — one past the end (append)</li>
+							<li class="note-item"><code>~1</code> encodes <code>/</code> and <code>~0</code> encodes <code>~</code> in a key: key <code>"a/b"</code> → <code>"/a~1b"</code></li>
+							<li class="note-item">Pointers are exact — no wildcards or filters (that is JSONPath, Sheet 06)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code + Code + Code | Explain + Code -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-original">
+						<h2 class="section-title">Original Document</h2>
+						<pre><code class="language-json">{ "name": "Ada", "role": "viewer", "tags": ["a", "b"],
+  "address": { "city": "Paris", "zip": "75001" } }
+</code></pre>
+					</section>
+					<section class="section-code" id="code-patch">
+						<h2 class="section-title">JSON Patch — application/json-patch+json</h2>
+						<pre><code class="language-json">[
+  { "op": "test",    "path": "/role",   "value": "viewer" },
+  { "op": "replace", "path": "/role",   "value": "admin" },
+  { "op": "add",     "path": "/tags/-", "value": "c" },
+  { "op": "add",     "path": "/tags/0", "value": "z" },
+  { "op": "remove",  "path": "/address/zip" },
+  { "op": "copy", "from": "/name", "path": "/nickname" },
+  { "op": "move", "from": "/address/city", "path": "/city" }
+]
+// → { "name": "Ada", "role": "admin",
+//     "tags": ["z","a","b","c"], "address": {},
+//     "nickname": "Ada", "city": "Paris" }
+</code></pre>
+					</section>
+					<section class="section-code" id="code-merge">
+						<h2 class="section-title">Merge Patch — application/merge-patch+json</h2>
+						<pre><code class="language-json">{ "role": "admin", "address": { "zip": null },
+  "tags": ["c"] }
+// → { "name": "Ada", "role": "admin", "tags": ["c"],
+//     "address": { "city": "Paris" } }
+</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>test</code> — aborts the <strong>whole</strong> patch if the value differs; use it for optimistic concurrency</div>
+							<div class="explain-item"><code>add</code> on an array index inserts and shifts later items; on an object key it creates or overwrites</div>
+							<div class="explain-item"><code>replace</code> — like <code>remove</code> + <code>add</code>, but the target must already exist</div>
+							<div class="explain-item"><code>move</code> / <code>copy</code> — take a <code>from</code> pointer instead of a <code>value</code></div>
+							<div class="explain-item">Operations run in order; if any fails, none are applied</div>
+							<div class="explain-item">Merge Patch: objects merge recursively, <code>null</code> deletes, <strong>arrays are replaced whole</strong></div>
+							<div class="explain-item">Merge Patch cannot set a value to <code>null</code> — <code>null</code> always means “delete”</div>
+						</div>
+					</section>
+					<section class="section-code" id="code-js">
+						<h2 class="section-title">Applying Patches in JavaScript</h2>
+						<pre><code class="language-javascript">import { applyPatch, compare } from "fast-json-patch";
+applyPatch(doc, ops).newDocument;  // apply
+compare(before, after);            // diff → ops
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Ops Table | Compare Table | Libs Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-ops">
+						<h2 class="section-title">JSON Patch Operations</h2>
+						<table>
+							<thead>
+								<tr><th>op</th><th>Needs</th><th>Fails when</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>add</td><td class="desc"><code>path</code>, <code>value</code></td><td class="desc">parent missing</td></tr>
+								<tr><td>remove</td><td class="desc"><code>path</code></td><td class="desc">target missing</td></tr>
+								<tr><td>replace</td><td class="desc"><code>path</code>, <code>value</code></td><td class="desc">target missing</td></tr>
+								<tr><td>move</td><td class="desc"><code>from</code>, <code>path</code></td><td class="desc"><code>from</code> missing or is a parent of <code>path</code></td></tr>
+								<tr><td>copy</td><td class="desc"><code>from</code>, <code>path</code></td><td class="desc"><code>from</code> missing</td></tr>
+								<tr><td>test</td><td class="desc"><code>path</code>, <code>value</code></td><td class="desc">value not equal (deep compare)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-compare">
+						<h2 class="section-title">Patch vs Merge Patch</h2>
+						<table>
+							<thead>
+								<tr><th></th><th>JSON Patch</th><th>Merge Patch</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>Content-Type</td><td class="desc"><code>application/json-patch+json</code></td><td class="desc"><code>application/merge-patch+json</code></td></tr>
+								<tr><td>Format</td><td class="desc">array of ops</td><td class="desc">partial document</td></tr>
+								<tr><td>Delete a key</td><td class="desc"><code>remove</code> op</td><td class="desc">set it to <code>null</code></td></tr>
+								<tr><td>Edit one array item</td><td class="desc">✔ by index</td><td class="desc">✖ resend whole array</td></tr>
+								<tr><td>Set a value to null</td><td class="desc">✔</td><td class="desc">✖</td></tr>
+								<tr><td>Conditional</td><td class="desc">✔ <code>test</code> op</td><td class="desc">✖ (use <code>If-Match</code> ETag)</td></tr>
+								<tr><td>Best for</td><td class="desc">precise edits, arrays</td><td class="desc">simple forms, settings</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section id="tbl-libs">
+						<h2 class="section-title">Libraries</h2>
+						<table>
+							<thead>
+								<tr><th>Language</th><th>Library</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>JavaScript</td><td class="desc"><code>fast-json-patch</code>, <code>json-merge-patch</code></td></tr>
+								<tr><td>Python</td><td class="desc"><code>jsonpatch</code>, <code>json-merge-patch</code></td></tr>
+								<tr><td>Java</td><td class="desc"><code>zjsonpatch</code>, Jakarta JSON-P</td></tr>
+								<tr><td>Go</td><td class="desc"><code>evanphx/json-patch</code></td></tr>
+								<tr><td>.NET</td><td class="desc"><code>Microsoft.AspNetCore.JsonPatch</code></td></tr>
+								<tr><td>kubectl</td><td class="desc"><code>kubectl patch --type=json|merge</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Sending a Merge Patch to change one array element — the whole array is replaced with what you sent</li>
+							<li class="note-item">Forgetting that ops run in order — after <code>add /tags/0</code>, every later index into <code>tags</code> has shifted by one</li>
+							<li class="note-item">Using <code>null</code> in a Merge Patch to mean “set to null” — the key is deleted instead; use JSON Patch</li>
+							<li class="note-item">Building pointers by string concatenation without escaping <code>/</code> and <code>~</code> in keys</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Start a JSON Patch with a <code>test</code> op on a version field to avoid overwriting someone else’s change</li>
+							<li class="note-item">Return <code>415 Unsupported Media Type</code> when the <code>Content-Type</code> is not the patch format you accept</li>
+							<li class="note-item">Generate patches with <code>compare(before, after)</code> rather than writing ops by hand</li>
+							<li class="note-item"><code>kubectl patch --type=merge</code> and <code>--type=json</code> use these exact formats</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>JSON Pointer</code> — <code>/a/b/0</code> paths; <code>-</code> appends; <code>~1</code> = <code>/</code></li>
+							<li class="note-item"><code>JSON Patch</code> — ordered ops; atomic; arrays by index</li>
+							<li class="note-item"><code>test</code> — guard op; whole patch fails on mismatch</li>
+							<li class="note-item"><code>Merge Patch</code> — partial doc; <code>null</code> deletes; arrays replaced</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="json-11-openapi.html">OpenAPI &amp; JSON Bodies</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JSON Reference · 15 Sheets</a>
+				<a class="nav-link next" href="json-13-gotchas.html">Gotchas &amp; Interop</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+
+	</body>
+</html>

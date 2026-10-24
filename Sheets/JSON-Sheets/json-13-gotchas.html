@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JSON — 13: Gotchas &amp; Interop</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/json-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Gotchas &amp; Interop</h1>
+			<div class="sheet-desc">Number.MAX_SAFE_INTEGER · BigInt · dates · NaN · undefined · duplicate keys · BOM · key order</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Where JSON Bites</h2>
+						<div class="description">
+							JSON is tiny — six types and no options — so every language has to <strong>map</strong> its own types onto it, and they don’t all agree. Large integers lose precision in JavaScript, there is <strong>no date type</strong>, <code>NaN</code> and <code>Infinity</code> are not valid JSON, and the spec leaves <strong>duplicate keys</strong> and <strong>key order</strong> undefined. Most production JSON bugs come from these gaps, not from syntax errors.
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">The Rules to Remember</h2>
+						<ul class="note-list">
+							<li class="note-item">JSON numbers have no size limit, but JavaScript stores them as 64-bit floats: integers above <code>2^53 − 1</code> lose precision</li>
+							<li class="note-item">Dates travel as strings — use ISO 8601 / RFC 3339 with an offset: <code>"2026-10-23T14:05:00Z"</code></li>
+							<li class="note-item">Valid JSON must be UTF-8 (RFC 8259) and must not start with a BOM</li>
+							<li class="note-item">Objects are unordered — never rely on key order for meaning or signatures</li>
+							<li class="note-item">Duplicate keys “SHOULD” be unique; most parsers silently keep the last one</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Code + Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-js">
+						<h2 class="section-title">JavaScript</h2>
+						<pre><code class="language-javascript">JSON.parse('{"id": 9007199254740993}').id  // 9007199254740992  (precision lost)
+JSON.stringify({ n: 10n })                 // TypeError: Do not know how to serialize a BigInt
+JSON.stringify({ d: new Date(0) })         // '{"d":"1970-01-01T00:00:00.000Z"}'
+JSON.parse('{"d":"1970-01-01T00:00:00.000Z"}').d   // a string, not a Date
+JSON.stringify({ x: NaN, y: Infinity })    // '{"x":null,"y":null}'
+JSON.stringify({ u: undefined, f() {} })   // '{}'   (keys dropped)
+JSON.stringify([undefined, () =&gt; 1])       // '[null,null]'
+JSON.parse('{"a": 1, "a": 2}')             // { a: 2 }  (last wins)
+JSON.parse('\uFEFF{}')                     // SyntaxError (BOM)
+JSON.stringify({ b: 1, a: 2, 10: "x" })    // '{"10":"x","b":1,"a":2}'  (integer keys first)
+</code></pre>
+					</section>
+					<section class="section-code" id="code-py">
+						<h2 class="section-title">Python</h2>
+						<pre><code class="language-python">json.loads("9007199254740993")       # 9007199254740993  (int is exact)
+json.loads('{"x": NaN}')             # {'x': nan}   — accepts non-standard JSON
+json.dumps(float("nan"))             # 'NaN'        — emits invalid JSON!
+json.dumps(float("nan"), allow_nan=False)  # ValueError
+json.dumps({1: "a", None: "b"})      # '{"1": "a", "null": "b"}'  (keys → strings)
+json.dumps(datetime.now())           # TypeError: not JSON serializable
+json.dumps(obj, default=str)         # fallback: str() anything unknown
+json.loads("0.1", parse_float=Decimal)   # Decimal('0.1')  (exact money)
+</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>9007199254740993</code> — <code>Number.MAX_SAFE_INTEGER + 2</code>; JS rounds to the nearest representable float</div>
+							<div class="explain-item"><code>10n</code> — <code>BigInt</code> has no JSON form; convert with <code>.toString()</code> or add a <code>toJSON</code> method</div>
+							<div class="explain-item"><code>Date</code> — serialized through its <code>toJSON()</code> (ISO string); parsing never revives it</div>
+							<div class="explain-item"><code>NaN</code> / <code>Infinity</code> — become <code>null</code> in JS; Python writes them raw unless <code>allow_nan=False</code></div>
+							<div class="explain-item"><code>undefined</code> / functions — dropped from objects, <code>null</code> inside arrays</div>
+							<div class="explain-item"><code>\uFEFF</code> — byte-order mark; strip it before parsing files saved by some Windows editors</div>
+							<div class="explain-item">Integer-like keys — JS objects list them first in ascending order, whatever order you wrote</div>
+							<div class="explain-item"><code>default=str</code> — handles dates, UUIDs, Decimals on the way out</div>
+						</div>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Fixes Table | Languages Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-fixes">
+						<h2 class="section-title">Problem → Fix</h2>
+						<table>
+							<thead>
+								<tr><th>Problem</th><th>Fix</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>IDs &gt; 2^53</td><td class="desc">send as strings: <code>"id": "9007199254740993"</code></td></tr>
+								<tr><td>money</td><td class="desc">integer cents or decimal strings, never floats</td></tr>
+								<tr><td>dates</td><td class="desc">ISO 8601 with <code>Z</code> or offset; parse explicitly</td></tr>
+								<tr><td>NaN / Infinity</td><td class="desc"><code>null</code> or a string sentinel; <code>allow_nan=False</code></td></tr>
+								<tr><td>duplicate keys</td><td class="desc">reject in parser (<code>object_pairs_hook</code>) or lint</td></tr>
+								<tr><td>key order</td><td class="desc">canonicalize (RFC 8785 JCS) before hashing/signing</td></tr>
+								<tr><td>BOM / encoding</td><td class="desc">read as UTF-8; Python <code>encoding="utf-8-sig"</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-languages">
+						<h2 class="section-title">Big Numbers by Language</h2>
+						<table>
+							<thead>
+								<tr><th>Language</th><th>Default for JSON numbers</th><th>Exact option</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>JavaScript</td><td class="desc">float64</td><td class="desc"><code>BigInt</code> + custom parser (<code>json-bigint</code>)</td></tr>
+								<tr><td>Python</td><td class="desc"><code>int</code> exact, <code>float</code> for decimals</td><td class="desc"><code>parse_float=Decimal</code></td></tr>
+								<tr><td>Go</td><td class="desc"><code>float64</code> into <code>any</code></td><td class="desc"><code>decoder.UseNumber()</code> → <code>json.Number</code></td></tr>
+								<tr><td>Java (Jackson)</td><td class="desc"><code>int</code> / <code>long</code> / <code>double</code></td><td class="desc"><code>USE_BIG_DECIMAL_FOR_FLOATS</code></td></tr>
+								<tr><td>C# (System.Text.Json)</td><td class="desc">type of target property</td><td class="desc"><code>decimal</code>, <code>long</code></td></tr>
+								<tr><td>PostgreSQL</td><td class="desc"><code>jsonb</code> numeric (exact)</td><td class="desc"><code>jsonb</code> drops duplicate keys, reorders</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Returning database IDs as JSON numbers — a JS client silently rounds <code>9007199254740993</code> and fetches the wrong record</li>
+							<li class="note-item">Storing prices as floats — <code>0.1 + 0.2</code> problems reach invoices; use integer cents or decimal strings</li>
+							<li class="note-item">Assuming <code>JSON.parse</code> revives dates — it returns strings; compare or sort them as dates only after converting</li>
+							<li class="note-item">Signing or hashing <code>JSON.stringify(obj)</code> — different key order or whitespace on another system breaks the signature</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Add <code>"id_str"</code>-style string IDs (as Twitter/X did) when clients include JavaScript</li>
+							<li class="note-item">Use a reviver to revive dates: <code>JSON.parse(s, (k, v) =&gt; k.endsWith("At") ? new Date(v) : v)</code></li>
+							<li class="note-item">Python: <code>json.loads(s, object_pairs_hook=...)</code> can raise on duplicate keys</li>
+							<li class="note-item">Document units and time zones in the field name or schema: <code>durationMs</code>, <code>createdAt</code> (UTC)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>2^53 − 1</code> — largest safe integer in JS; send bigger IDs as strings</li>
+							<li class="note-item"><code>Date</code> — no JSON type; ISO 8601 strings both ways</li>
+							<li class="note-item"><code>NaN</code> / <code>undefined</code> — not JSON; become <code>null</code> or vanish</li>
+							<li class="note-item"><code>duplicate keys</code> / <code>order</code> — undefined; never depend on them</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="json-12-patch.html">JSON Patch &amp; Merge Patch</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JSON Reference · 15 Sheets</a>
+				<a class="nav-link next" href="json-14-quick-reference-syntax-schema.html" title="Quick Reference — Syntax &amp; Schema">Quick Ref — Syntax &amp; Schema</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+
+	</body>
+</html>

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>XML — 12: XSLT — Variables, Keys &amp; Grouping</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/xml-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>XSLT — Variables, Keys &amp; Grouping</h1>
+			<div class="sheet-desc">xsl:variable · xsl:param · xsl:key · key() · mode · xsl:for-each-group · Muenchian grouping</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description + Notes + Explain | Code + Code -->
+			<div class="row row-code-explain" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Next Step After Templates</h2>
+						<div class="description">
+							Once basic templates work, most real transforms need four more tools. <strong>Variables</strong> hold computed values (they never change after being set). <strong>Parameters</strong> let callers pass values in from the command line. <strong>Keys</strong> build an index for fast lookups by value — like a join. <strong>Grouping</strong> turns flat records into nested summaries. XSLT 2.0/3.0 has <code>xsl:for-each-group</code>; XSLT 1.0 (browsers, xsltproc, lxml, .NET) needs the <strong>Muenchian</strong> key trick to do the same.
+						</div>
+					</section>
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Input Used Below</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>&lt;orders&gt;</code> with <code>&lt;order id customer total/&gt;</code> children</li>
+							<li class="note-item"><code>acme</code> has orders 1 and 3 (40 + 25); <code>globex</code> has order 2 (15)</li>
+							<li class="note-item">Goal: one <code>&lt;customer&gt;</code> per name with order count and sum</li>
+							<li class="note-item">Output: <code>&lt;customer name="acme" count="2" sum="65"/&gt;</code>, then globex (1, 15)</li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>xsl:param</code> — a variable with a default that callers can override</div>
+							<div class="explain-item"><code>{…}</code> in a literal attribute — attribute value template; the XPath inside is evaluated</div>
+							<div class="explain-item"><code>group-by</code> — one group per distinct value; <code>current-group()</code> and <code>current-grouping-key()</code> inside</div>
+							<div class="explain-item"><code>xsl:key</code> + <code>key()</code> — index orders by customer; <code>key('by-cust', 'acme')</code> returns both acme orders</div>
+							<div class="explain-item"><code>generate-id()</code> — unique ID per node; equal only when it is the same node, so it picks each group’s first member</div>
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-code" id="code-xslt3">
+						<h2 class="section-title">XSLT 3.0 — xsl:for-each-group</h2>
+						<pre><code class="language-markup">&lt;xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"&gt;
+  &lt;xsl:param name="minTotal" select="0"/&gt;          &lt;!-- set from command line --&gt;
+
+  &lt;xsl:template match="/orders"&gt;
+    &lt;report&gt;
+      &lt;xsl:for-each-group select="order[@total &amp;gt;= $minTotal]" group-by="@customer"&gt;
+        &lt;xsl:sort select="current-grouping-key()"/&gt;
+        &lt;customer name="{current-grouping-key()}"
+                  count="{count(current-group())}"
+                  sum="{sum(current-group()/@total)}"/&gt;
+      &lt;/xsl:for-each-group&gt;
+    &lt;/report&gt;
+  &lt;/xsl:template&gt;
+&lt;/xsl:stylesheet&gt;
+</code></pre>
+					</section>
+					<section class="section-code" id="code-xslt1">
+						<h2 class="section-title">XSLT 1.0 — Muenchian Grouping with xsl:key</h2>
+						<pre><code class="language-markup">&lt;xsl:key name="by-cust" match="order" use="@customer"/&gt;
+
+&lt;xsl:template match="/orders"&gt;
+  &lt;report&gt;
+    &lt;!-- keep only the FIRST order for each customer --&gt;
+    &lt;xsl:for-each select="order[generate-id() = generate-id(key('by-cust', @customer)[1])]"&gt;
+      &lt;xsl:sort select="@customer"/&gt;
+      &lt;xsl:variable name="group" select="key('by-cust', @customer)"/&gt;
+      &lt;customer name="{@customer}" count="{count($group)}" sum="{sum($group/@total)}"/&gt;
+    &lt;/xsl:for-each&gt;
+  &lt;/report&gt;
+&lt;/xsl:template&gt;
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Syntax Table | Versions Table -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-syntax">
+						<h2 class="section-title">Quick Syntax</h2>
+						<table>
+							<thead>
+								<tr><th>Element / function</th><th>Use</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>&lt;xsl:variable name="v" select="…"/&gt;</td><td class="desc">computed value, read as <code>$v</code></td></tr>
+								<tr><td>&lt;xsl:param name="p" select="default"/&gt;</td><td class="desc">overridable input</td></tr>
+								<tr><td>&lt;xsl:key name="k" match="…" use="…"/&gt;</td><td class="desc">declare an index (top level)</td></tr>
+								<tr><td>key("k", value)</td><td class="desc">look up nodes by indexed value</td></tr>
+								<tr><td>&lt;xsl:apply-templates mode="m"/&gt;</td><td class="desc">process with a separate template set</td></tr>
+								<tr><td>xsl:for-each-group group-by / group-adjacent</td><td class="desc">grouping (2.0+)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-versions">
+						<h2 class="section-title">XSLT Versions &amp; Processors</h2>
+						<table>
+							<thead>
+								<tr><th>Processor</th><th>Version</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>Browsers (<code>XSLTProcessor</code>)</td><td class="desc">1.0</td></tr>
+								<tr><td>xsltproc / libxslt, lxml</td><td class="desc">1.0</td></tr>
+								<tr><td>.NET <code>XslCompiledTransform</code></td><td class="desc">1.0</td></tr>
+								<tr><td>Saxon HE / PE / EE</td><td class="desc">3.0</td></tr>
+								<tr><td>SaxonJS (browser / Node)</td><td class="desc">3.0</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Trying to update a variable inside a loop — variables are immutable; compute with XPath (<code>sum()</code>, <code>count()</code>) or recursion</li>
+							<li class="note-item">Writing <code>select="USD"</code> — that selects child elements named <code>USD</code>; a string needs <code>select="'USD'"</code></li>
+							<li class="note-item">Using <code>for-each-group</code> in a 1.0 processor — it errors or is ignored; check <code>system-property('xsl:version')</code></li>
+							<li class="note-item">Declaring <code>xsl:key</code> inside a template — keys must be top-level children of <code>xsl:stylesheet</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Use keys for any repeated lookup (“find the product for this order line”) — much faster than <code>//product[@id = $x]</code></li>
+							<li class="note-item">Prefer <code>apply-templates</code> with modes over big <code>xsl:choose</code> blocks — each case becomes its own template</li>
+							<li class="note-item">Install Saxon HE (free) when you need 2.0/3.0 features; keep 1.0 only where the processor is fixed</li>
+							<li class="note-item">Pass params from the shell: <code>xsltproc --stringparam minTotal 20 report.xsl orders.xml</code> or Saxon <code>… -xsl:report.xsl minTotal=20</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>xsl:variable</code> / <code>xsl:param</code> — immutable values; params overridable</li>
+							<li class="note-item"><code>xsl:key</code> + <code>key()</code> — indexed lookups</li>
+							<li class="note-item"><code>mode</code> — multiple template sets for the same nodes</li>
+							<li class="note-item"><code>xsl:for-each-group</code> — grouping in 2.0+</li>
+							<li class="note-item"><code>Muenchian grouping</code> — <code>generate-id()</code> + <code>key()</code> in 1.0</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="xml-11-security.html">XML Security</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">XML Reference · 16 Sheets</a>
+				<a class="nav-link next" href="xml-13-xpath3-xquery.html">XPath 2.0 / 3.1 &amp; XQuery Basics</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+
+	</body>
+</html>

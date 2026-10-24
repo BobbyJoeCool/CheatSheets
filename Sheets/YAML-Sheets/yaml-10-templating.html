@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>YAML — 10: Templating &amp; Config Layering</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/yaml-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s10">
+
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>Templating &amp; Config Layering</h1>
+			<div class="sheet-desc">${VAR:-default} · .env · compose override · Helm {{ .Values }} · -f values.yaml · Kustomize overlays</div>
+		</header>
+
+		<main>
+
+			<!-- Row 1: Description + Notes + Explain | Code + Code + Code -->
+			<div class="row row-code-explain" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">YAML Has No Variables</h2>
+						<div class="description">
+							Plain YAML has no variables, includes, conditionals or loops — <strong>anchors</strong> are its only reuse feature. Every tool that needs more adds its own layer on top: <strong>variable substitution</strong> (Docker Compose), <strong>text templating</strong> that renders YAML from a template (Helm, Ansible/Jinja, GitHub Actions <code>${{ }}</code>), <strong>file merging</strong> (Compose override files, Helm values files) and <strong>structural patching</strong> (Kustomize). Knowing which layer you are in tells you what syntax works and when it runs.
+						</div>
+					</section>
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Which Approach?</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Substitution</strong> — swap in environment values; no logic. Compose, many CI systems</li>
+							<li class="note-item"><strong>Templating</strong> — full logic (<code>if</code>, <code>range</code>) but the template is not valid YAML until rendered. Helm, Ansible</li>
+							<li class="note-item"><strong>Merging</strong> — later files override earlier ones key by key. Compose <code>-f</code>, Helm <code>-f</code></li>
+							<li class="note-item"><strong>Patching</strong> — plain YAML base + overlays; nothing to render. Kustomize</li>
+							<li class="note-item">Inspect the final YAML: <code>docker compose config</code>, <code>helm template</code>, <code>kubectl kustomize</code></li>
+						</ul>
+					</section>
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Notes</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>${VAR:-default}</code> — default when unset <strong>or empty</strong>; <code>${VAR-default}</code> only when unset</div>
+							<div class="explain-item"><code>${VAR:?msg}</code> — stop with an error if missing; good for secrets</div>
+							<div class="explain-item"><code>$$</code> — escapes a literal dollar sign in Compose</div>
+							<div class="explain-item"><code>.env</code> — read automatically for substitution; not passed into containers unless listed</div>
+							<div class="explain-item"><code>compose.override.yaml</code> — merged on top of <code>compose.yaml</code> unless you pass explicit <code>-f</code> files</div>
+							<div class="explain-item"><code>{{- ... }}</code> — the dash trims whitespace before the tag; vital for correct indentation</div>
+							<div class="explain-item"><code>toYaml .Values.resources | nindent 12</code> — dump a values block as YAML, on a new line indented 12 spaces</div>
+							<div class="explain-item"><code>patches</code> — Kustomize merges each patch into the base resource with the same <code>kind</code> + <code>name</code></div>
+						</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-code" id="code-compose">
+						<h2 class="section-title">Docker Compose — Substitution</h2>
+						<pre><code class="language-yaml"># compose.yaml   (values come from the shell or a .env file)
+services:
+  api:
+    image: "myorg/api:${TAG:-latest}"     # default if unset or empty
+    ports: ["${PORT:-8080}:8080"]
+    environment:
+      DB_URL: "${DB_URL:?DB_URL is required}"   # error if missing
+      PRICE: "$$5"                        # literal $ → "$5"
+</code></pre>
+					</section>
+					<section class="section-code" id="code-helm">
+						<h2 class="section-title">Helm — Templates + Values</h2>
+						<pre><code class="language-yaml"># templates/deployment.yaml (Go template → YAML)
+spec:
+  replicas: {{ .Values.replicas | default 1 }}
+  template:
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.repo }}:{{ .Values.image.tag }}"
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+</code></pre>
+					</section>
+					<section class="section-code" id="code-kustomize">
+						<h2 class="section-title">Kustomize — Base + Overlay</h2>
+						<pre><code class="language-yaml"># overlays/prod/kustomization.yaml
+resources: [../../base]
+namePrefix: prod-
+images:
+  - name: myorg/api
+    newTag: "1.4.2"
+patches:
+  - path: replicas.yaml       # partial Deployment: spec.replicas: 5
+</code></pre>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 2: Substitution Table | Layering Table -->
+			<div class="row" id="row-2">
+				<div class="col" id="col-2-1">
+					<section id="tbl-substitution">
+						<h2 class="section-title">Compose Substitution Forms</h2>
+						<table>
+							<thead>
+								<tr><th>Form</th><th>Result</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>${VAR}</td><td class="desc">value of VAR (empty if unset)</td></tr>
+								<tr><td>${VAR:-x}</td><td class="desc"><code>x</code> if unset or empty</td></tr>
+								<tr><td>${VAR-x}</td><td class="desc"><code>x</code> only if unset</td></tr>
+								<tr><td>${VAR:?msg}</td><td class="desc">error if unset or empty</td></tr>
+								<tr><td>${VAR:+x}</td><td class="desc"><code>x</code> if VAR is set and non-empty</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section id="tbl-layering">
+						<h2 class="section-title">Layering Order (later wins)</h2>
+						<table>
+							<thead>
+								<tr><th>Tool</th><th>Order</th></tr>
+							</thead>
+							<tbody>
+								<tr><td>Compose</td><td class="desc"><code>compose.yaml</code> → override → each <code>-f</code> in order</td></tr>
+								<tr><td>Helm</td><td class="desc">chart <code>values.yaml</code> → each <code>-f</code> → <code>--set</code></td></tr>
+								<tr><td>Kustomize</td><td class="desc">base resources → overlay patches</td></tr>
+								<tr><td>GitHub Actions</td><td class="desc">workflow <code>env</code> → job <code>env</code> → step <code>env</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Starting a value with <code>{{</code> unquoted (Ansible, Helm values) — YAML reads <code>{</code> as a flow mapping; write <code>"{{ var }}"</code></li>
+							<li class="note-item">Using <code>${VAR}</code> in a Helm chart or <code>{{ }}</code> in Compose — each tool only understands its own syntax</li>
+							<li class="note-item">Forgetting <code>{{-</code> / <code>nindent</code> in Helm — rendered YAML ends up mis-indented and fails to parse</li>
+							<li class="note-item">Expecting arrays to merge across Compose or Helm files — lists are usually <strong>replaced</strong>, not appended</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">Tips</h2>
+						<ul class="note-list">
+							<li class="note-item">Run <code>docker compose config</code> / <code>helm template</code> in CI and diff the output — review the YAML that actually ships</li>
+							<li class="note-item">Keep secrets out of committed YAML: <code>${VAR:?}</code> in Compose, <code>--set</code>/external secrets in Helm</li>
+							<li class="note-item">Prefer Kustomize overlays when you only need small per-environment changes — the base stays plain YAML</li>
+							<li class="note-item">Use anchors (Sheet 05) for repetition inside one file before reaching for a template engine</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>${VAR:-default}</code> — Compose substitution with fallback</li>
+							<li class="note-item"><code>compose.override.yaml</code> / <code>-f</code> — later files override earlier</li>
+							<li class="note-item"><code>{{ .Values.x }}</code> + <code>toYaml | nindent</code> — Helm templates</li>
+							<li class="note-item"><code>kustomization.yaml</code> — plain base + patch overlays</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="yaml-09-gotchas.html">Type Gotchas &amp; Quoting</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">YAML Reference · 14 Sheets</a>
+				<a class="nav-link next" href="yaml-11-yq.html">yq — Query &amp; Edit YAML</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+
+	</body>
+</html>
