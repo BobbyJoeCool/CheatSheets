@@ -170,7 +170,7 @@ CheatSheets/
 
 | Status | Collection | Sheets | Notes |
 | :---: | :--- | :---: | :--- |
-| ✅ | Java | 136 | control flow, methods & functions, data structures, OOP, files & I/O, modules & packages, standard library, external libraries, concurrency, database, Swing, JavaFX |
+| ✅ | Java | 136 | control flow, methods & functions, data structures, OOP, files & I/O, modules & packages, standard library, external libraries, concurrency, database, Swing, JavaFX, quick reference; every sheet adds Java Versions and Idiomatic Java boxes, and 85 sheets add an Under the JVM box |
 | ✅ | JSP | 34 | directives, implicit objects & scope, Expression Language, standard actions, JSTL (core, fmt, fn), custom tags & TLDs, integration & security |
 | ✅ | Spring | 69 | Spring Boot 4.1 / Framework 7: introduction & setup, IoC & dependency injection, configuration & auto-configuration, AOP, Spring MVC REST APIs, Thymeleaf views, HTTP clients, JDBC & schema migrations, Spring Data JPA, Spring Security (JWT, OAuth2), testing, Actuator & observability, events, scheduling, async & virtual threads, caching, resilience, WebFlux, packaging & GraalVM native images |
 
