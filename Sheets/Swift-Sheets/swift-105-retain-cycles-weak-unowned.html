@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swift — Sheet 105: Retain Cycles, weak &amp; unowned</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swift-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s105">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 105</div>
+			<h1>Retain Cycles, weak &amp; unowned</h1>
+			<div class="sheet-desc">retain cycles · weak · unowned · [weak self] · Memory Graph Debugger · Instruments Leaks</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Breaking Reference Cycles</h2><div class="description">If two objects hold <strong>strong</strong> references to each other, neither count reaches zero and both leak. Break the cycle by making one side <code>weak</code> (becomes <code>nil</code> when the target is freed; must be an optional <code>var</code>) or <code>unowned</code> (no nil, crashes if used after the target is freed). Closures stored by <code>self</code> are the most common cycle source.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Parent → child strong; child → parent <code>weak</code></li><li class="note-item">Delegates are almost always <code>weak var delegate</code></li><li class="note-item">Use <code>unowned</code> only when the target always outlives the reference</li><li class="note-item">Timers and NotificationCenter blocks retain their closures</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + The Swifty Way + Coming From… -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">weak, unowned, Closures</h2><pre><code class="language-swift">final class Owner {
+    var pet: Pet?
+    deinit { print("owner freed") }
+}
+final class Pet {
+    weak var owner: Owner?               // weak breaks the cycle
+    deinit { print("pet freed") }
+}
+var o: Owner? = Owner()
+o!.pet = Pet(); o!.pet!.owner = o
+o = nil                                  // owner freed, pet freed
+
+protocol PlayerDelegate: AnyObject { func didFinish() }
+final class Player { weak var delegate: PlayerDelegate? }
+
+final class Customer {
+    let card: CreditCard
+    init() { card = CreditCard(); card.holder = self }
+}
+final class CreditCard { unowned var holder: Customer! }   // never outlives
+
+final class ViewModel {
+    var onUpdate: (() -&gt; Void)?
+    func bind() { onUpdate = { [weak self] in self?.refresh() } }
+    func refresh() {}
+}</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>weak var owner</code> — optional, auto-nil</div><div class="explain-item"><code>protocol …: AnyObject</code> — needed for weak delegates</div><div class="explain-item"><code>unowned</code> — non-optional, must outlive</div><div class="explain-item"><code>[weak self]</code> — closure doesn't retain self</div></div></section><section class="section-notes section-way" id="swifty-way"><h2 class="section-title">The Swifty Way</h2><ul class="note-list"><li class="note-item"><span class="lbl-avoid">✗</span> <code>var delegate: MyDelegate?</code> (strong)<br><span class="lbl-prefer">✓</span> <code>weak var delegate: MyDelegate?</code> <span class="way-why">— delegates usually own you</span></li></ul></section><section class="section-notes section-coming" id="coming-from"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><span class="cf-lang">Java</span> GC handles cycles; no weak needed in most code</li><li class="note-item"><span class="cf-lang">Kotlin</span> Same as Java on JVM</li><li class="note-item"><span class="cf-lang">Python</span> <code>weakref</code> ≈ weak; cycles are collected eventually there</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 3: Finding Leaks Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-finding-leaks"><h2 class="section-title">Finding Leaks</h2><table><thead><tr><th>Tool</th><th>Shows</th></tr></thead><tbody><tr><td>Debug Memory Graph</td><td class="desc">Live objects + cycles</td></tr><tr><td>Instruments › Leaks</td><td class="desc">Leaked allocations</td></tr><tr><td>deinit print</td><td class="desc">Whether an object is freed</td></tr><tr><td>Malloc Stack Logging</td><td class="desc">Where it was allocated</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Strong delegate properties: classic view-controller leak</li><li class="note-item"><code>unowned self</code> in a network callback that can outlive the object: crash</li><li class="note-item">Timers retain their target, so <code>deinit</code> never runs to stop them: invalidate when the screen closes</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Make delegate protocols <code>AnyObject</code>-constrained so they can be weak</li><li class="note-item">Use the Memory Graph button in Xcode's debug bar after closing a screen</li><li class="note-item">Prefer <code>[weak self]</code> + <code>guard let self</code> over <code>unowned</code></li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">strong ↔ strong = leak</li><li class="note-item"><code>weak</code> (optional) / <code>unowned</code> (non-optional)</li><li class="note-item"><code>[weak self]</code> in stored closures</li></ul></section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="swift-104-arc-basics.html" class="nav-link prev">ARC Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Swift Reference · 108 Sheets</a>
+				<a href="swift-106-ownership-noncopyable.html" class="nav-link next" title="Ownership &amp; Noncopyable Types">Ownership &amp; ~Copyable</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>

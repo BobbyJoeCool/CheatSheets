@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swift — Sheet 080: UserDefaults &amp; Keychain</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swift-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s080">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 080</div>
+			<h1>UserDefaults &amp; Keychain</h1>
+			<div class="sheet-desc">UserDefaults · set(_:forKey:) · suites · Keychain Services · SecItemAdd · what not to store</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Small Persistent Values</h2><div class="description"><code>UserDefaults</code> stores small preferences (Bools, numbers, strings, dates, small Data) as a property list, keyed by string. It is <strong>not encrypted</strong>, so secrets like tokens and passwords belong in the <strong>Keychain</strong>, Apple's encrypted credential store, accessed through the <code>SecItem…</code> C API (or a small wrapper library).</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">UserDefaults is loaded into memory: keep it small</li><li class="note-item"><code>register(defaults:)</code> sets fallback values (not saved)</li><li class="note-item">App groups share defaults with extensions via <code>suiteName</code></li><li class="note-item">Keychain items survive app deletion on iOS by default</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + The Swifty Way + Coming From… -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">UserDefaults &amp; Keychain</h2><pre><code class="language-swift">import Foundation
+let d = UserDefaults.standard
+d.register(defaults: ["volume": 0.8])
+d.set(true, forKey: "onboarded")
+d.set("dark", forKey: "theme")
+d.bool(forKey: "onboarded")                 // true
+d.double(forKey: "volume")                  // 0.8 (registered)
+d.string(forKey: "missing")                 // nil
+d.removeObject(forKey: "theme")
+
+import Security
+func saveToken(_ token: String) -&gt; Bool {
+    let q: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrAccount as String: "apiToken",
+        kSecValueData as String: Data(token.utf8),
+    ]
+    SecItemDelete(q as CFDictionary)        // replace if present
+    return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
+}</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>register(defaults:)</code> — fallback values</div><div class="explain-item"><code>set(_:forKey:)</code> / <code>bool(forKey:)</code> — read/write</div><div class="explain-item"><code>removeObject(forKey:)</code> — delete</div><div class="explain-item"><code>kSecClassGenericPassword</code> — keychain item kind</div><div class="explain-item"><code>SecItemAdd</code> → <code>errSecSuccess</code> — store securely</div></div></section><section class="section-notes section-way" id="swifty-way"><h2 class="section-title">The Swifty Way</h2><ul class="note-list"><li class="note-item"><span class="lbl-avoid">✗</span> <code>UserDefaults.standard.set(token, forKey: "token")</code><br><span class="lbl-prefer">✓</span> store tokens in the Keychain <span class="way-why">— UserDefaults is a plain-text plist</span></li></ul></section><section class="section-notes section-coming" id="coming-from"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><span class="cf-lang">Kotlin</span> SharedPreferences ≈ UserDefaults; Keystore ≈ Keychain</li><li class="note-item"><span class="cf-lang">TypeScript</span> localStorage ≈ UserDefaults (also not secure)</li><li class="note-item"><span class="cf-lang">Python</span> keyring library ≈ Keychain</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 3: What Goes Where Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-what-goes-where"><h2 class="section-title">What Goes Where</h2><table><thead><tr><th>Data</th><th>Store in</th></tr></thead><tbody><tr><td>Settings, flags</td><td class="desc">UserDefaults / @AppStorage</td></tr><tr><td>Tokens, passwords</td><td class="desc">Keychain</td></tr><tr><td>Documents, images</td><td class="desc">Files</td></tr><tr><td>Structured records</td><td class="desc">SwiftData / SQLite</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Storing large arrays or images in UserDefaults: slows launch</li><li class="note-item">Storing secrets in UserDefaults or Info.plist</li><li class="note-item">Ignoring the <code>OSStatus</code> from <code>SecItemAdd</code>: failures go unnoticed</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Wrap keys in a <code>enum DefaultsKey: String</code> to avoid typos</li><li class="note-item">Use <code>@AppStorage("theme")</code> in SwiftUI to bind to UserDefaults</li><li class="note-item">Read with <code>SecItemCopyMatching</code> using <code>kSecReturnData: true</code></li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>UserDefaults</code> — small prefs</li><li class="note-item">Keychain — secrets</li><li class="note-item"><code>SecItemAdd</code> / <code>SecItemCopyMatching</code></li></ul></section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="swift-079-codable-custom.html" class="nav-link prev">Codable — Custom Coding</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Swift Reference · 108 Sheets</a>
+				<a href="swift-081-modules-imports.html" class="nav-link next">Modules &amp; Imports</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>

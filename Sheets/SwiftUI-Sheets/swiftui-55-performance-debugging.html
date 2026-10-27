@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SwiftUI — Sheet 55: Performance &amp; Debugging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swiftui-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s55">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 55</div>
+			<h1>Performance &amp; Debugging</h1>
+			<div class="sheet-desc">view identity · Self._printChanges() · Equatable views · lazy containers · .id() · Instruments SwiftUI template</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Making Views Fast</h2><div class="description">SwiftUI performance comes down to <strong>how often</strong> <code>body</code> runs and <strong>how much</strong> each run does. Keep <code>body</code> cheap, keep view identity stable, read only the state each view needs (Observation helps), and use lazy containers for long content. <code>Self._printChanges()</code> explains why a view redrew, and Instruments shows slow bodies and update causes.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Unstable IDs (like <code>UUID()</code> in body) rebuild views every time</li><li class="note-item"><code>AnyView</code> hides structure from the diffing engine</li><li class="note-item">Pass child views only the data they use</li><li class="note-item">Format and sort in the model, not in body</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Instruments Tools Table | Explain + Minimum OS + UIKit / React Equivalent -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Diagnosing Updates</h2><pre><code class="language-swift">struct MessageRow: View {
+    let message: Message
+    var body: some View {
+        let _ = Self._printChanges()          // logs why body ran
+        HStack { Text(message.sender).bold(); Text(message.preview) }
+    }
+}
+
+// ✗ new identity every render → state lost, slow
+ForEach(items, id: \.self) { … }               // when items aren't unique
+List(items) { Row(id: UUID(), item: $0) }      // never generate IDs in body
+
+// ✓ precompute in the model
+@Observable final class Inbox {
+    var messages: [Message] = [] { didSet { sorted = messages.sorted(by: &gt;) } }
+    private(set) var sorted: [Message] = []
+}
+
+struct Avatar: View, Equatable {               // skip redraws if equal
+    let url: URL
+    var body: some View { AsyncImage(url: url) }
+}
+Avatar(url: u).equatable()</code></pre></section><section id="tbl-instruments-tools"><h2 class="section-title">Instruments &amp; Tools</h2><table><thead><tr><th>Tool</th><th>Shows</th></tr></thead><tbody><tr><td>SwiftUI instrument</td><td class="desc">Body updates and their causes</td></tr><tr><td>Time Profiler</td><td class="desc">Hot functions</td></tr><tr><td>Hangs</td><td class="desc">Main-thread stalls</td></tr><tr><td>View Hierarchy Debugger</td><td class="desc">Layout</td></tr><tr><td>_printChanges()</td><td class="desc">Changed dependencies</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>Self._printChanges()</code> — why did body run?</div><div class="explain-item">stable IDs — keep identity and state</div><div class="explain-item">precompute — keep body cheap</div><div class="explain-item"><code>Equatable</code> + <code>.equatable()</code> — skip unchanged views</div></div></section><section class="section-notes section-minos" id="minimum-os"><h2 class="section-title">Minimum OS</h2><ul class="note-list"><li class="note-item"><code>_printChanges</code>: iOS 15 (debug only)</li><li class="note-item">Observation's per-property tracking: iOS 17</li></ul></section><section class="section-notes section-equiv" id="uikit-react"><h2 class="section-title">UIKit / React Equivalent</h2><ul class="note-list"><li class="note-item"><span class="eq-lbl">UIKit</span> Avoiding <code>reloadData</code>; profiling <code>layoutSubviews</code></li><li class="note-item"><span class="eq-lbl">React Native</span> <code>React.memo</code>, <code>useMemo</code>, FlatList <code>keyExtractor</code></li></ul></section>
+				</div>
+			</div>
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Sorting, filtering or formatting large data inside <code>body</code></li><li class="note-item">Whole-screen models read by every row: rows redraw on any change</li><li class="note-item"><code>.id(UUID())</code> to force refresh: destroys and rebuilds the view</li></ul></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Split big views so changes redraw only small pieces</li><li class="note-item">Profile release builds on a real device</li><li class="note-item">Use <code>LazyVStack</code> / <code>List</code> for anything over ~50 items</li></ul></section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">cheap bodies, stable identity</li><li class="note-item">read only needed state</li><li class="note-item"><code>_printChanges</code> + Instruments</li></ul></section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="swiftui-54-localization.html" class="nav-link prev">Localization</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SwiftUI Reference · 59 Sheets</a>
+				<a href="swiftui-56-app-architecture.html" class="nav-link next">App Architecture</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>

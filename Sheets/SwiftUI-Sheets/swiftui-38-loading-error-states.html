@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SwiftUI — Sheet 38: Loading &amp; Error States</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swiftui-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>Loading &amp; Error States</h1>
+			<div class="sheet-desc">state enum · ProgressView · ContentUnavailableView · .redacted(reason:) · retry · @MainActor</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Loading &amp; Error States</h2><div class="description">Real screens are loading, loaded, empty or failed. Model this with an <strong>enum</strong> in a <code>@MainActor</code> model and <code>switch</code> over it in the view, so every state has a deliberate UI. <code>ProgressView</code> shows activity, <code>ContentUnavailableView</code> handles empty and error states, and <code>.redacted(reason: .placeholder)</code> shows a skeleton of the real layout.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">One enum prevents impossible combinations (loading + error)</li><li class="note-item">Keep previous data visible during refresh if possible</li><li class="note-item">Treat <code>CancellationError</code> as not-an-error</li><li class="note-item">Offer a retry action on failure</li><li class="note-item">Swift set: <a href="../Swift-Sheets/swift-064-enums-associated-values.html">064 · Enums — Associated Values</a>, <a href="../Swift-Sheets/swift-101-actors-mainactor.html">101 · Actors &amp; @MainActor</a></li></ul></section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Minimum OS + UIKit / React Equivalent -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">State Enum Pattern</h2><pre><code class="language-swift">@MainActor @Observable final class FeedModel {
+    enum Phase { case loading, loaded([Post]), empty, failed(Error) }
+    var phase = Phase.loading
+    func load() async {
+        do {
+            let posts = try await api.posts()
+            phase = posts.isEmpty ? .empty : .loaded(posts)
+        } catch is CancellationError {} catch { phase = .failed(error) }
+    }
+}
+
+struct FeedView: View {
+    @State private var model = FeedModel()
+    var body: some View {
+        Group {
+            switch model.phase {
+            case .loading:
+                PostList(posts: Post.placeholders)
+                    .redacted(reason: .placeholder)
+            case .loaded(let posts): PostList(posts: posts)
+            case .empty:
+                ContentUnavailableView("No Posts", systemImage: "tray")
+            case .failed:
+                ContentUnavailableView {
+                    Label("Couldn't Load", systemImage: "wifi.slash")
+                } actions: {
+                    Button("Retry") { Task { await model.load() } }
+                }
+            }
+        }
+        .task { await model.load() }
+    }
+}</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>enum Phase</code> — every screen state</div><div class="explain-item"><code>catch is CancellationError</code> — ignore cancels</div><div class="explain-item"><code>.redacted(reason: .placeholder)</code> — skeleton</div><div class="explain-item"><code>ContentUnavailableView</code> actions — retry button</div><div class="explain-item"><code>.task</code> — load on appear</div></div></section><section class="section-notes section-minos" id="minimum-os"><h2 class="section-title">Minimum OS</h2><ul class="note-list"><li class="note-item"><code>ProgressView</code>, <code>.redacted</code>: iOS 14</li><li class="note-item"><code>ContentUnavailableView</code>: iOS 17</li></ul></section><section class="section-notes section-equiv" id="uikit-react"><h2 class="section-title">UIKit / React Equivalent</h2><ul class="note-list"><li class="note-item"><span class="eq-lbl">UIKit</span> <code>UIActivityIndicatorView</code> + manual state view swapping</li><li class="note-item"><span class="eq-lbl">React Native</span> <code>isLoading</code> / <code>error</code> state + <code>ActivityIndicator</code>, React Query</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Separate <code>isLoading</code>, <code>error</code> and <code>items</code> properties that disagree</li><li class="note-item">Showing an error alert when the user just navigated away (cancellation)</li><li class="note-item">Spinner covering data the user was reading during refresh</li></ul></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Make sample placeholders the same size as real rows</li><li class="note-item">Use <code>.refreshable</code> for refresh; keep <code>.loaded</code> data during it</li><li class="note-item">Unit-test the model's phase transitions</li></ul></section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">enum for screen phases</li><li class="note-item">redacted skeletons while loading</li><li class="note-item"><code>ContentUnavailableView</code> for empty/failed</li></ul></section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="swiftui-37-task-onappear-onchange.html" class="nav-link prev">.task, onAppear &amp; onChange</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">SwiftUI Reference · 59 Sheets</a>
+				<a href="swiftui-39-app-lifecycle-scenes.html" class="nav-link next">App Lifecycle &amp; Scenes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>

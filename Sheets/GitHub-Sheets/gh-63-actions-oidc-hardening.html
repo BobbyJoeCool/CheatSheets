@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 63: Actions: OIDC &amp; Hardening</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s63">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 63</div>
+			<h1>Actions: OIDC &amp; Hardening</h1>
+			<div class="sheet-desc">OIDC · configure-aws-credentials · script injection · SHA pinning · Dependabot · allowed actions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">No Long-Lived Keys, No Injection</h2>
+						<div class="description"><strong>OpenID Connect (OIDC)</strong> lets a job ask GitHub for a short-lived signed token and trade it with AWS, Azure or GCP for temporary credentials, so no cloud keys live in secrets. The cloud trusts tokens whose <strong>subject</strong> claim matches your repo, branch or environment. Pair OIDC with the hardening basics: no expressions in scripts, pinned actions, and minimal permissions.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">OIDC Setup</h2>
+						<ul class="note-list">
+							<li class="note-item">Cloud side: add GitHub's OIDC provider (<code>token.actions.githubusercontent.com</code>) and a role</li>
+							<li class="note-item">Trust policy: match <code>sub</code>, e.g. <code>repo:ORG/REPO:environment:production</code></li>
+							<li class="note-item">Workflow: <code>permissions: id-token: write</code></li>
+							<li class="note-item">Tokens last minutes; nothing to rotate</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + In the Logs -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">AWS via OIDC + Safe Script Input</h2>
+						<pre class="language-yaml"><code class="language-yaml">permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/gh-deploy
+          aws-region: us-east-2
+      - run: aws s3 sync ./site s3://my-bucket --delete
+
+      # ✖ injection: title is pasted into the script
+      # - run: echo "${{ github.event.issue.title }}"
+      # ✔ safe: value arrives as data
+      - env:
+          TITLE: ${{ github.event.issue.title }}
+        run: echo "$TITLE"</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>id-token: write</code> — required to mint the OIDC token</div>
+							<div class="explain-item"><code>role-to-assume</code> — AWS role whose trust policy allows this repo</div>
+							<div class="explain-item"><code>environment:</code> — becomes part of the <code>sub</code> claim</div>
+							<div class="explain-item"><code>env:</code> + <code>"$TITLE"</code> — the injection-proof pattern</div>
+						</div>
+					</section>
+					<section class="section-logs" id="in-logs">
+						<h2 class="section-title">In the Logs</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity</code> — the trust policy's <code>sub</code>/<code>aud</code> doesn't match this run</li>
+							<li class="note-item"><code>Credentials could not be loaded</code> — missing <code>id-token: write</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Clouds Table | Harden Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-clouds">
+						<h2 class="section-title">OIDC Login Actions</h2>
+						<table>
+							<thead><tr><th>Cloud</th><th>Action</th></tr></thead>
+							<tbody>
+								<tr><td>AWS</td><td class="desc">aws-actions/configure-aws-credentials</td></tr>
+								<tr><td>Azure</td><td class="desc">azure/login (client-id, tenant-id)</td></tr>
+								<tr><td>GCP</td><td class="desc">google-github-actions/auth (workload_identity_provider)</td></tr>
+								<tr><td>HashiCorp Vault</td><td class="desc">hashicorp/vault-action (method: jwt)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-harden">
+						<h2 class="section-title">Hardening Checklist</h2>
+						<table>
+							<thead><tr><th>Do</th><th>Why</th></tr></thead>
+							<tbody>
+								<tr><td>pin actions to SHAs</td><td class="desc">tags can be moved</td></tr>
+								<tr><td>Dependabot for github-actions</td><td class="desc">update pins safely</td></tr>
+								<tr><td>allowed-actions policy</td><td class="desc">only approved actions run</td></tr>
+								<tr><td>CODEOWNERS on .github/workflows</td><td class="desc">review workflow changes</td></tr>
+								<tr><td>zizmor / actionlint in CI</td><td class="desc">catch injection and misconfig</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Trust policy <code>sub</code> = <code>repo:ORG/*</code>: every repo and branch in the org can assume the role</li>
+							<li class="note-item">Leaving old access keys in secrets after moving to OIDC</li>
+							<li class="note-item">Thinking <code>env:</code> protects against injection when you then <code>eval "$TITLE"</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Scope trust to <code>environment:production</code> so only approved deploy jobs get prod access</li>
+							<li class="note-item">Run <strong>zizmor</strong> to audit workflows for injection, excessive permissions and unpinned actions</li>
+							<li class="note-item">Turn on Settings → Actions → <strong>Require actions to be pinned to a full-length commit SHA</strong> where available</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">OIDC — short-lived cloud creds, no stored keys</li>
+							<li class="note-item"><code>id-token: write</code> — required permission</li>
+							<li class="note-item"><code>env:</code> not <code>${{ }}</code> in <code>run:</code> — stop injection</li>
+							<li class="note-item">pin · review · lint — hardening basics</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-62-actions-github-token.html" class="nav-link prev" title="Actions: GITHUB_TOKEN &amp; Permissions">GITHUB_TOKEN</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-64-actions-environments.html" class="nav-link next" title="Actions: Environments &amp; Approvals">Environments</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

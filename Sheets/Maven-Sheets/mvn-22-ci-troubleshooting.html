@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Maven — Sheet 22: CI &amp; Troubleshooting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/mvn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>CI &amp; Troubleshooting</h1>
+			<div class="sheet-desc">actions/setup-java cache: maven · -B -ntp · -U force updates · -e / -X · dependency:purge-local-repository · build cache extension · mvnd</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Builds That Run Anywhere</h2><div class="description">In CI, run Maven in <strong>batch mode</strong> through the wrapper, cache <code>~/.m2/repository</code> between runs, and use <code>verify</code> as the main command. When a build fails, add <code>-e</code> for stack traces or <code>-X</code> for full debug output. Most "works on my machine" failures come from a stale local repository, a different JDK, or a different Maven version.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">The cache key should include every <code>pom.xml</code></li><li class="note-item">For faster local builds, try <code>mvnd</code> (Maven Daemon)</li><li class="note-item">The build cache extension skips modules whose inputs haven't changed</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Gradle Equivalent + Idiomatic Maven -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">GitHub Actions Workflow</h2><pre><code class="language-yaml">name: build
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven              # caches ~/.m2/repository
+      - run: ./mvnw -B -ntp verify
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-reports
+          path: '**/target/surefire-reports/'
+
+# local troubleshooting
+./mvnw -e verify                     # stack traces
+./mvnw -X verify &gt; build.log         # full debug log
+./mvnw -U verify                     # re-check remote repos
+./mvnw dependency:purge-local-repository   # re-download deps</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>cache: maven</code> — keyed on the hash of every <code>pom.xml</code></div><div class="explain-item"><code>-B -ntp</code> — no colors or prompts, no download progress lines</div><div class="explain-item">Upload Surefire reports on failure so you can read them</div><div class="explain-item"><code>purge-local-repository</code> — fixes corrupt or partial downloads</div></div></section><section class="section-notes section-gradle" id="gradle"><h2 class="section-title">Gradle Equivalent</h2><ul class="note-list"><li class="note-item"><code>cache: maven</code> → <code>gradle/actions/setup-gradle</code></li><li class="note-item"><code>-X</code> → <code>--debug</code>; <code>-e</code> → <code>--stacktrace</code></li><li class="note-item"><code>-U</code> → <code>--refresh-dependencies</code></li><li class="note-item">See <a href="../Gradle-Sheets/gradle-25-ci-troubleshooting.html">Gradle 25</a></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Maven</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>mvn clean install</code> in CI</span> → <span class="idiom-prefer"><code>./mvnw -B -ntp verify</code></span></li><li class="note-item"><span class="idiom-avoid">deleting all of <code>~/.m2</code></span> → <span class="idiom-prefer"><code>purge-local-repository</code> or <code>-U</code></span></li><li class="note-item"><span class="idiom-avoid">re-running failed CI to "see if it passes"</span> → <span class="idiom-prefer">read <code>surefire-reports</code> first</span></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Errors Table | Speed Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-errors"><h2 class="section-title">Common Errors</h2><table><thead><tr><th>Message</th><th>Usual fix</th></tr></thead><tbody><tr><td>Could not resolve dependencies</td><td class="desc">Check mirror / credentials, then <code>-U</code></td></tr><tr><td>was cached in the local repository</td><td class="desc">Delete <code>*.lastUpdated</code> or use <code>-U</code></td></tr><tr><td>release version 21 not supported</td><td class="desc">Maven runs on an older JDK; fix <code>JAVA_HOME</code></td></tr><tr><td>No plugin found for prefix</td><td class="desc">Typo, or add the plugin's <code>groupId</code></td></tr><tr><td>PKIX path building failed</td><td class="desc">Corporate proxy cert; import it into the JDK</td></tr><tr><td>NoSuchMethodError at runtime</td><td class="desc">Version conflict: <code>dependency:tree -Dverbose</code></td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-speed"><h2 class="section-title">Faster Builds</h2><table><thead><tr><th>Option</th><th>Gain</th></tr></thead><tbody><tr><td>-T 1C</td><td class="desc">Parallel modules</td></tr><tr><td>mvnd</td><td class="desc">Warm daemon JVM, parallel by default</td></tr><tr><td>maven-build-cache-extension</td><td class="desc">Skip unchanged modules</td></tr><tr><td>-o</td><td class="desc">No remote checks</td></tr><tr><td>-pl x -am</td><td class="desc">Build only what you need</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Caching <code>~/.m2</code> including your own SNAPSHOTs — stale artifacts leak between branches</li><li class="note-item">CI using a different JDK than developers — pin <code>java-version</code> and use <code>requireJavaVersion</code></li><li class="note-item">Ignoring "[WARNING]" lines about missing plugin versions — builds change when Maven upgrades</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Reproduce CI locally with a clean repo: <code>-Dmaven.repo.local=/tmp/m2</code></li><li class="note-item">Turn on <code>-Dstyle.color=always</code> if your CI shows ANSI colors</li><li class="note-item">Add <code>-fae</code> in CI to see every failing module, not just the first</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>./mvnw -B -ntp verify</code> — the CI command</li><li class="note-item"><code>cache: maven</code> — reuse downloads</li><li class="note-item"><code>-e</code> / <code>-X</code> — more error detail</li><li class="note-item"><code>-U</code> / purge — fix a stale local repo</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="mvn-21-maven-4.html">What&#x27;s Changing in Maven 4</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Maven Reference · 24 Sheets</a>
+				<a class="nav-link next" href="mvn-23-quickref-cli.html" title="Quick Reference: CLI &amp; Lifecycle">Quick Ref: CLI</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

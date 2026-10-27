@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swift — Sheet 103: AsyncSequence &amp; Continuations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swift-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s103">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 103</div>
+			<h1>AsyncSequence &amp; Continuations</h1>
+			<div class="sheet-desc">AsyncSequence · for await · AsyncStream · withCheckedContinuation · bridging callbacks</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Async Streams &amp; Bridges</h2><div class="description">An <code>AsyncSequence</code> delivers values over time; you loop over it with <code>for await</code>. <code>AsyncStream</code> builds one from callbacks or events. To wrap a single callback-based API in an <code>async</code> function, use a <strong>continuation</strong>: <code>withCheckedThrowingContinuation</code> suspends until you call <code>resume</code> exactly once.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>for try await</code> for throwing sequences</li><li class="note-item">A continuation must be resumed exactly once (checked at runtime)</li><li class="note-item"><code>AsyncStream.makeStream()</code> returns stream + continuation (5.9)</li><li class="note-item">Many Apple APIs expose AsyncSequences: <code>url.lines</code>, <code>NotificationCenter.notifications</code></li></ul></section>
+				</div>
+			</div>
+			<!-- Row 2: Code + Built In Asyncsequences Table | Explain + The Swifty Way + Coming From… + Swift Versions -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Streams &amp; Continuations</h2><pre><code class="language-swift">// Wrap a completion-handler API
+func currentLocation() async throws -&gt; CLLocation {
+    try await withCheckedThrowingContinuation { cont in
+        legacyLocator.request { location, error in
+            if let location { cont.resume(returning: location) }
+            else { cont.resume(throwing: error ?? LocError.unknown) }
+        }
+    }
+}
+
+// A stream of values over time
+func ticks(every s: Double) -&gt; AsyncStream&lt;Date&gt; {
+    AsyncStream { continuation in
+        let timer = Timer.scheduledTimer(withTimeInterval: s, repeats: true) { _ in
+            continuation.yield(.now)
+        }
+        continuation.onTermination = { _ in timer.invalidate() }
+    }
+}
+for await t in ticks(every: 1).prefix(3) { print(t) }    // 3 ticks
+
+let (stream, cont) = AsyncStream.makeStream(of: Int.self)
+cont.yield(1); cont.finish()
+for await n in stream { print(n) }                       // 1</code></pre></section><section id="tbl-built-in-asyncsequences"><h2 class="section-title">Built-in AsyncSequences</h2><table><thead><tr><th>Source</th><th>Yields</th></tr></thead><tbody><tr><td>url.lines</td><td class="desc">Lines of a file / URL</td></tr><tr><td>URLSession.bytes(from:)</td><td class="desc">Bytes</td></tr><tr><td>NotificationCenter.notifications(named:)</td><td class="desc">Notifications</td></tr><tr><td>TaskGroup</td><td class="desc">Child results</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>withCheckedThrowingContinuation</code> — callback → async</div><div class="explain-item"><code>resume(returning:)</code> / <code>resume(throwing:)</code> — once</div><div class="explain-item"><code>AsyncStream { continuation in }</code> — events → stream</div><div class="explain-item"><code>onTermination</code> — clean up when the loop ends</div><div class="explain-item"><code>for await</code> — consume values</div></div></section><section class="section-notes section-way" id="swifty-way"><h2 class="section-title">The Swifty Way</h2><ul class="note-list"><li class="note-item"><span class="lbl-avoid">✗</span> a new callback-based API<br><span class="lbl-prefer">✓</span> <code>async</code> functions and <code>AsyncSequence</code>s</li></ul></section><section class="section-notes section-coming" id="coming-from"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><span class="cf-lang">Kotlin</span> <code>Flow</code> ≈ AsyncSequence; <code>suspendCoroutine</code> ≈ continuation</li><li class="note-item"><span class="cf-lang">TypeScript</span> <code>for await…of</code> + async generators ≈ same</li><li class="note-item"><span class="cf-lang">Python</span> async generators + <code>asyncio.Future</code> ≈ same</li></ul></section><section class="section-notes section-versions" id="swift-versions"><h2 class="section-title">Swift Versions</h2><ul class="note-list"><li class="note-item">5.5 — AsyncSequence, AsyncStream, continuations</li><li class="note-item">5.9 — <code>AsyncStream.makeStream(of:)</code></li></ul></section>
+				</div>
+			</div>
+			<!-- Row 3: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-3">
+				<div class="col" id="col-3-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Resuming a continuation twice, or never: runtime warning or crash, or a hung task</li><li class="note-item">Forgetting <code>onTermination</code> cleanup: timers and observers leak</li><li class="note-item">Iterating one AsyncStream from two places: values are split, not copied</li></ul></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>AsyncAlgorithms</code> (Apple package) for <code>debounce</code>, <code>merge</code>, <code>combineLatest</code></li><li class="note-item">Use <code>withCheckedContinuation</code> in debug; only switch to unsafe after profiling</li><li class="note-item">Set a <code>bufferingPolicy</code> on high-volume streams</li></ul></section>
+				</div>
+				<div class="col" id="col-3-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>AsyncSequence</code> + <code>for await</code></li><li class="note-item"><code>AsyncStream</code> — build from events</li><li class="note-item">continuations — wrap callbacks</li></ul></section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="swift-102-sendable-strict-concurrency.html" class="nav-link prev" title="Sendable &amp; Strict Concurrency">Sendable &amp; Swift 6</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Swift Reference · 108 Sheets</a>
+				<a href="swift-104-arc-basics.html" class="nav-link next">ARC Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>

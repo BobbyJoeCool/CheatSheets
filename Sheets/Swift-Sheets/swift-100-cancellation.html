@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swift — Sheet 100: Task Cancellation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swift-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s100">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 100</div>
+			<h1>Task Cancellation</h1>
+			<div class="sheet-desc">Task.isCancelled · checkCancellation() · cancel() · CancellationError · withTaskCancellationHandler</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Cancelling Tasks</h2><div class="description">Cancellation in Swift is <strong>cooperative</strong>: calling <code>cancel()</code> only sets a flag. Your code checks it with <code>Task.isCancelled</code> or <code>try Task.checkCancellation()</code>, which throws <code>CancellationError</code>. Many system APIs (<code>Task.sleep</code>, <code>URLSession</code>) check automatically. Cancelling a parent cancels all its child tasks.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Nothing stops a task that never checks for cancellation</li><li class="note-item"><code>Task.sleep</code> throws <code>CancellationError</code> when cancelled</li><li class="note-item">SwiftUI's <code>.task</code> modifier cancels when the view disappears</li><li class="note-item"><code>withTaskCancellationHandler</code> reacts immediately to cancel</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + The Swifty Way + Coming From… -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Checking for Cancellation</h2><pre><code class="language-swift">func process(_ items: [Item]) async throws -&gt; [Result] {
+    var out: [Result] = []
+    for item in items {
+        try Task.checkCancellation()          // throws if cancelled
+        out.append(await transform(item))
+    }
+    return out
+}
+
+func pollForever() async {
+    while !Task.isCancelled {                 // non-throwing check
+        await refresh()
+        try? await Task.sleep(for: .seconds(30))
+    }
+}
+
+let job = Task { try await process(items) }
+job.cancel()
+do { _ = try await job.value }
+catch is CancellationError { print("stopped") }
+
+func download(_ url: URL) async throws -&gt; Data {
+    let op = LegacyDownloader(url)
+    return try await withTaskCancellationHandler {
+        try await op.start()
+    } onCancel: { op.abort() }                // runs right away
+}</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>try Task.checkCancellation()</code> — throw if cancelled</div><div class="explain-item"><code>Task.isCancelled</code> — Bool check</div><div class="explain-item"><code>job.cancel()</code> — request cancellation</div><div class="explain-item"><code>catch is CancellationError</code> — handle it</div><div class="explain-item"><code>withTaskCancellationHandler</code> — immediate hook</div></div></section><section class="section-notes section-way" id="swifty-way"><h2 class="section-title">The Swifty Way</h2><ul class="note-list"><li class="note-item"><span class="lbl-avoid">✗</span> a <code>var shouldStop</code> flag in your class<br><span class="lbl-prefer">✓</span> <code>Task.isCancelled</code> / <code>checkCancellation()</code></li></ul></section><section class="section-notes section-coming" id="coming-from"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><span class="cf-lang">Kotlin</span> Coroutine cancellation is also cooperative (<code>isActive</code>)</li><li class="note-item"><span class="cf-lang">TypeScript</span> <code>AbortController</code> ≈ cancel(); must be passed manually there</li><li class="note-item"><span class="cf-lang">Python</span> <code>task.cancel()</code> raises CancelledError at the next await</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 3: Auto Cancelling Apis Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-auto-cancelling-apis"><h2 class="section-title">Auto-cancelling APIs</h2><table><thead><tr><th>API</th><th>Behavior</th></tr></thead><tbody><tr><td>Task.sleep</td><td class="desc">Throws CancellationError</td></tr><tr><td>URLSession.data</td><td class="desc">Throws URLError.cancelled</td></tr><tr><td>TaskGroup</td><td class="desc">Cancels children on throw</td></tr><tr><td>SwiftUI .task</td><td class="desc">Cancels on disappear</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Long CPU loops with no cancellation checks</li><li class="note-item">Showing an error alert for <code>CancellationError</code>: it's expected, not a failure</li><li class="note-item">Using <code>try?</code> on <code>Task.sleep</code> inside a loop and never re-checking <code>isCancelled</code></li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Cancel the previous search Task before starting a new one</li><li class="note-item">Store tasks in a property and cancel them in <code>deinit</code> or <code>onDisappear</code></li><li class="note-item">Use <code>.task(id:)</code> in SwiftUI to restart work when an input changes</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">cancellation is cooperative</li><li class="note-item"><code>checkCancellation()</code> / <code>isCancelled</code></li><li class="note-item">parent cancel → children cancel</li></ul></section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="swift-099-tasks-task-groups.html" class="nav-link prev">Tasks &amp; Task Groups</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Swift Reference · 108 Sheets</a>
+				<a href="swift-101-actors-mainactor.html" class="nav-link next">Actors &amp; @MainActor</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>

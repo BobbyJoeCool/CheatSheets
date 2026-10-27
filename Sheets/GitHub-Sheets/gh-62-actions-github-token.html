@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 62: Actions: GITHUB_TOKEN &amp; Permissions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s62">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 62</div>
+			<h1>Actions: GITHUB_TOKEN &amp; Permissions</h1>
+			<div class="sheet-desc">secrets.GITHUB_TOKEN · permissions: · contents: read · id-token: write · least privilege</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">The Automatic Token</h2>
+						<div class="description">Every job gets a fresh <strong><code>GITHUB_TOKEN</code></strong>: an installation token scoped to the current repo that expires when the job ends (or after 24 hours). Actions like <code>checkout</code> use it by default. The <code>permissions:</code> key sets exactly which scopes it gets; any scope you don't list becomes <code>none</code>. New repos and orgs default to <strong>read-only</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Permission Rules</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>permissions:</code> at workflow level applies to all jobs; job level overrides</li>
+							<li class="note-item">Listing any scope sets every unlisted scope to <code>none</code></li>
+							<li class="note-item">Fork PRs get read-only tokens no matter what you request</li>
+							<li class="note-item"><code>permissions: {}</code> — no access at all</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + In the Logs -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Least Privilege per Job</h2>
+						<pre class="language-yaml"><code class="language-yaml">permissions:
+  contents: read                     # baseline for every job
+jobs:
+  label-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - run: gh pr edit "$PR" --add-label ci-passed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write                # create tags/releases
+      id-token: write                # OIDC (Sheet 63)
+    steps:
+      - run: gh release create "v1.0.0" --generate-notes</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">workflow <code>permissions:</code> — baseline for all jobs</div>
+							<div class="explain-item">job <code>permissions:</code> — replaces the baseline for that job</div>
+							<div class="explain-item"><code>GH_TOKEN</code> — env var the <code>gh</code> CLI reads</div>
+							<div class="explain-item"><code>id-token: write</code> — allow requesting an OIDC token</div>
+						</div>
+					</section>
+					<section class="section-logs" id="in-logs">
+						<h2 class="section-title">In the Logs</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Resource not accessible by integration</code> (HTTP 403) — the token is missing a scope; add it under <code>permissions:</code></li>
+							<li class="note-item"><code>refusing to allow a GitHub App to create or update workflow</code> — pushing <code>.github/workflows/</code> changes needs a PAT/App with <code>workflows</code> scope</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Scopes Table | Extra Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-scopes">
+						<h2 class="section-title">Common Scopes</h2>
+						<table>
+							<thead><tr><th>Scope</th><th>Allows</th></tr></thead>
+							<tbody>
+								<tr><td>contents</td><td class="desc">read code; write = push, tags, releases</td></tr>
+								<tr><td>pull-requests</td><td class="desc">comment, label, review PRs</td></tr>
+								<tr><td>issues</td><td class="desc">create/edit issues and comments</td></tr>
+								<tr><td>packages</td><td class="desc">push to GHCR</td></tr>
+								<tr><td>pages / deployments</td><td class="desc">publish Pages · deployment status</td></tr>
+								<tr><td>actions / checks / statuses</td><td class="desc">manage runs · report checks</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-extra">
+						<h2 class="section-title">Special Scopes</h2>
+						<table>
+							<thead><tr><th>Scope</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>id-token: write</td><td class="desc">OIDC to clouds</td></tr>
+								<tr><td>security-events: write</td><td class="desc">upload code-scanning SARIF</td></tr>
+								<tr><td>attestations: write</td><td class="desc">build provenance</td></tr>
+								<tr><td>vulnerability-alerts: read</td><td class="desc">read Dependabot alerts</td></tr>
+								<tr><td>models: read</td><td class="desc">call GitHub Models</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Setting <code>permissions: write-all</code> to make an error go away: every step can now push and delete</li>
+							<li class="note-item">Adding one scope at job level and losing <code>contents: read</code>: checkout fails on private repos</li>
+							<li class="note-item">Expecting pushes made with <code>GITHUB_TOKEN</code> to trigger other workflows (Sheet 45)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Set the org/repo default to <strong>read</strong> (Settings → Actions → Workflow permissions)</li>
+							<li class="note-item">Declare <code>permissions:</code> in every workflow so reviewers see the blast radius</li>
+							<li class="note-item">Use a GitHub App token (<code>actions/create-github-app-token</code>) for cross-repo access, not a PAT</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>GITHUB_TOKEN</code> — per-job, repo-scoped, auto-expires</li>
+							<li class="note-item"><code>permissions:</code> — declare scopes; rest = none</li>
+							<li class="note-item"><code>contents: read</code> — the safe baseline</li>
+							<li class="note-item">403 <code>not accessible by integration</code> — missing scope</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-61-actions-secrets-variables.html" class="nav-link prev" title="Actions: Secrets &amp; Variables">Secrets &amp; Variables</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-63-actions-oidc-hardening.html" class="nav-link next" title="Actions: OIDC &amp; Hardening">OIDC &amp; Hardening</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

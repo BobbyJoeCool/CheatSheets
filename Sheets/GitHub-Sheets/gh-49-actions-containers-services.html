@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 49: Actions: Job &amp; Service Containers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s49">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 49</div>
+			<h1>Actions: Job &amp; Service Containers</h1>
+			<div class="sheet-desc">container: · services: · postgres / redis · ports · --health-cmd · credentials</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Docker Inside a Job</h2>
+						<div class="description"><code>container:</code> runs every step of a job <strong>inside</strong> a Docker image, so the job gets exactly that OS and toolset. <code>services:</code> starts <strong>sidecar containers</strong> (databases, caches, queues) for the job's lifetime. Both need a Linux runner with Docker. How you reach a service depends on where your steps run: by <strong>service name</strong> from a job container, by <strong>localhost + mapped port</strong> from the runner.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Linux runners only (hosted <code>ubuntu-*</code> or self-hosted Linux with Docker)</li>
+							<li class="note-item">Services start before the first step and stop after the last</li>
+							<li class="note-item"><code>options:</code> passes extra <code>docker create</code> flags</li>
+							<li class="note-item">Private images: add <code>credentials: { username, password }</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + In the Logs -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Tests Against Postgres</h2>
+						<pre class="language-yaml"><code class="language-yaml">jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: node:22                  # steps run in this image
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: pw
+        options: &gt;-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: npm ci &amp;&amp; npm test
+        env:
+          DATABASE_URL: postgres://postgres:pw@postgres:5432/postgres</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>container: node:22</code> — all <code>run:</code> steps execute inside it</div>
+							<div class="explain-item"><code>services.postgres</code> — key becomes the hostname <code>postgres</code></div>
+							<div class="explain-item"><code>--health-cmd</code> — runner waits until healthy before steps start</div>
+							<div class="explain-item"><code>@postgres:5432</code> — reach by name (steps are in a container)</div>
+						</div>
+					</section>
+					<section class="section-logs" id="in-logs">
+						<h2 class="section-title">In the Logs</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Service container postgres failed.</code> / <code>unhealthy</code> — check the health command and env; the service's logs appear in <strong>Initialize containers</strong></li>
+							<li class="note-item"><code>ECONNREFUSED 127.0.0.1:5432</code> — you're in a job container: use the service name, not localhost</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Host Table | Keys Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-host">
+						<h2 class="section-title">Which Hostname?</h2>
+						<table>
+							<thead><tr><th>Steps run on…</th><th>Connect to</th></tr></thead>
+							<tbody>
+								<tr><td>job container</td><td class="desc"><code>postgres:5432</code> (service name, container port)</td></tr>
+								<tr><td>the runner itself</td><td class="desc"><code>localhost:5432</code> with <code>ports: ['5432:5432']</code></td></tr>
+								<tr><td>runner, random port</td><td class="desc"><code>ports: ['5432']</code> → <code>job.services.postgres.ports[5432]</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-keys">
+						<h2 class="section-title">Container Keys</h2>
+						<table>
+							<thead><tr><th>Key</th><th>Purpose</th></tr></thead>
+							<tbody>
+								<tr><td>image</td><td class="desc">Docker image (required)</td></tr>
+								<tr><td>env</td><td class="desc">environment variables</td></tr>
+								<tr><td>ports</td><td class="desc">publish to the runner host</td></tr>
+								<tr><td>volumes</td><td class="desc">mount host paths / named volumes</td></tr>
+								<tr><td>options</td><td class="desc">extra <code>docker create</code> flags</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>localhost</code> from a job container: services are on a Docker network, not the container's loopback</li>
+							<li class="note-item">No health check: tests start before the database accepts connections</li>
+							<li class="note-item">Expecting <code>container:</code> on Windows or macOS runners: not supported</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">For services, prefer health checks over <code>sleep 10</code></li>
+							<li class="note-item">Pin image tags (<code>postgres:17</code>), never <code>latest</code>, so CI is reproducible</li>
+							<li class="note-item"><code>docker compose up -d --wait</code> in a step is an alternative for complex stacks</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>container:</code> — run steps in an image</li>
+							<li class="note-item"><code>services:</code> — sidecars for the job</li>
+							<li class="note-item">service name — host from a job container</li>
+							<li class="note-item"><code>ports:</code> + localhost — from the runner</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-48-actions-self-hosted-runners.html" class="nav-link prev" title="Actions: Self-Hosted Runners">Self-Hosted Runners</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-50-actions-run-steps-shells.html" class="nav-link next" title="Actions: Run Steps &amp; Shells">Run Steps &amp; Shells</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

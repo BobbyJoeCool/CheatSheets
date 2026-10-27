@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swift — Sheet 099: Tasks &amp; Task Groups</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swift-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s099">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 099</div>
+			<h1>Tasks &amp; Task Groups</h1>
+			<div class="sheet-desc">Task · withTaskGroup · withThrowingTaskGroup · Task.sleep · priority · detached</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Structured Concurrency</h2><div class="description">A <code>TaskGroup</code> runs a <strong>dynamic</strong> number of child tasks in parallel and collects their results as they finish. Child tasks are <strong>structured</strong>: the group waits for all of them, cancels the rest if one throws, and can't outlive its scope. Unstructured <code>Task { }</code> and <code>Task.detached { }</code> create independent tasks you manage yourself.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Results arrive in completion order, not submission order</li><li class="note-item">Throwing group: first error cancels the remaining children</li><li class="note-item"><code>Task</code> inherits priority and actor context; <code>detached</code> doesn't</li><li class="note-item">Keep a <code>Task</code> handle to <code>await</code> its value or <code>cancel()</code> it</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + The Swifty Way + Coming From… -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Task Groups &amp; Tasks</h2><pre><code class="language-swift">func downloadAll(_ urls: [URL]) async throws -&gt; [URL: Data] {
+    try await withThrowingTaskGroup(of: (URL, Data).self) { group in
+        for url in urls {
+            group.addTask {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                return (url, data)
+            }
+        }
+        var results: [URL: Data] = [:]
+        for try await (url, data) in group { results[url] = data }
+        return results
+    }
+}
+
+let handle = Task(priority: .userInitiated) { try await downloadAll(urls) }
+let files = try await handle.value                // wait for result
+handle.cancel()                                   // or cancel it
+
+Task.detached(priority: .background) { await cleanUpCache() }
+try await Task.sleep(for: .milliseconds(250))
+await Task.yield()                                // let others run</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>withThrowingTaskGroup(of:)</code> — parallel children</div><div class="explain-item"><code>group.addTask { }</code> — add a child</div><div class="explain-item"><code>for try await … in group</code> — collect results</div><div class="explain-item"><code>Task(priority:)</code> / <code>.value</code> — unstructured task</div><div class="explain-item"><code>Task.detached</code> — no inherited context</div></div></section><section class="section-notes section-way" id="swifty-way"><h2 class="section-title">The Swifty Way</h2><ul class="note-list"><li class="note-item"><span class="lbl-avoid">✗</span> <code>Task.detached</code> by default<br><span class="lbl-prefer">✓</span> <code>Task { }</code> or a task group <span class="way-why">— detached loses actor and priority context</span></li></ul></section><section class="section-notes section-coming" id="coming-from"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><span class="cf-lang">Kotlin</span> <code>coroutineScope { launch {} }</code> ≈ TaskGroup</li><li class="note-item"><span class="cf-lang">TypeScript</span> <code>Promise.all(urls.map(f))</code> ≈ group (no cancel)</li><li class="note-item"><span class="cf-lang">Python</span> <code>asyncio.TaskGroup</code> ≈ withThrowingTaskGroup</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 3: Task Apis Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-task-apis"><h2 class="section-title">Task APIs</h2><table><thead><tr><th>API</th><th>Purpose</th></tr></thead><tbody><tr><td>withTaskGroup</td><td class="desc">Non-throwing group</td></tr><tr><td>withThrowingTaskGroup</td><td class="desc">Throwing group</td></tr><tr><td>withDiscardingTaskGroup</td><td class="desc">Fire-and-forget children</td></tr><tr><td>Task.sleep(for:)</td><td class="desc">Delay (cancellable)</td></tr><tr><td>Task.yield()</td><td class="desc">Give up the thread briefly</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mutating a shared array from inside <code>addTask</code>: data race; return values instead</li><li class="note-item">Expecting results in input order</li><li class="note-item">Launching thousands of children at once: limit concurrency for network calls</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Limit parallelism by adding the next task as each one finishes</li><li class="note-item">Return <code>(index, value)</code> pairs when you need the original order</li><li class="note-item">Use <code>withDiscardingTaskGroup</code> for servers handling many connections</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">TaskGroup — dynamic parallel children</li><li class="note-item">structured: waits, cancels on error</li><li class="note-item"><code>Task { }</code> — unstructured, keep the handle</li></ul></section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="swift-098-async-await.html" class="nav-link prev">async / await</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Swift Reference · 108 Sheets</a>
+				<a href="swift-100-cancellation.html" class="nav-link next">Task Cancellation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>

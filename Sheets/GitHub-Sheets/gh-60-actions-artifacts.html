@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 60: Actions: Artifacts</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s60">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 60</div>
+			<h1>Actions: Artifacts</h1>
+			<div class="sheet-desc">upload-artifact · download-artifact · retention-days · immutable · cache vs artifact</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Files That Outlive the Job</h2>
+						<div class="description">An <strong>artifact</strong> is a set of files uploaded from a job and stored with the run: build output, test reports, coverage, logs. Other jobs in the same run download it with <code>actions/download-artifact</code>, and people download it from the run page or with <code>gh run download</code>. Artifacts are for passing <strong>results</strong>; caches are for speeding up <strong>inputs</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Artifact Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Names must be unique per run; artifacts are <strong>immutable</strong> (no appending)</li>
+							<li class="note-item">Default retention 90 days (or the repo setting); <code>retention-days</code> 1–90</li>
+							<li class="note-item">Downloads are zip files from the UI; extracted in workflows</li>
+							<li class="note-item">Hidden files are excluded by default (<code>include-hidden-files</code>)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Security Check + In the Logs -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Build Once, Use Twice</h2>
+						<pre class="language-yaml"><code class="language-yaml">jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: npm ci &amp;&amp; npm run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+  e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with: { name: dist, path: dist }
+      - run: npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with: { name: playwright-report, path: playwright-report/ }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>name</code> — key other jobs and people use</div>
+							<div class="explain-item"><code>path</code> — file, folder, glob or multiline list</div>
+							<div class="explain-item"><code>if-no-files-found: error</code> — fail instead of warn</div>
+							<div class="explain-item"><code>download-artifact</code> — omit <code>name</code> to fetch all</div>
+							<div class="explain-item"><code>if: failure()</code> — upload reports only when tests fail</div>
+						</div>
+					</section>
+					<section class="section-security" id="sec-check">
+						<h2 class="section-title">Security Check</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Risk:</strong> artifacts from PR runs are built from untrusted code; a privileged <code>workflow_run</code> job that downloads and <strong>executes</strong> them runs attacker code.</li>
+							<li class="note-item"><strong>Fix:</strong> treat downloaded artifacts as data; never source scripts from them in jobs that hold secrets.</li>
+						</ul>
+					</section>
+					<section class="section-logs" id="in-logs">
+						<h2 class="section-title">In the Logs</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>No files were found with the provided path: dist/. No artifacts will be uploaded.</code> — wrong path or the build didn't run</li>
+							<li class="note-item"><code>Failed to CreateArtifact: ... an artifact with this name already exists</code> — matrix jobs need unique names, e.g. <code>dist-${{ matrix.os }}</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Upload Table | Cache Vs Art Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-upload">
+						<h2 class="section-title">upload-artifact Inputs</h2>
+						<table>
+							<thead><tr><th>Input</th><th>Meaning</th></tr></thead>
+							<tbody>
+								<tr><td>name</td><td class="desc">artifact name (default <code>artifact</code>)</td></tr>
+								<tr><td>path</td><td class="desc">what to upload</td></tr>
+								<tr><td>retention-days</td><td class="desc">1–90 days</td></tr>
+								<tr><td>compression-level</td><td class="desc">0 (none) – 9 (max)</td></tr>
+								<tr><td>overwrite</td><td class="desc">replace an existing name</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-cache-vs-art">
+						<h2 class="section-title">Cache or Artifact?</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>speed up installs</td><td class="desc">cache</td></tr>
+								<tr><td>pass build output to next job</td><td class="desc">artifact</td></tr>
+								<tr><td>keep test reports</td><td class="desc">artifact</td></tr>
+								<tr><td>share across runs/branches</td><td class="desc">cache</td></tr>
+								<tr><td>download from the UI</td><td class="desc">artifact</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Same artifact name from every matrix job: v4+ rejects duplicates; add the matrix value to <code>name</code></li>
+							<li class="note-item">Mixing major versions of upload and download actions across jobs</li>
+							<li class="note-item">Using artifacts as a cache: they don't cross runs automatically and cost storage</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Merge many small artifacts with <code>pattern:</code> + <code>merge-multiple: true</code> on download</li>
+							<li class="note-item">Short <code>retention-days</code> (1–7) for intermediate build output keeps storage costs low</li>
+							<li class="note-item"><code>gh run download &lt;run-id&gt; -n dist</code> fetches one artifact locally</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>upload-artifact</code> — save files from a job</li>
+							<li class="note-item"><code>download-artifact</code> — get them in a later job</li>
+							<li class="note-item">immutable + unique names per run</li>
+							<li class="note-item">artifact = results · cache = inputs</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-59-actions-caching.html" class="nav-link prev" title="Actions: Caching Dependencies">Caching</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-61-actions-secrets-variables.html" class="nav-link next" title="Actions: Secrets &amp; Variables">Secrets &amp; Variables</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

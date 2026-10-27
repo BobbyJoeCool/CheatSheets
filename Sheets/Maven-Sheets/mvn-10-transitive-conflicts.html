@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Maven — Sheet 10: Transitive Dependencies &amp; Conflicts</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/mvn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s10">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>Transitive Dependencies &amp; Conflicts</h1>
+			<div class="sheet-desc">nearest-wins mediation · &lt;exclusions&gt; · dependency:tree · -Dverbose · dependency:analyze · enforcer dependencyConvergence</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Dependencies of Dependencies</h2><div class="description">When you depend on a library, you also get <strong>its</strong> dependencies, and theirs. When two paths bring different versions of the same artifact, Maven picks one by <strong>dependency mediation</strong>: the version <strong>nearest</strong> to your project in the tree wins, and the first one declared wins a tie. It does <em>not</em> pick the highest version, so an old version can silently win. <code>dependency:tree</code> shows what happened.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Declaring a dependency directly always wins (depth 1)</li><li class="note-item"><code>dependencyManagement</code> overrides mediation (sheet 11)</li><li class="note-item"><code>-Dverbose</code> shows the versions that lost</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Mediation: nearest, then first declared, never highest</li><li class="note-item"><code>optional</code>, <code>test</code> and <code>provided</code> dependencies don't propagate</li><li class="note-item">A transitive dependency's scope comes from its parent's: <code>test</code> → everything below is <code>test</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Gradle Equivalent + Idiomatic Maven -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Reading the Tree, Excluding</h2><pre><code class="language-markup">$ mvn dependency:tree -Dverbose -Dincludes=com.fasterxml.jackson.core
+[INFO] com.acme:invoice-service:jar:2.4.0-SNAPSHOT
+[INFO] +- com.acme:pdf-lib:jar:1.3.0:compile
+[INFO] |  \- com.fasterxml.jackson.core:jackson-databind:jar:2.12.7:compile
+[INFO] \- com.acme:http-lib:jar:4.0.0:compile
+[INFO]    \- (com.fasterxml.jackson.core:jackson-databind:jar:2.19.2:compile
+             - omitted for conflict with 2.12.7)
+
+&lt;!-- fix 1: drop the old one --&gt;
+&lt;dependency&gt;
+  &lt;groupId&gt;com.acme&lt;/groupId&gt;
+  &lt;artifactId&gt;pdf-lib&lt;/artifactId&gt;
+  &lt;version&gt;1.3.0&lt;/version&gt;
+  &lt;exclusions&gt;
+    &lt;exclusion&gt;
+      &lt;groupId&gt;com.fasterxml.jackson.core&lt;/groupId&gt;
+      &lt;artifactId&gt;jackson-databind&lt;/artifactId&gt;
+    &lt;/exclusion&gt;
+  &lt;/exclusions&gt;
+&lt;/dependency&gt;
+&lt;!-- fix 2 (better): pin it in dependencyManagement --&gt;</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>-Dincludes=</code> — filter the tree to one group or artifact</div><div class="explain-item"><code>omitted for conflict</code> — 2.19.2 lost; 2.12.7 was declared first at the same depth</div><div class="explain-item"><code>&lt;exclusion&gt;</code> — removes that artifact from this path only</div><div class="explain-item"><code>*</code> works as a wildcard for <code>groupId</code> / <code>artifactId</code></div></div></section><section class="section-notes section-gradle" id="gradle"><h2 class="section-title">Gradle Equivalent</h2><ul class="note-list"><li class="note-item">Nearest wins → Gradle picks the <strong>highest</strong> version by default</li><li class="note-item"><code>&lt;exclusions&gt;</code> → <code>exclude(group = "…", module = "…")</code></li><li class="note-item"><code>dependency:tree</code> → <code>./gradlew dependencies</code> / <code>dependencyInsight</code></li><li class="note-item">See <a href="../Gradle-Sheets/gradle-12-conflicts-platforms.html">Gradle 12</a></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Maven</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">excluding from every dependency that pulls it</span> → <span class="idiom-prefer">one entry in <code>dependencyManagement</code></span></li><li class="note-item"><span class="idiom-avoid">ignoring conflicts until runtime</span> → <span class="idiom-prefer"><code>enforcer</code> <code>dependencyConvergence</code></span></li><li class="note-item"><span class="idiom-avoid">using a class you get transitively</span> → <span class="idiom-prefer">declare it directly</span></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Scope Matrix Table | Tools Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-scope-matrix"><h2 class="section-title">Resulting Transitive Scope</h2><table><thead><tr><th>Direct ↓ / Transitive →</th><th>compile</th><th>runtime</th></tr></thead><tbody><tr><td>compile</td><td class="kw">compile</td><td class="kw">runtime</td></tr><tr><td>provided</td><td class="kw">provided</td><td class="kw">provided</td></tr><tr><td>runtime</td><td class="kw">runtime</td><td class="kw">runtime</td></tr><tr><td>test</td><td class="kw">test</td><td class="kw">test</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-tools"><h2 class="section-title">Diagnose</h2><table><thead><tr><th>Command</th><th>Shows</th></tr></thead><tbody><tr><td>dependency:tree</td><td class="desc">Resolved tree</td></tr><tr><td>dependency:tree -Dverbose</td><td class="desc">Plus omitted / duplicate versions</td></tr><tr><td>dependency:analyze</td><td class="desc">Used-undeclared, unused-declared</td></tr><tr><td>dependency:list</td><td class="desc">Flat resolved list</td></tr><tr><td>enforcer:enforce</td><td class="desc">Fails on rule violations</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Assuming the newest version wins — Maven's nearest-wins can pick an old one and cause <code>NoSuchMethodError</code></li><li class="note-item">Excluding a library that the dependency really needs — runtime <code>ClassNotFoundException</code></li><li class="note-item">Fixing conflicts by reordering dependencies — fragile; pin the version instead</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add the enforcer's <code>dependencyConvergence</code> or <code>requireUpperBoundDeps</code> rule to catch conflicts early (sheet 18)</li><li class="note-item">IntelliJ's Maven dependency diagram shows conflicts in red</li><li class="note-item">When <code>NoSuchMethodError</code> appears, run <code>dependency:tree -Dverbose -Dincludes=…</code> first</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Transitive — you get your dependencies' dependencies</li><li class="note-item">Mediation — nearest, then first declared</li><li class="note-item"><code>&lt;exclusions&gt;</code> — drop one path</li><li class="note-item"><code>dependency:tree -Dverbose</code> — see conflicts</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="mvn-09-dependencies-scopes.html" title="Declaring Dependencies &amp; Scopes">Dependencies &amp; Scopes</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Maven Reference · 24 Sheets</a>
+				<a class="nav-link next" href="mvn-11-dependency-management-boms.html" title="Dependency Management &amp; BOMs">Dependency Mgmt &amp; BOMs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

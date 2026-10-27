@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 42: Actions: YAML for Workflows</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s42">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 42</div>
+			<h1>Actions: YAML for Workflows</h1>
+			<div class="sheet-desc">maps &amp; lists · | and &gt; block scalars · quoting · anchors &amp; aliases (&amp; / *) · actionlint</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Just Enough YAML</h2>
+						<div class="description">Workflow files are YAML: indentation (spaces only, usually 2) shows nesting, <code>key: value</code> makes a <strong>map</strong>, and <code>- item</code> makes a <strong>list</strong>. Most workflow bugs are YAML bugs: a wrong indent, an unquoted value that YAML turns into a boolean or number, or a multi-line <code>run:</code> written with the wrong block style. GitHub supports <strong>anchors and aliases</strong> (<code>&amp;name</code> / <code>*name</code>) to reuse a block.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">YAML Traps</h2>
+						<ul class="note-list">
+							<li class="note-item">Tabs are illegal; use spaces</li>
+							<li class="note-item"><code>on</code> is fine as a key in workflows, but <code>yes</code>/<code>no</code>/<code>on</code>/<code>off</code> as <strong>values</strong> may become booleans in other tools; quote them</li>
+							<li class="note-item">Values starting with <code>*</code>, <code>&amp;</code>, <code>!</code>, <code>{</code>, <code>[</code>, <code>@</code> or containing <code>: </code> must be quoted</li>
+							<li class="note-item">Anchors work within one file only; merge keys (<code>&lt;&lt;:</code>) are <strong>not</strong> supported</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + In the Logs -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Lists, Blocks and Anchors</h2>
+						<pre class="language-yaml"><code class="language-yaml">on:
+  push:
+    branches: [main, "release/**"]   # flow list
+    paths:                            # block list
+      - "src/**"
+      - "!src/docs/**"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env: &amp;common-env                  # anchor this map
+      NODE_ENV: test
+    steps:
+      - run: |                        # literal: keeps newlines
+          npm ci
+          npm test
+      - run: &gt;                        # folded: newlines → spaces
+          echo one
+          two three                   # runs: echo one two three
+  build:
+    runs-on: ubuntu-latest
+    env: *common-env                  # reuse the anchored map
+    steps:
+      - run: echo "$NODE_ENV"         # test</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>[a, b]</code> and <code>- a</code> lines — two ways to write the same list</div>
+							<div class="explain-item"><code>|</code> — literal block; each line is a separate shell line</div>
+							<div class="explain-item"><code>&gt;</code> — folded block; joins lines with spaces (rarely what you want for <code>run:</code>)</div>
+							<div class="explain-item"><code>&amp;common-env</code> — names a node; <code>*common-env</code> pastes it</div>
+							<div class="explain-item"><code>"release/**"</code> — quoted because <code>*</code> would start an alias</div>
+						</div>
+					</section>
+					<section class="section-logs" id="in-logs">
+						<h2 class="section-title">In the Logs</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Invalid workflow file: .github/workflows/ci.yml#L12</code> — YAML or schema error; the run fails instantly with no jobs</li>
+							<li class="note-item"><code>You have an error in your yaml syntax on line 12</code> — usually indentation; check the line <strong>above</strong> too</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Scalars Table | Blocks Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-scalars">
+						<h2 class="section-title">Scalars and Quoting</h2>
+						<table>
+							<thead><tr><th>Write</th><th>YAML reads it as</th></tr></thead>
+							<tbody>
+								<tr><td>version: 3.10</td><td class="desc">number <code>3.1</code> ✖ — quote it: <code>"3.10"</code></td></tr>
+								<tr><td>flag: yes</td><td class="desc">boolean true in YAML 1.1 tools</td></tr>
+								<tr><td>path: *.js</td><td class="desc">error: alias — write <code>"*.js"</code></td></tr>
+								<tr><td>msg: "tab\there"</td><td class="desc">double quotes: backslash escapes work</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-blocks">
+						<h2 class="section-title">Block Scalar Modifiers</h2>
+						<table>
+							<thead><tr><th>Indicator</th><th>Effect</th></tr></thead>
+							<tbody>
+								<tr><td>|</td><td class="desc">keep newlines, one trailing newline</td></tr>
+								<tr><td>|-</td><td class="desc">keep newlines, strip the final newline</td></tr>
+								<tr><td>&gt;</td><td class="desc">fold lines into one, single trailing newline</td></tr>
+								<tr><td>&gt;-</td><td class="desc">fold and strip final newline</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Mixing 2- and 4-space indents within one list: the item lands under the wrong key</li>
+							<li class="note-item">Using <code>&gt;</code> for multi-command <code>run:</code> blocks: commands get glued onto one line</li>
+							<li class="note-item">Trying <code>&lt;&lt;: *anchor</code> to merge and override keys: GitHub rejects merge keys</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Run <strong>actionlint</strong> locally or in CI: it catches YAML, expression and shellcheck errors before you push</li>
+							<li class="note-item">Use the VS Code <strong>GitHub Actions</strong> extension for schema-aware autocomplete and validation</li>
+							<li class="note-item">Prefer <code>|</code> for every multi-line <code>run:</code>; it reads exactly like a shell script</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>key: value</code> / <code>- item</code> — maps and lists</li>
+							<li class="note-item"><code>|</code> — literal multi-line block (use for <code>run:</code>)</li>
+							<li class="note-item"><code>"quote"</code> — versions, globs, special characters</li>
+							<li class="note-item"><code>&amp;a</code> / <code>*a</code> — anchor and reuse within one file</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-41-actions-first-workflow.html" class="nav-link prev" title="Actions: Your First Workflow">First Workflow</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-43-actions-push-pr-triggers.html" class="nav-link next" title="Actions: Push &amp; Pull Request Triggers">Push &amp; PR Triggers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

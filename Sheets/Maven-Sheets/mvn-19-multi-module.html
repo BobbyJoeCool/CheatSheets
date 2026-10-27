@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Maven — Sheet 19: Multi-Module Projects</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/mvn-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Multi-Module Projects</h1>
+			<div class="sheet-desc">&lt;modules&gt; · aggregator vs parent · packaging pom · reactor build order · -pl :app -am / -amd · -rf resume · CI-friendly ${revision}</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">One Build, Many Modules</h2><div class="description">A <strong>multi-module</strong> project has a root POM with <code>packaging pom</code> that lists child folders in <code>&lt;modules&gt;</code>. Building the root builds every module in one <strong>reactor</strong> run, in dependency order. The root is usually both the <strong>aggregator</strong> (lists modules) and the <strong>parent</strong> (shares config), but the two roles are separate. Modules depend on each other with normal <code>&lt;dependency&gt;</code> entries.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Use <code>${project.version}</code> for sibling dependencies</li><li class="note-item">CI-friendly <code>${revision}</code> sets one version for all modules</li><li class="note-item">Maven 3 needs <code>flatten-maven-plugin</code> to publish <code>${revision}</code> POMs</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">The reactor sorts modules by their dependency graph, not by <code>&lt;modules&gt;</code> order</li><li class="note-item"><code>-am</code> adds the upstream modules you depend on; <code>-amd</code> the downstream ones</li><li class="note-item">In-build module output wins over older copies in <code>~/.m2</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Gradle Equivalent + Idiomatic Maven -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Root POM + Module</h2><pre><code class="language-markup">&lt;!-- root pom.xml --&gt;
+&lt;groupId&gt;com.acme&lt;/groupId&gt;
+&lt;artifactId&gt;billing&lt;/artifactId&gt;
+&lt;version&gt;${revision}&lt;/version&gt;
+&lt;packaging&gt;pom&lt;/packaging&gt;
+&lt;properties&gt;&lt;revision&gt;2.4.0-SNAPSHOT&lt;/revision&gt;&lt;/properties&gt;
+&lt;modules&gt;
+  &lt;module&gt;core&lt;/module&gt;
+  &lt;module&gt;api&lt;/module&gt;
+  &lt;module&gt;app&lt;/module&gt;
+&lt;/modules&gt;
+
+&lt;!-- app/pom.xml --&gt;
+&lt;parent&gt;
+  &lt;groupId&gt;com.acme&lt;/groupId&gt;&lt;artifactId&gt;billing&lt;/artifactId&gt;
+  &lt;version&gt;${revision}&lt;/version&gt;
+&lt;/parent&gt;
+&lt;artifactId&gt;app&lt;/artifactId&gt;
+&lt;dependencies&gt;
+  &lt;dependency&gt;&lt;groupId&gt;com.acme&lt;/groupId&gt;&lt;artifactId&gt;core&lt;/artifactId&gt;
+    &lt;version&gt;${project.version}&lt;/version&gt;&lt;/dependency&gt;
+&lt;/dependencies&gt;
+
+mvn verify                     # whole reactor
+mvn verify -pl app -am         # app + what it needs
+mvn verify -pl core -amd       # core + everything using it
+mvn verify -rf :api            # resume after a failure</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>packaging pom</code> — the root builds no JAR</div><div class="explain-item"><code>${revision}</code> — change the version in one place</div><div class="explain-item"><code>-pl app</code> — select by folder or <code>:artifactId</code></div><div class="explain-item"><code>-rf :api</code> — skip modules that already passed</div></div></section><section class="section-notes section-gradle" id="gradle"><h2 class="section-title">Gradle Equivalent</h2><ul class="note-list"><li class="note-item"><code>&lt;modules&gt;</code> → <code>include("core", "api", "app")</code></li><li class="note-item">Sibling dependency → <code>implementation(project(":core"))</code></li><li class="note-item"><code>-pl app -am</code> → <code>./gradlew :app:build</code></li><li class="note-item">See <a href="../Gradle-Sheets/gradle-17-multi-project.html">Gradle 17</a></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Maven</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>mvn install</code> so siblings can see each other</span> → <span class="idiom-prefer"><code>mvn verify</code> from the root</span></li><li class="note-item"><span class="idiom-avoid">hard-coded sibling versions</span> → <span class="idiom-prefer"><code>${project.version}</code></span></li><li class="note-item"><span class="idiom-avoid"><code>versions:set</code> on every release</span> → <span class="idiom-prefer">CI-friendly <code>-Drevision=2.4.0</code></span></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Reactor Table | Roles Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-reactor"><h2 class="section-title">Reactor Flags</h2><table><thead><tr><th>Flag</th><th>Effect</th></tr></thead><tbody><tr><td>-pl a,b</td><td class="desc">Only these modules</td></tr><tr><td>-pl !c</td><td class="desc">All except c</td></tr><tr><td>-am</td><td class="desc">Also make upstream deps</td></tr><tr><td>-amd</td><td class="desc">Also make downstream dependents</td></tr><tr><td>-rf :x</td><td class="desc">Resume from module x</td></tr><tr><td>-T 1C</td><td class="desc">Build independent modules in parallel</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-roles"><h2 class="section-title">Aggregator vs Parent</h2><table><thead><tr><th>Role</th><th>Means</th></tr></thead><tbody><tr><td>Aggregator</td><td class="desc">Lists <code>&lt;modules&gt;</code>, builds them together</td></tr><tr><td>Parent</td><td class="desc">Children inherit its config</td></tr><tr><td>Both</td><td class="desc">The usual root POM</td></tr><tr><td>Maven 4</td><td class="desc"><code>&lt;subprojects&gt;</code> replaces <code>&lt;modules&gt;</code></td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Running <code>mvn test</code> inside one module folder — siblings resolve from stale <code>~/.m2</code> copies</li><li class="note-item">A dependency cycle between modules — "The projects in the reactor contain a cyclic reference"</li><li class="note-item">Deploying <code>${revision}</code> POMs without flattening in Maven 3 — consumers can't resolve them</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Run one module's tests from the root: <code>mvn test -pl app -am</code></li><li class="note-item">Use <code>flatten-maven-plugin</code> with <code>flattenMode=resolveCiFriendliesOnly</code></li><li class="note-item">Keep a <code>-bom</code> module listing every module for consumers</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>&lt;modules&gt;</code> — build children together</li><li class="note-item">Reactor — orders modules by dependencies</li><li class="note-item"><code>-pl / -am / -amd</code> — build a slice</li><li class="note-item"><code>${revision}</code> — one version for all</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="mvn-18-quality-enforcer.html">Code Quality &amp; Enforcer</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Maven Reference · 24 Sheets</a>
+				<a class="nav-link next" href="mvn-20-deploy-release.html">Deploying &amp; Releasing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

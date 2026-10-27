@@ -1,19 +1,19 @@
-# Python Reference Guide Outline (96 sheets)
+# Python Reference Guide Outline (93 sheets)
 
 ## Metadata
 
 - **Group it belongs to:** Python
 - **Folder Directory:** `Sheets/Python-Sheets/py-##-[slug].html`
-- **Groups:** 15
-- **Sheets:** 96
+- **Groups:** 16
+- **Sheets:** 93
 - **Drafted Date:** 2026-10-02 (re-drafted after the sheets were live)
 - **Verified-Finalized Date:** 2026-10-02
 
 ## Basic Information
 
-Python following the standard language groups: output, data types, strings, operators, control flow, error handling, functions and decorators, data structures, OOP, file I/O, modules and the standard library, testing and logging, and advanced topics (async, concurrency, type hints). It ends with a 7-sheet Tkinter GUI group.
+Python following the standard language groups: output, data types, strings, operators, control flow, error handling, functions and decorators, data structures, OOP, file I/O, modules and the standard library, testing and logging, and advanced topics (async, concurrency, type hints). It ends with a 2-sheet frameworks overview (GUI and web) and 2 quick-reference sheets.
 
-The Tkinter set goes much deeper; the Tkinter group here is the introduction.
+The Tkinter and Django sets go much deeper; the frameworks group here only orients the reader and points to them.
 
 ## Differences in Layout from Basic Structure
 
@@ -180,14 +180,16 @@ None. Uses the standard four-row layout (Description | Notes, Code | Explain, Ta
 | 88 | `py-88-serialization.html` | Serialization & Pickling | pickle · shelve · json vs pickle · marshal · security risks |
 | 89 | `py-89-type-hints.html` | Type Hints & Typing Module | annotations · list[int] · Optional · Union · Callable · TypedDict · mypy |
 
-### Group 15: Tkinter GUI (Sheets 90–96)
+### Group 15: Frameworks Overview (Sheets 90–91)
 
 | # | Filename | Sheet Title | Key Topics |
 |---|---|---|---|
-| 90 | `py-90-tkinter-basics.html` | Tkinter Basics & Windows | tk.Tk() · mainloop() · title() · geometry() · resizable() · Toplevel |
-| 91 | `py-91-tkinter-widgets.html` | Tkinter Widgets | Label · Button · Entry · Text · Listbox · Checkbutton · Radiobutton · config() |
-| 92 | `py-92-tkinter-layout.html` | Layout Managers | pack() · grid() · place() · sticky · padx/pady · rowconfigure |
-| 93 | `py-93-tkinter-events.html` | Events & Callbacks | command= · bind() · event object · &lt;Button-1> · &lt;Key> · StringVar |
-| 94 | `py-94-tkinter-dialogs.html` | Dialogs & Message Boxes | messagebox · showinfo() · askyesno() · filedialog · askopenfilename() · simpledialog |
-| 95 | `py-95-tkinter-canvas.html` | Canvas & Drawing | Canvas · create_line() · create_rectangle() · create_oval() · create_text() · tags · move() |
-| 96 | `py-96-ttk-themed-widgets.html` | ttk Themed Widgets | tkinter.ttk · ttk.Style · theme_use() · configure() · Treeview · Combobox · Progressbar |
+| 90 | `py-90-gui-frameworks.html` | GUI Frameworks Overview | Tkinter · ttk · PySide6 / PyQt6 · wxPython · Kivy · event loop · callbacks |
+| 91 | `py-91-web-frameworks.html` | Web Frameworks Overview | Django · Flask · FastAPI · routes · WSGI vs ASGI · Gunicorn · Uvicorn |
+
+### Group 16: Quick Reference (Sheets 92–93)
+
+| # | Filename | Sheet Title | Key Topics |
+|---|---|---|---|
+| 92 | `py-92-quick-reference-syntax-types.html` | Quick Reference — Syntax & Types | running · types & conversion · strings & f-strings · operators · control flow & match · comprehensions · functions · exceptions |
+| 93 | `py-93-quick-reference-collections-stdlib.html` | Quick Reference — Collections, OOP & Standard Library | lists, tuples, dicts, sets · collections & itertools · sorting · classes & dunders · files & paths · modules · testing · async & concurrency |

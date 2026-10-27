@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 89: GitHub Apps</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s89">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 89</div>
+			<h1>GitHub Apps</h1>
+			<div class="sheet-desc">create app · permissions + events · private key → JWT → installation token · install on repos · Marketplace · Apps vs PATs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes + Who Can Do This -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Building Integrations the Right Way</h2>
+						<div class="description">A <strong>GitHub App</strong> is an integration with its own identity, fine-grained <strong>permissions</strong>, <strong>event subscriptions</strong> and one webhook. It's <strong>installed</strong> on an account and chosen repos. To act, the app signs a short <strong>JWT</strong> with its private key, exchanges it for an <strong>installation access token</strong> (valid one hour) and calls the API as itself (<code>my-app[bot]</code>). Apps don't use a seat and survive people leaving.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">App Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Permissions are requested up front; installers approve them</li>
+							<li class="note-item">Installation tokens expire after 1 hour</li>
+							<li class="note-item">Apps can be private or listed in the Marketplace</li>
+						</ul>
+					</section>
+					<section class="section-who" id="who">
+						<h2 class="section-title">Who Can Do This</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Role:</strong> account owner or Org owner (create, install)</li>
+							<li class="note-item"><strong>Plan:</strong> Free</li>
+							<li class="note-item"><strong>Repos:</strong> public and private</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">JWT → Installation Token</h2>
+						<pre class="language-javascript"><code class="language-javascript">import { App } from "octokit";
+const app = new App({
+  appId: process.env.APP_ID,
+  privateKey: process.env.APP_PRIVATE_KEY,     // PEM from app settings
+  webhooks: { secret: process.env.WEBHOOK_SECRET },
+});
+// Act on one installation (JWT + token exchange handled for you)
+const octokit = await app.getInstallationOctokit(INSTALLATION_ID);
+await octokit.rest.issues.createComment({
+  owner: "octo-org", repo: "shop", issue_number: 42,
+  body: "Hi from my-app[bot]",
+});
+// React to events
+app.webhooks.on("pull_request.opened", async ({ octokit, payload }) =&gt; {
+  await octokit.rest.issues.addLabels({
+    owner: payload.repository.owner.login,
+    repo: payload.repository.name,
+    issue_number: payload.number, labels: ["triage"] });
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>App</code> — wraps JWT signing + token caching</div>
+							<div class="explain-item"><code>getInstallationOctokit</code> — client as the installation</div>
+							<div class="explain-item"><code>webhooks.on</code> — handler gets an authenticated client</div>
+							<div class="explain-item">private key — keep in a secret store, rotate if leaked</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Flow Table | Vs Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-flow">
+						<h2 class="section-title">Raw Auth Flow</h2>
+						<table>
+							<thead><tr><th>Step</th><th>Detail</th></tr></thead>
+							<tbody>
+								<tr><td>1. JWT</td><td class="desc">RS256, <code>iss</code> = client ID, <code>exp</code> ≤ 10 min</td></tr>
+								<tr><td>2. Find installation</td><td class="desc"><code>GET /repos/{o}/{r}/installation</code></td></tr>
+								<tr><td>3. Token</td><td class="desc"><code>POST /app/installations/{id}/access_tokens</code></td></tr>
+								<tr><td>4. Call API</td><td class="desc"><code>Authorization: Bearer &lt;token&gt;</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-vs">
+						<h2 class="section-title">App vs PAT vs OAuth App</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>Bot that acts on repos</td><td class="desc">GitHub App</td></tr>
+								<tr><td>Act as a signed-in user</td><td class="desc">GitHub App user token / OAuth app</td></tr>
+								<tr><td>Personal scripts</td><td class="desc">fine-grained PAT</td></tr>
+								<tr><td>Workflow in Actions</td><td class="desc"><code>create-github-app-token</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Requesting every permission "just in case": installers refuse, risk grows</li>
+							<li class="note-item">Caching installation tokens past one hour</li>
+							<li class="note-item">Committing the app's private key to a repo</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Create apps with a manifest for repeatable setup</li>
+							<li class="note-item">Use Probot or Octokit's <code>App</code> to skip auth plumbing</li>
+							<li class="note-item">Ask only for events you handle; it cuts webhook traffic</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">GitHub App — own identity + permissions</li>
+							<li class="note-item">JWT → installation token (1 hour)</li>
+							<li class="note-item">one webhook, chosen events</li>
+							<li class="note-item">best choice for bots and integrations</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-88-webhooks.html" class="nav-link prev">Webhooks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-90-quick-reference-search-shortcuts.html" class="nav-link next" title="Quick Reference — Search, Shortcuts &amp; Markdown">QR: Search &amp; Shortcuts</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 52: Actions: Parallel &amp; Background Steps</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s52">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 52</div>
+			<h1>Actions: Parallel &amp; Background Steps</h1>
+			<div class="sheet-desc">background: true · wait · wait-all · cancel · parallel:</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Concurrency Inside One Job</h2>
+						<div class="description">Since mid-2026, steps don't have to be strictly sequential. <code>background: true</code> starts a step and moves on immediately; <code>wait</code> blocks until named background steps finish, <code>wait-all</code> until all of them do, and <code>cancel</code> stops one. <code>parallel:</code> is shorthand for a group of background steps plus an automatic wait. Everything shares <strong>one runner</strong>: same files, CPU and memory.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Up to <strong>10</strong> background steps at once per job; extras queue</li>
+							<li class="note-item">A background step's outputs and env changes appear only <strong>after</strong> a <code>wait</code> that includes it</li>
+							<li class="note-item">If a background step fails, the <code>wait</code> for it fails</li>
+							<li class="note-item"><code>wait</code>, <code>wait-all</code> and <code>cancel</code> steps have no <code>run</code>/<code>uses</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Build in Parallel, Test Against a Server</h2>
+						<pre class="language-yaml"><code class="language-yaml">steps:
+  - uses: actions/checkout@v6
+  - run: npm ci
+  - parallel:                     # all three at once, then wait
+      - run: npm run build:web
+      - run: npm run build:api
+      - run: npm run lint
+  - id: server
+    run: npm start                # never exits on its own
+    background: true
+  - run: npx wait-on http://localhost:3000
+  - run: npm run test:e2e
+  - cancel: server                # stop the server cleanly
+
+  # Explicit form:
+  - { id: a, run: ./job-a.sh, background: true }
+  - { id: b, run: ./job-b.sh, background: true }
+  - wait: [a, b]                  # or: - wait-all:</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>parallel:</code> — list of steps; next step waits for all</div>
+							<div class="explain-item"><code>background: true</code> — start and continue immediately</div>
+							<div class="explain-item"><code>wait-on</code> — started ≠ ready; poll before testing</div>
+							<div class="explain-item"><code>cancel: server</code> — terminate a long-running step</div>
+							<div class="explain-item"><code>wait: [a, b]</code> — join specific steps by <code>id</code></div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Keywords Table | Steps Vs Jobs Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-keywords">
+						<h2 class="section-title">Keywords</h2>
+						<table>
+							<thead><tr><th>Step key</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>background: true</td><td class="desc">run asynchronously</td></tr>
+								<tr><td>wait: id / [ids]</td><td class="desc">block until those finish</td></tr>
+								<tr><td>wait-all:</td><td class="desc">block until every background step finishes</td></tr>
+								<tr><td>cancel: id</td><td class="desc">send stop signal, then force-kill</td></tr>
+								<tr><td>parallel: [steps]</td><td class="desc">background group + implicit wait</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-steps-vs-jobs">
+						<h2 class="section-title">Parallel Steps or Separate Jobs?</h2>
+						<table>
+							<thead><tr><th>Need</th><th>Use</th></tr></thead>
+							<tbody>
+								<tr><td>share files / installed deps</td><td class="desc">parallel steps</td></tr>
+								<tr><td>more CPU / RAM</td><td class="desc">separate jobs (new runners)</td></tr>
+								<tr><td>different OS</td><td class="desc">separate jobs or matrix</td></tr>
+								<tr><td>individual re-runs and checks</td><td class="desc">separate jobs</td></tr>
+								<tr><td>service for tests</td><td class="desc">background step + cancel</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Reading a background step's output before <code>wait</code>: it's empty</li>
+							<li class="note-item">Starting a server in the background with no readiness check: tests hit a closed port</li>
+							<li class="note-item">Parallel steps writing the same files or ports: they race on the shared runner</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Give background steps a <code>name:</code>: each gets its own log section</li>
+							<li class="note-item">Use <code>cancel:</code> for servers; a never-ending background step keeps <code>wait-all</code> pending until timeout</li>
+							<li class="note-item">Linters and validators may lag new syntax; update actionlint and your editor extension</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>parallel:</code> — run a group, then continue</li>
+							<li class="note-item"><code>background: true</code> — fire and forget (for now)</li>
+							<li class="note-item"><code>wait</code> / <code>wait-all</code> — join; surfaces outputs</li>
+							<li class="note-item"><code>cancel</code> — stop long-running steps</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-51-actions-using-actions.html" class="nav-link prev" title="Actions: Using Actions">Using Actions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-53-actions-expressions.html" class="nav-link next" title="Actions: Expressions &amp; Operators">Expressions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

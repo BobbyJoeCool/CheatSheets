@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 59: Actions: Caching Dependencies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s59">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 59</div>
+			<h1>Actions: Caching Dependencies</h1>
+			<div class="sheet-desc">actions/cache · key · restore-keys · hashFiles · setup-node cache · cache-hit</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Skip Reinstalling Every Time</h2>
+						<div class="description"><code>actions/cache</code> saves a folder at the end of a job and restores it at the start of the next run when the <strong>key</strong> matches. Build the key from a hash of your lockfile so it changes only when dependencies change; <code>restore-keys</code> give partial matches to fall back on. Most <code>setup-*</code> actions have a built-in <code>cache:</code> input that does all of this for you.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Cache Rules</h2>
+						<ul class="note-list">
+							<li class="note-item">Caches are immutable: an exact key hit is never re-saved</li>
+							<li class="note-item">Scope: a branch can read its own caches and the default branch's</li>
+							<li class="note-item">Unused caches are evicted after 7 days, oldest first over the repo limit</li>
+							<li class="note-item">Repo limit defaults to 10 GB; admins can raise it</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Security Check + In the Logs -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Explicit Cache and Built-In Cache</h2>
+						<pre class="language-yaml"><code class="language-yaml">steps:
+  - uses: actions/checkout@v6
+
+  # Easiest: built into setup-node (also setup-python, -java, -go)
+  - uses: actions/setup-node@v6
+    with:
+      node-version: 22
+      cache: npm
+
+  # Full control with actions/cache
+  - id: cache
+    uses: actions/cache@v5
+    with:
+      path: ~/.cache/pip
+      key: ${{ runner.os }}-py-${{ hashFiles('requirements*.txt') }}
+      restore-keys: |
+        ${{ runner.os }}-py-
+  - if: steps.cache.outputs.cache-hit != 'true'
+    run: pip install -r requirements.txt</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>cache: npm</code> — caches <code>~/.npm</code>, keyed on <code>package-lock.json</code></div>
+							<div class="explain-item"><code>key</code> — OS + lockfile hash: exact match restores</div>
+							<div class="explain-item"><code>restore-keys</code> — prefix match: newest partial cache</div>
+							<div class="explain-item"><code>cache-hit</code> — <code>'true'</code> only on an exact key hit</div>
+						</div>
+					</section>
+					<section class="section-security" id="sec-check">
+						<h2 class="section-title">Security Check</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Risk:</strong> cache poisoning: a PR job that can write a cache your main-branch release later restores can slip in modified dependencies.</li>
+							<li class="note-item"><strong>Fix:</strong> never restore caches in release/publish jobs; build those clean, or use <code>actions/cache/restore</code> only.</li>
+						</ul>
+					</section>
+					<section class="section-logs" id="in-logs">
+						<h2 class="section-title">In the Logs</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Cache not found for input keys: Linux-py-…</code> — first run or a new lockfile; normal</li>
+							<li class="note-item"><code>Cache saved with key: …</code> in the <strong>Post</strong> step / <code>Cache hit occurred on the primary key …, not saving cache</code> — expected</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Paths Table | Variants Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-paths">
+						<h2 class="section-title">Typical Paths</h2>
+						<table>
+							<thead><tr><th>Tool</th><th>Path</th></tr></thead>
+							<tbody>
+								<tr><td>npm</td><td class="desc"><code>~/.npm</code></td></tr>
+								<tr><td>pip</td><td class="desc"><code>~/.cache/pip</code></td></tr>
+								<tr><td>Gradle</td><td class="desc"><code>~/.gradle/caches</code>, <code>~/.gradle/wrapper</code></td></tr>
+								<tr><td>Maven</td><td class="desc"><code>~/.m2/repository</code></td></tr>
+								<tr><td>Go</td><td class="desc"><code>~/go/pkg/mod</code>, <code>~/.cache/go-build</code></td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-variants">
+						<h2 class="section-title">Cache Action Variants</h2>
+						<table>
+							<thead><tr><th>Use</th><th>Does</th></tr></thead>
+							<tbody>
+								<tr><td>actions/cache</td><td class="desc">restore at start, save in post step</td></tr>
+								<tr><td>actions/cache/restore</td><td class="desc">restore only (read-only jobs)</td></tr>
+								<tr><td>actions/cache/save</td><td class="desc">save explicitly, any time</td></tr>
+								<tr><td>gh cache list / delete</td><td class="desc">inspect or purge from the CLI</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Caching <code>node_modules</code> across OS or Node versions: native modules break; cache <code>~/.npm</code> instead</li>
+							<li class="note-item">A key without a hash (<code>npm-cache</code>): it's saved once and never updated</li>
+							<li class="note-item">Expecting a feature branch to see another feature branch's cache: it can't</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Put <code>runner.os</code> first in every key; caches aren't portable across OSes</li>
+							<li class="note-item">Use the setup action's <code>cache:</code> input before writing your own <code>actions/cache</code> step</li>
+							<li class="note-item">Purge a bad cache: Actions tab → <strong>Caches</strong>, or <code>gh cache delete &lt;key&gt;</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>actions/cache</code> — restore + save a folder</li>
+							<li class="note-item"><code>key</code> with <code>hashFiles</code> — invalidates on lockfile change</li>
+							<li class="note-item"><code>restore-keys</code> — partial fallback</li>
+							<li class="note-item"><code>setup-*</code> <code>cache:</code> — built-in shortcut</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-58-actions-concurrency-timeouts.html" class="nav-link prev" title="Actions: Concurrency &amp; Timeouts">Concurrency</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-60-actions-artifacts.html" class="nav-link next" title="Actions: Artifacts">Artifacts</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

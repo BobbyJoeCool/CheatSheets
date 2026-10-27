@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 88: Webhooks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s88">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 88</div>
+			<h1>Webhooks</h1>
+			<div class="sheet-desc">repo / org webhooks · events · payload URL · secret + <code>X-Hub-Signature-256</code> · delivery log · redeliver · <code>ping</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes + Who Can Do This -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Getting Pushed Events</h2>
+						<div class="description">A <strong>webhook</strong> sends an HTTP POST to your URL whenever chosen events happen on a repo, org or app: pushes, PRs, issues, releases and dozens more. Each delivery carries a JSON <strong>payload</strong> and headers naming the event and a delivery ID. Set a <strong>secret</strong> and verify the <code>X-Hub-Signature-256</code> HMAC on every request. Failed deliveries can be inspected and <strong>redelivered</strong>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Webhook Facts</h2>
+						<ul class="note-list">
+							<li class="note-item">Respond with 2xx within 10 seconds; queue slow work</li>
+							<li class="note-item">Payloads are capped at 25 MB</li>
+							<li class="note-item">A <code>ping</code> event is sent when the hook is created</li>
+						</ul>
+					</section>
+					<section class="section-who" id="who">
+						<h2 class="section-title">Who Can Do This</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Role:</strong> Admin (repo hooks) · Org owner (org hooks)</li>
+							<li class="note-item"><strong>Plan:</strong> Free</li>
+							<li class="note-item"><strong>Repos:</strong> public and private</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Verify the Signature (Node.js)</h2>
+						<pre class="language-javascript"><code class="language-javascript">import crypto from "node:crypto";
+import express from "express";
+
+const app = express();
+app.post("/github", express.raw({ type: "application/json" }), (req, res) =&gt; {
+  const sig = req.get("X-Hub-Signature-256") ?? "";
+  const mac = "sha256=" + crypto
+    .createHmac("sha256", process.env.WEBHOOK_SECRET)
+    .update(req.body)                       // raw bytes, not parsed JSON
+    .digest("hex");
+  const ok = sig.length === mac.length &amp;&amp;
+    crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(mac));
+  if (!ok) return res.status(401).end();
+
+  const event = req.get("X-GitHub-Event");  // e.g. "pull_request"
+  const body = JSON.parse(req.body);
+  res.status(202).end();                    // answer fast…
+  queue.add({ event, action: body.action, body });   // …work later
+});</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>express.raw</code> — HMAC must use the raw body</div>
+							<div class="explain-item"><code>timingSafeEqual</code> — avoid timing attacks</div>
+							<div class="explain-item"><code>X-GitHub-Event</code> + <code>action</code> — what happened</div>
+							<div class="explain-item">202 then queue — stay under the 10 s limit</div>
+						</div>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Headers Table | Debug Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-headers">
+						<h2 class="section-title">Delivery Headers</h2>
+						<table>
+							<thead><tr><th>Header</th><th>Holds</th></tr></thead>
+							<tbody>
+								<tr><td>X-GitHub-Event</td><td class="desc">event name</td></tr>
+								<tr><td>X-GitHub-Delivery</td><td class="desc">unique delivery GUID</td></tr>
+								<tr><td>X-Hub-Signature-256</td><td class="desc">HMAC SHA-256 of body</td></tr>
+								<tr><td>X-GitHub-Hook-ID</td><td class="desc">which webhook</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-debug">
+						<h2 class="section-title">Debugging Deliveries</h2>
+						<table>
+							<thead><tr><th>Where</th><th>Shows</th></tr></thead>
+							<tbody>
+								<tr><td>Settings → Webhooks → Recent Deliveries</td><td class="desc">request + response</td></tr>
+								<tr><td>Redeliver</td><td class="desc">resend a past delivery</td></tr>
+								<tr><td>smee.io / tunnels</td><td class="desc">receive locally during dev</td></tr>
+								<tr><td>Hook auto-disabled</td><td class="desc">after repeated failures</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Verifying the signature against re-serialized JSON: it never matches</li>
+							<li class="note-item">Doing slow work before responding: timeouts and duplicate retries</li>
+							<li class="note-item">Not handling duplicates: use <code>X-GitHub-Delivery</code> as an idempotency key</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Subscribe only to events you handle</li>
+							<li class="note-item">Prefer a GitHub App's single webhook over many repo webhooks</li>
+							<li class="note-item">Use Actions instead when the reaction can run inside GitHub</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">webhook — POST on chosen events</li>
+							<li class="note-item">secret + <code>X-Hub-Signature-256</code> — verify</li>
+							<li class="note-item">answer fast, process async</li>
+							<li class="note-item">Recent Deliveries — inspect and redeliver</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-87-graphql-api.html" class="nav-link prev">GraphQL API</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-89-github-apps.html" class="nav-link next">GitHub Apps</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

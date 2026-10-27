@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>GitHub — Sheet 65: Actions: Deploy &amp; Release Recipes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gh-cheatsheet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+		/>
+	</head>
+	<body id="s65">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 65</div>
+			<h1>Actions: Deploy &amp; Release Recipes</h1>
+			<div class="sheet-desc">deploy-pages · docker/build-push-action · GHCR · release on tag · attestations</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Three Workflows Worth Copying</h2>
+						<div class="description">Most deploys follow a pattern: build, package, publish. <strong>GitHub Pages</strong> deploys a folder uploaded as a Pages artifact. <strong>Container images</strong> are built with Docker Buildx and pushed to the GitHub Container Registry (<code>ghcr.io</code>) using <code>GITHUB_TOKEN</code>. <strong>Releases</strong> are created when a <code>v*</code> tag is pushed, with notes generated from merged PRs.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Setup Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Pages: Settings → Pages → Source: <strong>GitHub Actions</strong></li>
+							<li class="note-item">GHCR needs <code>packages: write</code>; the image links to the repo</li>
+							<li class="note-item">Releases need <code>contents: write</code></li>
+							<li class="note-item"><code>gh</code> is preinstalled on hosted runners</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + Security Check -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Pages, Container, Release</h2>
+						<pre class="language-yaml"><code class="language-yaml"># 1) GitHub Pages — permissions: pages: write, id-token: write
+  - uses: actions/upload-pages-artifact@v4
+    with: { path: ./dist }
+  - id: deployment
+    uses: actions/deploy-pages@v4    # environment: github-pages
+
+# 2) Container to GHCR — permissions: packages: write
+  - uses: docker/login-action@v3
+    with:
+      registry: ghcr.io
+      username: ${{ github.actor }}
+      password: ${{ secrets.GITHUB_TOKEN }}
+  - uses: docker/build-push-action@v6
+    with:
+      push: true
+      tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+# 3) Release on tag — on: push: tags: ["v*"]
+  - run: gh release create "$GITHUB_REF_NAME" --generate-notes
+    env: { GH_TOKEN: "${{ github.token }}" }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>upload-pages-artifact</code> + <code>deploy-pages</code> — the Pages pair</div>
+							<div class="explain-item"><code>github.actor</code> + <code>GITHUB_TOKEN</code> — GHCR login, no PAT</div>
+							<div class="explain-item"><code>build-push-action</code> — Buildx build + push</div>
+							<div class="explain-item"><code>--generate-notes</code> — notes from PR titles since last tag</div>
+							<div class="explain-item"><code>github.token</code> — same as <code>secrets.GITHUB_TOKEN</code></div>
+						</div>
+					</section>
+					<section class="section-security" id="sec-check">
+						<h2 class="section-title">Security Check</h2>
+						<ul class="note-list">
+							<li class="note-item"><strong>Risk:</strong> a release job triggered by any tag push lets anyone with write access publish from unreviewed commits.</li>
+							<li class="note-item"><strong>Fix:</strong> protect <code>v*</code> tags with a ruleset, gate the job with an <code>environment:</code>, and add build provenance with <code>actions/attest-build-provenance</code>.</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- Row 3: Targets Table | Tags Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-targets">
+						<h2 class="section-title">Other Deploy Targets</h2>
+						<table>
+							<thead><tr><th>Target</th><th>Common action / tool</th></tr></thead>
+							<tbody>
+								<tr><td>AWS (S3, ECS, Lambda)</td><td class="desc">configure-aws-credentials + aws CLI</td></tr>
+								<tr><td>Azure Web Apps</td><td class="desc">azure/webapps-deploy</td></tr>
+								<tr><td>Google Cloud Run</td><td class="desc">google-github-actions/deploy-cloudrun</td></tr>
+								<tr><td>Kubernetes</td><td class="desc">azure/k8s-deploy or kubectl / helm</td></tr>
+								<tr><td>npm / PyPI</td><td class="desc"><code>npm publish --provenance</code> · pypa/gh-action-pypi-publish</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-tags">
+						<h2 class="section-title">Image Tag Patterns</h2>
+						<table>
+							<thead><tr><th>Tag</th><th>When</th></tr></thead>
+							<tbody>
+								<tr><td>:sha-abc1234</td><td class="desc">every build (traceable)</td></tr>
+								<tr><td>:main</td><td class="desc">latest from the default branch</td></tr>
+								<tr><td>:1.4.2 / :1.4 / :1</td><td class="desc">semver from a <code>v1.4.2</code> tag</td></tr>
+								<tr><td>:latest</td><td class="desc">newest release only</td></tr>
+								<tr><td>:pr-42</td><td class="desc">preview builds (don't push from forks)</td></tr>
+							</tbody>
+						</table>
+					</section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Pages deploy without <code>id-token: write</code> and <code>pages: write</code>: the deploy step fails</li>
+							<li class="note-item">Uppercase letters in GHCR image names: registry names must be lowercase</li>
+							<li class="note-item">Building releases on <code>push</code> to main and also on tags: two releases race</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>docker/metadata-action</code> generates the tag set above from git refs</li>
+							<li class="note-item">Use <code>cache-from: type=gha</code> / <code>cache-to: type=gha,mode=max</code> to cache Docker layers</li>
+							<li class="note-item"><code>npm publish --provenance</code> and PyPI trusted publishing use OIDC: no tokens</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Pages — upload artifact, then <code>deploy-pages</code></li>
+							<li class="note-item">GHCR — login with <code>GITHUB_TOKEN</code>, build-push</li>
+							<li class="note-item">Releases — <code>gh release create</code> on <code>v*</code> tags</li>
+							<li class="note-item">gate deploys with environments</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="gh-64-actions-environments.html" class="nav-link prev" title="Actions: Environments &amp; Approvals">Environments</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">GitHub · 93 Sheets</a>
+				<a href="gh-66-actions-reusable-workflows.html" class="nav-link next" title="Actions: Reusable Workflows">Reusable Workflows</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

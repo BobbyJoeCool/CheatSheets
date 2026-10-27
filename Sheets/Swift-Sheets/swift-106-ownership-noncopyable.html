@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swift — Sheet 106: Ownership &amp; Noncopyable Types</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swift-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s106">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 106</div>
+			<h1>Ownership &amp; Noncopyable Types</h1>
+			<div class="sheet-desc">~Copyable · borrowing · consuming · consume · discard self</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Ownership Control</h2><div class="description">Swift 5.9 added tools for performance-critical code. A <strong>noncopyable</strong> type (<code>~Copyable</code>) can't be copied, only moved, so it models unique resources like file handles. Parameter modifiers <code>borrowing</code> and <code>consuming</code> state whether a function reads a value or takes it over, and <code>consume</code> ends a variable's lifetime explicitly.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Most code never needs these; they're for libraries and hot paths</li><li class="note-item">Noncopyable structs can have a <code>deinit</code></li><li class="note-item"><code>consuming</code> methods can <code>discard self</code> to skip <code>deinit</code></li><li class="note-item">Swift 6 supports noncopyable types in generics (<code>T: ~Copyable</code>)</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 2: Code | Explain + The Swifty Way + Coming From… + Swift Versions -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Noncopyable &amp; Ownership</h2><pre><code class="language-swift">struct FileDescriptor: ~Copyable {
+    let fd: Int32
+    init(path: String) { fd = open(path, O_RDONLY) }
+    borrowing func read() -&gt; [UInt8] { /* uses fd */ [] }
+    consuming func close() {
+        Darwin.close(fd)
+        discard self                          // skip deinit
+    }
+    deinit { Darwin.close(fd) }               // auto-close if not closed
+}
+
+let file = FileDescriptor(path: "/etc/hosts")
+let bytes = file.read()                       // borrow
+// let copy = file                            // error: can't copy
+file.close()                                  // consumed
+// file.read()                                // error: used after consume
+
+func log(_ msg: borrowing String) { print(msg) }   // read only
+func store(_ s: consuming [Int]) { cache = s }    // takes ownership
+
+var big = [Int](repeating: 0, count: 1_000_000)
+store(consume big)                            // move, no copy
+// big is no longer usable here</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>~Copyable</code> — move-only type</div><div class="explain-item"><code>borrowing</code> — read without taking ownership</div><div class="explain-item"><code>consuming</code> — take ownership</div><div class="explain-item"><code>discard self</code> — end without deinit</div><div class="explain-item"><code>consume x</code> — explicit move</div></div></section><section class="section-notes section-way" id="swifty-way"><h2 class="section-title">The Swifty Way</h2><ul class="note-list"><li class="note-item"><span class="lbl-avoid">✗</span> a class + manual <code>close()</code> for a unique handle<br><span class="lbl-prefer">✓</span> a <code>~Copyable</code> struct with <code>deinit</code> <span class="way-why">— the compiler enforces single ownership</span></li></ul></section><section class="section-notes section-coming" id="coming-from"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><span class="cf-lang">Rust</span> Move semantics, borrowing ≈ the same ideas</li><li class="note-item"><span class="cf-lang">C++</span> <code>std::move</code> ≈ <code>consume</code>; unique_ptr ≈ ~Copyable</li><li class="note-item"><span class="cf-lang">Kotlin</span> No equivalent</li></ul></section><section class="section-notes section-versions" id="swift-versions"><h2 class="section-title">Swift Versions</h2><ul class="note-list"><li class="note-item">5.9 — <code>~Copyable</code>, <code>borrowing</code>, <code>consuming</code>, <code>consume</code></li><li class="note-item">6.0 — noncopyable generics</li></ul></section>
+				</div>
+			</div>
+			<!-- Row 3: Modifiers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-modifiers"><h2 class="section-title">Modifiers</h2><table><thead><tr><th>Keyword</th><th>Meaning</th></tr></thead><tbody><tr><td>~Copyable</td><td class="desc">Type can't be copied</td></tr><tr><td>borrowing</td><td class="desc">Temporary read access</td></tr><tr><td>consuming</td><td class="desc">Callee owns the value</td></tr><tr><td>inout</td><td class="desc">Exclusive mutable access</td></tr><tr><td>consume x</td><td class="desc">End x's lifetime now</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using these everywhere "for speed": measure first</li><li class="note-item">Trying to put a <code>~Copyable</code> value in an Array on older toolchains</li><li class="note-item">Using a variable after <code>consume</code>: compile error</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Profile with Instruments before reaching for ownership modifiers</li><li class="note-item">Model unique resources (locks, handles) as <code>~Copyable</code> structs</li><li class="note-item">Read SE-0390 and SE-0377 for the full rules</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>~Copyable</code> — move-only types</li><li class="note-item"><code>borrowing</code> / <code>consuming</code> parameters</li><li class="note-item"><code>consume</code> — explicit move</li></ul></section>
+				</div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="swift-105-retain-cycles-weak-unowned.html" class="nav-link prev" title="Retain Cycles, weak &amp; unowned">Retain Cycles</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Swift Reference · 108 Sheets</a>
+				<a href="swift-107-quick-reference-syntax.html" class="nav-link next" title="Quick Reference — Syntax">Quick Ref — Syntax</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-swift.min.js"></script>
+	</body>
+</html>
