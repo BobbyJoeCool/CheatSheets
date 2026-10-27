@@ -173,6 +173,7 @@ CheatSheets/
 | ✅ | Java | 136 | control flow, methods & functions, data structures, OOP, files & I/O, modules & packages, standard library, external libraries, concurrency, database, Swing, JavaFX, quick reference; every sheet adds Java Versions and Idiomatic Java boxes, and 85 sheets add an Under the JVM box |
 | ✅ | JSP | 34 | directives, implicit objects & scope, Expression Language, standard actions, JSTL (core, fmt, fn), custom tags & TLDs, integration & security |
 | ✅ | Spring | 69 | Spring Boot 4.1 / Framework 7: introduction & setup, IoC & dependency injection, configuration & auto-configuration, AOP, Spring MVC REST APIs, Thymeleaf views, HTTP clients, JDBC & schema migrations, Spring Data JPA, Spring Security (JWT, OAuth2), testing, Actuator & observability, events, scheduling, async & virtual threads, caching, resilience, WebFlux, packaging & GraalVM native images |
+| ✅ | Maven | 24 | Maven 3.9 / 3.10 with Maven 4 preview: introduction & setup, the POM, dependencies, lifecycle & plugins, testing & quality, multi-module builds & releasing, Maven 4, CI & troubleshooting, quick reference; Gradle equivalents throughout |
 
 ### JavaScript / TypeScript
 
@@ -230,6 +231,9 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | Go | 112 | Go 1.27: introduction & toolchain, output & comments, variables & data types, strings, operators & pointers, control flow, errors as values, functions, data structures & iterators, types, methods, interfaces & generics, files & I/O, modules & standard library, external libraries, advanced topics, concurrency, testing & tooling, web & networking, quick reference |
 | ✅ | Ruby | 115 | Ruby 4.0: introduction & setup, output & comments, variables & data types, strings, operators, control flow & pattern matching, error handling, methods & blocks (procs, lambdas, closures), data structures, OOP & modules, files & I/O, gems & Bundler, testing & tooling, advanced topics (regex, threads, fibers, Ractors, RBS), Enumerable & enumerators, metaprogramming |
+| ✅ | Rails | 78 | Rails 8.1: introduction & setup, routing, controllers, views & forms, Active Record models & migrations, associations, querying, Active Model & Active Support, authentication & security, assets & Hotwire, jobs, mail, storage & real-time (Solid Queue / Cache / Cable), testing & CI, APIs & advanced topics, deployment (Kamal 2) & upgrades |
+| ✅ | Swift | 108 | Swift 6: introduction & setup, output & comments, variables & data types, strings, operators, control flow, error handling, functions & closures, data structures, types & OOP, files & I/O, modules & packages, testing & common libraries, advanced topics (macros), concurrency, memory management, quick reference |
+| ✅ | SwiftUI | 59 | iOS 17+: introduction & setup, views & modifiers, layout, state & data flow (Observation), controls & input, lists & scrolling, navigation, presentation, async work & lifecycle, persistence (SwiftData), animation & graphics, styling & customization (Liquid Glass), UIKit & other platforms, quality, architecture & testing, quick reference |
 
 ### DevOps & Containers
 
@@ -237,3 +241,4 @@ CheatSheets/
 | :---: | :--- | :---: | :--- |
 | ✅ | Docker | 31 | installation & CLI, contexts, Docker Desktop, running containers & lifecycle, logs & debugging, resource limits, images, tags & registries, Dockerfile, build & BuildKit, multi-stage builds & caching, Buildx multi-platform builds, volumes & bind mounts, networking, Compose (services, volumes, networks, secrets, workflows), Swarm (nodes, services, stacks), cleanup & troubleshooting, security & best practices, quick reference |
 | ✅ | Kubernetes | 25 | local clusters & kubectl, kubeconfig & contexts, inspecting resources, imperative vs declarative, manifests & labels, Pods, Deployments & rollouts, StatefulSets & DaemonSets, Jobs & CronJobs, probes & Pod lifecycle, Services & DNS, Ingress & Gateway API, network policies, ConfigMaps & Secrets, volumes & storage, requests, limits & quotas, scheduling, autoscaling & disruption budgets, RBAC, Pod Security, debugging, Helm & Kustomize, quick reference |
+| ✅ | GitHub | 93 | introduction & setup, repositories, access & collaboration, issues, pull requests, Projects, Discussions & community, GitHub Pages, Actions (foundations, triggers, jobs, runners & steps, expressions & data, security & deployment, reuse & debugging), Packages, security, Codespaces & web editing, Copilot, API & integrations, quick reference |
