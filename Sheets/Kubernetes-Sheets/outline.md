@@ -19,10 +19,26 @@ The set was capped at about 20–25 sheets plus a 1–2 page quick reference, so
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
+- **Extra boxes:** **Production Check** (`id="prod"`) and **In Docker / Compose** (`id="equiv"`) on every sheet except the quick references (24–25) · **Security Check** (`id="security"`) on 11 selected sheets. Details and lists below. The Docker set uses the same boxes, mirrored.
 - The Outline Guide has no infrastructure/tool category; the standard language groups (data types, operators, OOP) don't apply, so groups follow the life of an app on a cluster: set up, run, expose, configure, place and scale, secure, operate.
 - Code rows hold either `kubectl` shell commands (`language-bash`) or YAML manifests (`language-yaml`); some sheets stack two code sections in the left column (e.g. Job + CronJob, Ingress + HTTPRoute, Helm + Kustomize). Every sheet with code loads the Prism bash and yaml components.
 - Sheets 24–25 are quick-reference pages: rows of side-by-side tables at 9px with no description or code row, ending with a short footer trio. Sheet 24 uses Command · Does · # (the sheet with details); Sheet 25 has the apiVersion/kind table, YAML snippets, a Status → Likely Cause → Fix table, defaults and selector syntax.
+
+### Production Check box (every sheet, 01–23)
+
+- `<section class="section-notes section-prod" id="prod">`, title **Production Check**, under Code Explained in `col-2-2`.
+- 1–2 lines on what production clusters should do differently (declarative applies, probes, requests, PDBs, default-deny).
+
+### In Docker / Compose box (every sheet, 01–23)
+
+- `<section class="section-notes section-equiv" id="equiv">`, title **In Docker / Compose**, under Production Check.
+- 1–2 lines mapping the Kubernetes feature back to Docker or Compose, e.g. Deployment ↔ `restart` + replicas · ConfigMap ↔ Compose `configs:`. Mirrors the Docker set's **In Kubernetes** box.
+
+### Security Check box (11 selected sheets)
+
+- `<section class="section-notes section-security" id="security">`, title **Security Check**, last.
+- 1–2 lines: the risk and the fix. Not on the security sheets (14, 20, 21).
+- On: 02–03, 05, 07, 09, 12–13, 15–16, 22–23.
 
 ## Groups
 
