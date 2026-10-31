@@ -17,8 +17,27 @@ The guide's target for a general-purpose language is 80–110 sheets; the 14 sta
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
-- No other differences. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- **Extra boxes:** **PHP Versions** (`id="version"`) and **Modern PHP** (`id="modern"`) on every sheet except the quick references (132–133) · **Security Check** (`id="security"`) in Row 1 on 33 selected sheets. Details and lists below.
+- Otherwise uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- `php-cheatsheet.css` gives each box its own accent (indigo Versions, amber Modern PHP, red Security Check) so none reads as part of Code Explained.
+- If a sheet doesn't fit, cut Security Check to 1 line first, then PHP Versions, then Modern PHP to 2 pairs, before touching the main content.
+
+### PHP Versions box (every sheet, 01–131)
+
+- `<section class="section-notes section-version" id="version">`, title **PHP Versions**, under Code Explained in `col-2-2`.
+- 1–3 `note-item` lines, oldest first, each starting with the release in `<strong>`: the PHP (or Composer / PHPUnit / tool) version that added or changed what the sheet covers, e.g. `7.0` `??` · `8.0` nullsafe `?->` · `8.5` pipe `|>`.
+
+### Modern PHP box (every sheet, 01–131)
+
+- `<section class="section-notes section-modern" id="modern">`, title **Modern PHP**, under PHP Versions.
+- 2–3 avoid/prefer `note-item` lines (✗ + strike vs ✓ + bold) from pre-7 style to PHP 8.x style, e.g. `array()` → `[]`; `strpos(…) !== false` → `str_contains()`; `switch` → `match`. The Versions box says *when*; this box says *what to write instead*.
+
+### Security Check box (33 selected sheets, Row 1)
+
+- `<section class="section-notes section-security" id="security">`, title **Security Check**, as a third Row 1 column (`col-1-3`): `Description | Notes | Security Check`.
+- 2 lines: the attack the sheet's topic opens up and the fix (SQL injection → bound params, XSS → `htmlspecialchars`, `unserialize` → JSON, user paths → `realpath` allow-list).
+- Not on the dedicated security sheets (125–130), which already cover it.
+- On: 03, 06, 14, 23, 36, 77–80, 82–85, 88, 90, 93, 97, 101–102, 104, 110–120, 123–124.
 
 Filenames use two digits up to 99 (`php-01` … `php-99`) and three digits from 100 (`php-100` …).
 
