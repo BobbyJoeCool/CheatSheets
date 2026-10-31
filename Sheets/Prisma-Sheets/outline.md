@@ -17,8 +17,32 @@ The set was consolidated from a 69-sheet draft to 32 densely packed sheets. Pris
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
-- No other differences. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- **Extra boxes:** **Generated SQL** (`id="sql"`) and **Prefer / Avoid** (`id="idiom"`) on every sheet except the quick references (33–34) · **Database Differences** (`id="dbdiff"`) on 22 selected sheets · **Prisma Versions** (`id="version"`) on 10 selected sheets. Details and lists below.
+- Otherwise uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary). Sheets 14 and 30 have two code blocks in Row 2 instead of Code | Explain; there the boxes stack under the second code block.
+- `prisma-cheatsheet.css` gives each box its own accent (teal SQL, amber Prefer / Avoid, orange Database Differences, blue Versions) so none reads as part of Code Explained. Sheets with a Generated SQL box load `prism-sql`.
+- If a sheet doesn't fit, cut Prisma Versions first, then Database Differences, then Prefer / Avoid to 2 items, before touching the main content. Don't repeat what the Notes box already says (sheet 17's Notes are the v7 changes, so it has no Versions box).
+
+### Generated SQL box (every sheet, 01–32)
+
+- `<section class="section-notes section-sql" id="sql">`, title **Generated SQL**, at the bottom of `col-2-1`, under the main code block.
+- A small `language-sql` block (about 4–7 lines, PostgreSQL syntax, `$1` placeholders) showing the SQL the sheet's main Prisma call runs, e.g. `findMany({ where, orderBy, skip, take })` → `SELECT … WHERE … ORDER BY … LIMIT $3 OFFSET $4`. Schema sheets show the migration DDL. Sheets with no query of their own (types, mocks, extensions) say what SQL does or doesn't change.
+
+### Prefer / Avoid box (every sheet, 01–32)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **Prefer / Avoid**, under Code Explained in `col-2-2`.
+- 3 `note-item` lines: `<span class="idiom-avoid">…</span> → <span class="idiom-prefer">…</span>` (✗ + strike vs ✓ + bold). Example: `findFirst({ where: { id } })` → `findUnique`.
+
+### Database Differences box (22 selected sheets)
+
+- `<section class="section-notes section-dbdiff" id="dbdiff">`, title **Database Differences**, under Prefer / Avoid in `col-2-2`.
+- 1–3 lines on what changes by provider (PostgreSQL / MySQL / SQLite / SQL Server / MongoDB on v6). Example: `skipDuplicates` isn't supported on SQLite, SQL Server or MongoDB.
+- On: 01, 03–12, 14, 16–21, 26, 29, 31–32.
+
+### Prisma Versions box (10 selected sheets)
+
+- `<section class="section-notes section-version" id="version">`, title **Prisma Versions**, last in `col-2-2`.
+- 1–3 lines, oldest first, starting with the release in `<strong>`: `5.14` `createManyAndReturn`. Only on sheets where older tutorials show a different way.
+- On: 02, 06–08, 12, 16, 18, 20, 22, 27.
 
 ## Groups
 
