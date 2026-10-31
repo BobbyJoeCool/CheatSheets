@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swing — Sheet 55: App Architecture (MVC &amp; MVP)</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swing-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s55">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 55</div>
+			<h1>App Architecture (MVC &amp; MVP)</h1>
+			<div class="sheet-desc">Swing&#x27;s model-delegate design · MVC · MVP · PropertyChangeSupport · keeping logic out of listeners · dependency injection</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | EDT Check -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Structuring a Swing App</h2>
+					<div class="description">Swing components use a <strong>model-delegate</strong> design: a model holds state and a UI delegate draws it. Apply the same split to your app. Keep data and rules in <strong>models</strong> that fire <code>PropertyChangeEvent</code>s, keep <strong>views</strong> thin, and put the glue in a <strong>presenter</strong> or controller. Listeners then become one-line calls, and the logic can be unit-tested without a window.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">Views know presenters; models know neither</li>
+						<li class="note-item"><code>PropertyChangeSupport</code> gives models events</li>
+						<li class="note-item">Pass dependencies in through constructors</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-1-3">
+				<section class="section-edt" id="edt">
+					<h2 class="section-title">EDT Check</h2>
+					<ul class="note-list">
+						<li class="note-item">Models may change on any thread; views must re-dispatch to the EDT</li>
+						<li class="note-item">Presenters start <code>SwingWorker</code>s for slow calls</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + JavaFX Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Model + Presenter + Thin View</h2>
+<pre><code class="language-java">class CounterModel {
+    private final PropertyChangeSupport pcs =
+            new PropertyChangeSupport(this);
+    private int count;
+    void addListener(PropertyChangeListener l) {
+        pcs.addPropertyChangeListener(l);
+    }
+    int count() { return count; }
+    void increment() {
+        int old = count;
+        pcs.firePropertyChange("count", old, ++count);
+    }
+}
+class CounterPresenter {
+    CounterPresenter(CounterModel m, CounterView v) {
+        v.onIncrement(m::increment);                     // view → model
+        m.addListener(e -&gt; SwingUtilities.invokeLater(   // model → view
+                () -&gt; v.showCount(m.count())));
+    }
+}
+class CounterView extends JPanel {
+    private final JLabel label = new JLabel("0");
+    private final JButton plus = new JButton("+1");
+    CounterView() { add(label); add(plus); }
+    void onIncrement(Runnable r) { plus.addActionListener(e-&gt;r.run()); }
+    void showCount(int n) { label.setText(Integer.toString(n)); }
+}</code></pre>
+				</section>
+				</div>
+				<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>PropertyChangeSupport</code> — model fires events</div>
+						<div class="explain-item">presenter — wires view and model</div>
+						<div class="explain-item"><code>invokeLater</code> — model events may come from any thread</div>
+						<div class="explain-item">view — no logic, just show and forward</div>
+					</div>
+				</section>
+				<section class="section-fx" id="fx">
+					<h2 class="section-title">JavaFX Equivalent</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>PropertyChangeSupport</code> → JavaFX properties</li>
+						<li class="note-item">presenter wiring → bindings</li>
+						<li class="note-item">FXML controller ≈ presenter</li>
+						<li class="note-item">See <a href="../Java-Sheets/java-132-javafx-controllers.html">Java 132</a></li>
+					</ul>
+				</section>
+				<section class="section-idiom" id="idiom">
+					<h2 class="section-title">Prefer / Avoid</h2>
+					<ul class="note-list">
+						<li class="note-item">business logic in <code>actionPerformed</code> → presenter / service methods</li>
+						<li class="note-item">static global state → constructor injection</li>
+					</ul>
+				</section>
+				</div>
+			</div>
+			<!-- Row 3: Patterns Table | Pcs Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-patterns">
+					<h2 class="section-title">Patterns</h2>
+					<table>
+						<thead><tr><th>Pattern</th><th>Who handles input</th></tr></thead>
+						<tbody>
+						<tr><td>MVC</td><td class="desc">controller updates model; view observes</td></tr>
+						<tr><td>MVP</td><td class="desc">presenter drives a passive view</td></tr>
+						<tr><td>MVVM</td><td class="desc">view binds to view-model properties</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-pcs">
+					<h2 class="section-title">PropertyChangeSupport</h2>
+					<table>
+						<thead><tr><th>Call</th><th>Does</th></tr></thead>
+						<tbody>
+						<tr><td>addPropertyChangeListener(l)</td><td class="desc">subscribe</td></tr>
+						<tr><td>firePropertyChange(n, old, new)</td><td class="desc">notify if changed</td></tr>
+						<tr><td>removePropertyChangeListener</td><td class="desc">unsubscribe</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Putting SQL and validation in listeners — impossible to test and reuse</li>
+							<li class="note-item">Updating views straight from model events fired on a worker thread</li>
+							<li class="note-item">Views reading each other's components — couple through models instead</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Unit-test models and presenters with no Swing at all</li>
+							<li class="note-item">Use a small view interface so presenters can be tested with fakes</li>
+							<li class="note-item">Keep one presenter per screen</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">model-delegate — Swing's own design</li>
+							<li class="note-item">models + <code>PropertyChangeSupport</code> — observable state</li>
+							<li class="note-item">presenter — glue between view and model</li>
+							<li class="note-item">thin views — easy to change, easy to test</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="swing-54-javafx-interop.html">Swing &amp; JavaFX Interop</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Swing Reference · 62 Sheets</a>
+				<a class="nav-link next" href="swing-56-accessibility.html">Accessibility</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swing — Sheet 51: Animation &amp; Game Loops</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swing-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>Animation &amp; Game Loops</h1>
+			<div class="sheet-desc">Timer-driven animation · delta time · repaint(Rectangle) · double buffering · Toolkit.sync · key state for games</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | EDT Check -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Moving Things Smoothly</h2>
+					<div class="description">Swing animation is a <strong>Swing `Timer`</strong> that updates state and calls <code>repaint()</code> about 60 times a second. Use <strong>delta time</strong> (time since the last tick) so speed doesn't depend on frame rate. For games, track which keys are held in a set updated by key bindings, and read that set each tick. <code>JComponent</code> is already double-buffered, so frames don't flicker.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">16 ms ≈ 60 fps; Swing timing isn't exact</li>
+						<li class="note-item"><code>Toolkit.sync()</code> smooths frames on Linux</li>
+						<li class="note-item">Stop the timer when the panel is hidden</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-1-3">
+				<section class="section-edt" id="edt">
+					<h2 class="section-title">EDT Check</h2>
+					<ul class="note-list">
+						<li class="note-item">Drive frames with a Swing <code>Timer</code>, not a <code>while</code> loop on the EDT</li>
+						<li class="note-item">A separate game thread must hand state to the EDT safely</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + JavaFX Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Bouncing Ball with Delta Time</h2>
+<pre><code class="language-java">class Bounce extends JPanel {
+    private double x = 50, y = 50, vx = 180, vy = 140;  // px/second
+    private long last = System.nanoTime();
+    private final Timer timer = new Timer(16, e -&gt; tick());
+
+    Bounce() { timer.start(); }
+
+    private void tick() {
+        long now = System.nanoTime();
+        double dt = (now - last) / 1e9;                  // seconds
+        last = now;
+        x += vx * dt; y += vy * dt;
+        if (x &lt; 0 || x &gt; getWidth() - 20)  vx = -vx;
+        if (y &lt; 0 || y &gt; getHeight() - 20) vy = -vy;
+        repaint();
+        Toolkit.getDefaultToolkit().sync();             // Linux
+    }
+    @Override protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        ((Graphics2D) g).fill(new Ellipse2D.Double(x, y, 20, 20));
+    }
+    @Override public void removeNotify() {
+        timer.stop(); super.removeNotify();
+    }
+}</code></pre>
+				</section>
+				</div>
+				<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>Timer(16, …)</code> — ~60 ticks per second</div>
+						<div class="explain-item"><code>dt</code> — move by speed × elapsed time</div>
+						<div class="explain-item"><code>repaint()</code> — draw the new frame</div>
+						<div class="explain-item"><code>removeNotify</code> — stop when removed</div>
+					</div>
+				</section>
+				<section class="section-fx" id="fx">
+					<h2 class="section-title">JavaFX Equivalent</h2>
+					<ul class="note-list">
+						<li class="note-item">Swing <code>Timer</code> → <code>AnimationTimer.handle(now)</code></li>
+						<li class="note-item">tweens → <code>TranslateTransition</code>, <code>Timeline</code></li>
+						<li class="note-item"><code>dt</code> → compute from <code>now</code> nanoseconds</li>
+						<li class="note-item">See <a href="../Java-Sheets/java-129-javafx-events.html">Java 129</a></li>
+					</ul>
+				</section>
+				<section class="section-idiom" id="idiom">
+					<h2 class="section-title">Prefer / Avoid</h2>
+					<ul class="note-list">
+						<li class="note-item">fixed step per tick (<code>x += 3</code>) → speed × delta time</li>
+						<li class="note-item"><code>KeyListener</code> for game input → key bindings that fill a pressed-keys set</li>
+					</ul>
+				</section>
+				</div>
+			</div>
+			<!-- Row 3: Input Table | Perf Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-input">
+					<h2 class="section-title">Held-Key Pattern</h2>
+					<table>
+						<thead><tr><th>Piece</th><th>How</th></tr></thead>
+						<tbody>
+						<tr><td>Set&lt;Integer&gt; down</td><td class="desc">keys held now</td></tr>
+						<tr><td>"pressed LEFT" binding</td><td class="desc"><code>down.add(VK_LEFT)</code></td></tr>
+						<tr><td>"released LEFT" binding</td><td class="desc"><code>down.remove(VK_LEFT)</code></td></tr>
+						<tr><td>tick()</td><td class="desc">read <code>down</code>, move player</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-perf">
+					<h2 class="section-title">Performance</h2>
+					<table>
+						<thead><tr><th>Technique</th><th>Gain</th></tr></thead>
+						<tbody>
+						<tr><td>repaint(dirtyRect)</td><td class="desc">smaller redraw</td></tr>
+						<tr><td>cache sprites</td><td class="desc">no reload per frame</td></tr>
+						<tr><td>`BufferStrategy` on `Canvas`</td><td class="desc">full-screen games (AWT)</td></tr>
+						<tr><td>`-Dsun.java2d.opengl=true`</td><td class="desc">GPU pipeline (Linux)</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>while (true) { …; Thread.sleep(16); }</code> on the EDT — nothing ever paints</li>
+							<li class="note-item">Moving a fixed amount per tick — the game runs faster on fast machines</li>
+							<li class="note-item">Leaving the timer running after the panel is closed — CPU stays busy</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Clamp <code>dt</code> (e.g. max 0.05 s) so a pause doesn't teleport objects</li>
+							<li class="note-item">Separate update and draw: state in <code>tick</code>, pixels in <code>paintComponent</code></li>
+							<li class="note-item">Use easing functions for UI animations (fade, slide)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">Swing <code>Timer</code> — the animation clock</li>
+							<li class="note-item">delta time — frame-rate-independent motion</li>
+							<li class="note-item"><code>repaint()</code> — draw each frame</li>
+							<li class="note-item">key-state set — smooth game input</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="swing-50-text-images-drawing.html">Drawing Text &amp; Images</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Swing Reference · 62 Sheets</a>
+				<a class="nav-link next" href="swing-52-drag-drop-clipboard.html">Drag &amp; Drop and Clipboard</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swing — Sheet 05: The Event Dispatch Thread</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swing-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s05">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 05</div>
+			<h1>The Event Dispatch Thread</h1>
+			<div class="sheet-desc">EDT · single-thread rule · invokeLater · invokeAndWait · isEventDispatchThread · frozen UI</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | EDT Check -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">One Thread for the UI</h2>
+					<div class="description">Swing is <strong>not thread-safe</strong>. Every event, repaint and component change runs on one thread: the <strong>Event Dispatch Thread (EDT)</strong>. The rule is simple: touch Swing components only on the EDT, and keep work on the EDT short. Listeners already run on the EDT. Code on other threads hands UI updates back with <code>SwingUtilities.invokeLater</code>. Slow work on the EDT freezes the whole app because nothing else can paint or respond.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>invokeLater</code> queues work and returns at once</li>
+						<li class="note-item"><code>invokeAndWait</code> queues work and blocks until it finishes</li>
+						<li class="note-item"><code>EventQueue.invokeLater</code> is the same as <code>SwingUtilities.invokeLater</code></li>
+						<li class="note-item">Use <code>SwingWorker</code> (sheet 06) for background tasks with results</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-1-3">
+				<section class="section-edt" id="edt">
+					<h2 class="section-title">EDT Check</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>invokeAndWait</code> on the EDT throws an <code>Error</code></li>
+						<li class="note-item"><code>repaint()</code> / <code>revalidate()</code> are safe from any thread</li>
+						<li class="note-item">Violations show up as random glitches</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + JavaFX Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Moving Work Off and Back On</h2>
+<pre><code class="language-java">button.addActionListener(e -&gt; {             // runs on the EDT
+    button.setEnabled(false);
+    status.setText("Loading…");
+
+    new Thread(() -&gt; {                      // background thread
+        List&lt;String&gt; rows = db.loadRows();  // slow I/O, off the EDT
+        SwingUtilities.invokeLater(() -&gt; {  // back to the EDT
+            model.setRows(rows);
+            status.setText(rows.size() + " rows");
+            button.setEnabled(true);
+        });
+    }, "loader").start();
+});
+
+assert SwingUtilities.isEventDispatchThread();  // in UI-only code
+
+// Bad: freezes every window for the whole call
+// button.addActionListener(e -&gt; model.setRows(db.loadRows()));</code></pre>
+				</section>
+				</div>
+				<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item">listener body — already on the EDT</div>
+						<div class="explain-item"><code>new Thread(...)</code> — runs the slow call elsewhere</div>
+						<div class="explain-item"><code>invokeLater</code> — queue the UI update back on the EDT</div>
+						<div class="explain-item"><code>isEventDispatchThread()</code> — assert you're on it</div>
+					</div>
+				</section>
+				<section class="section-fx" id="fx">
+					<h2 class="section-title">JavaFX Equivalent</h2>
+					<ul class="note-list">
+						<li class="note-item">EDT → JavaFX Application Thread</li>
+						<li class="note-item"><code>invokeLater</code> → <code>Platform.runLater</code></li>
+						<li class="note-item"><code>isEventDispatchThread</code> → <code>Platform.isFxApplicationThread</code></li>
+						<li class="note-item">See <a href="../Java-Sheets/java-129-javafx-events.html">Java 129</a></li>
+					</ul>
+				</section>
+				<section class="section-idiom" id="idiom">
+					<h2 class="section-title">Prefer / Avoid</h2>
+					<ul class="note-list">
+						<li class="note-item">raw <code>new Thread</code> per click → <code>SwingWorker</code> (sheet 06)</li>
+						<li class="note-item"><code>Thread.sleep</code> on the EDT → Swing <code>Timer</code> (sheet 07)</li>
+					</ul>
+				</section>
+				</div>
+			</div>
+			<!-- Row 3: Calls Table | Where Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-calls">
+					<h2 class="section-title">Thread Handoff Calls</h2>
+					<table>
+						<thead><tr><th>Call</th><th>Behavior</th></tr></thead>
+						<tbody>
+						<tr><td>invokeLater(r)</td><td class="desc">queue · return immediately</td></tr>
+						<tr><td>invokeAndWait(r)</td><td class="desc">queue · block until done</td></tr>
+						<tr><td>isEventDispatchThread()</td><td class="desc">true on the EDT</td></tr>
+						<tr><td>SwingWorker</td><td class="desc">background task + EDT callbacks</td></tr>
+						<tr><td>javax.swing.Timer</td><td class="desc">periodic action on the EDT</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-where">
+					<h2 class="section-title">What Runs Where</h2>
+					<table>
+						<thead><tr><th>Code</th><th>Thread</th></tr></thead>
+						<tbody>
+						<tr><td>main()</td><td class="desc">main thread</td></tr>
+						<tr><td>listeners</td><td class="desc">EDT</td></tr>
+						<tr><td>paintComponent</td><td class="desc">EDT</td></tr>
+						<tr><td>SwingWorker.doInBackground</td><td class="desc">worker thread</td></tr>
+						<tr><td>SwingWorker.done / process</td><td class="desc">EDT</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Doing file, network or database work in a listener — the window turns gray and stops responding</li>
+							<li class="note-item">Updating a <code>JLabel</code> from a background thread — sometimes works, then fails under load</li>
+							<li class="note-item">Calling <code>invokeAndWait</code> from code that might already be on the EDT — throws immediately</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Add <code>assert SwingUtilities.isEventDispatchThread()</code> to UI helper methods</li>
+							<li class="note-item">Name background threads (<code>"loader"</code>) so thread dumps are readable</li>
+							<li class="note-item">Disable the button while work runs so users can't start it twice</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">EDT — the only thread allowed to touch Swing</li>
+							<li class="note-item"><code>invokeLater</code> — hand UI work to the EDT</li>
+							<li class="note-item">listeners — already on the EDT; keep them short</li>
+							<li class="note-item">slow work — move to a thread or <code>SwingWorker</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="swing-04-project-setup-tools.html">Project Setup &amp; GUI Builders</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Swing Reference · 62 Sheets</a>
+				<a class="nav-link next" href="swing-06-swingworker.html">SwingWorker</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>
