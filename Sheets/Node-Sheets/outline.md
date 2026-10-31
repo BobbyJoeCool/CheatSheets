@@ -15,8 +15,20 @@ Node.js as a runtime: modules and npm, the event loop, process and environment, 
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
-- No other differences. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- **Extra boxes:** **Node Versions** (`id="version"`) and **Prefer / Avoid** (`id="idiom"`) on every sheet except the quick references (69–70). Details below.
+- Otherwise uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- `node-cheatsheet.css` gives each box its own accent (Node green Versions, amber Prefer / Avoid) so neither reads as part of Code Explained.
+- If a sheet doesn't fit, cut Node Versions to 1 line first, then Prefer / Avoid to 2 items, before touching the main content.
+
+### Node Versions box (every sheet, 01–68)
+
+- `<section class="section-notes section-version" id="version">`, title **Node Versions**, under Code Explained in `col-2-2`.
+- 1–3 `note-item` lines, oldest first, each starting with the release in `<strong>`: the Node (or npm / Express / Fastify / pino) version that added or changed what the sheet covers, e.g. `20.6` `--env-file` · `22.9` `--env-file-if-exists`. Don't repeat what the Notes box already says.
+
+### Prefer / Avoid box (every sheet, 01–68)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **Prefer / Avoid**, under Node Versions in `col-2-2`.
+- 3 `note-item` lines: `<span class="idiom-avoid">…</span> → <span class="idiom-prefer">…</span>` (✗ + strike vs ✓ + bold). Examples: callbacks → `async` / `await`; `require` → `import`; `new Buffer()` → `Buffer.from()`; `nodemon` → `node --watch`.
 
 ## Groups
 
