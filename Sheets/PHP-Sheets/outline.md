@@ -17,7 +17,8 @@ The guide's target for a general-purpose language is 80–110 sheets; the 14 sta
 
 ## Differences in Layout from Basic Structure
 
-None. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
+- No other differences. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
 
 Filenames use two digits up to 99 (`php-01` … `php-99`) and three digits from 100 (`php-100` …).
 

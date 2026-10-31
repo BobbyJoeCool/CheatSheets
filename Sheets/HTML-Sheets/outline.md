@@ -17,6 +17,7 @@ DOM methods, events, forms-in-JS and storage live in the JavaScript set; the scr
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Accessibility** (`section-a11y`, `id="a11y"`) and **Pairing with CSS** (`section-css`, `id="css"`) on all 56 sheets, stacked in Row 1 column 1. Details below.
 - Three-row layout instead of four, because HTML samples run long:
   1. Row 1: column 1 stacks Description → Notes → Accessibility → Pairing with CSS → Code Explained; column 2 holds the code block.
   2. Row 2: tables (2–3 side by side).

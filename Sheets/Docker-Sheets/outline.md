@@ -19,6 +19,7 @@ The set was capped at about 23 topic sheets plus 2 quick-reference pages, then e
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - The Outline Guide has no CLI-tool category, so groups follow the Docker workflow (set up → run → image → build → store/network → compose → swarm → operate) instead of the standard language groups.
 - Docker Desktop sheets (04–06) use settings-path tables (`Settings › Resources › Advanced` · what it controls · default) where a feature has no CLI equivalent, with the `docker desktop` command shown when one exists.
 - Dockerfile and Compose sheets use the file being edited (`Dockerfile`, `compose.yaml`) as the code block, with the matching CLI command underneath.

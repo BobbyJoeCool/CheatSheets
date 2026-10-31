@@ -17,6 +17,7 @@ Rails is out of scope as a topic and deserves its own set, the same way Django s
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **The Ruby Way** (`id="idiom"`) on 001–113 · **In Rails** (`id="rails"`) on 62 selected sheets. None on the quick references (114–115). Details and table below.
 - Numbers are three digits throughout (`rb-001` to `rb-113`) because the set passes 99.
 - Functions become Methods & Blocks (Group 8): Ruby has no free functions, and blocks, procs and lambdas are the core idiom, so they live there instead of in a separate group.
 - Enumerable & Enumerators (Group 15) and Metaprogramming (Group 16) are language-specific groups placed after the standard ones, even though `map` / `select` appear on earlier sheets.
@@ -47,7 +48,7 @@ Rails is out of scope as a topic and deserves its own set, the same way Django s
 
 `rb-cheatsheet.css` gets `.section-idiom` and `.section-rails` styles with their own accent colors, so neither box reads as part of Code Explained (same approach as the TypeScript box in the JS set).
 
-### Sheets with an In Rails box (60)
+### Sheets with an In Rails box (62)
 
 | # | In Rails content |
 |---|---|
@@ -90,6 +91,7 @@ Rails is out of scope as a topic and deserves its own set, the same way Django s
 | 071 | `as_json` · `to_param` · `to_partial_path` |
 | 075 | `Rails.root.join` · `Rails.public_path` |
 | 076 | `render json:` · `as_json(only:)` · `to_json` |
+| 077 | `send_data CSV.generate { … }, filename:` streams a download · add `gem "csv"` to the Gemfile on Ruby 3.4+ |
 | 078 | `config/*.yml` · `config_for` · credentials |
 | 079 | Zeitwerk autoloading, no `require` in `app/` |
 | 081 | Gemfile groups `:development, :test` · `bin/rails` |
@@ -99,6 +101,7 @@ Rails is out of scope as a topic and deserves its own set, the same way Django s
 | 087 | rspec-rails · request specs · FactoryBot |
 | 089 | `lib/tasks/*.rake` · `task x: :environment` · `bin/rails db:migrate` |
 | 090 | `bin/rails console` · `Rails.logger` · `debug` in views |
+| 092 | `validates :zip, format: { with: /\A\d{5}\z/ }` · Rails rejects `^` / `$` unless `multiline: true` |
 | 097 | ActiveRecord `where` / `find_by` (pointer to a future Rails set) |
 | 098 | `serialize` / `store` attributes · ActiveJob argument serialization |
 | 100 | N+1 and `includes` · `Rails.cache` · bullet gem |

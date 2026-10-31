@@ -17,6 +17,7 @@ The total is held at 98 so filenames stay two digits. Adding more than one sheet
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Pointers and Memory Management come right after Functions (Groups 9–10) instead of at the end with the other language-specific groups, because arrays, strings-as-data, structs and every data structure depend on them.
 - OOP is replaced by Structs, Unions & Enums (Group 12). Its last sheet covers the C patterns that stand in for classes (opaque types, function-pointer vtables).
 - Modules & Packages becomes Preprocessor, Headers & Builds (Group 14), since C has no module system or package manager.

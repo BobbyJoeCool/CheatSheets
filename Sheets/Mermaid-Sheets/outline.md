@@ -19,6 +19,7 @@ This set replaces the earlier 14-sheet Mermaid set (12 topic sheets + 2 quick re
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None added. **Rendered Output** (`section-render`) *replaces* Code Explained on every sheet except 03–04 and the quick references (45–46); it is a layout swap, not an add-on box.
 - **Code | Rendered Output row.** On every sheet with a Mermaid example, Row 2 is `row-code-render`: the code on the left and a live render of that same code on the right (`section-render` > `.render-box[data-mmd-src="code"]`). `mmd-render.js` (in the set folder) reads the code block's text, renders it with Mermaid 12.2.0 from jsDelivr using a light print theme, and sizes the SVG to the box (`--render-h` caps the height per sheet). Sheet 03 (HTML code) keeps the standard Code | Code Explained row; sheet 04 has no code row.
 - **Prism grammar.** Prism 1.29 has no Mermaid language, so `mmd-prism.js` (in the set folder) adds `language-mermaid`. Sheets load it right after `prism.min.js`.
 - **Two-page spreads for the major diagram types.** The intro is an even number of sheets (4), so each major diagram type starts on an odd sheet and its two sheets face each other when printed and bound. Sheets 05–20 must stay in pairs: if a sheet is added or removed in Groups 1–9, add or remove a second one too.

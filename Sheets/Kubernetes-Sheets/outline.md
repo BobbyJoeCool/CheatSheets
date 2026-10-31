@@ -19,6 +19,7 @@ The set was capped at about 20–25 sheets plus a 1–2 page quick reference, so
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - The Outline Guide has no infrastructure/tool category; the standard language groups (data types, operators, OOP) don't apply, so groups follow the life of an app on a cluster: set up, run, expose, configure, place and scale, secure, operate.
 - Code rows hold either `kubectl` shell commands (`language-bash`) or YAML manifests (`language-yaml`); some sheets stack two code sections in the left column (e.g. Job + CronJob, Ingress + HTTPRoute, Helm + Kustomize). Every sheet with code loads the Prism bash and yaml components.
 - Sheets 24–25 are quick-reference pages: rows of side-by-side tables at 9px with no description or code row, ending with a short footer trio. Sheet 24 uses Command · Does · # (the sheet with details); Sheet 25 has the apiVersion/kind table, YAML snippets, a Status → Likely Cause → Fix table, defaults and selector syntax.

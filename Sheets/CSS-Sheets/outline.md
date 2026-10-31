@@ -17,6 +17,7 @@ As a stylesheet language, the set skips output, operators, control flow, error h
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Accessibility** (`section-a11y`, `id="a11y"`) and **Browser Support** (`section-support`, `id="support"`) on all 77 sheets, stacked in Row 1 column 1. Details below.
 - Three-row layout instead of four, because samples need a rendered result next to the code:
   1. Row 1: column 1 stacks Description → Notes → Accessibility → Browser Support → Code Explained; column 2 holds the code block.
   2. Row 2: tables (2–3 side by side).

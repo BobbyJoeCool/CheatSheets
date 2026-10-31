@@ -15,7 +15,8 @@ JavaServer Pages: directives, implicit objects and scopes, Expression Language, 
 
 ## Differences in Layout from Basic Structure
 
-None. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
+- No other differences. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
 
 ## Groups
 

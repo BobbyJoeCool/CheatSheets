@@ -19,6 +19,7 @@ Replaces the 33-sheet GitHub Actions outline (drafted 2026-10-25). Those 33 buil
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Who Can Do This** (`id="who"`) on 01–39 and 70–89 · **Automate It** (`id="automate"`) on 24 selected platform sheets · **Security Check** (`id="sec-check"`) on 13 Actions sheets · **In the Logs** (`id="in-logs"`) on 20 Actions sheets. Sheet lists below.
 - The Outline Guide has no platform category; the standard language groups don't apply. Groups follow the platform's areas, and GitHub Actions is split into six "Actions:" groups.
 - Code blocks are YAML (workflows, issue forms, `dependabot.yml`), JSON (`devcontainer.json`, rulesets), Markdown, or `curl` / GraphQL. Each config file's block starts with a comment naming its path, e.g. `# .github/ISSUE_TEMPLATE/bug.yml`.
 - **Two Row 2 layouts on the platform sheets (01–39, 70–89):**

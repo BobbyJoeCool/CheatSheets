@@ -17,6 +17,7 @@ This is a practice/tooling topic, so the language-basics groups from the Outline
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Practice sheets with no code to show (25 of 73, mostly Groups 1–2 and 15) replace the Code | Explain row with tables (comparison, "where / use", feature tables).
 - Key topics on practice sheets are concept terms where no command or file name exists.
 - The quick-reference sheets (72–73) are table-only lookup pages (syntax, what it does, sheet #) with no code row and no Description/Notes row.

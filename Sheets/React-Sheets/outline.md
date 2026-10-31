@@ -17,6 +17,7 @@ As a framework set it skips language basics, which live in the JavaScript & Type
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Accessibility** (`section-a11y`, `id="a11y"`) and **Version Notes** (`section-version`, `id="version"`) on all 98 sheets, stacked in Row 1 column 1. Details below.
 - Three-row layout (same as HTML and CSS), because samples are component code plus a rendered result:
   1. Row 1: column 1 stacks Description → Notes → Accessibility → Version Notes → Code Explained; column 2 holds the code block.
   2. Row 2: tables (2–3 side by side).

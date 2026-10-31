@@ -17,6 +17,7 @@ At 128 sheets the set is above the guide's 90–120 typed/enterprise range becau
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Numbers are three digits throughout (`cs-001` to `cs-128`) because the set passes 99.
 - Output & Comments becomes Output, Input & Comments (Group 2).
 - Functions becomes Methods & Functions (Group 8), including delegates, events and extension members.

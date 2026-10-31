@@ -17,7 +17,8 @@ React, Node.js and Next.js each have their own sets; the Node.js group here is o
 
 ## Differences in Layout from Basic Structure
 
-- JavaScript sheets carry a TypeScript note box (`section-ts`) under Code Explained, so the Code | Explain row becomes Code | Explain + TS (110 of 131 sheets).
+- **Extra boxes:** **TypeScript** (`section-ts`, `id="ts"`) under Code Explained on the JavaScript sheets 001–110. Not on the TypeScript sheets (111–131) or the quick references (132–133).
+- JavaScript sheets carry a TypeScript note box (`section-ts`) under Code Explained, so the Code | Explain row becomes Code | Explain + TS (sheets 001–110).
 - On sheets with no code row, Row 1 becomes three columns.
 - Numbers are three digits throughout (`js-001` to `js-131`).
 

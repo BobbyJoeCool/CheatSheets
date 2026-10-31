@@ -17,6 +17,7 @@ The main section was capped at 25–35 sheets, so several topics are merged onto
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - The Outline Guide has no CLI-tool category; the standard groups (data types, operators, OOP) don't apply, so groups follow the Git workflow instead.
 - Sheets 35–36 are quick-reference pages: rows of two side-by-side tables (Command · Does · #) at 9px, grouped by task, with no code row.
 

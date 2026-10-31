@@ -17,6 +17,7 @@ Scope: the dev server, config, assets, CSS, production builds, plugins, SSR and 
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - The standard language group template (Groups 2–13 of Outline_guide.md) does not apply. Groups follow the Vite workflow: setup → config → dev server → imports → CSS → build → plugins → SSR/advanced → testing and migration.
 - Sheets that cover an option renamed in Vite 8 carry a small "Formerly (Vite 7)" note in the Notes box.
 - Sheets 38–39 are quick-reference sheets: dense tables of commands, options and import suffixes with no Description, Mistakes or Tips boxes.

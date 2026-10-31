@@ -17,6 +17,7 @@ It expands the one-page primer at Programming Concepts Sheet 007. Bitmask DP is 
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Sheets 01–15 (language-agnostic) use pseudocode in the Programming Concepts house style (`←` assigns, `=` compares, `div` / `mod`, C-style `& | ^ ~ << >>`, plus `>>>` for logical shift). Never a real language.
 - Sheets 16–22 use real code in that language, with output comments, and carry an extra row of code examples (flags, binary parsing, bitsets).
 - Binary examples default to 8-bit values written `0b1011_0010`; 32-bit is used only where width matters and is labeled.

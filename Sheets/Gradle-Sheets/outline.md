@@ -17,10 +17,18 @@ Scope: the wrapper and CLI, build scripts, tasks, dependencies, JVM builds and t
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **In Groovy DSL** (`section-explain`, `id="explain-groovy"`) and **Java vs Kotlin Projects** (`section-explain`, `id="explain-langs"`) stacked under Code Explained on 18 sheets: all except 02–05, 11, 21 and the quick references 25–27. Details below.
 - The standard language group template (Groups 2–13 of Outline_guide.md) does not apply. Groups follow how a Gradle build is put together: setup → build scripts → dependencies → JVM builds → multi-project → performance and custom logic → integration.
 - Code blocks are Kotlin DSL (Prism `kotlin`), with TOML for version catalogs, `properties` for `gradle.properties`, and Bash for CLI commands. Sheet 05 stacks Kotlin and Groovy versions of the same script in two code rows.
 - Sheets 26–27 are quick-reference sheets with no Description, Mistakes or Tips boxes. Sheet 26 is dense tables; sheet 27 is a 2 × 3 grid of short code blocks (script snippets read better as code than as table cells).
 - `gradle-cheatsheet.css` gives the sheet-number badge a Gradle-teal accent; everything else uses the shared styles.
+
+### In Groovy DSL and Java vs Kotlin Projects boxes (18 sheets)
+
+- `<section class="section-explain" id="explain-groovy">`, title **In Groovy DSL**: how the sheet's Kotlin DSL lines are written in `build.gradle` (quotes, parentheses, `=`), or "same in both DSLs".
+- `<section class="section-explain" id="explain-langs">`, title **Java vs Kotlin Projects**: what changes when the project is Kotlin instead of Java (plugins, toolchains, source sets).
+- Both stack under Code Explained in Row 2 (`Code | Explain + Explain + Explain`).
+- On: 01, 06–10, 12–20, 22–24. Not on 02–05 (sheet 05 is the Kotlin vs Groovy sheet itself), 11, 21, or the quick references 25–27.
 
 ## Groups
 

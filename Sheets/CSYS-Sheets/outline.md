@@ -17,6 +17,7 @@ Plain CSS lives in the CSS set; this set covers how each system is set up and us
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Many sheets drop the Description | Notes row and open with Code | Explain; a few use a stacked Description + Notes + Explain | Code row.
 - Crosswalk sheets (Group 6) are table-driven, comparing the same task across systems.
 

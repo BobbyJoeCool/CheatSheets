@@ -17,6 +17,7 @@ The deep areas are pointers and memory, special member functions (copy / move / 
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Numbers are three digits throughout (`cpp-001` to `cpp-123`) because the set passes 99.
 - Output & Comments becomes Input, Output & Comments (Group 2), covering both iostream and `std::print` / `std::format`.
 - Data Structures is the STL containers group (Group 9).

@@ -19,6 +19,7 @@ Scope limits: no UI frameworks (SwiftUI has its own set; UIKit is out of scope).
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **The Swifty Way** (`id="swifty-way"`) and **Coming From…** (`id="coming-from"`) on 001–106 · **Swift Versions** (`id="swift-versions"`) on 18 selected sheets · **In SwiftUI** (`id="in-swiftui"`) on 15 selected sheets. None on the quick references (107–108). Details below.
 - **"The Swifty Way" box** on every sheet, placed under Code Explained. Avoid/prefer pairs showing idiomatic Swift (for example, avoid `if x != nil { use(x!) }`, prefer `if let x { use(x) }`).
 - **"Coming From…" box** on every sheet, placed under Code Explained. Three short comparisons, usually Kotlin, TypeScript, Java or Python; Rust, C++, C# or Go where they are the closer match.
 - **"Swift Versions" box** on selected sheets, placed under Code Explained. Says which Swift version added or changed the feature. Sheets that get the box: 012, 016, 031, 039, 044, 045, 050, 067, 074, 087, 093, 095, 096, 098, 101, 102, 103, 106.

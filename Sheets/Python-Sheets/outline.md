@@ -17,7 +17,25 @@ The Tkinter and Django sets go much deeper; the frameworks group here only orien
 
 ## Differences in Layout from Basic Structure
 
-None. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- **Extra boxes:** **The Pythonic Way** (`id="pythonic"`) on 01–91 · **Python Versions** (`id="version"`) on 61 selected sheets · **Under the Hood** (`id="hood"`) in Row 1 on 27 selected sheets. None on the quick references (92–93). Details and lists below.
+- No other differences. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+
+### The Pythonic Way box (every sheet, 01–91)
+
+- `<section class="section-notes section-idiom" id="pythonic">`, title **The Pythonic Way**, under Code Explained in Row 2.
+- 2–4 avoid/prefer pairs as `note-item` lines: `<span class="idiom-avoid">…</span> → <span class="idiom-prefer">…</span>` (`print("x=" + str(x))` → `print(f"{x=}")`). Never a restatement of the main code block.
+
+### Python Versions box (61 selected sheets)
+
+- `<section class="section-notes section-version" id="version">`, title **Python Versions**, under Code Explained (above The Pythonic Way).
+- 1–3 lines, oldest first: the release each feature arrived in or changed (`3.0 — print became a function` · `3.3 — flush= argument`).
+- On: 01–03, 05, 08–09, 11, 14–15, 17, 19, 22–24, 26, 28, 31–32, 34–35, 38–41, 44–45, 47–52, 54–56, 58, 60–61, 63–65, 67–70, 73–80, 82–89.
+
+### Under the Hood box (27 selected sheets, Row 1)
+
+- `<section class="section-notes section-hood" id="hood">`, title **Under the Hood**, as a third Row 1 column (`Description | Notes | Under the Hood`).
+- 2–3 lines on what CPython does underneath (reference counting, interning, the GIL, bytecode).
+- On: 01, 07–11, 14, 24, 31, 34, 40–41, 44–46, 50, 53, 57, 60, 62, 65–67, 73, 84–86.
 
 ## Groups
 

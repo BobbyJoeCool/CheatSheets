@@ -17,6 +17,7 @@ At 58 sheets it is above the guide's 25–50 framework range.
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Some sheets (10 of 58) use a Code | Code row for side-by-side examples (e.g. server vs client, before vs after) instead of Code | Explain.
 
 ## Groups

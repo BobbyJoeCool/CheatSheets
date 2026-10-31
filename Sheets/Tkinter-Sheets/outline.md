@@ -17,6 +17,7 @@ The guide's framework target is 25–50 sheets and this set is 62, because Tkint
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - As a framework set it skips the standard language groups and starts at Tkinter's own concepts.
 - Some tables-row sheets use Tkinter API names as table headings (e.g. `validate=` | Substitutions | More Codes).
 

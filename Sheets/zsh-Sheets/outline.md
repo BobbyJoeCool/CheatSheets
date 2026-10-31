@@ -17,6 +17,7 @@ The set was capped at 25 topic sheets plus 2 quick-reference pages, so sheets ar
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Groups follow shell topics instead of the standard language groups.
 - Sheets 26–27 are table-only lookup pages with no code block: nine three-column tables each (Syntax · Does · sheet #), condensing Sheets 01–25.
 

@@ -19,6 +19,7 @@ At 78 sheets it is above the guide's 25–50 framework range on purpose, for the
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **The Rails Way** (`id="idiom"`) on all 78 sheets. Details below.
 - As a framework set it skips the language-basics groups. Ruby itself, and the ActiveSupport methods flagged in the Ruby set's In Rails boxes, live in the Ruby set; sheet 44 points back to it instead of repeating it.
 - Groups follow Rails' own layers (routing, Action Pack, Action View, Active Record, Active Model/Support, Hotwire, the background frameworks, testing, deployment) after Introduction & Setup.
 - Some sheets stack two or three code blocks in the code column (for example a controller action plus its ERB view, or a migration plus the shell command). ERB uses Prism's `erb` language, so those sheets also load `prism-markup-templating`. Config sheets also use `yaml` and `bash`.
