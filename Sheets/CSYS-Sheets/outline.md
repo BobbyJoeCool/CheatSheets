@@ -17,9 +17,37 @@ Plain CSS lives in the CSS set; this set covers how each system is set up and us
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
+- **Extra boxes:** **Plain CSS Equivalent** (`id="plain"`) and **Prefer / Avoid** (`id="idiom"`) on every sheet except the quick references (47–48) · **Other Framework** (`id="other"`) on every sheet except the comparison sheets (41–45) and the quick references · **♿ Accessibility** (`id="a11y"`) on 9 selected sheets. Details and lists below.
 - Many sheets drop the Description | Notes row and open with Code | Explain; a few use a stacked Description + Notes + Explain | Code row.
 - Crosswalk sheets (Group 6) are table-driven, comparing the same task across systems.
+
+### Placement
+
+- The boxes stack in the order Plain CSS Equivalent → Other Framework → Prefer / Avoid → Accessibility, under Code Explained, or under Notes on sheets without Code Explained.
+- Where one Row 1 column overflowed, boxes are split between the two Row 1 columns (e.g. Plain CSS + Other Framework under the code, Prefer / Avoid under the notes). The `/* SHEET NN */` comment in `csys-cheatsheet.css` lists where each box sits.
+- Sheets 14 and 29 needed `fit_sheets.py --extended`.
+- If a sheet doesn't fit, cut Accessibility to 1 line first, then Prefer / Avoid to 1 pair, then Plain CSS Equivalent to 1 line.
+
+### Plain CSS Equivalent box (every sheet, 01–46)
+
+- `<section class="section-notes section-plain" id="plain">`, title **Plain CSS Equivalent**.
+- 1–2 lines on the CSS the framework actually produces, e.g. `flex gap-4 p-4` → `display:flex; gap:1rem; padding:1rem`; `.d-flex` → `display:flex !important`; Sass `$var` → its compiled value.
+
+### Other Framework box (every sheet except 41–45, 47–48)
+
+- `<section class="section-notes section-other" id="other">`, title **Other Framework**.
+- 1 line: the same thing in the closest other system (Tailwind ↔ Bootstrap / UnoCSS, styled-components ↔ Emotion / CSS Modules, Sass ↔ native CSS / PostCSS). The comparison sheets already do this in tables.
+
+### Prefer / Avoid box (every sheet, 01–46)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **Prefer / Avoid**.
+- 1–2 avoid/prefer lines (✗ + strike vs ✓ + bold), e.g. `@apply` for every component → components in your framework; `node-sass` → `sass`.
+
+### ♿ Accessibility box (9 selected sheets)
+
+- `<section class="section-notes section-a11y" id="a11y">`, title **♿ Accessibility** (same title as the CSS set's box).
+- 2 lines: contrast, focus states, ARIA the framework does or doesn't ship, `prefers-*` media.
+- On: 03–04, 10–12, 15, 18, 22, 37.
 
 ## Groups
 
