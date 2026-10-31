@@ -17,10 +17,28 @@ This is a practice/tooling topic, so the language-basics groups from the Outline
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
+- **Extra boxes:** **In Codex / Copilot** (`id="tools"`; titled **In Claude Code** on the tool sheets 53–65) and **Prompt It** (`id="prompt"`) on every sheet except the comparison sheets (47, 66) and the quick references (72–73) · **Cost & Context** (`id="context"`) on 19 selected sheets. Details and lists below.
 - Practice sheets with no code to show (25 of 73, mostly Groups 1–2 and 15) replace the Code | Explain row with tables (comparison, "where / use", feature tables).
 - Key topics on practice sheets are concept terms where no command or file name exists.
 - The quick-reference sheets (72–73) are table-only lookup pages (syntax, what it does, sheet #) with no code row and no Description/Notes row.
+
+### In Codex / Copilot box (every sheet except 47, 66, 72–73)
+
+- `<section class="section-notes section-tools" id="tools">`, title **In Codex / Copilot**, under Code Explained (or the last column of the sheet's main row on sheets without code).
+- 1–2 `note-item` lines: the same idea in Codex, GitHub Copilot, Cursor or Gemini CLI, e.g. `CLAUDE.md` ↔ `AGENTS.md` ↔ `.github/copilot-instructions.md`.
+- On the tool sheets (53–65) the same box is titled **In Claude Code** and maps back to Claude Code. Sheets 47 and 66 are the comparison sheets, so they skip it.
+- No version notes: these tools change too often. Check claims against current docs when a tool ships a big release.
+
+### Prompt It box (every sheet except 47, 66, 72–73)
+
+- `<section class="section-notes section-prompt" id="prompt">`, title **Prompt It**, under In Codex / Copilot.
+- 2 avoid/prefer lines: a weak prompt or habit → a strong one (✗ + strike vs ✓ + bold), e.g. "make it better" → "refactor `auth.ts` to async/await; keep tests green".
+
+### Cost & Context box (19 selected sheets)
+
+- `<section class="section-notes section-context" id="context">`, title **Cost & Context**, last.
+- 2 lines on what the feature does to tokens and the context window.
+- On: 04–05, 08, 16, 20–22, 24, 30–34, 38–39, 42, 46, 50, 71.
 
 ## Groups
 
