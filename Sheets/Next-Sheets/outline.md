@@ -17,8 +17,27 @@ At 58 sheets it is above the guide's 25–50 framework range.
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
+- **Extra boxes:** **Server or Client?** (`id="runtime"`) and **Pages Router Equivalent** (`id="pages"`) on every sheet except the quick references (59–60) · **Prefer / Avoid** (`id="idiom"`) on 22 selected sheets. Details and lists below.
 - Some sheets (10 of 58) use a Code | Code row for side-by-side examples (e.g. server vs client, before vs after) instead of Code | Explain.
+- `next-cheatsheet.css` gives each box its own accent (cyan Server or Client?, slate Pages Router Equivalent, amber Prefer / Avoid) so none reads as part of Code Explained. No versions box: the Notes box already carries the 16.x version notes.
+- If a sheet doesn't fit, cut Prefer / Avoid to 2 items first, then Pages Router Equivalent to 1 line, before touching the main content.
+
+### Server or Client? box (every sheet, 01–58)
+
+- `<section class="section-notes section-runtime" id="runtime">`, title **Server or Client?**, first box under Code Explained in `col-2-2` (under the second code block on Code | Code sheets).
+- 1–2 `note-item` lines: where the sheet's code runs, whether it needs `'use client'`, and what breaks on the wrong side. Config, CLI and test sheets say where they run instead ("Build time", "Your machine or CI").
+
+### Pages Router Equivalent box (every sheet, 01–58)
+
+- `<section class="section-notes section-pages" id="pages">`, title **Pages Router Equivalent**, under Server or Client?.
+- 1–3 lines on how the same thing is done in `pages/`, e.g. `getServerSideProps` → async Server Component, `_app.tsx` → `layout.tsx`, `next/router` → `next/navigation`. App-Router-only features say so in one line.
+- On the Pages Router sheets (56–58) the same box is titled **App Router Equivalent** and maps the other way.
+
+### Prefer / Avoid box (22 selected sheets)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **Prefer / Avoid**, last under Code Explained.
+- 2–3 avoid/prefer `note-item` lines (✗ + strike vs ✓ + bold), e.g. `useEffect` + fetch → an `async` Server Component; API route for a mutation → Server Action; `<img>` → `<Image>`.
+- On: 09, 13–15, 17, 19, 21–22, 24, 26–28, 30, 32, 37–39, 41–43, 45–46.
 
 ## Groups
 
