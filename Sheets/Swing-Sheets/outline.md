@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Java
 - **Folder Directory:** `Sheets/Swing-Sheets/swing-##-[slug].html`
+- **PDF Name:** `Swing Reference Guide.pdf`
 - **Groups:** 14
 - **Sheets:** 62
 - **Drafted Date:** 2026-10-28

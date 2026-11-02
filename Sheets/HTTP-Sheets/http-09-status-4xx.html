@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 09: 4xx Client Errors</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s09">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 09</div>
+			<h1>4xx Client Errors</h1>
+			<div class="sheet-desc">400 · 401 vs 403 · 404 vs 410 · 405 · 409 · 412 · 415 · 422 · 429</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">The Client Needs to Change Something</h2><div class="description">A <strong>4xx</strong> code says the request itself is the problem, so sending it again unchanged won't help (except <code>408</code> and <code>429</code>). The most-confused pair is <strong>401</strong> ("who are you?": missing or bad credentials) versus <strong>403</strong> ("I know who you are, and no"). Use <strong>400</strong> for requests you can't parse, <strong>422</strong> for well-formed requests that fail validation, and <strong>409</strong> when the request clashes with the current state.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>401</code> must send <code>WWW-Authenticate</code> saying how to authenticate</li><li class="note-item"><code>405</code> must send <code>Allow</code> listing the methods that do work</li><li class="note-item"><code>429</code> should send <code>Retry-After</code> (sheet 23)</li><li class="note-item">RFC 9110 renamed 422 to <strong>Unprocessable Content</strong> and 413 to <strong>Content Too Large</strong></li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Return <code>404</code> instead of <code>403</code> when even revealing that a resource exists is a leak</li><li class="note-item">Login failures: one generic message; don't say whether the email exists</li><li class="note-item">Rate-limit <code>401</code>s per account and per IP to slow credential stuffing</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Common 4xx Responses</h2><pre><code class="language-http">GET /reports HTTP/1.1
+
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer realm="api"
+
+DELETE /reports/7 HTTP/1.1
+Authorization: Bearer eyJhbGciOi...
+
+HTTP/1.1 403 Forbidden
+Content-Type: application/problem+json
+
+{"title":"Only owners can delete reports","status":403}
+
+PUT /users/42 HTTP/1.1
+If-Match: "v41"
+
+HTTP/1.1 412 Precondition Failed
+
+POST /users HTTP/1.1
+Content-Type: application/json
+
+{"email":"ada@example.com"}
+
+HTTP/1.1 409 Conflict
+Content-Type: application/problem+json
+
+{"title":"Email already registered","status":409}</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">No credentials sent → <code>401</code> + a challenge</div><div class="explain-item">Valid token, wrong role → <code>403</code></div><div class="explain-item"><code>If-Match</code> lost a race with another edit → <code>412</code> (sheet 12)</div><div class="explain-item">Duplicate unique value → <code>409</code>; bad email format would be <code>422</code></div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — <code>res.status(404).json(...)</code>; validation with <code>express-validator</code> or <code>zod</code></li><li class="note-item"><strong>Django</strong> — DRF raises <code>NotFound</code> · <code>PermissionDenied</code> · <code>ValidationError</code> (400 by default)</li><li class="note-item"><strong>Spring</strong> — <code>throw new ResponseStatusException(HttpStatus.NOT_FOUND)</code>; <code>@Valid</code> failures → 400</li><li class="note-item"><strong>Rails</strong> — <code>RecordNotFound</code> → 404 automatically; <code>render json: e, status: :unprocessable_entity</code></li><li class="note-item"><strong>ASP.NET</strong> — <code>Results.NotFound()</code> · <code>Results.Forbid()</code> · <code>Results.ValidationProblem(errors)</code></li><li class="note-item"><strong>Go</strong> — <code>http.NotFound(w, r)</code> · <code>http.Error(w, msg, http.StatusConflict)</code></li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item"><code>401</code> while sending a token: check <code>exp</code> and <code>aud</code>; the <code>WWW-Authenticate</code> error text often says which</li><li class="note-item"><code>403</code> on POST in Django, Rails or Spring: usually a missing CSRF token (sheet 13)</li><li class="note-item"><code>413</code> before your code runs: the proxy's body limit (<code>client_max_body_size</code> in nginx)</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Codes Table | Pick Table + Authz Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-codes"><h2 class="section-title">4xx Codes</h2><table><thead><tr><th>Code</th><th>Name</th><th>Use it when</th></tr></thead><tbody><tr><td>400</td><td class="desc">Bad Request</td><td class="desc">Malformed JSON, missing required param</td></tr><tr><td>401</td><td class="desc">Unauthorized</td><td class="desc">No / invalid credentials</td></tr><tr><td>403</td><td class="desc">Forbidden</td><td class="desc">Authenticated, not allowed</td></tr><tr><td>404</td><td class="desc">Not Found</td><td class="desc">No such resource (or hiding it)</td></tr><tr><td>405</td><td class="desc">Method Not Allowed</td><td class="desc">Route exists, method doesn't; send <code>Allow</code></td></tr><tr><td>409</td><td class="desc">Conflict</td><td class="desc">Duplicate, wrong state, version clash</td></tr><tr><td>410</td><td class="desc">Gone</td><td class="desc">Removed for good</td></tr><tr><td>412</td><td class="desc">Precondition Failed</td><td class="desc"><code>If-Match</code> / <code>If-Unmodified-Since</code> failed</td></tr><tr><td>413</td><td class="desc">Content Too Large</td><td class="desc">Body over the limit</td></tr><tr><td>415</td><td class="desc">Unsupported Media Type</td><td class="desc">Wrong <code>Content-Type</code></td></tr><tr><td>422</td><td class="desc">Unprocessable Content</td><td class="desc">Parsed fine, failed validation</td></tr><tr><td>429</td><td class="desc">Too Many Requests</td><td class="desc">Rate limited; send <code>Retry-After</code></td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-pick"><h2 class="section-title">400 or 422?</h2><table><thead><tr><th>Problem</th><th>Code</th></tr></thead><tbody><tr><td>Body isn't valid JSON</td><td class="desc"><code>400</code></td></tr><tr><td>Wrong type (<code>"abc"</code> for a number)</td><td class="desc"><code>400</code> or <code>422</code></td></tr><tr><td>Email format wrong</td><td class="desc"><code>422</code></td></tr><tr><td>Required field missing</td><td class="desc"><code>422</code> (or <code>400</code>)</td></tr><tr><td>Date range ends before it starts</td><td class="desc"><code>422</code></td></tr></tbody></table></section><section id="tbl-authz"><h2 class="section-title">401 or 403?</h2><table><thead><tr><th>Situation</th><th>Code</th></tr></thead><tbody><tr><td>No token</td><td class="desc"><code>401</code></td></tr><tr><td>Expired / bad token</td><td class="desc"><code>401</code></td></tr><tr><td>Valid token, missing scope</td><td class="desc"><code>403</code></td></tr><tr><td>Not the owner</td><td class="desc"><code>403</code> or <code>404</code></td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using <code>401</code> for "not allowed": clients will log the user out and retry login</li><li class="note-item">Returning <code>500</code> for bad input because validation threw an unhandled exception</li><li class="note-item">Mixing 400 and 422 at random; pick a rule and use it everywhere</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Return every validation error at once, not just the first (sheet 10)</li><li class="note-item">Send <code>Allow</code> with <code>405</code> and <code>Retry-After</code> with <code>429</code>; clients use them</li><li class="note-item">Map your framework's not-found and validation exceptions to codes in one place</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>401</code> — who are you? · <code>403</code> — not you</li><li class="note-item"><code>400</code> — can't parse · <code>422</code> — invalid values</li><li class="note-item"><code>404</code> · <code>409</code> · <code>412</code> — missing · conflict · stale</li><li class="note-item"><code>429</code> — slow down, see <code>Retry-After</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-08-status-3xx.html" title="3xx Redirects &amp; Not Modified">3xx Redirects</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-10-status-5xx-error-bodies.html" title="5xx Server Errors &amp; Error Bodies">5xx &amp; Error Bodies</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

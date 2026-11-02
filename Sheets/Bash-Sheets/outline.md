@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Command Line Interface
 - **Folder Directory:** `Sheets/Bash-Sheets/bash-##-[slug].html`
+- **PDF Name:** `Bash Reference Guide.pdf`
 - **Groups:** 9
 - **Sheets:** 27
 - **Drafted Date:** 2026-10-06

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 21: Pagination, Filtering &amp; Sorting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Pagination, Filtering &amp; Sorting</h1>
+			<div class="sheet-desc">limit / offset · cursor pagination · Link header · total counts · filters · ?sort=-created_at · sparse fields</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Big Collections in Small Pages</h2><div class="description">Never return an unbounded list. <strong>Offset</strong> paging (<code>page</code>, <code>limit</code>) is simple and lets users jump to page 7, but gets slow on big tables and skips or repeats rows when data changes. <strong>Cursor</strong> (keyset) paging returns an opaque token pointing after the last item; it's fast and stable, at the cost of random access. Filters and sort go in the query string with documented names, and the response says how to get the next page.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Default <code>limit</code> (e.g. 25) and a hard maximum (e.g. 100)</li><li class="note-item"><code>sort=-created_at,name</code>: minus means descending</li><li class="note-item">Totals cost a <code>COUNT(*)</code>; make them optional on large data</li><li class="note-item"><code>Link: &lt;...&gt;; rel="next"</code> (RFC 8288) works for any media type</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Cap <code>limit</code>; <code>?limit=1000000</code> is a denial of service</li><li class="note-item">Allow-list filter and sort fields; never paste them into SQL</li><li class="note-item">Make cursors opaque and signed if they encode anything sensitive</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Cursor and Offset Responses</h2><pre><code class="language-http">GET /orders?status=shipped&amp;created_after=2026-10-01&amp;sort=-created_at&amp;limit=25 HTTP/1.1
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Link: &lt;/orders?status=shipped&amp;limit=25&amp;cursor=eyJpZCI6OTAwMX0&gt;; rel="next"
+
+{
+  "data": [{"id": 9025, "status": "shipped"}, ...],
+  "next_cursor": "eyJpZCI6OTAwMX0",
+  "has_more": true
+}
+
+GET /orders?page=3&amp;per_page=25 HTTP/1.1
+
+HTTP/1.1 200 OK
+
+{"data": [...], "page": 3, "per_page": 25, "total": 1042}
+
+GET /orders/9001?fields=id,status,total HTTP/1.1</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Filters and sort ride along in the next link automatically</div><div class="explain-item">The cursor is Base64 of <code>{"id":9001}</code>: the last row seen</div><div class="explain-item">Server query: <code>WHERE id &lt; 9001 ORDER BY id DESC LIMIT 26</code></div><div class="explain-item">Fetch one extra row to know <code>has_more</code> without counting</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — No built-in; validate <code>req.query</code> with <code>zod</code>; Prisma <code>take</code> + <code>cursor</code> + <code>skip: 1</code></li><li class="note-item"><strong>Django</strong> — DRF <code>CursorPagination</code> / <code>LimitOffsetPagination</code>; <code>django-filter</code>; <code>OrderingFilter</code></li><li class="note-item"><strong>Spring</strong> — <code>Pageable</code>: <code>?page=2&amp;size=25&amp;sort=createdAt,desc</code> → <code>Page&lt;T&gt;</code> or <code>Slice&lt;T&gt;</code></li><li class="note-item"><strong>Rails</strong> — <code>pagy</code> or <code>kaminari</code>; <code>where(...).order(created_at: :desc).limit(25)</code></li><li class="note-item"><strong>ASP.NET</strong> — <code>[AsParameters]</code> query object; EF Core <code>.Where(o =&gt; o.Id &lt; cursor).Take(25)</code></li><li class="note-item"><strong>Go</strong> — <code>strconv.Atoi(q.Get("limit"))</code>; <code>WHERE id &lt; $1 ORDER BY id DESC LIMIT $2</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Styles Table | Params Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-styles"><h2 class="section-title">Offset vs Cursor</h2><table><thead><tr><th></th><th>Offset</th><th>Cursor</th></tr></thead><tbody><tr><td>Jump to page N</td><td class="center">✔</td><td class="center">✖</td></tr><tr><td>Speed on deep pages</td><td class="desc">Slow (scans skipped rows)</td><td class="desc">Fast (index seek)</td></tr><tr><td>Stable while data changes</td><td class="desc">✖ skips / repeats</td><td class="center">✔</td></tr><tr><td>Total count</td><td class="desc">Easy</td><td class="desc">Optional, costly</td></tr><tr><td>Good for</td><td class="desc">Admin tables</td><td class="desc">Feeds, sync, exports</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-params"><h2 class="section-title">Query Conventions</h2><table><thead><tr><th>Param</th><th>Example</th></tr></thead><tbody><tr><td>Equality</td><td class="desc"><code>?status=shipped</code></td></tr><tr><td>Multiple values</td><td class="desc"><code>?status=paid,shipped</code></td></tr><tr><td>Ranges</td><td class="desc"><code>?created_after=2026-10-01</code></td></tr><tr><td>Search</td><td class="desc"><code>?q=lamp</code></td></tr><tr><td>Sort</td><td class="desc"><code>?sort=-created_at,name</code></td></tr><tr><td>Fields</td><td class="desc"><code>?fields=id,status</code></td></tr><tr><td>Page size</td><td class="desc"><code>?limit=25</code> (max 100)</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Sorting a cursor page by a non-unique column; add the ID as a tie-breaker</li><li class="note-item">Letting clients pass raw column names straight into <code>ORDER BY</code></li><li class="note-item">Changing default sort order between releases; clients depend on it</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Index the columns you filter and sort on, in the same order</li><li class="note-item">Return the same envelope (<code>data</code>, <code>next_cursor</code>) on every list endpoint</li><li class="note-item">For exports, cursor paging or an async job (sheet 23), not page 400 of 400</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>limit</code> + <code>cursor</code> — fast, stable paging</li><li class="note-item"><code>page</code> + <code>per_page</code> — simple, jumpable</li><li class="note-item"><code>?field=value</code> filters · <code>?sort=-field</code></li><li class="note-item">Always cap <code>limit</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-20-resource-url-design.html" title="Resource &amp; URL Design">URL Design</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-22-versioning-evolution.html" title="Versioning &amp; Evolving APIs">Versioning</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

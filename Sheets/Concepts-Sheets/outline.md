@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Concepts & Tools
 - **Folder Directory:** `Sheets/Concepts-Sheets/pc-###-[slug].html`
+- **PDF Name:** `Programming Concepts Reference Guide.pdf`
 - **Groups:** 16
 - **Sheets:** 104
 - **Drafted Date:** 2026-10-04

@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** SQL & Tools
 - **Folder Directory:** `Sheets/SQL-Sheets/sql-##-[slug].html`
+- **PDF Name:** `SQL Reference Guide.pdf`
 - **Groups:** 19
 - **Sheets:** 82
 - **Drafted Date:** 2026-10-18

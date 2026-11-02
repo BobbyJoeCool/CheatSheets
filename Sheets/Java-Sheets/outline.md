@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Java
 - **Folder Directory:** `Sheets/Java-Sheets/java-###-[slug].html`
+- **PDF Name:** `Java Reference Guide.pdf`
 - **Groups:** 14
 - **Sheets:** 136
 - **Drafted Date:** 2026-10-02 (re-drafted after the sheets were live)

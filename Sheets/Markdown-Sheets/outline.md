@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Markup & Notation
 - **Folder Directory:** `Sheets/Markdown-Sheets/md-##-[slug].html`
+- **PDF Name:** `Markdown Reference Guide.pdf`
 - **Groups:** 7
 - **Sheets:** 22
 - **Drafted Date:** 2026-10-04

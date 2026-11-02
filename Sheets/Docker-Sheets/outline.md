@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** DevOps & Cloud (new index section; add it to the root index.html when this set is built)
 - **Folder Directory:** `Sheets/Docker-Sheets/docker-##-[slug].html`
+- **PDF Name:** `Docker Reference Guide.pdf`
 - **Groups:** 10
 - **Sheets:** 31
 - **Drafted Date:** 2026-10-16

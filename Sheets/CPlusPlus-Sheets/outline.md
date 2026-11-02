@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** C Family
 - **Folder Directory:** `Sheets/Cpp-Sheets/cpp-###-[slug].html`
+- **PDF Name:** `C++ Reference Guide.pdf`
 - **Groups:** 18
 - **Sheets:** 123
 - **Drafted Date:** 2026-10-10

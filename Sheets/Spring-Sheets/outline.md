@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Java
 - **Folder Directory:** `Sheets/Spring-Sheets/sp-##-[slug].html`
+- **PDF Name:** `Spring Reference Guide.pdf`
 - **Groups:** 14
 - **Sheets:** 67
 - **Drafted Date:** 2026-10-02

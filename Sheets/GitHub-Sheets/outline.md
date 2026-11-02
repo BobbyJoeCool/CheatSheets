@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** DevOps & Cloud
 - **Folder Directory:** `Sheets/GitHub-Sheets/gh-##-[slug].html`
+- **PDF Name:** `GitHub Reference Guide.pdf`
 - **Groups:** 20
 - **Sheets:** 93
 - **Drafted Date:** 2026-10-26

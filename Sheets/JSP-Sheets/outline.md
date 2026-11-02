@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Java
 - **Folder Directory:** `Sheets/JSP-Sheets/jsp-##-[slug].html`
+- **PDF Name:** `JSP Reference Guide.pdf`
 - **Groups:** 7
 - **Sheets:** 32
 - **Drafted Date:** 2026-10-02 (re-drafted after the sheets were live)

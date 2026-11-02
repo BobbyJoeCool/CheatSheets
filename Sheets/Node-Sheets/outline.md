@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** JavaScript / TypeScript
 - **Folder Directory:** `Sheets/Node-Sheets/node-##-[slug].html`
+- **PDF Name:** `Node.js Reference Guide.pdf`
 - **Groups:** 15
 - **Sheets:** 68
 - **Drafted Date:** 2026-10-03 (re-drafted after the sheets were live)

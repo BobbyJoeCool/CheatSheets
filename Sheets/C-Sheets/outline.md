@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** C Family
 - **Folder Directory:** `Sheets/C-Sheets/c-##-[slug].html`
+- **PDF Name:** `C Reference Guide.pdf`
 - **Groups:** 18
 - **Sheets:** 98
 - **Drafted Date:** 2026-10-10

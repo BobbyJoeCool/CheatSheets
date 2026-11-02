@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Languages
 - **Folder Directory:** `Sheets/SwiftUI-Sheets/swiftui-##-[slug].html`
+- **PDF Name:** `SwiftUI Reference Guide.pdf`
 - **Groups:** 16
 - **Sheets:** 59
 - **Drafted Date:** 2026-10-26

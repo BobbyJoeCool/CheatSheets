@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** SQL & Tools
 - **Folder Directory:** `Sheets/Prisma-Sheets/prisma-##-[slug].html`
+- **PDF Name:** `Prisma Reference Guide.pdf`
 - **Groups:** 7
 - **Sheets:** 32
 - **Drafted Date:** 2026-10-03

@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Command Line Interface
 - **Folder Directory:** `Sheets/Powershell-Sheets/ps-##-[slug].html`
+- **PDF Name:** `PowerShell Reference Guide.pdf`
 - **Groups:** 15
 - **Sheets:** 40
 - **Drafted Date:** 2026-10-06

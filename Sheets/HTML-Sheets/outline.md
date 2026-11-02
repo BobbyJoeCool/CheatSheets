@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Web Design
 - **Folder Directory:** `Sheets/HTML-Sheets/html-##-[slug].html`
+- **PDF Name:** `HTML Reference Guide.pdf`
 - **Groups:** 15
 - **Sheets:** 56
 - **Drafted Date:** 2026-10-08 (re-drafted after the sheets were live; date the outline was committed)

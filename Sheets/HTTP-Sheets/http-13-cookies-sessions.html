@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 13: Cookies &amp; Sessions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Cookies &amp; Sessions</h1>
+			<div class="sheet-desc">Set-Cookie · HttpOnly · Secure · SameSite · Domain / Path · Max-Age · session IDs · CSRF tokens</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">State on Top of a Stateless Protocol</h2><div class="description">The server sets a cookie with <code>Set-Cookie</code>; the browser sends it back in <code>Cookie</code> on every matching request. A <strong>session</strong> cookie holds a random ID that points to data on the server (or an encrypted, signed blob of the data itself). Because browsers attach cookies automatically, even on requests another site triggers, cookie-based auth needs <strong>CSRF</strong> protection: <code>SameSite</code> plus a token the attacker's page can't read.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">No <code>Max-Age</code> / <code>Expires</code> = session cookie, gone when the browser closes</li><li class="note-item"><code>Max-Age=0</code> deletes a cookie</li><li class="note-item">Each cookie ~4 KB max; keep data on the server, the ID in the cookie</li><li class="note-item">Mobile apps and server-to-server calls usually use tokens, not cookies</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item"><code>HttpOnly</code> stops script (XSS) from reading the session cookie</li><li class="note-item">Name it <code>__Host-sid</code> (any <code>__Host-</code> name) to force <code>Secure</code>, <code>Path=/</code> and no <code>Domain</code></li><li class="note-item">Issue a new session ID at login and logout (session fixation)</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Login, Then Use the Session</h2><pre><code class="language-http">POST /login HTTP/1.1
+Content-Type: application/x-www-form-urlencoded
+
+email=ada%40example.com&amp;password=...
+
+HTTP/1.1 303 See Other
+Location: /dashboard
+Set-Cookie: __Host-sid=8f2c; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=1209600
+Set-Cookie: csrftoken=Qx9; Path=/; Secure; SameSite=Lax
+
+GET /dashboard HTTP/1.1
+Cookie: __Host-sid=8f2c; csrftoken=Qx9
+
+POST /transfer HTTP/1.1
+Cookie: __Host-sid=8f2c; csrftoken=Qx9
+X-CSRF-Token: Qx9
+Content-Type: application/json
+
+{"to":"acct_7","amount":50}</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Session cookie lasts 14 days; script can't read it</div><div class="explain-item">The CSRF cookie is readable on purpose so your JS can copy it</div><div class="explain-item">Server checks the header matches the cookie (double-submit)</div><div class="explain-item">Another site can make the browser send cookies, but can't set the header</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — <code>express-session</code>; <code>res.cookie(name, v, { httpOnly: true, secure: true, sameSite: 'lax' })</code></li><li class="note-item"><strong>Django</strong> — Sessions built in; <code>SESSION_COOKIE_SECURE = True</code>; <code>{% csrf_token %}</code> / <code>CsrfViewMiddleware</code></li><li class="note-item"><strong>Spring</strong> — Spring Security sessions; CSRF on by default; <code>server.servlet.session.cookie.same-site=lax</code></li><li class="note-item"><strong>Rails</strong> — <code>session[:user_id]</code> (encrypted cookie store); <code>protect_from_forgery</code>; <code>cookies.encrypted</code></li><li class="note-item"><strong>ASP.NET</strong> — <code>AddAuthentication().AddCookie()</code>; <code>CookieOptions { HttpOnly = true, Secure = true }</code>; antiforgery</li><li class="note-item"><strong>Go</strong> — <code>http.SetCookie(w, &amp;http.Cookie{Name: "session", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})</code></li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item">DevTools → Application → Cookies shows every flag; a yellow warning says why one was blocked</li><li class="note-item">Cookie not sent: <code>Secure</code> on <code>http://</code>, <code>SameSite=None</code> without <code>Secure</code>, or <code>Domain</code> / <code>Path</code> mismatch</li><li class="note-item">Cross-origin <code>fetch</code> needs <code>credentials: 'include'</code> and CORS credentials (sheet 18)</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Attrs Table | Samesite Table + Where Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-attrs"><h2 class="section-title">Set-Cookie Attributes</h2><table><thead><tr><th>Attribute</th><th>Effect</th></tr></thead><tbody><tr><td>HttpOnly</td><td class="desc">Hidden from <code>document.cookie</code></td></tr><tr><td>Secure</td><td class="desc">Sent over HTTPS only</td></tr><tr><td>SameSite</td><td class="desc">Cross-site sending rule (right)</td></tr><tr><td>Domain=example.com</td><td class="desc">Also send to subdomains</td></tr><tr><td>Path=/api</td><td class="desc">Only for paths under <code>/api</code></td></tr><tr><td>Max-Age=N / Expires</td><td class="desc">Lifetime; else browser session</td></tr><tr><td>Partitioned</td><td class="desc">Third-party cookie per top-level site (CHIPS)</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-samesite"><h2 class="section-title">SameSite Values</h2><table><thead><tr><th>Value</th><th>Sent on cross-site…</th></tr></thead><tbody><tr><td>Strict</td><td class="desc">Nothing, not even link clicks</td></tr><tr><td>Lax (default)</td><td class="desc">Top-level GET navigations only</td></tr><tr><td>None</td><td class="desc">Everything; requires <code>Secure</code></td></tr></tbody></table></section><section id="tbl-where"><h2 class="section-title">Where Auth Lives</h2><table><thead><tr><th>Option</th><th>Fits</th></tr></thead><tbody><tr><td>Session cookie</td><td class="desc">Server-rendered apps, same-site SPAs</td></tr><tr><td>Bearer token</td><td class="desc">Mobile, CLI, service-to-service</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Storing the user's role or price in a plain cookie; clients can edit it</li><li class="note-item">Turning off CSRF protection because "it's an API" while still using cookies</li><li class="note-item"><code>SameSite=None</code> everywhere to make a cross-site setup work</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Same-site SPA + API (<code>app.</code> and <code>api.</code> on one domain): cookies with <code>SameSite=Lax</code> are simplest</li><li class="note-item">Expire idle sessions server-side; don't rely on the cookie lifetime</li><li class="note-item">Store sessions in Redis or the DB so any server can read them</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Set-Cookie</code> / <code>Cookie</code> — server sets, browser returns</li><li class="note-item"><code>HttpOnly</code> · <code>Secure</code> · <code>SameSite</code> — always set all three</li><li class="note-item"><code>session ID</code> — random, server-side data</li><li class="note-item"><code>CSRF token</code> — required with cookie auth</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-12-caching-headers.html">Caching Headers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-14-authentication-basics.html" title="Authentication Basics">Auth Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

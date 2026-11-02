@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Languages (paired with Ruby: on the root index.html the Ruby card shrinks to 2/3 height and the Rails card takes the remaining 1/3 directly under it, so the two read as one stacked unit)
 - **Folder Directory:** `Sheets/Rails-Sheets/rails-##-[slug].html`
+- **PDF Name:** `Rails Reference Sheets.pdf`
 - **Groups:** 14
 - **Sheets:** 78
 - **Drafted Date:** 2026-10-23

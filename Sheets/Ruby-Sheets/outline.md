@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Languages
 - **Folder Directory:** `Sheets/Ruby-Sheets/rb-###-[slug].html`
+- **PDF Name:** `Ruby Reference Guide.pdf`
 - **Groups:** 16
 - **Sheets:** 113
 - **Drafted Date:** 2026-10-10

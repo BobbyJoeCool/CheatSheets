@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Concepts & Tools
 - **Folder Directory:** `Sheets/Bitwise-Sheets/bit-##-[slug].html`
+- **PDF Name:** `Bitwise Reference Guide.pdf`
 - **Groups:** 5
 - **Sheets:** 23
 - **Drafted Date:** 2026-10-10

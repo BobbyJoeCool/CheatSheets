@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 08: 3xx Redirects &amp; Not Modified</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>3xx Redirects &amp; Not Modified</h1>
+			<div class="sheet-desc">301 vs 308 · 302 vs 307 · 303 See Other · Post/Redirect/Get · Location · 304 Not Modified · loops</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Go Somewhere Else, or Use Your Copy</h2><div class="description">A <strong>3xx</strong> response tells the client to look elsewhere, with the new URL in <code>Location</code>. Two questions pick the code: is the move <strong>permanent</strong> (clients and search engines update links), and must the client <strong>keep the method and body</strong>? <code>307</code> and <code>308</code> keep them; <code>301</code> and <code>302</code> let browsers turn POST into GET; <code>303</code> always means "now GET this". <code>304 Not Modified</code> is different: it answers a conditional request and says the cached copy is still good.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Browsers follow redirects automatically; <code>curl</code> only with <code>-L</code></li><li class="note-item">Browsers cache <code>301</code>/<code>308</code> hard, sometimes for months</li><li class="note-item"><code>Location</code> may be relative (<code>/orders/9001</code>)</li><li class="note-item"><code>304</code> has no body; the client reuses what it cached (sheet 12)</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Post/Redirect/Get and a 304</h2><pre><code class="language-http">POST /orders HTTP/1.1
+Content-Type: application/x-www-form-urlencoded
+
+sku=A-100&amp;qty=2
+
+HTTP/1.1 303 See Other
+Location: /orders/9001
+
+GET /orders/9001 HTTP/1.1
+
+GET /api/v1/users HTTP/1.1
+
+HTTP/1.1 308 Permanent Redirect
+Location: /api/v2/users
+
+GET /logo.png HTTP/1.1
+If-None-Match: "a1b2c3"
+
+HTTP/1.1 304 Not Modified
+ETag: "a1b2c3"
+Cache-Control: max-age=3600</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><strong>PRG</strong>: answer a form POST with <code>303</code> so refresh doesn't resubmit</div><div class="explain-item">The browser then GETs the <code>Location</code> URL</div><div class="explain-item"><code>308</code> moves an endpoint for good and keeps the method</div><div class="explain-item"><code>304</code>: the ETag still matches, so no body is re-sent</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — <code>res.redirect(303, '/orders/9001')</code> (default is 302)</li><li class="note-item"><strong>Django</strong> — <code>redirect('order-detail', pk=9001)</code> (302); <code>permanent=True</code> for 301</li><li class="note-item"><strong>Spring</strong> — MVC: <code>return "redirect:/orders/9001"</code>; API: <code>ResponseEntity.status(303).location(uri).build()</code></li><li class="note-item"><strong>Rails</strong> — <code>redirect_to order_path(o), status: :see_other</code> (default 302)</li><li class="note-item"><strong>ASP.NET</strong> — <code>Results.Redirect(url)</code> (302); <code>permanent: true, preserveMethod: true</code> for 308</li><li class="note-item"><strong>Go</strong> — <code>http.Redirect(w, r, "/orders/9001", http.StatusSeeOther)</code></li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item"><code>curl -sIL url</code> lists every hop and its status</li><li class="note-item"><code>ERR_TOO_MANY_REDIRECTS</code> behind a proxy: app thinks it's on http; trust <code>X-Forwarded-Proto</code></li><li class="note-item">A stale 301 sticks in the browser cache: test with DevTools "Disable cache" or a private window</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Redirects Table | Api Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-redirects"><h2 class="section-title">Redirect Codes</h2><table><thead><tr><th>Code</th><th>Permanent</th><th>Keeps method</th><th>Use</th></tr></thead><tbody><tr><td>301</td><td class="center">✔</td><td class="desc">✖ (POST→GET)</td><td class="desc">Old page URLs, SEO moves</td></tr><tr><td>308</td><td class="center">✔</td><td class="center">✔</td><td class="desc">Moved API endpoints</td></tr><tr><td>302</td><td class="center">✖</td><td class="desc">✖ (POST→GET)</td><td class="desc">Legacy temporary redirect</td></tr><tr><td>307</td><td class="center">✖</td><td class="center">✔</td><td class="desc">Temporary, keep method + body</td></tr><tr><td>303</td><td class="center">✖</td><td class="desc">→ GET</td><td class="desc">After POST (PRG), job results</td></tr><tr><td>304</td><td class="center">—</td><td class="center">—</td><td class="desc">Conditional GET: use your cache</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-api"><h2 class="section-title">Redirects in APIs</h2><table><thead><tr><th>Situation</th><th>Do</th></tr></thead><tbody><tr><td>Endpoint renamed</td><td class="desc"><code>308</code> for a while, then remove</td></tr><tr><td>Trailing slash mismatch</td><td class="desc">Pick one; <code>308</code> the other</td></tr><tr><td>http → https for APIs</td><td class="desc">Reject instead (token already leaked)</td></tr><tr><td>Login required (browser)</td><td class="desc"><code>302</code>/<code>303</code> to login page</td></tr><tr><td>Login required (API)</td><td class="desc"><code>401</code>, never a redirect</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using <code>301</code>/<code>302</code> to move a POST endpoint: browsers switch it to GET and the body is lost</li><li class="note-item">Redirecting API clients to an HTML login page instead of returning <code>401</code></li><li class="note-item">Shipping a <code>301</code> by mistake: users' browsers keep obeying it after you fix the server</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with <code>307</code> while testing a move; switch to <code>308</code> once you're sure</li><li class="note-item">Always use PRG (<code>303</code>) after HTML form posts</li><li class="note-item">Keep redirect chains to one hop; each hop is a full round trip</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>301</code> / <code>308</code> — permanent (308 keeps method)</li><li class="note-item"><code>302</code> / <code>307</code> — temporary (307 keeps method)</li><li class="note-item"><code>303</code> — "now GET this" after POST</li><li class="note-item"><code>304</code> — not modified; use the cache</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-07-status-1xx-2xx.html" title="1xx Informational &amp; 2xx Success">1xx &amp; 2xx</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-09-status-4xx.html">4xx Client Errors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

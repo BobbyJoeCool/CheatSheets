@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 10: 5xx Server Errors &amp; Error Bodies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s10">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>5xx Server Errors &amp; Error Bodies</h1>
+			<div class="sheet-desc">500 · 502 vs 504 · 503 + Retry-After · application/problem+json · type · title · status · detail</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Our Fault, Said Clearly</h2><div class="description">A <strong>5xx</strong> code means the server failed at a request that may well have been fine. <code>500</code> is the catch-all for bugs; <code>502</code> and <code>504</code> come from a <strong>proxy or gateway</strong> that couldn't get a good answer from the app behind it; <code>503</code> means "down on purpose or overloaded, try later". Whatever the code, give errors one consistent body shape. <strong>Problem Details</strong> (RFC 9457, <code>application/problem+json</code>) is the standard one.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>type</code> is a URI naming the error kind; <code>about:blank</code> means "just the status"</li><li class="note-item">Add your own fields (<code>errors</code>, <code>traceId</code>) next to the standard ones</li><li class="note-item"><code>503</code> + <code>Retry-After</code> is the right answer during maintenance</li><li class="note-item">Same shape for 4xx and 5xx, so clients parse errors one way</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Never return stack traces, SQL or file paths: turn debug mode off in production</li><li class="note-item">Log details server-side with a request ID and return only the ID</li><li class="note-item">Don't echo raw user input in <code>detail</code>; it can carry script or log-injection text</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Problem Details Bodies</h2><pre><code class="language-http">HTTP/1.1 422 Unprocessable Content
+Content-Type: application/problem+json
+
+{
+  "type": "https://api.example.com/problems/validation",
+  "title": "Your request has invalid fields",
+  "status": 422,
+  "detail": "2 fields failed validation",
+  "instance": "/orders",
+  "errors": [
+    {"pointer": "/email", "detail": "must be a valid email"},
+    {"pointer": "/quantity", "detail": "must be at least 1"}
+  ]
+}
+
+HTTP/1.1 500 Internal Server Error
+Content-Type: application/problem+json
+
+{"type":"about:blank","title":"Internal Server Error",
+ "status":500,"traceId":"7f3a9c21e4b0"}
+
+HTTP/1.1 503 Service Unavailable
+Retry-After: 120</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>title</code> is short and stable; <code>detail</code> is specific to this request</div><div class="explain-item"><code>errors</code> is an extension: one entry per bad field, as JSON Pointers</div><div class="explain-item">The 500 body gives a <code>traceId</code> to quote to support, nothing else</div><div class="explain-item"><code>Retry-After: 120</code> = try again in two minutes</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — No built-in; a last error middleware <code>(err, req, res, next)</code> that writes the problem body</li><li class="note-item"><strong>Django</strong> — DRF <code>EXCEPTION_HANDLER</code> setting reshapes errors; <code>DEBUG = False</code> in production</li><li class="note-item"><strong>Spring</strong> — <code>ProblemDetail</code> + <code>spring.mvc.problemdetails.enabled=true</code>; <code>@ControllerAdvice</code> for custom types</li><li class="note-item"><strong>Rails</strong> — <code>rescue_from</code> in <code>ApplicationController</code>; <code>consider_all_requests_local = false</code> in production</li><li class="note-item"><strong>ASP.NET</strong> — <code>builder.Services.AddProblemDetails()</code> + <code>app.UseExceptionHandler()</code></li><li class="note-item"><strong>Go</strong> — Recovery middleware + <code>w.Header().Set("Content-Type", "application/problem+json")</code></li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item"><code>502</code>: the proxy reached nothing useful; the app crashed, isn't listening, or closed the connection</li><li class="note-item"><code>504</code>: the app is up but slower than the proxy's timeout; find the slow query</li><li class="note-item">Match the <code>traceId</code> / <code>X-Request-Id</code> in proxy and app logs to follow one request</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Codes Table | Fields Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-codes"><h2 class="section-title">5xx Codes</h2><table><thead><tr><th>Code</th><th>Name</th><th>Means</th></tr></thead><tbody><tr><td>500</td><td class="desc">Internal Server Error</td><td class="desc">Unhandled bug</td></tr><tr><td>501</td><td class="desc">Not Implemented</td><td class="desc">Method not supported at all</td></tr><tr><td>502</td><td class="desc">Bad Gateway</td><td class="desc">Proxy got a bad / no response</td></tr><tr><td>503</td><td class="desc">Service Unavailable</td><td class="desc">Overloaded or maintenance; <code>Retry-After</code></td></tr><tr><td>504</td><td class="desc">Gateway Timeout</td><td class="desc">Proxy gave up waiting</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-fields"><h2 class="section-title">Problem Details Fields</h2><table><thead><tr><th>Field</th><th>Holds</th></tr></thead><tbody><tr><td>type</td><td class="desc">URI for the error kind (docs page)</td></tr><tr><td>title</td><td class="desc">Short summary, same for every instance</td></tr><tr><td>status</td><td class="desc">The HTTP status, repeated</td></tr><tr><td>detail</td><td class="desc">What went wrong this time</td></tr><tr><td>instance</td><td class="desc">URI for this occurrence</td></tr><tr><td>(extensions)</td><td class="desc"><code>errors</code>, <code>traceId</code>, <code>balance</code>…</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Returning HTML error pages from a JSON API: clients choke on <code>&lt;!DOCTYPE</code></li><li class="note-item">Using <code>500</code> for validation failures; clients and alerts can't tell bugs from bad input</li><li class="note-item">A different error shape per endpoint, so clients need custom parsing for each</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Point <code>type</code> at a docs page that explains how to fix the problem</li><li class="note-item">Return a request ID header on every response, not just errors</li><li class="note-item">Alert on <code>5xx</code> rate; don't alert on <code>4xx</code> spikes alone</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>500</code> — our bug · <code>503</code> — try later</li><li class="note-item"><code>502</code> / <code>504</code> — proxy got bad / no answer</li><li class="note-item"><code>application/problem+json</code> — standard error body</li><li class="note-item"><code>traceId</code> — link the client's error to your logs</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-09-status-4xx.html">4xx Client Errors</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-11-core-headers-content-negotiation.html" title="Core Headers &amp; Content Negotiation">Core Headers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

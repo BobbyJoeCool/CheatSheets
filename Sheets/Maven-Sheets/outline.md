@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Java
 - **Folder Directory:** `Sheets/Maven-Sheets/mvn-##-[slug].html`
+- **PDF Name:** `Maven Reference Guide.pdf`
 - **Groups:** 8
 - **Sheets:** 24
 - **Drafted Date:** 2026-10-25
