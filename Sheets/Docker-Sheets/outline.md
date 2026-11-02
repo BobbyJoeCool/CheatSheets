@@ -37,7 +37,7 @@ The set was capped at about 23 topic sheets plus 2 quick-reference pages, then e
 
 ### Security Check box (15 selected sheets)
 
-- `<section class="section-notes section-security" id="security">`, title **Security Check**, last.
+- `<section class="section-notes section-security" id="security">`, title **Security Check**, in its own third column at the end of row 1 (`col-1-3`, after Notes).
 - 1–2 lines: the risk and the fix (Docker socket, secrets in layers, `-p` bypassing the firewall). Not on sheet 29, which is the security sheet.
 - On: 02–03, 07, 10–13, 15, 17, 19–20, 22–23, 25, 27.
 

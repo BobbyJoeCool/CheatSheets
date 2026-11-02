@@ -36,7 +36,7 @@ The set was capped at about 20–25 sheets plus a 1–2 page quick reference, so
 
 ### Security Check box (11 selected sheets)
 
-- `<section class="section-notes section-security" id="security">`, title **Security Check**, last.
+- `<section class="section-notes section-security" id="security">`, title **Security Check**, in its own third column at the end of row 1 (`col-1-3`, after Notes).
 - 1–2 lines: the risk and the fix. Not on the security sheets (14, 20, 21).
 - On: 02–03, 05, 07, 09, 12–13, 15–16, 22–23.
 
