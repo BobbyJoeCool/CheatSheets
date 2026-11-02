@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Web Design
 - **Folder Directory:** `Sheets/CSS-Sheets/css-##-[slug].html`
+- **PDF Name:** `CSS Reference Guide.pdf`
 - **Groups:** 15
 - **Sheets:** 77
 - **Drafted Date:** 2026-10-08 (re-drafted after the sheets were live; date the outline was committed)

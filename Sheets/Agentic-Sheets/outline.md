@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Concepts & Tools
 - **Folder Directory:** `Sheets/Agentic-Sheets/ai-##-[slug].html`
+- **PDF Name:** `Agentic Coding Reference Guide.pdf`
 - **Groups:** 16
 - **Sheets:** 73
 - **Drafted Date:** 2026-10-03

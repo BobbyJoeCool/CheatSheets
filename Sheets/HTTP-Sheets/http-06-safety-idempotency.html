@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 06: Safe, Idempotent &amp; Cacheable Methods</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s06">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 06</div>
+			<h1>Safe, Idempotent &amp; Cacheable Methods</h1>
+			<div class="sheet-desc">safe · idempotent · cacheable · retries · Idempotency-Key · POST vs PUT for create · double-submit</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Which Requests Are Safe to Repeat</h2><div class="description">A <strong>safe</strong> method doesn't change state (GET, HEAD, OPTIONS). An <strong>idempotent</strong> method has the same effect whether it runs once or ten times (all safe methods plus PUT and DELETE). This matters because networks fail: a client that times out can't know if the server acted, and only idempotent requests are safe to <strong>retry blindly</strong>. For POST, an <code>Idempotency-Key</code> header lets the server spot a retry and replay the first result.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Idempotent is about server <strong>state</strong>, not the response: a second DELETE may return <code>404</code></li><li class="note-item"><code>Idempotency-Key</code> is an IETF draft, used by Stripe, Adyen and others</li><li class="note-item">Cacheable by default: GET and HEAD; POST only with explicit freshness headers</li><li class="note-item">Browsers and proxies may retry idempotent requests on their own</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Retrying a Payment Safely</h2><pre><code class="language-bash">KEY=$(uuidgen)                     # one key per logical operation
+
+curl --json '{"amount":2500,"currency":"usd"}' \
+     -H "Idempotency-Key: $KEY" https://api.example.com/payments
+# 201 Created ... but the client timed out and never saw it
+
+curl --json '{"amount":2500,"currency":"usd"}' \
+     -H "Idempotency-Key: $KEY" https://api.example.com/payments
+# 201 Created, same body: server replayed the stored result
+
+curl --json '{"amount":9999,"currency":"usd"}' \
+     -H "Idempotency-Key: $KEY" https://api.example.com/payments
+# 422: same key, different payload is rejected
+
+# PUT is idempotent by design: two calls, one final state
+curl -X PUT --json '{"name":"Ada"}' https://api.example.com/users/42
+curl -X PUT --json '{"name":"Ada"}' https://api.example.com/users/42</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The client makes the key once and reuses it for every retry</div><div class="explain-item">Server stores key → (payload hash, response) for a day or so</div><div class="explain-item">Same key + same payload = replay; different payload = error</div><div class="explain-item">PUT needs no key: replaying it can't create a duplicate</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — No built-in; middleware that stores key → response in Redis</li><li class="note-item"><strong>Django</strong> — No built-in; unique <code>idempotency_key</code> column + <code>transaction.atomic()</code></li><li class="note-item"><strong>Spring</strong> — No built-in; a <code>HandlerInterceptor</code> or filter + unique DB constraint</li><li class="note-item"><strong>Rails</strong> — No built-in; <code>create_or_find_by!(key:)</code> on a unique index</li><li class="note-item"><strong>ASP.NET</strong> — No built-in; endpoint filter + <code>IDistributedCache</code></li><li class="note-item"><strong>Go</strong> — Middleware wrapping the handler; key table with a <code>UNIQUE</code> index</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Props Table | Retry Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-props"><h2 class="section-title">Method Properties</h2><table><thead><tr><th>Method</th><th>Safe</th><th>Idempotent</th><th>Cacheable</th></tr></thead><tbody><tr><td>GET</td><td class="center">✔</td><td class="center">✔</td><td class="center">✔</td></tr><tr><td>HEAD</td><td class="center">✔</td><td class="center">✔</td><td class="center">✔</td></tr><tr><td>OPTIONS</td><td class="center">✔</td><td class="center">✔</td><td class="center">✖</td></tr><tr><td>PUT</td><td class="center">✖</td><td class="center">✔</td><td class="center">✖</td></tr><tr><td>DELETE</td><td class="center">✖</td><td class="center">✔</td><td class="center">✖</td></tr><tr><td>POST</td><td class="center">✖</td><td class="center">✖</td><td class="desc">rarely</td></tr><tr><td>PATCH</td><td class="center">✖</td><td class="center">✖</td><td class="center">✖</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-retry"><h2 class="section-title">When to Retry</h2><table><thead><tr><th>Situation</th><th>Retry?</th></tr></thead><tbody><tr><td>Network error on GET / PUT / DELETE</td><td class="desc">Yes, with backoff</td></tr><tr><td>Network error on POST</td><td class="desc">Only with an <code>Idempotency-Key</code></td></tr><tr><td><code>429</code> · <code>503</code></td><td class="desc">Yes, after <code>Retry-After</code></td></tr><tr><td><code>408</code> · <code>502</code> · <code>504</code></td><td class="desc">Yes, with backoff</td></tr><tr><td>Other <code>4xx</code></td><td class="desc">No: fix the request</td></tr><tr><td><code>500</code></td><td class="desc">Maybe once; it may repeat</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Retrying POST automatically (client libraries, queues): duplicate orders and double charges</li><li class="note-item">Making a GET increment a counter or send an email: prefetchers and retries will repeat it</li><li class="note-item">Generating a new idempotency key on each retry, which defeats the point</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Disable a submit button after click and send an idempotency key; do both</li><li class="note-item">Use PUT with a client-chosen ID (<code>PUT /orders/{uuid}</code>) to make creates naturally idempotent</li><li class="note-item">Expire stored keys after 24 hours or so; long enough for any retry window</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>safe</code> — read-only (GET, HEAD, OPTIONS)</li><li class="note-item"><code>idempotent</code> — same effect on repeat (+ PUT, DELETE)</li><li class="note-item"><code>Idempotency-Key</code> — makes POST retry-safe</li><li class="note-item">Retry <code>429</code>/<code>503</code> after <code>Retry-After</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-05-post-put-patch-delete.html" title="Writing: POST, PUT, PATCH &amp; DELETE">Writing Methods</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-07-status-1xx-2xx.html" title="1xx Informational &amp; 2xx Success">1xx &amp; 2xx</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

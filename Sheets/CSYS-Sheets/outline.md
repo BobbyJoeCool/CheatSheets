@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Web Design
 - **Folder Directory:** `Sheets/CSYS-Sheets/csys-##-[slug].html`
+- **PDF Name:** `CSS Systems Reference Guide.pdf`
 - **Groups:** 6
 - **Sheets:** 46
 - **Drafted Date:** 2026-10-02 (re-drafted after the sheets were live)

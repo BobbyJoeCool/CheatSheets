@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Python
 - **Folder Directory:** `Sheets/Tkinter-Sheets/tk-##-[slug].html`
+- **PDF Name:** `Tkinter Reference Guide.pdf`
 - **Groups:** 12
 - **Sheets:** 62
 - **Drafted Date:** 2026-10-08

@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** DevOps & Cloud (new index section; add it to the root index.html when this set is built)
 - **Folder Directory:** `Sheets/Kubernetes-Sheets/k8s-##-[slug].html`
+- **PDF Name:** `Kubernetes Reference Guide.pdf`
 - **Groups:** 9
 - **Sheets:** 25
 - **Drafted Date:** 2026-10-16

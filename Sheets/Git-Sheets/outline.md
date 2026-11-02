@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Command Line Interface
 - **Folder Directory:** `Sheets/Git-Sheets/git-##-[slug].html`
+- **PDF Name:** `Git CLI Reference Guide.pdf`
 - **Groups:** 10
 - **Sheets:** 36
 - **Drafted Date:** 2026-10-06

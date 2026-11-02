@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 14: Authentication Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>Authentication Basics</h1>
+			<div class="sheet-desc">authentication vs authorization · Authorization header · Basic · Bearer · API keys · WWW-Authenticate</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Who Are You, and What May You Do?</h2><div class="description"><strong>Authentication</strong> proves who is calling; <strong>authorization</strong> decides what they may do. HTTP carries credentials in the <code>Authorization</code> header as <code>&lt;scheme&gt; &lt;credentials&gt;</code>, and a server that wants them answers <code>401</code> with <code>WWW-Authenticate</code> naming the scheme. <strong>Basic</strong> sends a Base64 username:password; <strong>Bearer</strong> sends a token (opaque or a JWT, sheet 15); <strong>API keys</strong> identify an application rather than a person; <strong>sessions</strong> use cookies (sheet 13).</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Base64 is encoding, not encryption: Basic is only safe over HTTPS</li><li class="note-item">Bearer means "whoever holds this token is the user"; protect it like a password</li><li class="note-item">API keys often travel in a custom header such as <code>X-API-Key</code></li><li class="note-item">Check authorization on every request, at the resource, not just at login</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Store API keys hashed; show the full key once; give it a prefix (<code>sk_live_</code>) so leaks are searchable</li><li class="note-item">Compare secrets in constant time; never log <code>Authorization</code> headers</li><li class="note-item">Scope keys and tokens to the least access needed, and support rotation</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Challenge and Credentials</h2><pre><code class="language-http">GET /reports HTTP/1.1
+
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer realm="api"
+
+GET /reports HTTP/1.1
+Authorization: Basic YWRhOnMzY3JldA==
+
+GET /reports HTTP/1.1
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+
+GET /reports HTTP/1.1
+X-API-Key: sk_live_51Hx...
+
+HTTP/1.1 200 OK</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">No credentials → <code>401</code> + which scheme to use</div><div class="explain-item"><code>YWRhOnMzY3JldA==</code> is just <code>ada:s3cret</code> in Base64</div><div class="explain-item">Bearer token: from a login or OAuth flow (sheets 16–17)</div><div class="explain-item">API key identifies the calling app; pair it with per-key limits</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — <code>passport</code> strategies, or middleware reading <code>req.get('Authorization')</code></li><li class="note-item"><strong>Django</strong> — <code>django.contrib.auth</code>; DRF <code>DEFAULT_AUTHENTICATION_CLASSES</code> + <code>permission_classes</code></li><li class="note-item"><strong>Spring</strong> — Spring Security <code>SecurityFilterChain</code>; <code>.httpBasic()</code> · <code>.oauth2ResourceServer(o -&gt; o.jwt())</code></li><li class="note-item"><strong>Rails</strong> — <code>has_secure_password</code> · <code>authenticate_or_request_with_http_token</code>; Rails 8 auth generator</li><li class="note-item"><strong>ASP.NET</strong> — <code>AddAuthentication().AddJwtBearer()</code>; <code>[Authorize]</code> / <code>.RequireAuthorization("policy")</code></li><li class="note-item"><strong>Go</strong> — Middleware: <code>r.BasicAuth()</code> or parse <code>Authorization</code>; put the user in <code>r.Context()</code></li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item"><code>curl -v</code>: is the <code>&gt; Authorization:</code> line actually there?</li><li class="note-item">Clients drop <code>Authorization</code> when a redirect goes to another host; call the final URL</li><li class="note-item">Works locally, <code>401</code> behind a proxy: the proxy may strip or rename the header</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Schemes Table | Authz Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-schemes"><h2 class="section-title">Ways to Authenticate</h2><table><thead><tr><th>Method</th><th>Carried in</th><th>Good for</th><th>Watch out</th></tr></thead><tbody><tr><td>Session cookie</td><td class="desc"><code>Cookie</code></td><td class="desc">Browser apps</td><td class="desc">CSRF</td></tr><tr><td>Basic</td><td class="desc"><code>Authorization: Basic</code></td><td class="desc">Internal tools, scripts</td><td class="desc">Password on every call</td></tr><tr><td>API key</td><td class="desc"><code>X-API-Key</code> / Bearer</td><td class="desc">Server-to-server, partners</td><td class="desc">Long-lived; rotate</td></tr><tr><td>Opaque token</td><td class="desc"><code>Authorization: Bearer</code></td><td class="desc">Revocable access</td><td class="desc">Lookup per request</td></tr><tr><td>JWT</td><td class="desc"><code>Authorization: Bearer</code></td><td class="desc">Stateless APIs</td><td class="desc">Hard to revoke</td></tr><tr><td>mTLS</td><td class="desc">TLS client certificate</td><td class="desc">Service mesh, banks</td><td class="desc">Cert management</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-authz"><h2 class="section-title">Authorization Models</h2><table><thead><tr><th>Model</th><th>Rule</th></tr></thead><tbody><tr><td>RBAC</td><td class="desc">Role → permissions</td></tr><tr><td>Scopes</td><td class="desc">Token lists what it may do</td></tr><tr><td>Ownership</td><td class="desc"><code>resource.owner_id == user.id</code></td></tr><tr><td>ABAC</td><td class="desc">Rules on user + resource attributes</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Checking "is logged in" but not "owns this record" (BOLA, the #1 API flaw)</li><li class="note-item">Putting API keys in URLs (<code>?api_key=</code>): they land in logs and browser history</li><li class="note-item">Shipping a secret API key inside a mobile app or SPA bundle</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Centralize authentication in middleware; do authorization near the data</li><li class="note-item">Return <code>401</code> with <code>WWW-Authenticate</code>, <code>403</code> when the identity is known</li><li class="note-item">Use an identity provider instead of storing passwords if you can</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>authn</code> — who · <code>authz</code> — what they may do</li><li class="note-item"><code>Authorization: &lt;scheme&gt; &lt;credentials&gt;</code></li><li class="note-item"><code>Basic</code> · <code>Bearer</code> · API key · cookie</li><li class="note-item"><code>401</code> + <code>WWW-Authenticate</code> — please authenticate</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-13-cookies-sessions.html">Cookies &amp; Sessions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-15-jwt.html" title="JSON Web Tokens (JWT)">JWT</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

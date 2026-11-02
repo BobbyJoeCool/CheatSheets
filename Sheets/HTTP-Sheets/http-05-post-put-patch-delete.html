@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 05: Writing: POST, PUT, PATCH &amp; DELETE</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s05">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 05</div>
+			<h1>Writing: POST, PUT, PATCH &amp; DELETE</h1>
+			<div class="sheet-desc">POST create · PUT replace · PATCH partial · JSON Merge Patch · JSON Patch · DELETE · 201 + Location</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Methods That Change Things</h2><div class="description"><strong>POST</strong> asks the server to process the body, most often to <strong>create</strong> a resource whose URL the server picks. <strong>PUT</strong> <strong>replaces</strong> the resource at a URL the client knows with the full body. <strong>PATCH</strong> applies a <strong>partial</strong> change, described by a patch format: <strong>JSON Merge Patch</strong> (send the fields that change, <code>null</code> removes) or <strong>JSON Patch</strong> (a list of operations). <strong>DELETE</strong> removes the resource.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">PUT with missing fields means "clear them"; that's why PATCH exists</li><li class="note-item">PUT can also create when the client chooses the ID: <code>PUT /users/ada</code></li><li class="note-item">Merge Patch can't set a value to <code>null</code> or edit arrays item by item; JSON Patch can</li><li class="note-item">DELETE usually returns <code>204</code>, or <code>200</code> with the deleted item</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item"><strong>Mass assignment</strong>: never bind the whole body to the model; allow-list fields so clients can't set <code>role</code> or <code>is_admin</code></li><li class="note-item">Check ownership on every write: <code>PATCH /orders/9001</code> must belong to the caller (BOLA, OWASP API #1)</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Create, Replace, Patch, Delete</h2><pre><code class="language-http">POST /users HTTP/1.1
+Content-Type: application/json
+
+{"name":"Ada","email":"ada@example.com"}
+
+HTTP/1.1 201 Created
+Location: /users/42
+
+PUT /users/42 HTTP/1.1
+Content-Type: application/json
+
+{"name":"Ada L.","email":"ada@example.com","role":"editor"}
+
+PATCH /users/42 HTTP/1.1
+Content-Type: application/merge-patch+json
+
+{"name":"Ada Lovelace","role":null}
+
+PATCH /users/42 HTTP/1.1
+Content-Type: application/json-patch+json
+
+[{"op":"replace","path":"/name","value":"Ada"},
+ {"op":"remove","path":"/role"}]
+
+DELETE /users/42 HTTP/1.1
+
+HTTP/1.1 204 No Content</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">POST: server picks ID 42 and returns it in <code>Location</code></div><div class="explain-item">PUT: the whole user, every field, at a known URL</div><div class="explain-item">Merge Patch (RFC 7396): changed fields only; <code>null</code> deletes <code>role</code></div><div class="explain-item">JSON Patch (RFC 6902): ordered ops, applied all-or-nothing</div><div class="explain-item"><code>Host</code> lines left out to save space</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — <code>app.post/put/patch/delete()</code>; <code>res.status(201).location(url).json(user)</code></li><li class="note-item"><strong>Django</strong> — DRF <code>ModelViewSet</code> → <code>create</code> · <code>update</code> · <code>partial_update</code> · <code>destroy</code></li><li class="note-item"><strong>Spring</strong> — <code>@PostMapping</code> · <code>@PutMapping</code> · <code>@PatchMapping</code> · <code>@DeleteMapping</code>; <code>ResponseEntity.created(uri)</code></li><li class="note-item"><strong>Rails</strong> — <code>resources :users</code> → <code>create</code> · <code>update</code> (PUT and PATCH) · <code>destroy</code>; <code>params.require(:user).permit(:name)</code></li><li class="note-item"><strong>ASP.NET</strong> — <code>MapPost</code> · <code>MapPut</code> · <code>MapPatch</code> · <code>MapDelete</code>; <code>Results.Created($"/users/{id}", user)</code></li><li class="note-item"><strong>Go</strong> — <code>"POST /users"</code>, <code>"PATCH /users/{id}"</code> patterns; <code>w.WriteHeader(http.StatusCreated)</code></li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item"><code>415 Unsupported Media Type</code>: the <code>Content-Type</code> doesn't match what the endpoint parses</li><li class="note-item">Handler sees an empty body: no JSON body parser registered (<code>express.json()</code>) or wrong <code>Content-Type</code></li><li class="note-item"><code>405 Method Not Allowed</code> + <code>Allow</code> header: the route exists, just not for this method</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Writes Table | Jsonpatch Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-writes"><h2 class="section-title">Write Methods Compared</h2><table><thead><tr><th>Method</th><th>Body</th><th>Success</th><th>Idempotent</th></tr></thead><tbody><tr><td>POST</td><td class="desc">New item / command</td><td class="desc"><code>201</code> + Location · <code>200</code> · <code>202</code></td><td class="center">✖</td></tr><tr><td>PUT</td><td class="desc">Full representation</td><td class="desc"><code>200</code> · <code>204</code> · <code>201</code></td><td class="center">✔</td></tr><tr><td>PATCH</td><td class="desc">Patch document</td><td class="desc"><code>200</code> · <code>204</code></td><td class="desc">✖ (can be)</td></tr><tr><td>DELETE</td><td class="desc">None</td><td class="desc"><code>204</code> · <code>200</code> · <code>202</code></td><td class="center">✔</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-jsonpatch"><h2 class="section-title">JSON Patch Operations</h2><table><thead><tr><th>op</th><th>Example</th></tr></thead><tbody><tr><td>add</td><td class="desc"><code>{"op":"add","path":"/tags/-","value":"vip"}</code></td></tr><tr><td>remove</td><td class="desc"><code>{"op":"remove","path":"/role"}</code></td></tr><tr><td>replace</td><td class="desc"><code>{"op":"replace","path":"/name","value":"Ada"}</code></td></tr><tr><td>move / copy</td><td class="desc"><code>{"op":"move","from":"/a","path":"/b"}</code></td></tr><tr><td>test</td><td class="desc">Fail the whole patch unless a value matches</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using PUT for partial updates: fields the client left out get wiped</li><li class="note-item">Returning <code>200</code> with an empty body after create instead of <code>201</code> + <code>Location</code></li><li class="note-item">Treating DELETE of an already-deleted item as a <code>500</code>; return <code>404</code> or <code>204</code></li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Accept <code>application/merge-patch+json</code> for PATCH; it's the simplest format for clients</li><li class="note-item">Return the updated resource from PUT/PATCH so clients don't need a follow-up GET</li><li class="note-item">Soft-delete (<code>deleted_at</code>) when you need undo or audit history</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>POST</code> — create / process; <code>201</code> + <code>Location</code></li><li class="note-item"><code>PUT</code> — replace whole resource</li><li class="note-item"><code>PATCH</code> — partial update via a patch format</li><li class="note-item"><code>DELETE</code> — remove; <code>204</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-04-get-head-options.html" title="Reading: GET, HEAD &amp; OPTIONS">GET, HEAD &amp; OPTIONS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-06-safety-idempotency.html" title="Safe, Idempotent &amp; Cacheable Methods">Safe &amp; Idempotent</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

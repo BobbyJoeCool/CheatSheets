@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Languages
 - **Folder Directory:** `Sheets/Swift-Sheets/swift-###-[slug].html`
+- **PDF Name:** `Swift Reference Guide.pdf`
 - **Groups:** 17
 - **Sheets:** 108
 - **Drafted Date:** 2026-10-26

@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** JavaScript / TypeScript
 - **Folder Directory:** `Sheets/Vite-Sheets/vite-##-[slug].html`
+- **PDF Name:** `Vite Reference Guide.pdf`
 - **Groups:** 10
 - **Sheets:** 39
 - **Drafted Date:** 2026-10-16

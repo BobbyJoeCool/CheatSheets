@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** JavaScript / TypeScript
 - **Folder Directory:** `Sheets/React-Sheets/react-##-[slug].html`
+- **PDF Name:** `React Reference Guide.pdf`
 - **Groups:** 21
 - **Sheets:** 98
 - **Drafted Date:** 2026-10-10 (re-drafted after the sheets were live)

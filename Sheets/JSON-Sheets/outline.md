@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Markup & Notation
 - **Folder Directory:** `Sheets/JSON-Sheets/json-##-[slug].html`
+- **PDF Name:** `JSON Reference Guide.pdf`
 - **Groups:** 1
 - **Sheets:** 15
 - **Drafted Date:** 2026-09-27 (re-drafted after the sheets were live)

@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Languages
 - **Folder Directory:** `Sheets/Go-Sheets/go-###-[slug].html`
+- **PDF Name:** `Go Reference Guide.pdf`
 - **Groups:** 18
 - **Sheets:** 112
 - **Drafted Date:** 2026-10-10

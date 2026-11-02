@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Full Stack
 - **Folder Directory:** `Sheets/Gradle-Sheets/gradle-##-[slug].html`
+- **PDF Name:** `Gradle Reference Guide.pdf`
 - **Groups:** 8
 - **Sheets:** 27
 - **Drafted Date:** 2026-10-16

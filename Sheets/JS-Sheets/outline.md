@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** JavaScript / TypeScript
 - **Folder Directory:** `Sheets/JS-Sheets/js-###-[slug].html`
+- **PDF Name:** `JavaScript & TypeScript Reference Guide.pdf`
 - **Groups:** 20
 - **Sheets:** 131
 - **Drafted Date:** 2026-10-03 (re-drafted after the sheets were live)

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 22: Versioning &amp; Evolving APIs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Versioning &amp; Evolving APIs</h1>
+			<div class="sheet-desc">/v1 path · version header · media type · breaking vs non-breaking · additive fields · Deprecation · Sunset</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Change the API Without Breaking Clients</h2><div class="description">Most changes don't need a new version: adding endpoints, optional parameters or response fields is <strong>non-breaking</strong> as long as clients ignore fields they don't know. A <strong>breaking</strong> change (removing or renaming a field, changing a type, tightening validation) needs a new version that runs <strong>alongside</strong> the old one for a while. Choose one versioning scheme and announce retirement with the <code>Deprecation</code> and <code>Sunset</code> headers.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><strong>Tolerant reader</strong>: clients ignore unknown fields and enum values</li><li class="note-item">Path versions (<code>/v1</code>) are the most visible and easiest to route</li><li class="note-item">Date-based versions (<code>2026-11-01</code>, Stripe style) pin each client</li><li class="note-item">Version the whole API, not each endpoint separately</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Three Ways to Ask for a Version</h2><pre><code class="language-http">GET /v1/orders/9001 HTTP/1.1
+
+GET /orders/9001 HTTP/1.1
+API-Version: 2026-11-01
+
+GET /orders/9001 HTTP/1.1
+Accept: application/vnd.example.v2+json
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Deprecation: @1798675200
+Sunset: Wed, 30 Jun 2027 23:59:59 GMT
+Link: &lt;https://api.example.com/docs/migrate-to-v2&gt;; rel="deprecation"</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Path, custom header, or vendor media type; pick one</div><div class="explain-item"><code>Deprecation</code> (RFC 9745): deprecated since 31 Dec 2026, as a Unix time</div><div class="explain-item"><code>Sunset</code> (RFC 8594): the date it stops working</div><div class="explain-item"><code>Link rel="deprecation"</code> points to migration docs</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — Mount routers: <code>app.use('/v1', v1)</code> · <code>app.use('/v2', v2)</code></li><li class="note-item"><strong>Django</strong> — DRF <code>URLPathVersioning</code> or <code>AcceptHeaderVersioning</code>; read <code>request.version</code></li><li class="note-item"><strong>Spring</strong> — <code>@RequestMapping("/v1/orders")</code>; Spring Framework 7 adds <code>@GetMapping(version = "2")</code></li><li class="note-item"><strong>Rails</strong> — <code>namespace :v1 do resources :orders end</code> → <code>V1::OrdersController</code></li><li class="note-item"><strong>ASP.NET</strong> — <code>Asp.Versioning.Http</code>: <code>app.NewApiVersionSet()</code> + <code>.HasApiVersion(2.0)</code></li><li class="note-item"><strong>Go</strong> — <code>mux.Handle("/v1/", http.StripPrefix("/v1", v1))</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Changes Table | Schemes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-changes"><h2 class="section-title">Breaking or Not?</h2><table><thead><tr><th>Change</th><th>Breaking?</th></tr></thead><tbody><tr><td>Add endpoint / optional param</td><td class="center">✖</td></tr><tr><td>Add response field</td><td class="desc">✖ (tolerant readers)</td></tr><tr><td>Add enum value</td><td class="desc">Usually ✖ (warn clients)</td></tr><tr><td>Remove or rename field</td><td class="center">✔</td></tr><tr><td>Change field type / format</td><td class="center">✔</td></tr><tr><td>Make optional param required</td><td class="center">✔</td></tr><tr><td>Change default sort / page size</td><td class="desc">✔ in practice</td></tr><tr><td>New error code for old case</td><td class="desc">✔ in practice</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-schemes"><h2 class="section-title">Versioning Schemes</h2><table><thead><tr><th>Scheme</th><th>Pros</th><th>Cons</th></tr></thead><tbody><tr><td><code>/v1/</code> path</td><td class="desc">Obvious, cache-friendly</td><td class="desc">URL changes</td></tr><tr><td>Header</td><td class="desc">Clean URLs, fine-grained</td><td class="desc">Easy to forget</td></tr><tr><td>Media type</td><td class="desc">Pure HTTP</td><td class="desc">Awkward for clients</td></tr><tr><td>Query <code>?v=2</code></td><td class="desc">Easy to test</td><td class="desc">Mixes with filters</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Shipping a breaking change in place because "only one client uses that field"</li><li class="note-item">Bumping the major version for additive changes, multiplying versions to maintain</li><li class="note-item">Sunsetting without measuring who still calls the old version</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Log the version and client ID on every request so you know who to contact</li><li class="note-item">Keep a public changelog with dates; link it from the docs</li><li class="note-item">Add <code>Sunset</code> headers months ahead; email owners of active API keys</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Additive = safe; remove / rename = new version</li><li class="note-item">Pick one scheme: path, header or media type</li><li class="note-item"><code>Deprecation</code> + <code>Sunset</code> — announce the end</li><li class="note-item">Tolerant readers ignore what they don't know</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-21-pagination-filtering-sorting.html" title="Pagination, Filtering &amp; Sorting">Paging &amp; Filtering</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-23-rate-limits-async-webhooks.html" title="Rate Limits, Async Jobs &amp; Webhooks">Limits, Jobs &amp; Webhooks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

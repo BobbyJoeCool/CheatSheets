@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 28: GraphQL Resolvers, Errors &amp; Performance</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>GraphQL Resolvers, Errors &amp; Performance</h1>
+			<div class="sheet-desc">resolver (parent · args · context) · N+1 + DataLoader · errors array · connections · depth / cost limits</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Running Queries Safely and Fast</h2><div class="description">Every field has a <strong>resolver</strong>: a function that gets the <strong>parent</strong> object, the field's <strong>arguments</strong> and a per-request <strong>context</strong> (current user, DataLoaders, DB). Resolving a list then a field on each item causes the <strong>N+1 problem</strong>; a <strong>DataLoader</strong> batches those lookups into one query per request. Failures don't change the HTTP status: the field becomes <code>null</code> and an entry is added to the top-level <code>errors</code> array, with a <code>path</code> to the failed field.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Put the authenticated user in <code>context</code>; check access in resolvers</li><li class="note-item">Create DataLoaders per request so caches don't leak between users</li><li class="note-item">Lists use <strong>connections</strong>: <code>edges { cursor node }</code> + <code>pageInfo</code></li><li class="note-item"><code>extensions.code</code> (e.g. <code>FORBIDDEN</code>) lets clients branch on error type</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Limit query depth and cost (fields × list sizes) and set a timeout</li><li class="note-item">Authorize per field/object; one forgotten resolver leaks data</li><li class="note-item">Rate-limit by query cost; aliases can pack 100 login attempts into one request</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">An N+1 Query</h2><pre><code class="language-graphql">query {
+  orders(first: 50) {
+    edges {
+      cursor
+      node { id customer { name } }   # 50 customer lookups
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}</code></pre></section><section class="section-code" id="code-errors"><h2 class="section-title">Partial Success Response</h2><pre><code class="language-json">{
+  "data": { "order": { "id": "9001", "invoice": null } },
+  "errors": [{
+    "message": "Not authorized to view invoice",
+    "path": ["order", "invoice"],
+    "locations": [{ "line": 3, "column": 5 }],
+    "extensions": { "code": "FORBIDDEN" }
+  }]
+}</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Without batching: 1 orders query + 50 customer queries</div><div class="explain-item">DataLoader collects the 50 IDs → <code>WHERE id IN (...)</code>, once</div><div class="explain-item"><code>invoice</code> failed, the rest of <code>order</code> still came back</div><div class="explain-item"><code>path</code> says exactly which field failed</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — <code>dataloader</code>: <code>new DataLoader(ids =&gt; getCustomers(ids))</code> created per request</li><li class="note-item"><strong>Django</strong> — Strawberry <code>DataLoader(load_fn=load_customers)</code> in the context</li><li class="note-item"><strong>Spring</strong> — <code>@BatchMapping</code> on a controller method batches automatically</li><li class="note-item"><strong>Rails</strong> — <code>GraphQL::Dataloader</code>: <code>dataloader.with(Sources::Record, Customer).load(id)</code></li><li class="note-item"><strong>ASP.NET</strong> — <code>BatchDataLoader&lt;int, Customer&gt;</code> or the <code>[DataLoader]</code> source generator</li><li class="note-item"><strong>Go</strong> — <code>vikstrous/dataloadgen</code> or <code>graph-gophers/dataloader</code></li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item"><code>200 OK</code> but the UI shows nothing: read the <code>errors</code> array in the response</li><li class="note-item">Count DB queries per request; 50 identical queries = an N+1</li><li class="note-item">Turn on resolver tracing (Apollo / OpenTelemetry) to find the slow field</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Err Fields Table + Conn Table | Prod Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-err-fields"><h2 class="section-title">Error Entry Fields</h2><table><thead><tr><th>Field</th><th>Holds</th></tr></thead><tbody><tr><td>message</td><td class="desc">Human-readable text</td></tr><tr><td>path</td><td class="desc">Field path that failed</td></tr><tr><td>locations</td><td class="desc">Line / column in the query</td></tr><tr><td>extensions</td><td class="desc"><code>code</code>, retry hints, trace ID</td></tr></tbody></table></section><section id="tbl-conn"><h2 class="section-title">Connection Shape</h2><table><thead><tr><th>Field</th><th>Holds</th></tr></thead><tbody><tr><td>edges { cursor node }</td><td class="desc">Items + their cursors</td></tr><tr><td>pageInfo</td><td class="desc"><code>hasNextPage</code> · <code>endCursor</code></td></tr><tr><td>first / after</td><td class="desc">Page size and position</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-prod"><h2 class="section-title">Production Checklist</h2><table><thead><tr><th>Control</th><th>Why</th></tr></thead><tbody><tr><td>Max depth (~10)</td><td class="desc">Stops <code>a { b { a { b ... } } }</code></td></tr><tr><td>Cost / complexity limit</td><td class="desc">Caps total work per query</td></tr><tr><td>Max <code>first</code> per list</td><td class="desc">No 100k-row pages</td></tr><tr><td>Query timeout</td><td class="desc">Bounds slow resolvers</td></tr><tr><td>Persisted queries</td><td class="desc">Only known operations run</td></tr><tr><td>Introspection off (private)</td><td class="desc">Less schema mapping for attackers</td></tr><tr><td>Mask internal errors</td><td class="desc">No stack traces in <code>message</code></td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">A DataLoader shared across requests, leaking one user's data to another</li><li class="note-item">Throwing raw database errors into <code>errors[].message</code></li><li class="note-item">Checking auth only at the top-level query while nested fields expose more</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Batch every field that loads by ID; make it the default pattern</li><li class="note-item">Return domain errors in payloads, unexpected ones in <code>errors[]</code></li><li class="note-item">Log operation name, cost and duration for every request</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>resolver(parent, args, context)</code> — one per field</li><li class="note-item"><code>DataLoader</code> — batch + cache per request</li><li class="note-item"><code>errors[]</code> + <code>path</code> — partial failures</li><li class="note-item">Limit depth, cost, page size and time</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-27-graphql-operations.html" title="GraphQL Queries, Mutations &amp; Variables">GraphQL Operations</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-29-quick-ref-methods-status.html" title="Quick Reference — Methods &amp; Status Codes">QR: Methods &amp; Status</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-graphql.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

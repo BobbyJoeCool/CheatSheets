@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 23: Rate Limits, Async Jobs &amp; Webhooks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<h1>Rate Limits, Async Jobs &amp; Webhooks</h1>
+			<div class="sheet-desc">429 + Retry-After · RateLimit headers · backoff + jitter · 202 + polling · webhooks · HMAC signatures</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Slow Down, Come Back Later, We'll Call You</h2><div class="description"><strong>Rate limits</strong> protect the API: over the budget, answer <code>429</code> with <code>Retry-After</code>, and tell clients their remaining budget in headers. Work that takes longer than a few seconds should return <code>202 Accepted</code> with a <strong>status URL</strong> the client polls. Better still, push the result with a <strong>webhook</strong>: an HTTP POST from your server to a URL the client registered, signed so the receiver can trust it.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Many APIs use <code>X-RateLimit-Limit / -Remaining / -Reset</code>; <code>RateLimit</code> is the IETF draft</li><li class="note-item">Limit per API key or user, not just per IP</li><li class="note-item">Webhooks are at-least-once: receivers must handle duplicates</li><li class="note-item">Receivers should answer <code>2xx</code> fast and process in the background</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Verify the HMAC over the <strong>raw</strong> body with a constant-time compare</li><li class="note-item">Reject timestamps older than ~5 minutes to stop replays; dedupe by message ID</li><li class="note-item">Senders: block private IPs and internal hosts as webhook targets (SSRF)</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">429, a Job, and a Signed Webhook</h2><pre><code class="language-http">HTTP/1.1 429 Too Many Requests
+Retry-After: 30
+RateLimit-Policy: "default";q=100;w=60
+RateLimit: "default";r=0;t=30
+
+POST /exports HTTP/1.1
+
+HTTP/1.1 202 Accepted
+Location: /exports/jobs/77
+
+GET /exports/jobs/77 HTTP/1.1
+
+HTTP/1.1 200 OK
+Retry-After: 5
+
+{"status":"running","progress":0.4}
+
+POST /hooks/payments HTTP/1.1
+Content-Type: application/json
+Webhook-Id: msg_2b1x
+Webhook-Timestamp: 1793631600
+Webhook-Signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj9o9NDN/H/pI4=
+
+{"type":"payment.succeeded","data":{"id":"pay_77"}}</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">100 requests per 60 s; none left; resets in 30 s</div><div class="explain-item">Poll the job; <code>Retry-After</code> hints how often</div><div class="explain-item">When done the job returns a <code>303</code> to the file, or a <code>result</code> link</div><div class="explain-item">Signature = HMAC-SHA256 of <code>id.timestamp.body</code> (Standard Webhooks)</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — <code>express-rate-limit</code>; keep the raw body for signatures: <code>express.raw({ type: 'application/json' })</code></li><li class="note-item"><strong>Django</strong> — DRF <code>throttle_classes</code> (<code>UserRateThrottle</code>); Celery jobs; verify <code>request.body</code></li><li class="note-item"><strong>Spring</strong> — Bucket4j or a gateway; job queue + status table; read the body as <code>byte[]</code> to verify</li><li class="note-item"><strong>Rails</strong> — <code>rate_limit to: 100, within: 1.minute</code> (7.2+); Active Job; verify <code>request.raw_post</code></li><li class="note-item"><strong>ASP.NET</strong> — <code>AddRateLimiter()</code> + <code>.RequireRateLimiting("fixed")</code>; <code>BackgroundService</code> / Hangfire</li><li class="note-item"><strong>Go</strong> — <code>x/time/rate</code> limiter middleware; <code>io.ReadAll(r.Body)</code>, then <code>hmac.Equal</code></li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item">Watch <code>RateLimit</code> / <code>X-RateLimit-Remaining</code> across calls to see the budget drain</li><li class="note-item">Signature mismatch: you verified re-serialized JSON, not the exact bytes received</li><li class="note-item">Receive webhooks locally with a tunnel (<code>ngrok</code>, <code>stripe listen</code>, <code>cloudflared</code>)</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Backoff Table | Webhooks Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-backoff"><h2 class="section-title">Retry with Exponential Backoff + Jitter</h2><table><thead><tr><th>Attempt</th><th>Wait (base 1 s, cap 60 s)</th></tr></thead><tbody><tr><td>1</td><td class="desc">random(0, 1 s)</td></tr><tr><td>2</td><td class="desc">random(0, 2 s)</td></tr><tr><td>3</td><td class="desc">random(0, 4 s)</td></tr><tr><td>4</td><td class="desc">random(0, 8 s)</td></tr><tr><td>n</td><td class="desc">random(0, min(60, 2ⁿ⁻¹) s)</td></tr><tr><td>any</td><td class="desc"><code>Retry-After</code> wins if present</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-webhooks"><h2 class="section-title">Webhook Checklist</h2><table><thead><tr><th>Side</th><th>Do</th></tr></thead><tbody><tr><td>Sender</td><td class="desc">Sign, include ID + timestamp, retry with backoff for ~3 days</td></tr><tr><td>Sender</td><td class="desc">Event types + a way to replay missed events</td></tr><tr><td>Receiver</td><td class="desc">Verify signature and timestamp first</td></tr><tr><td>Receiver</td><td class="desc">Return <code>2xx</code> in &lt; 5 s; queue the work</td></tr><tr><td>Receiver</td><td class="desc">Dedupe by <code>Webhook-Id</code></td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Retrying in a tight loop on <code>429</code>, which keeps you rate-limited</li><li class="note-item">Doing slow work inside the webhook request, so the sender times out and retries</li><li class="note-item">Trusting webhook payloads without a signature check</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add jitter to every retry so clients don't stampede together</li><li class="note-item">Webhook payloads can be thin (<code>{type, id}</code>); the receiver fetches fresh data</li><li class="note-item">Give each client its own signing secret and support rotating it</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>429</code> + <code>Retry-After</code> — wait, then retry</li><li class="note-item"><code>202</code> + <code>Location</code> — poll the job</li><li class="note-item">Webhook — signed POST to the client</li><li class="note-item">Backoff + jitter for every retry</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-22-versioning-evolution.html" title="Versioning &amp; Evolving APIs">Versioning</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-24-openapi.html" title="Documenting with OpenAPI">OpenAPI</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

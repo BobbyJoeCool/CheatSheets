@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** C Family
 - **Folder Directory:** `Sheets/CSharp-Sheets/cs-###-[slug].html`
+- **PDF Name:** `C# Reference Guide.pdf`
 - **Groups:** 16
 - **Sheets:** 128
 - **Drafted Date:** 2026-10-10

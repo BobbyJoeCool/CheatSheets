@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** JavaScript / TypeScript
 - **Folder Directory:** `Sheets/ReactNative-Sheets/rn-##-[slug].html`
+- **PDF Name:** `React Native Reference Guide.pdf`
 - **Groups:** 16
 - **Sheets:** 70
 - **Drafted Date:** 2026-10-10

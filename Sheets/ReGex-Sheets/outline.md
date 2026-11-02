@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Concepts & Tools
 - **Folder Directory:** `Sheets/ReGex-Sheets/regex-##-[slug].html`
+- **PDF Name:** `Regex Reference Guide.pdf`
 - **Groups:** 10
 - **Sheets:** 25
 - **Drafted Date:** 2026-10-10

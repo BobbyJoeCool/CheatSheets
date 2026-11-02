@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Command Line Interface
 - **Folder Directory:** `Sheets/zsh-Sheets/zsh-##-[slug].html`
+- **PDF Name:** `Zsh Reference Guide.pdf`
 - **Groups:** 9
 - **Sheets:** 27
 - **Drafted Date:** 2026-10-06

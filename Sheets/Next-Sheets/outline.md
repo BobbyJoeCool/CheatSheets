@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** JavaScript / TypeScript
 - **Folder Directory:** `Sheets/Next-Sheets/next-##-[slug].html`
+- **PDF Name:** `Next.js Reference Guide.pdf`
 - **Groups:** 14
 - **Sheets:** 58
 - **Drafted Date:** 2026-10-03

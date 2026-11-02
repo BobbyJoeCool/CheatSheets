@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Web Design
 - **Folder Directory:** `Sheets/PHP-Sheets/php-##-[slug].html` (`###` from 100)
+- **PDF Name:** `PHP Reference Guide.pdf`
 - **Groups:** 18
 - **Sheets:** 133
 - **Drafted Date:** 2026-10-08

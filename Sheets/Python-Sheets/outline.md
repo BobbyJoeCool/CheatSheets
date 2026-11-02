@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Python
 - **Folder Directory:** `Sheets/Python-Sheets/py-##-[slug].html`
+- **PDF Name:** `Python Reference Guide.pdf`
 - **Groups:** 16
 - **Sheets:** 93
 - **Drafted Date:** 2026-10-02 (re-drafted after the sheets were live)

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HTTP — Sheet 12: Caching Headers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/http-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Caching Headers</h1>
+			<div class="sheet-desc">Cache-Control · max-age · no-cache · no-store · private / public · ETag · If-None-Match · Vary</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc"><h2 class="section-title">Don't Send What They Already Have</h2><div class="description"><code>Cache-Control</code> tells browsers and shared caches (CDNs, proxies) <strong>whether</strong> they may store a response and <strong>how long</strong> it stays fresh. When it goes stale, the client <strong>revalidates</strong> with a conditional request: <code>If-None-Match</code> with the <code>ETag</code> it has, or <code>If-Modified-Since</code> with <code>Last-Modified</code>. If nothing changed, the server sends <code>304 Not Modified</code> with no body. The same validators guard writes: <code>If-Match</code> makes an update fail with <code>412</code> if someone else changed it first.</div></section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>no-cache</code> = store it, but revalidate every time; <code>no-store</code> = don't store at all</li><li class="note-item"><code>private</code> = browser only; <code>public</code> / <code>s-maxage</code> = CDNs may cache too</li><li class="note-item">A <strong>weak</strong> ETag (<code>W/"v42"</code>) means "same meaning", not byte-identical</li><li class="note-item"><code>Age</code> on a response = seconds it has sat in a shared cache</li></ul></section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Personal or authenticated responses: <code>Cache-Control: private, no-store</code></li><li class="note-item">A <code>public</code> response that varies by user leaks one user's data to the next</li><li class="note-item">Logout pages and token endpoints must be <code>no-store</code></li></ul></section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Debug It -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code"><h2 class="section-title">Fresh, Revalidated, Never Stored</h2><pre><code class="language-http">GET /api/products/7 HTTP/1.1
+
+HTTP/1.1 200 OK
+Cache-Control: public, max-age=60
+ETag: "v42"
+Last-Modified: Mon, 02 Nov 2026 15:00:00 GMT
+Vary: Accept-Encoding
+
+GET /api/products/7 HTTP/1.1
+If-None-Match: "v42"
+
+HTTP/1.1 304 Not Modified
+ETag: "v42"
+Cache-Control: public, max-age=60
+
+GET /api/me HTTP/1.1
+Authorization: Bearer eyJhbGciOi...
+
+HTTP/1.1 200 OK
+Cache-Control: private, no-store</code></pre></section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Fresh for 60 s in the browser and in shared caches (<code>public</code>)</div><div class="explain-item">After 60 s the client asks "still <code>v42</code>?" and gets an empty <code>304</code></div><div class="explain-item"><code>/api/me</code> is per-user, so nothing may store it</div><div class="explain-item">Hash the content or use a version column to make ETags</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>Express</strong> — ETags on by default (<code>app.set('etag')</code>); <code>res.set('Cache-Control', 'no-store')</code>; <code>express.static(dir, { maxAge: '1y' })</code></li><li class="note-item"><strong>Django</strong> — <code>@cache_control(max_age=60)</code> · <code>@never_cache</code> · <code>ConditionalGetMiddleware</code></li><li class="note-item"><strong>Spring</strong> — <code>ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofSeconds(60))).eTag("v42")</code></li><li class="note-item"><strong>Rails</strong> — <code>expires_in 1.minute, public: true</code> · <code>fresh_when(@product)</code> · <code>stale?</code></li><li class="note-item"><strong>ASP.NET</strong> — <code>[ResponseCache(Duration = 60)]</code> for headers; <code>AddOutputCache()</code> for a server cache</li><li class="note-item"><strong>Go</strong> — <code>w.Header().Set("Cache-Control", ...)</code>; <code>http.ServeContent</code> answers conditional requests</li></ul></section><section class="section-notes section-debug" id="debug"><h2 class="section-title">Debug It</h2><ul class="note-list"><li class="note-item">DevTools <strong>Size</strong> column: <code>(memory cache)</code> / <code>(disk cache)</code> = never hit the network</li><li class="note-item">CDN hit or miss: look for <code>Age</code>, <code>X-Cache: HIT</code> or <code>CF-Cache-Status</code></li><li class="note-item">Normal reload revalidates; <strong>Empty Cache and Hard Reload</strong> refetches everything</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Directives Table | Validators Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-directives"><h2 class="section-title">Cache-Control Directives</h2><table><thead><tr><th>Directive</th><th>Means</th></tr></thead><tbody><tr><td>max-age=N</td><td class="desc">Fresh for N seconds</td></tr><tr><td>s-maxage=N</td><td class="desc">Override for shared caches</td></tr><tr><td>no-cache</td><td class="desc">Revalidate before every use</td></tr><tr><td>no-store</td><td class="desc">Never store</td></tr><tr><td>private / public</td><td class="desc">Browser only / any cache</td></tr><tr><td>must-revalidate</td><td class="desc">No stale use after expiry</td></tr><tr><td>immutable</td><td class="desc">Never changes (hashed asset URLs)</td></tr><tr><td>stale-while-revalidate=N</td><td class="desc">Serve stale while refreshing</td></tr></tbody></table></section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-validators"><h2 class="section-title">Validators &amp; Conditional Requests</h2><table><thead><tr><th>Header</th><th>Role</th></tr></thead><tbody><tr><td>ETag</td><td class="desc">Version tag for the representation</td></tr><tr><td>If-None-Match</td><td class="desc">GET: send body only if changed → <code>304</code></td></tr><tr><td>If-Match</td><td class="desc">PUT/PATCH: only if unchanged → else <code>412</code></td></tr><tr><td>Last-Modified</td><td class="desc">Timestamp validator (1 s resolution)</td></tr><tr><td>If-Modified-Since</td><td class="desc">Date-based conditional GET</td></tr><tr><td>Vary</td><td class="desc">Request headers that change the response</td></tr></tbody></table></section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Thinking <code>no-cache</code> means "don't cache"; that's <code>no-store</code></li><li class="note-item">Long <code>max-age</code> on URLs that change (e.g. <code>/app.js</code>); use hashed file names instead</li><li class="note-item">Forgetting <code>Vary: Accept-Encoding</code> or <code>Vary: Origin</code> when the response depends on them</li></ul></section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Static assets: hashed names + <code>max-age=31536000, immutable</code></li><li class="note-item">Use <code>If-Match</code> + ETag for optimistic locking on updates</li><li class="note-item">Pick one: cache at the CDN with <code>s-maxage</code>, or not at all; partial setups confuse</li></ul></section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>max-age</code> — how long it's fresh</li><li class="note-item"><code>no-store</code> — never cache; <code>no-cache</code> — always revalidate</li><li class="note-item"><code>ETag</code> + <code>If-None-Match</code> — <code>304</code> when unchanged</li><li class="note-item"><code>If-Match</code> — <code>412</code> on a lost update</li></ul></section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="http-11-core-headers-content-negotiation.html" title="Core Headers &amp; Content Negotiation">Core Headers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HTTP Reference · 30 Sheets</a>
+				<a class="nav-link next" href="http-13-cookies-sessions.html">Cookies &amp; Sessions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+	</body>
+</html>

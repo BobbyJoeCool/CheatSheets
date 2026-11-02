@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Python
 - **Folder Directory:** `Sheets/Django-Sheets/dj-##-[slug].html`
+- **PDF Name:** `Django Reference Guide.pdf`
 - **Groups:** 15
 - **Sheets:** 68
 - **Drafted Date:** 2026-10-02

@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Markup & Notation
 - **Folder Directory:** `Sheets/XML-Sheets/xml-##-[slug].html`
+- **PDF Name:** `XML Reference Guide.pdf`
 - **Groups:** 1
 - **Sheets:** 16
 - **Drafted Date:** 2026-10-01 (re-drafted after the sheets were live)

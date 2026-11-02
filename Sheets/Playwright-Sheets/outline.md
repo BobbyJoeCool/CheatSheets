@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Concepts & Tools
 - **Folder Directory:** `Sheets/Playwright-Sheets/pw-##-[slug].html`
+- **PDF Name:** `Playwright Reference Guide.pdf`
 - **Groups:** 19
 - **Sheets:** 67
 - **Drafted Date:** 2026-10-10

@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Markup & Notation
 - **Folder Directory:** `Sheets/YAML-Sheets/yaml-##-[slug].html`
+- **PDF Name:** `YAML Reference Guide.pdf`
 - **Groups:** 1
 - **Sheets:** 14
 - **Drafted Date:** 2026-10-02 (re-drafted after the sheets were live)

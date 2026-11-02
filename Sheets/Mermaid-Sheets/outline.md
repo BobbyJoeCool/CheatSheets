@@ -4,6 +4,7 @@
 
 - **Group it belongs to:** Markup & Notation
 - **Folder Directory:** `Sheets/Mermaid-Sheets/mmd-##-[slug].html`
+- **PDF Name:** `Mermaid Reference Guide.pdf`
 - **Groups:** 15
 - **Sheets:** 46
 - **Drafted Date:** 2026-10-23
