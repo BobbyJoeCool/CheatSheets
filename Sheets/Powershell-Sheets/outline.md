@@ -17,6 +17,7 @@ The set was capped at 40 sheets, so sheets are consolidated and dense. Standard 
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - The pipeline is PowerShell's defining feature, so it gets its own group placed right after Control Flow instead of at the end.
 
 ## Groups

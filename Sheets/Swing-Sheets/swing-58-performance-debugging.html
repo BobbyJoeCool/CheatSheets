@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swing — Sheet 58: Performance &amp; Debugging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swing-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s58">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 58</div>
+			<h1>Performance &amp; Debugging</h1>
+			<div class="sheet-desc">EDT violation checks · RepaintManager · setPrototypeCellValue · large table models · repaint storms · VisualVM · thread dumps</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | EDT Check -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Fast and Correct</h2>
+					<div class="description">Most Swing slowness comes from three things: work on the EDT, too many repaints, and models that are expensive to read. Find EDT blocking with a thread dump (<code>jstack</code> or VisualVM) and look at what the <code>AWT-EventQueue-0</code> thread is doing. Catch threading bugs with a checking <code>RepaintManager</code>. Then make models cheap and fire narrow events.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">The EDT thread is named <code>AWT-EventQueue-0</code></li>
+						<li class="note-item">JFR + JDK Mission Control show EDT pauses</li>
+						<li class="note-item">Renderers run for every visible cell, every repaint</li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-1-3">
+				<section class="section-edt" id="edt">
+					<h2 class="section-title">EDT Check</h2>
+					<ul class="note-list">
+						<li class="note-item">A checking <code>RepaintManager</code> flags component access off the EDT</li>
+						<li class="note-item">A thread dump shows exactly what is blocking the EDT</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + JavaFX Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Catch EDT Violations and Slow Events</h2>
+<pre><code class="language-java">// Debug builds: report component changes made off the EDT
+RepaintManager.setCurrentManager(new RepaintManager() {
+    @Override public synchronized void addInvalidComponent(JComponent c) {
+        check(); super.addInvalidComponent(c);
+    }
+    @Override public void addDirtyRegion(JComponent c, int x, int y,
+                                         int w, int h) {
+        check(); super.addDirtyRegion(c, x, y, w, h);
+    }
+    private void check() {
+        if (!SwingUtilities.isEventDispatchThread())
+            new Throwable("Swing used off the EDT").printStackTrace();
+    }
+});
+
+// Speed up big lists and tables
+list.setPrototypeCellValue(longestItem);       // skip measuring all rows
+table.setRowHeight(22);                        // fixed heights are cheap
+model.fireTableRowsUpdated(r, r);              // not fireTableDataChanged
+
+// Find what froze the UI
+// jcmd &lt;pid&gt; Thread.print | grep -A 20 AWT-EventQueue
+// jcmd &lt;pid&gt; JFR.start duration=60s filename=ui.jfr</code></pre>
+				</section>
+				</div>
+				<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item">checking <code>RepaintManager</code> — stack trace per violation</div>
+						<div class="explain-item">prototype value — one measurement, not thousands</div>
+						<div class="explain-item">narrow <code>fire…</code> — repaint only what changed</div>
+						<div class="explain-item"><code>jcmd Thread.print</code> — see the EDT's stack</div>
+					</div>
+				</section>
+				<section class="section-fx" id="fx">
+					<h2 class="section-title">JavaFX Equivalent</h2>
+					<ul class="note-list">
+						<li class="note-item">checker → JavaFX throws on wrong thread itself</li>
+						<li class="note-item"><code>setPrototypeCellValue</code> → <code>setFixedCellSize</code></li>
+						<li class="note-item">profiling → same JFR / VisualVM tools</li>
+						<li class="note-item">See <a href="../Java-Sheets/java-129-javafx-events.html">Java 129</a></li>
+					</ul>
+				</section>
+				<section class="section-idiom" id="idiom">
+					<h2 class="section-title">Prefer / Avoid</h2>
+					<ul class="note-list">
+						<li class="note-item">guessing what's slow → thread dump or JFR first</li>
+						<li class="note-item"><code>fireTableDataChanged</code> on each update → row-level events</li>
+					</ul>
+				</section>
+				</div>
+			</div>
+			<!-- Row 3: Symptoms Table | Tools Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-symptoms">
+					<h2 class="section-title">Symptom → Cause</h2>
+					<table>
+						<thead><tr><th>Symptom</th><th>Usual cause</th></tr></thead>
+						<tbody>
+						<tr><td>gray, frozen window</td><td class="desc">I/O or sleep on the EDT</td></tr>
+						<tr><td>flicker</td><td class="desc">painting outside <code>paintComponent</code></td></tr>
+						<tr><td>slow scrolling</td><td class="desc">heavy renderer or model getter</td></tr>
+						<tr><td>random glitches</td><td class="desc">access off the EDT</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-tools">
+					<h2 class="section-title">Tools</h2>
+					<table>
+						<thead><tr><th>Tool</th><th>Shows</th></tr></thead>
+						<tbody>
+						<tr><td>jcmd / jstack</td><td class="desc">thread dump</td></tr>
+						<tr><td>VisualVM</td><td class="desc">CPU, memory, threads</td></tr>
+						<tr><td>JFR + JMC</td><td class="desc">pauses, allocations</td></tr>
+						<tr><td>-Dsun.java2d.trace=log</td><td class="desc">Java2D calls</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Installing the checking <code>RepaintManager</code> in production — noisy and slower</li>
+							<li class="note-item">Optimizing paint code before checking for EDT blocking — the wrong fix</li>
+							<li class="note-item">Creating new <code>Font</code>/<code>Color</code> objects in renderers — garbage on every repaint</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Log a warning when a listener takes over 100 ms</li>
+							<li class="note-item">Use <code>ListModel</code> / <code>TableModel</code> over your data instead of copying</li>
+							<li class="note-item">Profile with real data sizes, not test fixtures</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item">EDT blocking — the #1 cause of slow Swing</li>
+							<li class="note-item">checking <code>RepaintManager</code> — find threading bugs</li>
+							<li class="note-item">prototype values + narrow events — fast lists/tables</li>
+							<li class="note-item">thread dumps / JFR — measure first</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="swing-57-localization.html">Localization</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Swing Reference · 62 Sheets</a>
+				<a class="nav-link next" href="swing-59-testing.html">Testing Swing UIs</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

@@ -19,6 +19,7 @@ No sheet cap was given. Sheets 05–06 are a "when to use what" guide to every c
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Dialect Notes** (`id="dialect"`) and **In an ORM** (`id="orm"`) under Code Explained on every sheet except 05–06 and 81–82 · **NoSQL Comparison** (`id="nosql"`) in Row 1 on the same sheets minus 03 and 12. Details below.
 - **Row 1 gets a third box, NoSQL Comparison,** next to Description and Notes. It shows how the sheet's idea works in a document or key-value store (MongoDB first; Redis or DynamoDB when they fit better), e.g. `JOIN` vs `$lookup` and embedding, `GROUP BY` vs `$group`, transactions vs single-document atomicity. On sheets with no meaningful NoSQL parallel (casting rules, `ORDER BY` ordinal position, etc.) Row 1 stays two columns.
 - **Two boxes under Code Explained on every sheet:**
   - **Dialect Notes:** a compact table showing how PostgreSQL, MySQL, SQL Server and SQLite handle the sheet's topic (e.g. `LIMIT` vs `TOP`, `||` vs `CONCAT` vs `+`, `RETURNING` vs `OUTPUT`). Write "Same in all four" when nothing differs.

@@ -17,6 +17,7 @@ Bash `=~` and PowerShell `-match` are covered in those sets (bash-15, ps-33), an
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - The standard groups (OOP, Data Structures, Files & I/O and so on) don't apply. The set uses syntax groups followed by language-integration groups.
 - Anything not universal carries a flavor tag (e.g. `✗ JS`, `✗ Go`, `Java 9+`, `ES2018`).
 - The last two sheets are copy-ready pattern references with no tutorial text.

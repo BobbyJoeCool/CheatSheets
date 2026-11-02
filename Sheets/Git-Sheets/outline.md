@@ -17,8 +17,26 @@ The main section was capped at 25–35 sheets, so several topics are merged onto
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Undo It** (`id="undo"`) on every sheet except the quick references (35–36) · **Old Way / New Way** (`id="oldnew"`) on 13 selected sheets · **On GitHub** (`id="github"`) on 18 selected sheets. Details and lists below.
 - The Outline Guide has no CLI-tool category; the standard groups (data types, operators, OOP) don't apply, so groups follow the Git workflow instead.
 - Sheets 35–36 are quick-reference pages: rows of two side-by-side tables (Command · Does · #) at 9px, grouped by task, with no code row.
+
+### Undo It box (every sheet, 01–34)
+
+- `<section class="section-notes section-undo" id="undo">`, title **Undo It**, under Code Explained in `col-2-2`.
+- 1–3 lines on how to reverse what the sheet does (`restore --staged`, `reset --soft HEAD~1`, `reflog`). Lines starting with **⚠** mark what can't be undone or destroys work (the "Danger Zone" idea folded into this box). Read-only sheets say "nothing to undo".
+
+### Old Way / New Way box (13 selected sheets)
+
+- `<section class="section-notes section-oldnew" id="oldnew">`, title **Old Way / New Way**, under Undo It.
+- 1–2 avoid/prefer lines (✗ + strike vs ✓ + bold) where older commands still show up in tutorials: `checkout -- <file>` → `restore`; `stash save` → `stash push -m`; `push --force` → `--force-with-lease`; `filter-branch` → `filter-repo`.
+- On: 02, 06, 09, 14, 17–19, 21–23, 27, 32, 34.
+
+### On GitHub box (18 selected sheets)
+
+- `<section class="section-notes section-github" id="github">`, title **On GitHub**, last.
+- 1–2 lines on where the sheet's idea shows up on GitHub (merge button options, branch protection, Releases, Revert button, push protection). No links to the GitHub set yet.
+- On: 04, 07, 10, 13–18, 21–24, 26, 31–34.
 
 ## Groups
 

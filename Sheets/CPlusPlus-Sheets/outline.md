@@ -17,11 +17,34 @@ The deep areas are pointers and memory, special member functions (copy / move / 
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **C++ Standards** (`id="standard"`) and **Modern C++** (`id="idiom"`) on every sheet except the quick references (124–125) · **Under the Hood** (`id="hood"`) on 83 selected sheets. Details and lists below.
 - Numbers are three digits throughout (`cpp-001` to `cpp-123`) because the set passes 99.
 - Output & Comments becomes Input, Output & Comments (Group 2), covering both iostream and `std::print` / `std::format`.
 - Data Structures is the STL containers group (Group 9).
 - Modules & Packages becomes Headers, Modules & Standard Library (Group 12).
 - Language-specific groups follow the 14 standard groups: Pointers & References (15), Memory Management (16), Templates & Generic Programming (17), and STL Iterators, Algorithms & Ranges (18). Pointers and Memory come after OOP even though copy / move semantics lean on them.
+
+### Placement
+
+- Under the Hood sits in row 1 as a third column (`col-1-3`), like Java's Under the JVM box.
+- C++ Standards and Modern C++ stack under Code Explained in row 2, in that order.
+- The `/* SHEET NN */` comment in the set's CSS lists where each box sits. If a sheet doesn't fit, cut Under the Hood to 1 line first, then Modern C++ to 1 pair.
+
+### C++ Standards box (every sheet, 01–123)
+
+- `<section class="section-notes section-standard" id="standard">`, title **C++ Standards**.
+- 1–2 lines: which standard added or changed the feature, from C++98 to C++26.
+
+### Modern C++ box (every sheet, 01–123)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **Modern C++**.
+- 1–2 avoid/prefer lines: older style → modern style (✗ + strike vs ✓ + bold), e.g. raw `new` → `std::make_unique`, `printf` → `std::println`.
+
+### Under the Hood box (83 selected sheets)
+
+- `<section class="section-notes section-hood" id="hood">`, title **Under the Hood**.
+- 1–2 lines: what the compiler actually produces: object layout, vtables, SSO, inlining, allocations, copy elision.
+- On: 01–02, 04, 06–07, 10–12, 15–16, 19, 22–24, 27, 29–30, 32, 35, 37–38, 40–51, 53–54, 56–63, 65–72, 74–75, 77, 82–83, 85–86, 90–92, 94–98, 101–103, 105–111, 113–114, 116–117, 120–121, 123.
 
 ## Groups
 

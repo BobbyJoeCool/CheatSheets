@@ -19,6 +19,7 @@ Scope limits: WidgetKit, App Intents, RealityKit and App Store submission are ou
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Minimum OS** (`id="minimum-os"`) and **UIKit / React Equivalent** (`id="uikit-react"`) on 01–57 · **Accessibility** (`id="accessibility"`) on 15 selected sheets. None on the quick references (58–59). Details below.
 - **"Minimum OS" box** on every sheet (except 58–59), placed under Code Explained. Lists the iOS / macOS versions each API on the sheet needs, and the older fallback when one exists (for example, `@Observable` needs iOS 17; before that, `ObservableObject`).
 - **"UIKit / React Equivalent" box** on every sheet (except 58–59), placed under Code Explained. Shows what the SwiftUI code replaces in UIKit and how the same thing is done in React Native (or web React where it differs). Parallels the Gradle Equivalent box in the Maven set and points readers to the React Native set.
 - **"Accessibility" box** on selected sheets, placed under Code Explained. VoiceOver labels, traits, Dynamic Type and Reduce Motion behavior for the views on that sheet. Sheets that get the box: 06, 07, 08, 20, 21, 22, 23, 25, 26, 27, 36, 43, 46, 48, 50.

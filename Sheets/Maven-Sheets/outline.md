@@ -17,6 +17,7 @@ Scope: install and wrapper, the POM, dependencies, lifecycle and plugins, testin
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Gradle Equivalent** (`id="gradle"`) and **Idiomatic Maven** (`id="idiom"`) on 01–22 · **Under the Hood** (`id="hood"`) in Row 1 on 12 selected sheets. None on the quick references (23–24). Details and table below.
 - The standard language group template (Groups 2–13 of Outline_guide.md) does not apply. Groups follow how a Maven build is put together: setup → POM → dependencies → lifecycle and plugins → testing → multi-module and releasing → integration.
 - Code blocks are XML (Prism `markup`) for `pom.xml`, `settings.xml` and `toolchains.xml`, `properties` for `maven-wrapper.properties`, and Bash for CLI commands.
 - Three extra boxes, modeled on the Java set and described below: **Gradle Equivalent** and **Idiomatic Maven** on every sheet, and **Under the Hood** in Row 1 on the sheets listed in the table.

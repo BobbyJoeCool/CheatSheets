@@ -17,11 +17,18 @@ External Libraries is kept small (4 sheets) because Go culture leans on the stan
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Coming From…** (`section-notes section-compare`, `id="compare"`) under Code Explained on every sheet except 088 (table-only, no code row) and the quick references (111–112). Details below.
 - Numbers are three digits throughout (`go-001` to `go-112`) because the set passes 99.
 - Error Handling is built around errors as values, not exceptions; `panic` / `recover` gets one sheet.
 - OOP is replaced by Types, Methods & Interfaces: Go has no classes or inheritance, only methods, embedding, implicit interfaces and generics.
 - Pointers sit in the Operators group because methods (Group 10) depend on them.
 - Sheets 111–112 are table-only quick-reference pages (syntax, what it does, sheet #) with no code row.
+
+### Coming From… box (every sheet except 088, 111–112)
+
+- `<section class="section-notes section-compare" id="compare">`, title **Coming From…**, under Code Explained in Row 2.
+- 2–3 `note-item` lines comparing the sheet's topic to Python, Java and JavaScript (other languages when they're the closer match): `Python — ints are fixed-size and wrap; no bigints by default`.
+- Sheet 088 (Build Tags & Cross-Compiling) has no code row, so it has no box.
 
 ## Groups
 

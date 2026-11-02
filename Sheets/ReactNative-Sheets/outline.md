@@ -19,9 +19,15 @@ At 70 sheets it is above the guide's 25–50 framework range because each OS gro
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **iOS** (`section-notes section-ios`, `id="ios"`) and **Android** (`section-notes section-android`, `id="android"`) stacked under Code Explained on 01–70. None on the quick references (71–72). Details below.
 - Sheets with two code examples stack them as two full-width Code rows instead of Code | Explain (sheets 36, 38, 40, 42, 53, 55, 64, 68).
 - Code languages vary by platform group: TSX/TypeScript for app code, Swift (iOS/visionOS), Kotlin and Groovy (Android), C++ (Windows), XML, JSON, YAML (Maestro), Bash.
 - Row-2 explain columns are kept at ≥ 30% of the row width when fitting, so notes don't collapse into a sliver beside long code.
+
+### iOS and Android boxes (every sheet, 01–70)
+
+- `<section class="section-notes section-ios" id="ios">` and `<section class="section-notes section-android" id="android">`, titled **iOS** and **Android**, stacked under Code Explained in Row 2 (`Code | Explain + iOS + Android`).
+- 2–3 `note-item` lines each: the platform-only props, behavior differences and gotchas for the sheet's APIs (`shadow*` props on iOS vs `elevation` on Android).
 
 ## Groups
 

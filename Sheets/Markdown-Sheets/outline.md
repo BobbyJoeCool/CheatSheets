@@ -17,6 +17,7 @@ The set was condensed to about 20 topic sheets plus a 2-page quick reference, be
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - The two quick-reference sheets at the end are table-only lookup pages (syntax, what it does, sheet #) with no code row and no Description/Notes row.
 - Sheet 22 ends with a flavor support matrix (CommonMark / GFM / Pandoc / Obsidian / MkDocs) showing which extensions work where.
 

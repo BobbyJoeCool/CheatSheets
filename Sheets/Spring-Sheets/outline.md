@@ -17,6 +17,7 @@ The deep areas are dependency injection and the container, configuration, Spring
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - As a framework set it skips the language-basics groups; Java itself lives in the Java set.
 - Groups follow Spring's own concepts (container, configuration, AOP, MVC, data, security, testing, ops) after Introduction & Setup.
 - Some sheets stack two code blocks in the code column (for example a Java class plus its `application.yml`, or build file plus shell commands). Prism languages used: `java`, `yaml`, `properties`, `bash`, `kotlin` (Gradle Kotlin DSL) and `markup` (Maven XML, Thymeleaf).

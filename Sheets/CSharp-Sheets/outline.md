@@ -17,12 +17,35 @@ At 128 sheets the set is above the guide's 90–120 typed/enterprise range becau
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **C# / .NET Versions** (`id="version"`) and **Idiomatic C#** (`id="idiom"`) on every sheet except the quick references (129–130) · **Under the CLR** (`id="clr"`) on 76 selected sheets. Details and lists below.
 - Numbers are three digits throughout (`cs-001` to `cs-128`) because the set passes 99.
 - Output & Comments becomes Output, Input & Comments (Group 2).
 - Functions becomes Methods & Functions (Group 8), including delegates, events and extension members.
 - Modules & Packages becomes Namespaces, Packages & the Base Class Library (Group 12).
 - Language-specific groups follow the standard ones: LINQ (15) and Entity Framework Core (16).
 - Generic type names in the tables are written with `&lt;` / `&gt;` (e.g. `List&lt;T&gt;`) so they render in Markdown.
+
+### Placement
+
+- Under the CLR sits in row 1 as a third column (`col-1-3`), like Java's Under the JVM box.
+- C# / .NET Versions and Idiomatic C# stack under Code Explained in row 2, in that order.
+- The `/* SHEET NN */` comment in the set's CSS lists where each box sits. If a sheet doesn't fit, cut Under the CLR to 1 line first, then Idiomatic C# to 1 pair.
+
+### C# / .NET Versions box (every sheet, 01–128)
+
+- `<section class="section-notes section-version" id="version">`, title **C# / .NET Versions**.
+- 1–2 lines: which C# / .NET release added the feature, from C# 1 / .NET Framework 1.0 to C# 14 / .NET 10 (C# 15 preview where a sheet covers it).
+
+### Idiomatic C# box (every sheet, 01–128)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **Idiomatic C#**.
+- 1–2 avoid/prefer lines: older style → idiomatic modern C# (✗ + strike vs ✓ + bold), e.g. `.Result` → `await`, `new HttpClient()` → `IHttpClientFactory`.
+
+### Under the CLR box (76 selected sheets)
+
+- `<section class="section-notes section-clr" id="clr">`, title **Under the CLR**.
+- 1–2 lines: runtime behavior: IL and the JIT, boxing, allocations, the GC, async state machines.
+- On: 01, 05, 07, 11–17, 19–22, 24–28, 30, 36, 40–41, 44, 46, 48, 50–51, 53–54, 56–67, 69–76, 78–82, 84–86, 88, 90, 94–95, 101, 108–111, 113–114, 116–118, 120, 122, 126, 128.
 
 ## Groups
 

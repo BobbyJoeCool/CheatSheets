@@ -19,10 +19,27 @@ The set was capped at about 23 topic sheets plus 2 quick-reference pages, then e
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Production Check** (`id="prod"`) and **In Kubernetes** (`id="equiv"`) on every sheet except the quick references (30–31) · **Security Check** (`id="security"`) on 15 selected sheets. Details and lists below. The Kubernetes set uses the same boxes, mirrored.
 - The Outline Guide has no CLI-tool category, so groups follow the Docker workflow (set up → run → image → build → store/network → compose → swarm → operate) instead of the standard language groups.
 - Docker Desktop sheets (04–06) use settings-path tables (`Settings › Resources › Advanced` · what it controls · default) where a feature has no CLI equivalent, with the `docker desktop` command shown when one exists.
 - Dockerfile and Compose sheets use the file being edited (`Dockerfile`, `compose.yaml`) as the code block, with the matching CLI command underneath.
 - Sheets 30–31 are quick-reference pages: two side-by-side tables per row (Command/Key · Does · #) at 9px, grouped by task, with no code row and no Description/Notes row.
+
+### Production Check box (every sheet, 01–29)
+
+- `<section class="section-notes section-prod" id="prod">`, title **Production Check**, under Code Explained in `col-2-2`.
+- 1–2 lines on what to change before the sheet's feature runs in production (pin digests, limits, non-root, health checks, log rotation).
+
+### In Kubernetes box (every sheet, 01–29)
+
+- `<section class="section-notes section-equiv" id="equiv">`, title **In Kubernetes**, under Production Check.
+- 1–2 lines mapping the Docker feature to Kubernetes, e.g. `-p 8080:80` ↔ Service · `docker logs` ↔ `kubectl logs`. Mirrors the Kubernetes set's **In Docker / Compose** box.
+
+### Security Check box (15 selected sheets)
+
+- `<section class="section-notes section-security" id="security">`, title **Security Check**, in its own third column at the end of row 1 (`col-1-3`, after Notes).
+- 1–2 lines: the risk and the fix (Docker socket, secrets in layers, `-p` bypassing the firewall). Not on sheet 29, which is the security sheet.
+- On: 02–03, 07, 10–13, 15, 17, 19–20, 22–23, 25, 27.
 
 ## Groups
 

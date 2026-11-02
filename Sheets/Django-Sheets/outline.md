@@ -17,6 +17,7 @@ At 68 sheets it is above the guide's 25–50 framework range on purpose: Django 
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - As a framework set it skips the language-basics groups; Python itself lives in the Python set.
 - Groups follow Django's own layers (URLs, views, templates, models, migrations, ORM, forms, admin, auth, request lifecycle, security) after Introduction & Setup.
 - Some sheets stack two or three code blocks in the code column (for example a view plus its template, or settings plus shell commands). Template code uses Prism's `django` language, so those sheets also load `prism-markup-templating`.

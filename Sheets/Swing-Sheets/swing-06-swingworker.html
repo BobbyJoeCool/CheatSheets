@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Swing — Sheet 06: SwingWorker</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/swing-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s06">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 06</div>
+			<h1>SwingWorker</h1>
+			<div class="sheet-desc">doInBackground · done · get · publish / process · setProgress · PropertyChangeListener · cancel</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | EDT Check -->
+			<div class="row row-desc-notes" id="row-1">
+			<div class="col" id="col-1-1">
+				<section class="section-desc" id="desc">
+					<h2 class="section-title">Background Work with UI Callbacks</h2>
+					<div class="description"><code>SwingWorker&lt;T, V&gt;</code> runs a task on a background thread and gives you safe EDT callbacks. Override <code>doInBackground()</code> for the slow work and return a result of type <code>T</code>. Override <code>done()</code> to read the result with <code>get()</code> on the EDT. For progress, call <code>publish(V...)</code> and handle the chunks in <code>process(List&lt;V&gt;)</code>, or call <code>setProgress(0–100)</code> and listen for the <code>"progress"</code> property.</div>
+				</section>
+			</div>
+			<div class="col" id="col-1-2">
+				<section class="section-notes" id="notes">
+					<h2 class="section-title">Notes</h2>
+					<ul class="note-list">
+						<li class="note-item">A worker runs <strong>once</strong>; create a new one for each run</li>
+						<li class="note-item"><code>execute()</code> starts it; <code>cancel(true)</code> interrupts it</li>
+						<li class="note-item">Exceptions surface as <code>ExecutionException</code> from <code>get()</code></li>
+					</ul>
+				</section>
+			</div>
+			<div class="col" id="col-1-3">
+				<section class="section-edt" id="edt">
+					<h2 class="section-title">EDT Check</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>doInBackground</code> is off the EDT: don't touch components there</li>
+						<li class="note-item"><code>process</code>, <code>done</code> and property listeners run on the EDT</li>
+						<li class="note-item"><code>get()</code> blocks: call it in <code>done()</code>, never from another listener</li>
+					</ul>
+				</section>
+			</div>
+			</div>
+			<!-- Row 2: Code | Explain + JavaFX Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+				<section class="section-code" id="code">
+					<h2 class="section-title">Import with Progress</h2>
+<pre><code class="language-java">class ImportWorker extends SwingWorker&lt;Integer, String&gt; {
+    @Override protected Integer doInBackground() throws Exception {
+        int n = 0;
+        for (Path f : files) {                 // off the EDT
+            if (isCancelled()) break;
+            importer.load(f);
+            publish(f.getFileName().toString());
+            setProgress(++n * 100 / files.size());
+        }
+        return n;
+    }
+    @Override protected void process(List&lt;String&gt; names) {
+        names.forEach(log::append);            // EDT
+    }
+    @Override protected void done() {          // EDT
+        try { status.setText(get() + " imported"); }
+        catch (CancellationException e) { status.setText("Cancelled"); }
+        catch (Exception e) { showError(e.getCause()); }
+    }
+}
+ImportWorker w = new ImportWorker();
+w.addPropertyChangeListener(e -&gt; {             // "progress" events
+    if ("progress".equals(e.getPropertyName()))
+        bar.setValue((Integer) e.getNewValue());
+});
+w.execute();</code></pre>
+				</section>
+				</div>
+				<div class="col" id="col-2-2">
+				<section class="section-explain" id="explain">
+					<h2 class="section-title">Code Explained</h2>
+					<div class="section-body">
+						<div class="explain-item"><code>&lt;Integer, String&gt;</code> — result type, chunk type</div>
+						<div class="explain-item"><code>publish</code> → <code>process</code> — batched, on the EDT</div>
+						<div class="explain-item"><code>get()</code> in <code>done()</code> — result or exception</div>
+					</div>
+				</section>
+				<section class="section-fx" id="fx">
+					<h2 class="section-title">JavaFX Equivalent</h2>
+					<ul class="note-list">
+						<li class="note-item"><code>SwingWorker</code> → <code>javafx.concurrent.Task</code></li>
+						<li class="note-item"><code>setProgress</code> → <code>updateProgress</code> + <code>progressProperty</code></li>
+						<li class="note-item"><code>done()</code> → <code>setOnSucceeded</code> / <code>setOnFailed</code></li>
+						<li class="note-item">See <a href="../Java-Sheets/java-129-javafx-events.html">Java 129</a></li>
+					</ul>
+				</section>
+				<section class="section-idiom" id="idiom">
+					<h2 class="section-title">Prefer / Avoid</h2>
+					<ul class="note-list">
+						<li class="note-item">empty <code>catch</code> in <code>done()</code> → show <code>e.getCause()</code></li>
+						<li class="note-item">reusing one worker → a new worker per run</li>
+					</ul>
+				</section>
+				</div>
+			</div>
+			<!-- Row 3: Methods Table | Control Table -->
+			<div class="row" id="row-3">
+			<div class="col" id="col-3-1">
+				<section id="tbl-methods">
+					<h2 class="section-title">SwingWorker Methods</h2>
+					<table>
+						<thead><tr><th>Method</th><th>Thread</th></tr></thead>
+						<tbody>
+						<tr><td>doInBackground()</td><td class="desc">worker · required</td></tr>
+						<tr><td>process(List&lt;V&gt;)</td><td class="desc">EDT · batched chunks</td></tr>
+						<tr><td>done()</td><td class="desc">EDT · after finish or cancel</td></tr>
+						<tr><td>publish(V...)</td><td class="desc">call from worker</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			<div class="col" id="col-3-2">
+				<section id="tbl-control">
+					<h2 class="section-title">Control &amp; State</h2>
+					<table>
+						<thead><tr><th>Call</th><th>Does</th></tr></thead>
+						<tbody>
+						<tr><td>execute()</td><td class="desc">start on the worker pool</td></tr>
+						<tr><td>cancel(true)</td><td class="desc">cancel + interrupt</td></tr>
+						<tr><td>isCancelled()</td><td class="desc">check inside the loop</td></tr>
+						<tr><td>getState()</td><td class="desc">PENDING · STARTED · DONE</td></tr>
+						</tbody>
+					</table>
+				</section>
+			</div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Ignoring <code>get()</code> in <code>done()</code> — exceptions from <code>doInBackground</code> vanish silently</li>
+							<li class="note-item">Calling <code>get()</code> right after <code>execute()</code> on the EDT — blocks the UI until the task ends</li>
+							<li class="note-item">Updating components from <code>doInBackground</code> — use <code>publish</code> or <code>setProgress</code> instead</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Check <code>isCancelled()</code> in loops so Cancel buttons respond quickly</li>
+							<li class="note-item">For many tasks, run workers on your own <code>ExecutorService</code> with <code>executor.execute(worker)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>doInBackground</code> — slow work off the EDT</li>
+							<li class="note-item"><code>publish</code> → <code>process</code> — progress chunks on the EDT</li>
+							<li class="note-item"><code>done</code> + <code>get</code> — result or error on the EDT</li>
+							<li class="note-item"><code>cancel(true)</code> + <code>isCancelled</code> — stop early</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="swing-05-event-dispatch-thread.html">The Event Dispatch Thread</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Swing Reference · 62 Sheets</a>
+				<a class="nav-link next" href="swing-07-timers.html">Swing Timers</a>
+			</nav>
+		</footer>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

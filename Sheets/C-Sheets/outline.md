@@ -17,11 +17,34 @@ The total is held at 98 so filenames stay two digits. Adding more than one sheet
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **C Standards** (`id="standard"`) and **Safer C** (`id="idiom"`) on every sheet except the quick references (97–98) · **UB Check** (`id="ub"`) on 43 selected sheets. Details and lists below.
 - Pointers and Memory Management come right after Functions (Groups 9–10) instead of at the end with the other language-specific groups, because arrays, strings-as-data, structs and every data structure depend on them.
 - OOP is replaced by Structs, Unions & Enums (Group 12). Its last sheet covers the C patterns that stand in for classes (opaque types, function-pointer vtables).
 - Modules & Packages becomes Preprocessor, Headers & Builds (Group 14), since C has no module system or package manager.
 - Error Handling is 3 sheets: C has no exceptions, only return codes, `errno` and cleanup patterns.
 - Sheets 97–98 are table-only quick-reference pages (syntax, what it does, sheet #) with no code row.
+
+### Placement
+
+- UB Check sits in row 1 as a third column (`col-1-3`), like Java's Under the JVM box.
+- C Standards and Safer C stack under Code Explained in row 2, in that order.
+- The `/* SHEET NN */` comment in the set's CSS lists where each box sits. If a sheet doesn't fit, cut UB Check to 1 line first, then Safer C to 1 pair.
+
+### C Standards box (every sheet, 01–96)
+
+- `<section class="section-notes section-standard" id="standard">`, title **C Standards**.
+- 1–2 lines: which standard added or changed the feature, from C89/C90 to C23 (`__STDC_VERSION__` values on Sheet 01).
+
+### Safer C box (every sheet, 01–96)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **Safer C**.
+- 1–2 avoid/prefer lines: the risky call or habit → the safer one (✗ + strike vs ✓ + bold), e.g. `gets` → `fgets`, `strcpy` → `snprintf`.
+
+### UB Check box (43 selected sheets)
+
+- `<section class="section-notes section-ub" id="ub">`, title **UB Check**.
+- 1–2 lines: undefined or implementation-defined behavior for the topic: signed overflow, out-of-bounds, use-after-free, strict aliasing, data races. Sheet 90 covers UB itself, so it has no box.
+- On: 03–04, 06–07, 09–10, 12, 15–18, 20–22, 24, 26, 31, 35–36, 38–41, 44–45, 48–53, 55–57, 62, 70, 73, 77, 83, 91–94.
 
 ## Groups
 

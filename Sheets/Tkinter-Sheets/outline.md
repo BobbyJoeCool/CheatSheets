@@ -17,8 +17,28 @@ The guide's framework target is 25–50 sheets and this set is 62, because Tkint
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Other Toolkits Equivalent** (`id="equiv"`) and **The Pythonic Way** (`id="pythonic"`) on every sheet except the quick references (61–62) · **Thread Check** (`id="thread"`) in Row 1 on 15 selected sheets. Details and lists below.
 - As a framework set it skips the standard language groups and starts at Tkinter's own concepts.
 - Some tables-row sheets use Tkinter API names as table headings (e.g. `validate=` | Substitutions | More Codes).
+- `tk-cheatsheet.css` gives each box its own accent (blue Other Toolkits, Python-yellow Pythonic Way, red Thread Check) so none reads as part of Code Explained.
+- If a sheet doesn't fit, cut Thread Check to 1 line first, then The Pythonic Way to 2 pairs, then Other Toolkits Equivalent, before touching the main content.
+
+### Other Toolkits Equivalent box (every sheet, 01–60)
+
+- `<section class="section-notes section-equiv" id="equiv">`, title **Other Toolkits Equivalent**, under Code Explained in `col-2-2`.
+- 1–2 `note-item` lines mapping the sheet's Tkinter API to **PySide6 / Qt** and **Swing** (JavaFX where it's closer), Tkinter first: `Notebook` → `QTabWidget` · `JTabbedPane`; `after()` → `QTimer` · `javax.swing.Timer`.
+- No "See Swing NN" links yet: the Swing set isn't merged, so links would break. Add them once Swing lands on `main`.
+
+### The Pythonic Way box (every sheet, 01–60)
+
+- `<section class="section-notes section-idiom" id="pythonic">`, title **The Pythonic Way** (same title, id and markup as the Python set), under Other Toolkits Equivalent.
+- 2 avoid/prefer `note-item` lines: `<span class="idiom-avoid">…</span> → <span class="idiom-prefer">…</span>`, e.g. `lambda: f(i)` in a loop → `lambda i=i: f(i)`; `time.sleep()` in the GUI → `after(ms, f)`.
+
+### Thread Check box (15 selected sheets, Row 1)
+
+- `<section class="section-notes section-thread" id="thread">`, title **Thread Check**, as a third Row 1 column (`col-1-3`): `Description | Notes | Thread Check`. Modeled on Swing's EDT Check.
+- 2 lines on how the sheet's topic stays on the main thread: only the thread that created `Tk()` touches widgets and Tk variables; workers hand results back through a `queue.Queue` that an `after()` loop drains.
+- On: 03, 21–23, 29–30, 32, 39, 46, 49–51, 54, 56, 60.
 
 ## Groups
 

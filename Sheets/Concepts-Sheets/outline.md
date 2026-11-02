@@ -17,6 +17,7 @@ Bitwise (007) and Regular Expressions (029) are one-page primers that point to t
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - Every code block is pseudocode in the house style defined on Sheet 002, never a real language: `←` assigns, `=` compares, `≠` not equal; indentation-only blocks; `div` / `mod`; `and` / `or` / `not`; C-style bitwise symbols; `for i ← 0 to n - 1` (inclusive) and `for each x in items`; 0-indexed arrays with `length(arr)`; `null`, `true` / `false`, `∞`; `return (a, b)`; `//` comments.
 - Algorithm and pattern sheets use a fixed block order: Idea · Pseudocode · Complexity box · Recognize it when · Practice problems (4–6, easiest first). Many use a Code | Code row (template + worked example) or Code | Practice Table.
 - Concept sheets (Groups 2–4) swap "Recognize it when" and "Practice problems" for a pitfalls table.

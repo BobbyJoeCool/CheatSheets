@@ -15,7 +15,31 @@ JavaServer Pages: directives, implicit objects and scopes, Expression Language, 
 
 ## Differences in Layout from Basic Structure
 
-None. Uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+- **Extra boxes:** **Modern Equivalent** (`id="modern"`) and **Prefer / Avoid** (`id="idiom"`) on every sheet except the quick references (33–34) · **Security Check** (`id="security"`) on 14 selected sheets. Details and lists below.
+- Otherwise uses the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
+
+### Placement
+
+- The boxes stack in the order Modern Equivalent → Prefer / Avoid → Security Check under Code Explained.
+- On sheets where that column overflowed, the boxes are split: Modern Equivalent under the code block, Prefer / Avoid and Security Check under the notes (07, 08, 11, 14, 20, 29, 31); all under the code (09, 15, 17, 26); or Modern Equivalent under the code and Prefer / Avoid under Code Explained (28). The `/* SHEET NN */` comment in `jsp-cheatsheet.css` lists where each box sits.
+- Sheets 07, 20, 26 and 29 needed `fit_sheets.py --extended`.
+- If a sheet doesn't fit, cut Security Check to 1 line first, then Prefer / Avoid to 1 pair.
+
+### Modern Equivalent box (every sheet, 01–32)
+
+- `<section class="section-notes section-modern" id="modern">`, title **Modern Equivalent**.
+- 1–2 lines: the same thing in Spring MVC + Thymeleaf (Spring Boot), with a React / Next.js note where it helps, e.g. `<c:forEach>` → `th:each` · `items.map()`.
+
+### Prefer / Avoid box (every sheet, 01–32)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **Prefer / Avoid**.
+- 1–2 avoid/prefer lines (✗ + strike vs ✓ + bold), e.g. `<% %>` scriptlets → JSTL + EL; `${x}` straight into HTML → `<c:out>`; `javax` JSTL URIs → `jakarta.tags.core`.
+
+### Security Check box (14 selected sheets)
+
+- `<section class="section-notes section-security" id="security">`, title **Security Check**.
+- 1–2 lines: XSS through unescaped `${}`, open redirects, session fixation, include-path injection, `property="*"` mass assignment, CSRF. Not on sheet 32, which is the security-output sheet.
+- On: 02–04, 07–08, 11, 13–14, 17–19, 21, 24, 31.
 
 ## Groups
 

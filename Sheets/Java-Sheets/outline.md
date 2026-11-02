@@ -15,6 +15,7 @@ Java from syntax basics through the standard library and the wider ecosystem: co
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** **Java Versions** (`id="version"`) and **Idiomatic Java** (`id="idiom"`) on 001–134 · **Under the JVM** (`id="jvm"`) on 85 selected sheets. None on the quick references (135–136). Details and table below.
 - Numbers are three digits throughout (`java-001` to `java-136`) because the set passes 99.
 - Three extra boxes, described below: **Java Versions** and **Idiomatic Java** on every sheet, and **Under the JVM** on the sheets listed in the table.
 - Sheets 135–136 are table-only quick-reference pages and skip all three boxes.

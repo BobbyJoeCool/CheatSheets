@@ -17,6 +17,7 @@ At 67 sheets it is above the guide's 25–50 framework range, by request. It was
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 - TypeScript is the code language on every sheet except 55–59, which give the Python, Java and .NET equivalents. Sheet 62 is a side-by-side API map across the four languages.
 - Language Bindings is one group rather than one per language, so Java's single sheet doesn't break the 2-sheet group minimum.
 

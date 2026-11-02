@@ -16,6 +16,7 @@ XML document structure, elements and attributes, text and special characters, na
 
 ## Differences in Layout from Basic Structure
 
+- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
 Most sheets use the standard four-row layout (Description | Notes, Code | Explain, Tables, Mistakes | Tips | Summary).
 
 New sheets 11–14 combine rows 1–2 to fit (left: Description → Notes → Explain; right: Code).
