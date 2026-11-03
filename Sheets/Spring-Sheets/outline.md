@@ -18,11 +18,38 @@ The deep areas are dependency injection and the container, configuration, Spring
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** None. Only the standard boxes (Description, Notes, Code, Code Explained, Mistakes, Tips, Summary).
+- **Extra boxes:** **Boot 4 Changes** (`id="version"`) and **The Spring Way** (`id="idiom"`) on 01–67 · **Under the Hood** (`id="hood"`) in Row 1 on 25 selected sheets. None on the quick references (68–69). Details below.
 - As a framework set it skips the language-basics groups; Java itself lives in the Java set.
 - Groups follow Spring's own concepts (container, configuration, AOP, MVC, data, security, testing, ops) after Introduction & Setup.
 - Some sheets stack two code blocks in the code column (for example a Java class plus its `application.yml`, or build file plus shell commands). Prism languages used: `java`, `yaml`, `properties`, `bash`, `kotlin` (Gradle Kotlin DSL) and `markup` (Maven XML, Thymeleaf).
-- Sheet CSS is `Sheets/CSS/spring-cheatsheet.css` (Spring-green sheet-number badge).
+- Sheet CSS is `Sheets/CSS/spring-cheatsheet.css` (Spring-green sheet-number badge). It also adds `.section-version` (blue), `.section-idiom` (amber, with `.idiom-avoid` / `.idiom-prefer`) and `.section-hood` (violet), same approach as the Java and Maven sets.
+
+### Boot 4 Changes box (every sheet, 01–67)
+
+- `<section class="section-notes section-version" id="version">`, title **Boot 4 Changes**.
+- 2–3 `note-item` lines, each `<strong>tag</strong> — old form → current form`. The tag names the release that made the change: `Boot 4`, `Framework 7`, `Security 7` first, then older ones (`Boot 3`, `Framework 6.1`, `Data 3.1`, `Hibernate 6.3`…) for forms that still show up in tutorials and Stack Overflow answers.
+- Lead with what changed in Boot 4 / Framework 7 / Security 7 when the sheet's topic has something; fall back to the most common older form otherwise.
+- Sources: the Spring Boot 4.0 Migration Guide, the Spring Framework 7.0 release notes and the Spring Security 7.0 "What's New" page.
+
+### The Spring Way box (every sheet, 01–67)
+
+- `<section class="section-notes section-idiom" id="idiom">`, title **The Spring Way**.
+- 3 avoid → prefer pairs, same markup as the Java set's Idiomatic Java box: `<span class="idiom-avoid">…</span> → <span class="idiom-prefer">…</span>`.
+- Every pair is a real Spring idiom for the sheet's topic, never a restatement of the main code or a Common Mistakes item.
+
+### Under the Hood box (selected sheets)
+
+- `<section class="section-notes section-hood" id="hood">`, title **Under the Hood**, in a new `col-1-3`.
+- 2–3 items on what Spring actually does when the sheet's code runs: which proxy or post-processor is involved, what happens at startup vs per call, where state lives.
+- On: 04, 06, 08–09, 11–12, 15, 17–18, 20–21, 31, 38–39, 42–43, 45, 52–53, 60, 62–64, 66–67.
+- If a sheet doesn't fit on one page, cut Under the Hood to 2 items first, then The Spring Way, then Boot 4 Changes, before touching the main content.
+
+### Placement
+
+| Sheet has | Row 1 | col-2-2 (beside the code) |
+|---|---|---|
+| No Under the Hood box | Description · Notes | Code Explained, then Boot 4 Changes, then The Spring Way |
+| Under the Hood box | Description · Notes · Under the Hood (`col-1-3`) | Code Explained, then Boot 4 Changes, then The Spring Way |
 
 ## Groups
 
