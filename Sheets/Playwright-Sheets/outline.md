@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- **Group it belongs to:** Concepts & Tools
+- **Group it belongs to:** Testing
 - **Folder Directory:** `Sheets/Playwright-Sheets/pw-##-[slug].html`
 - **PDF Name:** `Playwright Reference Guide.pdf`
 - **Groups:** 19

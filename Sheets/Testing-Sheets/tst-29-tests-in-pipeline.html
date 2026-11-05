@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 29: Tests in the Pipeline</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>Tests in the Pipeline</h1>
+			<div class="sheet-desc">pre-commit hooks · PR checks · stages (fast → slow) · fail fast · required checks · nightly suites</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Fast Feedback First, Thorough Checks Later</h2><div class="description">Arrange checks so the <strong>fastest</strong> run first and the <strong>slowest</strong> run least often. Pre-commit hooks catch formatting and lint in seconds. <strong>PR checks</strong> run unit and integration tests and must pass to merge (<strong>required checks</strong>). Slower suites (full E2E, performance, mutation) run on merge, nightly or before release. <strong>Fail fast</strong> so people get the first signal in minutes.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Target: PR feedback in under ~10 minutes</li><li class="note-item">Run tests affected by the change first where tools support it</li><li class="note-item">Make the CI command the same as the local one</li><li class="note-item">Nightly failures need an owner the next morning</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Staged Pipeline</h2><pre><code class="language-yaml"># pre-commit (seconds, on the developer's machine)
+- format + lint + type-check on changed files
+
+# pull request (minutes, required to merge)
+stages:
+  - lint-and-types          # ~1 min, fail fast
+  - unit-tests              # ~3 min, parallel
+  - integration-tests       # ~5 min, real DB in a container
+  - e2e-smoke               # ~3 min, critical journeys only
+
+# main branch (after merge)
+  - full e2e suite
+  - build + deploy to staging
+  - smoke tests against staging
+
+# nightly
+  - mutation tests on changed modules
+  - performance / load tests
+  - fuzzing (time-boxed)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Cheap checks run first so obvious mistakes fail in a minute</div><div class="explain-item">Only the PR stages block merging</div><div class="explain-item">Smoke tests against the deployed environment catch config problems</div><div class="explain-item">Expensive suites still run, just less often</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> <code>pytest -x</code> locally, matrix in CI, <code>--junitxml</code> <a class="xref" href="../Pytest-Sheets/pyt-23-pytest-in-ci.html">↗23</a></li><li class="note-item"><strong>Vitest</strong> <code>vitest run --changed</code> in PRs, full on main <a class="xref" href="../JestVitest-Sheets/jv-22-reporters-ci.html">↗22</a></li><li class="note-item"><strong>JUnit</strong> <code>mvn verify</code> / <code>gradle check</code> with Failsafe ITs <a class="xref" href="../JUnit-Sheets/ju-23-reports-ci.html">↗23</a></li><li class="note-item"><strong>Playwright</strong> smoke tag on PR, full suite on main, sharded <a class="xref" href="../Playwright-Sheets/pw-63-github-actions.html">↗63</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> a 45-minute PR pipeline → <strong>it means</strong> slow suites block every change → <strong>do</strong> move slow suites to post-merge or nightly</li><li class="note-item"><strong>You see</strong> nightly failures unread for a week → <strong>it means</strong> no owner → <strong>do</strong> alert a rotating owner</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Stages Table | Rules Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-stages"><h2 class="section-title">What Runs Where</h2><table><thead><tr><th>Stage</th><th>Runs</th><th>Blocks merge?</th></tr></thead><tbody><tr><td>Pre-commit</td><td class="desc">Format, lint, types</td><td class="desc">Local only</td></tr><tr><td>PR</td><td class="desc">Unit, integration, E2E smoke</td><td class="desc">Yes</td></tr><tr><td>Main</td><td class="desc">Full E2E, deploy, smoke</td><td class="desc">Blocks deploy</td></tr><tr><td>Nightly</td><td class="desc">Load, mutation, fuzz</td><td class="desc">No (alerts)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-rules"><h2 class="section-title">Pipeline Rules</h2><table><thead><tr><th>Rule</th><th>Why</th></tr></thead><tbody><tr><td>Fail fast</td><td class="desc">First signal in minutes</td></tr><tr><td>Same command locally and in CI</td><td class="desc">No "works on my machine"</td></tr><tr><td>Cache dependencies</td><td class="desc">Faster runs</td></tr><tr><td>Required checks</td><td class="desc">Main stays green</td></tr><tr><td>Upload artifacts on failure</td><td class="desc">Debug without rerunning (sheet 31)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Running everything on every commit until the pipeline is too slow to use</li><li class="note-item">Optional checks that people ignore</li><li class="note-item">CI commands that differ from what developers run locally</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Set a time budget for PR checks and defend it</li><li class="note-item">Run tests in parallel and shard large suites (sheet 30)</li><li class="note-item">Keep a small, reliable smoke suite for deploys</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">fast checks first, slow ones later</li><li class="note-item">PR checks required</li><li class="note-item">nightly for expensive suites</li><li class="note-item">same command locally and in CI</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-28-suite-health.html">Test Suite Health</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-30-parallel-sharding.html">Parallelism &amp; Sharding</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

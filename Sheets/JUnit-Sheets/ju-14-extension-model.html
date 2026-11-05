@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JUnit — Sheet 14: The Extension Model</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ju-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>The Extension Model</h1>
+			<div class="sheet-desc"><code>@ExtendWith</code> · <code>@RegisterExtension</code> · lifecycle callbacks · <code>ParameterResolver</code> · <code>ExtensionContext.Store</code> · writing a small extension</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | In Spring Boot -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Plug Behavior Into the Lifecycle</h2><div class="description">Everything JUnit 4 did with runners and rules, Jupiter does with <strong>extensions</strong>: classes that implement callback interfaces (<code>BeforeEachCallback</code>, <code>AfterTestExecutionCallback</code>…) or <strong>resolve parameters</strong>. Register them declaratively with <strong><code>@ExtendWith</code></strong>, or programmatically with <strong><code>@RegisterExtension</code></strong> on a field when they need configuration. Mockito, Spring and Testcontainers all integrate this way.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Several extensions can be combined; they run in registration order</li><li class="note-item"><code>ExtensionContext.Store</code> keeps state per test, class or run</li><li class="note-item">Meta-annotations bundle extensions: <code>@ExtendWith(...) @interface IntegrationTest</code></li><li class="note-item">Global auto-registration via <code>ServiceLoader</code> (opt-in)</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-spring" id="spring"><h2 class="section-title">In Spring Boot</h2><ul class="note-list"><li class="note-item"><code>@SpringBootTest</code> is meta-annotated with <code>@ExtendWith(SpringExtension.class)</code></li><li class="note-item">SpringExtension resolves <code>@Autowired</code> constructor and method parameters</li><li class="note-item">Order matters: put <code>MockitoExtension</code> after Spring if both are present</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + JUnit 4 / TestNG Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Using and Writing Extensions</h2><pre><code class="language-java">@ExtendWith(MockitoExtension.class)
+class OrderServiceTest { }
+
+class TimingExtension implements BeforeTestExecutionCallback, AfterTestExecutionCallback {
+    private static final Namespace NS = Namespace.create(TimingExtension.class);
+
+    public void beforeTestExecution(ExtensionContext ctx) {
+        ctx.getStore(NS).put("start", System.nanoTime());
+    }
+    public void afterTestExecution(ExtensionContext ctx) {
+        long start = ctx.getStore(NS).remove("start", long.class);
+        ctx.publishReportEntry("ms", String.valueOf((System.nanoTime() - start) / 1_000_000));
+    }
+}
+
+class ClockResolver implements ParameterResolver {
+    public boolean supportsParameter(ParameterContext p, ExtensionContext e) {
+        return p.getParameter().getType() == Clock.class;
+    }
+    public Object resolveParameter(ParameterContext p, ExtensionContext e) {
+        return Clock.fixed(Instant.parse("2026-11-04T12:00:00Z"), ZoneOffset.UTC);
+    }
+}
+
+@ExtendWith({TimingExtension.class, ClockResolver.class})
+class InvoiceTest {
+    @RegisterExtension
+    static WireMockExtension wm = WireMockExtension.newInstance().build();
+
+    @Test void dueInThirtyDays(Clock clock) { /* clock injected */ }
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The <code>Store</code> keeps the start time between the two callbacks for this test</div><div class="explain-item"><code>publishReportEntry</code> adds data to test reports</div><div class="explain-item">A <code>ParameterResolver</code> lets tests and lifecycle methods ask for a <code>Clock</code></div><div class="explain-item"><code>@RegisterExtension</code> on a static field configures an extension instance in code</div></div></section><section class="section-notes section-legacy" id="legacy"><h2 class="section-title">JUnit 4 / TestNG Equivalent</h2><ul class="note-list"><li class="note-item"><strong>JUnit 4</strong> <code>@RunWith(MockitoJUnitRunner.class)</code> (one runner per class) and <code>@Rule</code> / <code>@ClassRule</code> fields</li><li class="note-item"><strong>TestNG</strong> <code>@Listeners</code>, <code>ITestListener</code>, <code>IHookable</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">abstract base test classes for shared setup → extensions or meta-annotations</li><li class="note-item">static helper state across tests → <code>ExtensionContext.Store</code></li><li class="note-item">manual <code>Clock</code> setup in every test → a <code>ParameterResolver</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Callbacks Table | Other Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-callbacks"><h2 class="section-title">Callback Interfaces</h2><table><thead><tr><th>Interface</th><th>Runs</th></tr></thead><tbody><tr><td>BeforeAllCallback / AfterAllCallback</td><td class="desc">Once per class</td></tr><tr><td>BeforeEachCallback / AfterEachCallback</td><td class="desc">Around @BeforeEach / @AfterEach</td></tr><tr><td>BeforeTestExecutionCallback</td><td class="desc">Right before the test body</td></tr><tr><td>AfterTestExecutionCallback</td><td class="desc">Right after the test body</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-other"><h2 class="section-title">Other Extension Points</h2><table><thead><tr><th>Interface</th><th>Does</th></tr></thead><tbody><tr><td>ParameterResolver</td><td class="desc">Supply parameters</td></tr><tr><td>ExecutionCondition</td><td class="desc">Enable / disable tests</td></tr><tr><td>TestExecutionExceptionHandler</td><td class="desc">Handle exceptions</td></tr><tr><td>TestWatcher</td><td class="desc">React to results</td></tr><tr><td>InvocationInterceptor</td><td class="desc">Wrap invocations</td></tr><tr><td>TestInstancePostProcessor</td><td class="desc">Inject into test instances</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Storing state in static fields of an extension, which breaks with parallel tests</li><li class="note-item">Assuming extension order when registering with several annotations</li><li class="note-item">Recreating Mockito / Spring integration by hand instead of using their extensions</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Bundle common extensions into a meta-annotation like <code>@IntegrationTest</code></li><li class="note-item">Use the <code>Store</code> with a unique <code>Namespace</code></li><li class="note-item">Check JUnit Pioneer and library docs before writing your own</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>@ExtendWith</code> — declarative</li><li class="note-item"><code>@RegisterExtension</code> — configured instance</li><li class="note-item">callbacks + <code>ParameterResolver</code></li><li class="note-item"><code>ExtensionContext.Store</code> — per-test state</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="ju-13-dynamic-repeated.html">Dynamic &amp; Repeated Tests</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JUnit Reference · 25 Sheets</a>
+				<a class="nav-link next" href="ju-15-builtin-extensions.html">Built-in Parameters &amp; Extensions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

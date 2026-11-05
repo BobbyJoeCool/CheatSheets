@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 12: Designing for Testability</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Designing for Testability</h1>
+			<div class="sheet-desc">seams · dependency injection · injecting a clock · injecting randomness · pure functions · functional core, imperative shell</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Code That Is Easy to Test Is Easy to Change</h2><div class="description">Code is hard to test when it reaches out for its dependencies: calls <code>now()</code>, <code>random()</code>, <code>new HttpClient()</code> or a global. A <strong>seam</strong> is a place where a test can substitute something. The simplest seam is <strong>dependency injection</strong>: pass collaborators in (constructor or parameter). Even better, keep decisions in <strong>pure functions</strong> (same input, same output) and push I/O to a thin outer layer: <strong>functional core, imperative shell</strong>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Time, randomness, IDs, env vars and I/O are the usual hidden dependencies</li><li class="note-item">Constructor injection works without a framework</li><li class="note-item">Pure functions need no doubles at all</li><li class="note-item">If a test needs heavy patching, the design is asking for a seam</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Hidden Dependencies → Injected</h2><pre><code class="language-none"># ✗ hard to test: reaches for time, randomness and the network
+function create_invite(email):
+    token  = random_hex(16)
+    expires = now() + days(7)
+    http_post("https://mail.example/send", { to: email, token })
+    return Invite(email, token, expires)
+
+# ✓ functional core: pure, no doubles needed
+function build_invite(email, token, today) -&gt; Invite:
+    return Invite(email, token, expires=today + days(7))
+
+# ✓ imperative shell: dependencies passed in
+function create_invite(email, clock, tokens, mailer):
+    invite = build_invite(email, tokens.next(), clock.today())
+    mailer.send(email, invite.token)
+    return invite
+
+test "invite expires in 7 days":
+    invite = build_invite("a@x.com", "t1", today="2026-11-04")
+    assert invite.expires == "2026-11-11"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The pure <code>build_invite</code> is tested with plain values</div><div class="explain-item">The shell takes a clock, token source and mailer, so tests pass fakes</div><div class="explain-item">Production wiring passes the real clock and mailer once, at start-up</div><div class="explain-item">Most logic moves into the easy-to-test core</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> pass dependencies in; <code>monkeypatch</code> only at the edges <a class="xref" href="../Pytest-Sheets/pyt-13-monkeypatch.html">↗13</a></li><li class="note-item"><strong>Vitest</strong> <code>vi.setSystemTime</code>; pass functions as parameters <a class="xref" href="../JestVitest-Sheets/jv-14-timers-dates.html">↗14</a></li><li class="note-item"><strong>JUnit</strong> constructor injection; inject <code>java.time.Clock</code> <a class="xref" href="../JUnit-Sheets/ju-14-extension-model.html">↗14</a></li><li class="note-item"><strong>Playwright</strong> <code>page.clock</code> controls time in the browser <a class="xref" href="../Playwright-Sheets/pw-34-clock-permissions.html">↗34</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> tests patching 5 modules to run one function → <strong>it means</strong> hidden dependencies → <strong>do</strong> inject them</li><li class="note-item"><strong>You see</strong> <code>static</code> / global singletons used everywhere → <strong>it means</strong> no seams → <strong>do</strong> pass instances in</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Hidden Table | Seams Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-hidden"><h2 class="section-title">Hidden Dependencies</h2><table><thead><tr><th>Hidden call</th><th>Inject instead</th></tr></thead><tbody><tr><td>now() / Date()</td><td class="desc">Clock</td></tr><tr><td>random() / uuid()</td><td class="desc">Random / IdGenerator</td></tr><tr><td>new HttpClient()</td><td class="desc">Client or port</td></tr><tr><td>Global config / env</td><td class="desc">Settings object</td></tr><tr><td>File / DB access</td><td class="desc">Repository port</td></tr><tr><td>Static singletons</td><td class="desc">Instances via constructor</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-seams"><h2 class="section-title">Kinds of Seams</h2><table><thead><tr><th>Seam</th><th>Example</th></tr></thead><tbody><tr><td>Constructor parameter</td><td class="desc">Service(repo, clock)</td></tr><tr><td>Method parameter</td><td class="desc">invite(email, now)</td></tr><tr><td>Function argument</td><td class="desc">retry(fn, sleep=fake_sleep)</td></tr><tr><td>Interface / port</td><td class="desc">PaymentGateway</td></tr><tr><td>Module / import</td><td class="desc">Patch at import (last resort)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Making everything an interface "for testing" even when there's one implementation and no I/O</li><li class="note-item">Injecting the clock but still calling <code>now()</code> deep inside</li><li class="note-item">Refactoring for testability without tests to protect the refactor (see sheet 35)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Pass a clock wherever business rules depend on time</li><li class="note-item">Extract decisions into pure functions first; it's the cheapest win</li><li class="note-item">Wire real dependencies in one place (<code>main</code>, the DI container)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">seam — where a test can substitute</li><li class="note-item">dependency injection — pass collaborators in</li><li class="note-item">inject time, randomness, I/O</li><li class="note-item">functional core, imperative shell</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-11-when-to-mock.html">When (and When Not) to Mock</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-13-tdd-red-green-refactor.html">TDD: Red, Green, Refactor</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 17: Plugins &amp; Hooks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Plugins &amp; Hooks</h1>
+			<div class="sheet-desc">installing plugins · <code>-p</code> / <code>-p no:</code> · <code>pytest_addoption</code> · <code>pytest_collection_modifyitems</code> · <code>pytest_configure</code> · local plugins in <code>conftest.py</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Extend pytest From conftest.py</h2><div class="description">pytest is built from <strong>plugins</strong>, and so are its extensions: install a package such as pytest-cov and it registers itself. Your own <code>conftest.py</code> is a local plugin too. It can implement <strong>hooks</strong>, functions with fixed <code>pytest_*</code> names that pytest calls at points in a run, such as adding a CLI option, changing collected tests, or reporting results.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>pytest --trace-config</code> lists active plugins</li><li class="note-item"><code>-p no:name</code> disables a plugin for one run</li><li class="note-item">All hooks are listed in the "API Reference → Hooks" docs</li><li class="note-item">Hook arguments are matched by name; take only what you need</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Hooks are called through <strong>pluggy</strong>: every registered implementation runs, in plugin order</li><li class="note-item"><code>firstresult</code> hooks stop at the first non-<code>None</code> return</li><li class="note-item"><code>@pytest.hookimpl(wrapper=True)</code> wraps other implementations with <code>yield</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A --runslow Option in conftest.py</h2><pre><code class="language-python">import pytest
+
+def pytest_addoption(parser):
+    parser.addoption("--runslow", action="store_true",
+                     help="run tests marked slow")
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "slow: takes more than a second")
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--runslow"):
+        return
+    skip_slow = pytest.mark.skip(reason="needs --runslow")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    start = time.perf_counter()
+    result = yield                       # run the test
+    item.user_properties.append(("secs", time.perf_counter() - start))
+    return result
+
+def pytest_report_header(config):
+    return f"api: {os.environ.get('API_URL', 'local')}"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>pytest_addoption</code> adds <code>--runslow</code>; fixtures read it with <code>pytestconfig.getoption</code></div><div class="explain-item"><code>pytest_collection_modifyitems</code> can skip, reorder or deselect tests after collection</div><div class="explain-item">The wrapper hook runs code around every test call</div><div class="explain-item"><code>pytest_report_header</code> adds a line to the top of the output</div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item">plugins and hooks → no plugin system; subclass <code>TestRunner</code> / <code>TestResult</code> or use <code>load_tests</code></li><li class="note-item"><code>pytest_collection_modifyitems</code> → a custom <code>load_tests(loader, tests, pattern)</code> function</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">editing every slow test to check an env var → one <code>collection_modifyitems</code> hook</li><li class="note-item">copy-pasting helpers between repos → package them as a plugin with an entry point</li><li class="note-item">old <code>hookwrapper=True</code> + <code>outcome.get_result()</code> → <code>wrapper=True</code> + <code>result = yield</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Hooks Table | Plugins Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-hooks"><h2 class="section-title">Common Hooks</h2><table><thead><tr><th>Hook</th><th>Called</th></tr></thead><tbody><tr><td>pytest_addoption(parser)</td><td class="desc">Start-up: add CLI / config options</td></tr><tr><td>pytest_configure(config)</td><td class="desc">After options are parsed</td></tr><tr><td>pytest_collection_modifyitems(config, items)</td><td class="desc">After collection</td></tr><tr><td>pytest_runtest_setup(item)</td><td class="desc">Before each test's setup</td></tr><tr><td>pytest_runtest_makereport(item, call)</td><td class="desc">Building each report</td></tr><tr><td>pytest_sessionfinish(session, exitstatus)</td><td class="desc">End of run</td></tr><tr><td>pytest_report_header(config)</td><td class="desc">Header lines</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-plugins"><h2 class="section-title">Plugin Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td>pip install pytest-xyz</td><td class="desc">Auto-registers via entry point</td></tr><tr><td>-p no:cacheprovider</td><td class="desc">Disable a plugin</td></tr><tr><td>-p mymodule</td><td class="desc">Load a module as a plugin</td></tr><tr><td>--trace-config</td><td class="desc">Show loaded plugins</td></tr><tr><td>pytest_plugins = ["x"]</td><td class="desc">Load from root conftest.py</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Defining <code>pytest_plugins</code> in a non-root <code>conftest.py</code>, which is an error</li><li class="note-item">Misspelling a hook name; pytest only warns about unknown <code>pytest_*</code> names in strict setups</li><li class="note-item">Doing heavy work in <code>pytest_configure</code> that slows every run, even <code>--co</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with <code>conftest.py</code> hooks; turn them into a package only when several repos need them</li><li class="note-item">Use <code>item.user_properties</code> to attach data that shows up in JUnit XML</li><li class="note-item">Read a plugin's source; most are a few hundred lines of hooks</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">plugins — installed packages and <code>conftest.py</code></li><li class="note-item">hooks — <code>pytest_*</code> functions pytest calls</li><li class="note-item"><code>addoption</code> + <code>collection_modifyitems</code> — custom flags</li><li class="note-item"><code>wrapper=True</code> — run code around a hook</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-16-output-debugging.html">Output &amp; Debugging</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-18-coverage.html">Coverage with pytest-cov</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

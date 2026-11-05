@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 23: pytest in CI</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<h1>pytest in CI</h1>
+			<div class="sheet-desc"><code>--junitxml</code> · GitHub Actions matrix · <code>tox</code> / <code>nox</code> · caching <code>.pytest_cache</code> · exit codes · <code>--strict-markers</code> in CI</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Run the Suite on Every Push</h2><div class="description">In CI, pytest's <strong>exit code</strong> decides pass or fail, and <strong><code>--junitxml</code></strong> writes a report most CI systems display. A <strong>matrix</strong> runs the suite on several Python versions; <strong>tox</strong> or <strong>nox</strong> run the same environments locally. Turn on strict options and warnings-as-errors in CI so problems fail early.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Exit code 5 (no tests collected) fails CI; catch it if a job may have nothing to run</li><li class="note-item"><code>-p no:cacheprovider</code> avoids writing <code>.pytest_cache</code> in read-only CI</li><li class="note-item"><code>CI=true</code> is set by most CI systems; pytest shortens some output when it sees it</li><li class="note-item">The GitHub set covers Actions syntax</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">.github/workflows/test.yml</h2><pre><code class="language-yaml">name: tests
+on: [push, pull_request]
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e . --group dev
+      - run: &gt;
+          pytest -n auto -ra
+          --cov=orders --cov-report=xml
+          --junitxml=reports/junit.xml
+          -W error --strict-markers
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-${{ matrix.python }}
+          path: reports/</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The matrix runs the same steps once per Python version</div><div class="explain-item"><code>if: always()</code> uploads reports even when tests fail</div><div class="explain-item"><code>-W error</code> turns warnings into failures only in CI</div><div class="explain-item"><code>pip install --group dev</code> (pip 25.1+) installs the <code>[dependency-groups] dev</code> packages</div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item"><code>--junitxml</code> → no built-in XML output; use <code>unittest-xml-reporting</code> or run unittest tests under pytest</li><li class="note-item">matrix and tox setup → identical for both runners</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">different flags locally and in CI → share them in <code>addopts</code> and add only CI-specific ones in the workflow</li><li class="note-item">installing with <code>pip install -r</code> and no lock → <code>uv sync</code> or a lock file</li><li class="note-item">one Python version → a matrix of supported versions</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Flags Table | Tools Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-flags"><h2 class="section-title">Useful CI Flags</h2><table><thead><tr><th>Flag</th><th>Why</th></tr></thead><tbody><tr><td>--junitxml=path</td><td class="desc">Test report for the CI UI</td></tr><tr><td>-ra</td><td class="desc">Reasons for skips / xfails</td></tr><tr><td>-n auto</td><td class="desc">Use all cores</td></tr><tr><td>--cov-report=xml</td><td class="desc">Coverage upload</td></tr><tr><td>-W error</td><td class="desc">Warnings fail</td></tr><tr><td>--strict-markers</td><td class="desc">Typos fail</td></tr><tr><td>-p no:cacheprovider</td><td class="desc">No cache dir</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-tools"><h2 class="section-title">Runners Around pytest</h2><table><thead><tr><th>Tool</th><th>Use</th></tr></thead><tbody><tr><td>tox</td><td class="desc">Test matrix from tox.ini / tox.toml</td></tr><tr><td>nox</td><td class="desc">Matrix in Python (noxfile.py)</td></tr><tr><td>uv run</td><td class="desc">Run in the project env</td></tr><tr><td>pre-commit</td><td class="desc">Lint before tests</td></tr><tr><td>Codecov / Coveralls</td><td class="desc">Coverage dashboards</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Ignoring exit code 5 when a path filter leaves nothing to run</li><li class="note-item">Uploading reports only on success, so failures have no report</li><li class="note-item">Testing only the newest Python while supporting older ones</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use the same command locally and in CI (a <code>nox</code> session or a script)</li><li class="note-item">Fail on warnings in CI to catch deprecations before upgrades break you</li><li class="note-item">Shard huge suites with <code>pytest-split</code> or xdist across jobs</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">exit code — CI pass / fail</li><li class="note-item"><code>--junitxml</code> — reports</li><li class="note-item">matrix / tox / nox — many Pythons</li><li class="note-item"><code>-W error</code> + strict — fail early</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-22-testing-patterns.html">Testing Patterns in pytest</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-24-quick-ref-api.html" title="Quick Reference — Fixtures, Marks &amp; Assertions">Quick Ref — Fixtures &amp; Marks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

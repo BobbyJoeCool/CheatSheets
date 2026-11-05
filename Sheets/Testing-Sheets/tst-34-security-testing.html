@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 34: Security Testing Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>Security Testing Basics</h1>
+			<div class="sheet-desc">SAST · DAST · SCA / dependency scanning · secrets scanning · OWASP ZAP · security tests for auth rules</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Find Vulnerabilities Before Attackers Do</h2><div class="description">Security testing combines automated scanners with your own tests. <strong>SAST</strong> analyzes source code for risky patterns; <strong>SCA</strong> finds known vulnerabilities in dependencies; <strong>secrets scanning</strong> catches committed keys; <strong>DAST</strong> attacks a running app from outside (OWASP ZAP). Just as important are <strong>your own tests for authorization rules</strong>: user A can't read user B's data, roles are enforced, input is validated.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Run SCA and secrets scanning on every PR</li><li class="note-item">Most real breaches are authorization bugs scanners can't understand</li><li class="note-item">Tie tests to the OWASP Top 10 categories</li><li class="note-item">Penetration tests by specialists still matter for high-risk apps</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Authorization Tests + Scanners</h2><pre><code class="language-none"># your tests: the rules only you know
+test "a customer can't read another customer's order":
+    res = client.get("/orders/" + bob_order.id, auth=token("ann"))
+    assert res.status == 404                          # don't reveal it exists
+
+test "price can't be set by the client":
+    res = client.post("/orders", json={ sku: "A1", qty: 1, price: 0.01 }, auth=token("ann"))
+    assert db.orders.find(res.body.id).price == catalog_price("A1")
+
+test "search input is not executed as SQL":
+    res = client.get("/search?q=' OR 1=1 --", auth=token("ann"))
+    assert res.status == 200 and res.body.results == []
+
+# pipeline scanners
+pr:       secrets scan · dependency scan (SCA) · SAST
+nightly:  DAST baseline scan against staging (OWASP ZAP)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Broken object-level authorization is a top API risk; test it directly</div><div class="explain-item">Mass-assignment tests check that clients can't set server-owned fields</div><div class="explain-item">Injection tests send hostile input and check it is treated as data</div><div class="explain-item">Scanners cover known patterns and vulnerable libraries automatically</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> Bandit / Ruff <code>S</code> rules (SAST), pip-audit (SCA) <a class="xref" href="../Pytest-Sheets/pyt-23-pytest-in-ci.html">↗23</a></li><li class="note-item"><strong>Vitest</strong> <code>npm audit</code>, eslint-plugin-security, Snyk / Dependabot <a class="xref" href="../JestVitest-Sheets/jv-22-reporters-ci.html">↗22</a></li><li class="note-item"><strong>JUnit</strong> OWASP Dependency-Check, SpotBugs + Find Security Bugs <a class="xref" href="../JUnit-Sheets/ju-23-reports-ci.html">↗23</a></li><li class="note-item"><strong>Playwright</strong> auth tests per role, ZAP proxying Playwright traffic <a class="xref" href="../Playwright-Sheets/pw-31-api-testing.html">↗31</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> only scanner results in the security review → <strong>it means</strong> authorization logic is untested → <strong>do</strong> write tests for who can access what</li><li class="note-item"><strong>You see</strong> dependency alerts piling up unread → <strong>it means</strong> alert fatigue → <strong>do</strong> auto-update and fail builds on critical issues</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Kinds Table | Tests Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-kinds"><h2 class="section-title">Security Testing Kinds</h2><table><thead><tr><th>Kind</th><th>Looks at</th><th>When</th></tr></thead><tbody><tr><td>SAST</td><td class="desc">Source code patterns</td><td class="desc">Every PR</td></tr><tr><td>SCA</td><td class="desc">Dependencies with known CVEs</td><td class="desc">Every PR + daily</td></tr><tr><td>Secrets scan</td><td class="desc">Committed keys / tokens</td><td class="desc">Pre-commit + PR</td></tr><tr><td>DAST</td><td class="desc">Running app from outside</td><td class="desc">Nightly / staging</td></tr><tr><td>Your auth tests</td><td class="desc">Access-control rules</td><td class="desc">Every PR</td></tr><tr><td>Pen test</td><td class="desc">Humans attacking</td><td class="desc">Before major releases</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-tests"><h2 class="section-title">Tests You Should Write</h2><table><thead><tr><th>Risk</th><th>Test</th></tr></thead><tbody><tr><td>Broken access control</td><td class="desc">User A → user B's resource = 404 / 403</td></tr><tr><td>Mass assignment</td><td class="desc">Client can't set role / price / owner</td></tr><tr><td>Injection</td><td class="desc">Hostile input stays data</td></tr><tr><td>Auth</td><td class="desc">Expired / tampered tokens rejected</td></tr><tr><td>Rate limits</td><td class="desc">Too many attempts → 429</td></tr><tr><td>Sensitive data</td><td class="desc">No secrets in responses or logs</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Relying only on scanners for security</li><li class="note-item">Testing authorization with an admin account only</li><li class="note-item">Ignoring dependency alerts until an audit</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Write an access-control test for every new endpoint</li><li class="note-item">Fail CI on committed secrets</li><li class="note-item">Keep dependencies updated automatically with review</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">SAST · SCA · secrets · DAST — automated</li><li class="note-item">authorization tests — yours to write</li><li class="note-item">scan on every PR, DAST nightly</li><li class="note-item">OWASP Top 10 as a checklist</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-33-accessibility-testing.html">Accessibility Testing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-35-legacy-code.html">Testing Legacy Code</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

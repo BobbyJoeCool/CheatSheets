@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 19: Contract Testing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Contract Testing</h1>
+			<div class="sheet-desc">consumer-driven contracts · Pact · provider verification · broker · OpenAPI-based contracts · contract vs E2E</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Interview Angle -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Services Agree Without Running Together</h2><div class="description">When services talk over APIs, a change on one side can break the other. <strong>Contract tests</strong> check that both sides agree on the API <strong>without</strong> deploying them together. In <strong>consumer-driven</strong> contracts (Pact), the consumer's tests record the requests it makes and the responses it needs; the <strong>provider</strong> then replays them in its own CI to verify it still satisfies every consumer. A <strong>broker</strong> shares contracts and results.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Contracts test the <strong>shape</strong> of interactions, not business logic</li><li class="note-item">Each consumer records only the fields it uses, so providers can add fields freely</li><li class="note-item">"Can I deploy?" checks with the broker gate releases</li><li class="note-item">Schema-based alternatives compare against an OpenAPI spec</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-interview" id="interview"><h2 class="section-title">Interview Angle</h2><ul class="note-list"><li class="note-item"><strong>Q:</strong> "What is contract testing?" Consumer records expectations; provider verifies them in its own pipeline</li><li class="note-item">Why not just E2E? Faster, pinpoints which side broke, no shared environment needed</li><li class="note-item">Mention Pact and a broker by name</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Consumer Test → Contract → Provider Verification</h2><pre><code class="language-none"># CONSUMER (orders-ui) — runs against a mock provider
+contract "orders-ui" ↔ "orders-api":
+    given "order 7 exists"
+    upon receiving GET /orders/7
+    respond with 200 {
+        id:     like(7),            # any number
+        status: term("NEW|PAID", example="PAID"),
+        total:  like(45.00)
+    }
+test "order page shows the status":
+    order = OrdersClient(mock_provider.url).get(7)
+    assert order.status == "PAID"
+# → writes contract file, published to the broker
+
+# PROVIDER (orders-api) — in its own CI
+verify contracts from broker for "orders-api":
+    state "order 7 exists": db.insert(Order(id=7, status="PAID"))
+    replay each request against the real API, compare responses
+# → results published; deploy gated on "can-i-deploy"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Matchers like <code>like()</code> check type, not exact values</div><div class="explain-item">Provider states set up data so each interaction can be replayed</div><div class="explain-item">If the provider renames <code>status</code>, its CI fails before release</div><div class="explain-item">Both sides deploy independently once verification passes</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> pact-python (consumer and provider) <a class="xref" href="../Pytest-Sheets/pyt-17-plugins-hooks.html">↗17</a></li><li class="note-item"><strong>Vitest</strong> @pact-foundation/pact with MSW-style mock server <a class="xref" href="../JestVitest-Sheets/jv-15-network-globals.html">↗15</a></li><li class="note-item"><strong>JUnit</strong> Pact JVM JUnit 5 extension, Spring Cloud Contract <a class="xref" href="../JUnit-Sheets/ju-14-extension-model.html">↗14</a></li><li class="note-item"><strong>Playwright</strong> not a contract tool; API tests can validate against OpenAPI <a class="xref" href="../Playwright-Sheets/pw-31-api-testing.html">↗31</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> a shared staging environment where teams wait to run E2E suites → <strong>it means</strong> integration is checked too late → <strong>do</strong> add contract tests per service pair</li><li class="note-item"><strong>You see</strong> contracts that pin every response field exactly → <strong>it means</strong> brittle contracts → <strong>do</strong> use type matchers and only fields the consumer uses</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Compare Table | Styles Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-compare"><h2 class="section-title">Contract vs E2E</h2><table><thead><tr><th>Aspect</th><th>Contract tests</th><th>E2E tests</th></tr></thead><tbody><tr><td>Needs all services running</td><td class="desc">No</td><td class="desc">Yes</td></tr><tr><td>Speed</td><td class="desc">Seconds</td><td class="desc">Minutes</td></tr><tr><td>Pinpoints the broken side</td><td class="desc">Yes</td><td class="desc">Rarely</td></tr><tr><td>Tests business flows</td><td class="desc">No</td><td class="desc">Yes</td></tr><tr><td>Runs in</td><td class="desc">Each service's CI</td><td class="desc">Shared environment</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-styles"><h2 class="section-title">Contract Styles</h2><table><thead><tr><th>Style</th><th>How</th></tr></thead><tbody><tr><td>Consumer-driven (Pact)</td><td class="desc">Consumers record, provider verifies</td></tr><tr><td>Provider-driven / schema</td><td class="desc">Compare against OpenAPI spec</td></tr><tr><td>Spring Cloud Contract</td><td class="desc">Contracts in a DSL, stubs generated</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using contract tests to test business logic</li><li class="note-item">Consumers asserting fields they don't use</li><li class="note-item">Never verifying contracts on the provider side</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with your most-changed API between two teams</li><li class="note-item">Wire "can-i-deploy" into release pipelines</li><li class="note-item">Keep a few E2E tests for critical journeys on top</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">contract — agreed API shape</li><li class="note-item">consumer-driven — consumer records needs</li><li class="note-item">provider verifies in its own CI</li><li class="note-item">broker + can-i-deploy — safe releases</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-18-testing-apis.html">Testing HTTP APIs</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-20-component-vs-e2e.html">Component Tests vs End-to-End Tests</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

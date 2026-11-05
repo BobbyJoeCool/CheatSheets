@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JUnit — Sheet 05: Lifecycle</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ju-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s05">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 05</div>
+			<h1>Lifecycle</h1>
+			<div class="sheet-desc"><code>@BeforeEach</code> / <code>@AfterEach</code> · <code>@BeforeAll</code> / <code>@AfterAll</code> · static requirement · <code>@TestInstance(PER_CLASS)</code> · execution order</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | In Spring Boot -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Setup and Teardown Around Tests</h2><div class="description">JUnit creates a <strong>new instance</strong> of the test class for every test method, then calls <code>@BeforeEach</code>, the test, and <code>@AfterEach</code>. <code>@BeforeAll</code> and <code>@AfterAll</code> run once per class and must be <strong>static</strong>, unless the class uses <strong><code>@TestInstance(Lifecycle.PER_CLASS)</code></strong>, which keeps one instance for all tests.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>@AfterEach</code> runs even if the test failed</li><li class="note-item">Superclass <code>@BeforeEach</code> runs before the subclass's</li><li class="note-item">Parameters like <code>TestInfo</code> can be injected into lifecycle methods</li><li class="note-item">Avoid relying on test order; there is none by default</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-spring" id="spring"><h2 class="section-title">In Spring Boot</h2><ul class="note-list"><li class="note-item"><code>@SpringBootTest</code> contexts are cached and reused across test classes with the same configuration</li><li class="note-item"><code>@DirtiesContext</code> throws the cached context away, which slows the suite</li><li class="note-item"><code>@BeforeAll</code> is a good place for Testcontainers, not for Spring beans (not injected yet in static methods)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + JUnit 4 / TestNG Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Lifecycle Methods</h2><pre><code class="language-java">import org.junit.jupiter.api.*;
+
+class OrderRepositoryTest {
+    static Database db;
+    OrderRepository repo;
+
+    @BeforeAll
+    static void startDb() {           // once, before all tests (static)
+        db = Database.startInMemory();
+    }
+
+    @BeforeEach
+    void setUp() {                    // before every test
+        repo = new OrderRepository(db);
+        db.beginTransaction();
+    }
+
+    @Test
+    void savesOrder() {
+        repo.save(new Order(1, 10.0));
+        assertEquals(1, repo.count());
+    }
+
+    @AfterEach
+    void rollback() { db.rollback(); }     // after every test, pass or fail
+
+    @AfterAll
+    static void stopDb() { db.stop(); }
+}
+
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class SharedInstanceTest {
+    @BeforeAll void init() { }        // no static needed
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Order per test: constructor → <code>@BeforeEach</code> → test → <code>@AfterEach</code></div><div class="explain-item">Rolling back in <code>@AfterEach</code> keeps tests independent while sharing one database</div><div class="explain-item"><code>PER_CLASS</code> is handy in Kotlin, where static methods are awkward</div><div class="explain-item">Instance fields reset each test because each test gets a new instance</div></div></section><section class="section-notes section-legacy" id="legacy"><h2 class="section-title">JUnit 4 / TestNG Equivalent</h2><ul class="note-list"><li class="note-item"><strong>JUnit 4</strong> <code>@Before</code> / <code>@After</code> / <code>@BeforeClass</code> / <code>@AfterClass</code> (static)</li><li class="note-item"><strong>TestNG</strong> <code>@BeforeMethod</code> / <code>@AfterMethod</code> / <code>@BeforeClass</code> / <code>@AfterClass</code> (not static), plus <code>@BeforeSuite</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">static mutable fields shared by tests → per-test setup</li><li class="note-item">heavy <code>@BeforeEach</code> work → <code>@BeforeAll</code> + reset per test</li><li class="note-item">cleanup inside each test → <code>@AfterEach</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Order Table | Ann Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-order"><h2 class="section-title">Execution Order</h2><table><thead><tr><th>Step</th><th>Runs</th></tr></thead><tbody><tr><td>1. @BeforeAll</td><td class="desc">Once per class</td></tr><tr><td>2. constructor</td><td class="desc">Per test (PER_METHOD)</td></tr><tr><td>3. @BeforeEach</td><td class="desc">Superclass first, then subclass</td></tr><tr><td>4. @Test</td><td class="desc">The test</td></tr><tr><td>5. @AfterEach</td><td class="desc">Subclass first, then superclass</td></tr><tr><td>6. @AfterAll</td><td class="desc">Once per class</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ann"><h2 class="section-title">Annotations</h2><table><thead><tr><th>Annotation</th><th>Static?</th></tr></thead><tbody><tr><td>@BeforeAll / @AfterAll</td><td class="desc">Yes (unless PER_CLASS)</td></tr><tr><td>@BeforeEach / @AfterEach</td><td class="desc">No</td></tr><tr><td>@TestInstance(PER_CLASS)</td><td class="desc">One instance per class</td></tr><tr><td>@TestInstance(PER_METHOD)</td><td class="desc">Default: new instance per test</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Non-static <code>@BeforeAll</code> without <code>PER_CLASS</code> (JUnit reports an error)</li><li class="note-item">Expecting instance fields set in one test to be there in the next</li><li class="note-item">Using <code>PER_CLASS</code> and leaking state between tests through fields</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Prefer the default per-method lifecycle for isolation</li><li class="note-item">Use <code>PER_CLASS</code> in Kotlin or when <code>@BeforeAll</code> needs instance state</li><li class="note-item">Keep teardown in <code>@AfterEach</code> so it runs on failure</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>@BeforeEach</code> / <code>@AfterEach</code> — every test</li><li class="note-item"><code>@BeforeAll</code> / <code>@AfterAll</code> — once, static</li><li class="note-item">new instance per test (default)</li><li class="note-item"><code>PER_CLASS</code> — one instance</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="ju-04-test-classes-methods.html">Test Classes &amp; Methods</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JUnit Reference · 25 Sheets</a>
+				<a class="nav-link next" href="ju-06-organizing-tests.html">Nested, Tagged &amp; Ordered Tests</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

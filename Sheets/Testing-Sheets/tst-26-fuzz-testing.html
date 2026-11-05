@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 26: Fuzz Testing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Fuzz Testing</h1>
+			<div class="sheet-desc">random vs coverage-guided fuzzing · corpus · crashes as bugs · Atheris · Jazzer · <code>go test -fuzz</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Throw Unexpected Input Until Something Breaks</h2><div class="description"><strong>Fuzzing</strong> feeds huge numbers of malformed or random inputs to code that parses or handles untrusted data, looking for crashes, hangs, memory errors and unexpected exceptions. <strong>Coverage-guided</strong> fuzzers (libFuzzer, AFL, Jazzer, Atheris, Go's native fuzzing) watch which code paths each input reaches and mutate the inputs that find new paths. A saved <strong>corpus</strong> of interesting inputs makes later runs smarter.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Best targets: parsers, decoders, file formats, protocol handlers</li><li class="note-item">Every crash found becomes a regression test</li><li class="note-item">Run continuously (OSS-Fuzz, CI nightly) rather than once</li><li class="note-item">Related to property-based testing; fuzzers focus on crashes and security</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Fuzz Target</h2><pre><code class="language-none">fuzz_target(data: bytes):
+    try:
+        doc = parse_invoice(data)
+    except InvoiceParseError:
+        return                      # expected: bad input rejected cleanly
+    # anything else (crash, other exception, hang) is a bug
+    assert doc.total &gt;= 0
+
+# run
+fuzz parse_invoice --corpus corpus/invoices --max-time 10m
+# found: IndexError with input b"INV\x00\x00;;"
+# → saved to crashes/crash-3f2a…
+# → add as a regression test:
+test "parser rejects truncated header":
+    raises InvoiceParseError: parse_invoice(b"INV\x00\x00;;")</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The target defines what "acceptable" failure looks like</div><div class="explain-item">Any other exception is reported with the input that caused it</div><div class="explain-item">The corpus starts with real sample files and grows with interesting inputs</div><div class="explain-item">Each finding becomes a normal example test</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> Atheris (coverage-guided) or Hypothesis for structured fuzzing <a class="xref" href="../Pytest-Sheets/pyt-22-testing-patterns.html">↗22</a></li><li class="note-item"><strong>Vitest</strong> Jazzer.js; fast-check for structured input <a class="xref" href="../JestVitest-Sheets/jv-06-each-modifiers.html">↗06</a></li><li class="note-item"><strong>JUnit</strong> Jazzer with <code>@FuzzTest</code> on JUnit <a class="xref" href="../JUnit-Sheets/ju-14-extension-model.html">↗14</a></li><li class="note-item"><strong>Playwright</strong> not a fuzzer; API tests can send malformed payloads</li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> a parser of untrusted files with only happy-path tests → <strong>it means</strong> security bugs waiting → <strong>do</strong> add a fuzz target and run it nightly</li><li class="note-item"><strong>You see</strong> fuzz crashes triaged once and forgotten → <strong>it means</strong> regressions return → <strong>do</strong> turn each crash into a test</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Kinds Table | Tools Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-kinds"><h2 class="section-title">Fuzzing Approaches</h2><table><thead><tr><th>Approach</th><th>How</th></tr></thead><tbody><tr><td>Random / dumb</td><td class="desc">Random bytes; finds shallow bugs</td></tr><tr><td>Mutation-based</td><td class="desc">Mutates sample inputs</td></tr><tr><td>Coverage-guided</td><td class="desc">Keeps inputs that reach new code</td></tr><tr><td>Structure-aware</td><td class="desc">Generates valid-ish formats (grammars)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-tools"><h2 class="section-title">Tools</h2><table><thead><tr><th>Language</th><th>Fuzzer</th></tr></thead><tbody><tr><td>Go</td><td class="desc">go test -fuzz (built in)</td></tr><tr><td>Python</td><td class="desc">Atheris</td></tr><tr><td>Java / JVM</td><td class="desc">Jazzer</td></tr><tr><td>JavaScript</td><td class="desc">Jazzer.js</td></tr><tr><td>C / C++ / Rust</td><td class="desc">libFuzzer, AFL++, cargo-fuzz</td></tr><tr><td>Continuous</td><td class="desc">OSS-Fuzz, ClusterFuzzLite</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Fuzzing code that has no clear failure condition</li><li class="note-item">Running a fuzzer once for a minute and calling it done</li><li class="note-item">Not saving the corpus between runs</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Seed the corpus with real sample inputs</li><li class="note-item">Run fuzzers nightly with a time limit</li><li class="note-item">Fuzz anything that parses data from users or the network</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">fuzzing — massive unexpected input</li><li class="note-item">coverage-guided — mutate inputs that find new paths</li><li class="note-item">corpus — remembered interesting inputs</li><li class="note-item">crash → regression test</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-25-mutation-testing.html">Mutation Testing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-27-code-coverage.html">Code Coverage</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

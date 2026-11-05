@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 14: unittest.mock &amp; pytest-mock</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>unittest.mock &amp; pytest-mock</h1>
+			<div class="sheet-desc"><code>mocker.patch</code> · <code>MagicMock</code> · <code>return_value</code> · <code>side_effect</code> · <code>assert_called_once_with</code> · <code>mocker.spy</code> · <code>autospec=True</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Fakes That Record How They Were Used</h2><div class="description">A <strong>mock</strong> stands in for a real object and records every call, so a test can check *how* the code used it. The standard library's <strong><code>unittest.mock</code></strong> provides <code>Mock</code>, <code>MagicMock</code> and <code>patch</code>; the <strong>pytest-mock</strong> plugin wraps them in a <strong><code>mocker</code></strong> fixture that undoes patches automatically. Configure results with <code>return_value</code> and <code>side_effect</code>, then assert on calls.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>pip install pytest-mock</code> for the <code>mocker</code> fixture</li><li class="note-item"><code>autospec=True</code> makes the mock reject calls that don't match the real signature</li><li class="note-item"><code>mocker.spy</code> wraps a real function: it still runs, but calls are recorded</li><li class="note-item">The same "patch where it's looked up" rule applies</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item"><code>patch</code> replaces the name in the target module's namespace for the duration, then restores it</li><li class="note-item"><code>autospec</code> builds the mock from the real object, so wrong argument counts and missing attributes raise</li><li class="note-item">A plain <code>MagicMock</code> accepts anything, which can hide bugs</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Mocking an HTTP Client</h2><pre><code class="language-python">def test_fetch_rate(mocker):
+    get = mocker.patch("shop.rates.httpx.get", autospec=True)
+    get.return_value.json.return_value = {"rate": 1.1}
+
+    assert fetch_rate("EUR") == 1.1
+    get.assert_called_once_with("https://rates.example/EUR", timeout=5)
+
+def test_retries_then_succeeds(mocker):
+    send = mocker.patch("shop.mail.smtp_send", autospec=True)
+    send.side_effect = [ConnectionError, ConnectionError, None]
+    notify("ann@example.com")
+    assert send.call_count == 3
+
+def test_raises(mocker):
+    mocker.patch("shop.rates.fetch_rate", side_effect=TimeoutError)
+    with pytest.raises(RateUnavailable):
+        convert(10, "EUR")
+
+def test_spy(mocker):
+    spy = mocker.spy(shop.cart, "recalculate")
+    cart.add("apple")
+    spy.assert_called_once()           # real recalculate still ran
+
+# without the plugin
+from unittest.mock import patch
+def test_plain():
+    with patch("shop.rates.fetch_rate", return_value=2.0) as m:
+        assert convert(1, "EUR") == 2.0</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>return_value.json.return_value</code> configures what <code>httpx.get(...).json()</code> returns</div><div class="explain-item"><code>side_effect</code> as a list returns or raises each item in turn</div><div class="explain-item"><code>side_effect=TimeoutError</code> makes every call raise</div><div class="explain-item"><code>mocker.spy</code> keeps the real behavior and adds call recording</div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item"><code>mocker.patch(...)</code> → <code>@patch("…")</code> decorator or <code>with patch(…)</code> block</li><li class="note-item"><code>mocker.spy</code> → <code>patch.object(obj, "fn", wraps=obj.fn)</code></li><li class="note-item"><code>mocker</code> auto-undo → <code>patch</code> restores on exit, or <code>self.addCleanup(p.stop)</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">bare <code>MagicMock()</code> for a real class → <code>autospec=True</code> / <code>create_autospec</code></li><li class="note-item">asserting every internal call → assert on results; check calls only at boundaries</li><li class="note-item"><code>mock.called == True</code> → <code>mock.assert_called_once_with(…)</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Config Table | Asserts Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-config"><h2 class="section-title">Configuring a Mock</h2><table><thead><tr><th>Attribute</th><th>Effect</th></tr></thead><tbody><tr><td>return_value</td><td class="desc">What a call returns</td></tr><tr><td>side_effect = Exc</td><td class="desc">Every call raises</td></tr><tr><td>side_effect = [a, b]</td><td class="desc">Returns / raises in turn</td></tr><tr><td>side_effect = fn</td><td class="desc">Calls fn with the same args</td></tr><tr><td>spec / autospec</td><td class="desc">Restrict to the real API</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-asserts"><h2 class="section-title">Call Assertions</h2><table><thead><tr><th>Method</th><th>Checks</th></tr></thead><tbody><tr><td>assert_called()</td><td class="desc">Called at least once</td></tr><tr><td>assert_called_once_with(…)</td><td class="desc">Exactly once, these args</td></tr><tr><td>assert_any_call(…)</td><td class="desc">Some call matched</td></tr><tr><td>assert_not_called()</td><td class="desc">Never called</td></tr><tr><td>call_count</td><td class="desc">Number of calls</td></tr><tr><td>call_args_list</td><td class="desc">Every call's args</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Typos like <code>assert_caled_once()</code> that silently passed on old Python; current versions raise <code>AttributeError</code></li><li class="note-item">Mocking the code under test itself, so the test checks only the mock</li><li class="note-item">Patching <code>httpx.get</code> instead of <code>shop.rates.httpx.get</code> and making real requests</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>autospec=True</code> by default; it catches signature drift when the real API changes</li><li class="note-item">Mock at the boundary (network, clock, filesystem), not your own internal functions</li><li class="note-item">Prefer a simple fake class over a deeply configured <code>MagicMock</code> chain</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>mocker.patch(target)</code> — patch + auto-undo</li><li class="note-item"><code>return_value</code> / <code>side_effect</code> — behavior</li><li class="note-item"><code>assert_called_once_with</code> — check usage</li><li class="note-item"><code>autospec=True</code> — match the real signature</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-13-monkeypatch.html">monkeypatch</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-15-cli-selection.html">Selecting &amp; Rerunning Tests</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

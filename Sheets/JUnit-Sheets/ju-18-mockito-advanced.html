@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JUnit — Sheet 18: Mockito Advanced</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ju-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Mockito Advanced</h1>
+			<div class="sheet-desc"><code>ArgumentCaptor</code> · <code>@Spy</code> · <code>doThrow</code> / <code>doAnswer</code> · BDDMockito <code>given</code> / <code>then</code> · strict stubs · <code>mockStatic</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | In Spring Boot -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Capturing, Spying and Static Mocks</h2><div class="description">An <strong><code>ArgumentCaptor</code></strong> grabs the argument a mock received so you can assert on it in detail. A <strong><code>@Spy</code></strong> wraps a real object: real methods run unless stubbed. The <strong><code>do…().when()</code></strong> family stubs <code>void</code> methods and spies safely. <strong>BDDMockito</strong> reads as given/when/then, and <strong><code>mockStatic</code></strong> fakes a static method inside a try-with-resources block.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Captors: <code>@Captor ArgumentCaptor&lt;Order&gt; captor;</code></li><li class="note-item">Stub spies with <code>doReturn</code>, not <code>when</code>, to avoid calling the real method</li><li class="note-item"><code>mockStatic</code> / <code>mockConstruction</code> need the inline mock maker (default in Mockito 5)</li><li class="note-item">Strictness: <code>@MockitoSettings(strictness = Strictness.LENIENT)</code> loosens checks</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-spring" id="spring"><h2 class="section-title">In Spring Boot</h2><ul class="note-list"><li class="note-item"><code>@MockitoBean</code> mocks are reset after each test automatically (<code>MockReset.AFTER</code>)</li><li class="note-item">Strict-stub checks apply to <code>@MockitoBean</code> mocks too</li><li class="note-item"><code>@MockitoSpyBean</code> wraps a real bean, like <code>@Spy</code> inside the context</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + JUnit 4 / TestNG Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Captors, Spies, BDD, Static</h2><pre><code class="language-java">import static org.mockito.BDDMockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class CheckoutTest {
+    @Mock PaymentGateway gateway;
+    @Spy PriceCalculator calc = new PriceCalculator();
+    @Captor ArgumentCaptor&lt;Charge&gt; chargeCaptor;
+    @InjectMocks Checkout checkout;
+
+    @Test
+    void chargesTheRightAmount() {
+        given(gateway.charge(any())).willReturn(new Receipt("r1"));   // BDD stub
+
+        checkout.pay(cart);
+
+        then(gateway).should().charge(chargeCaptor.capture());        // BDD verify
+        Charge c = chargeCaptor.getValue();
+        assertThat(c.amountCents()).isEqualTo(1999);
+        assertThat(c.currency()).isEqualTo("USD");
+        verify(calc).total(cart);                                     // real method ran
+    }
+
+    @Test
+    void gatewayDown() {
+        doThrow(new GatewayException()).when(gateway).refund(anyString());
+        assertThrows(RefundFailed.class, () -&gt; checkout.refund("r1"));
+    }
+
+    @Test
+    void fixedNow() {
+        try (MockedStatic&lt;Instant&gt; mocked = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+            mocked.when(Instant::now).thenReturn(Instant.parse("2026-11-04T00:00:00Z"));
+            assertThat(checkout.receiptDate()).isEqualTo("2026-11-04");
+        }                                                             // restored here
+    }
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The captor holds the <code>Charge</code> passed to the gateway so its fields can be checked</div><div class="explain-item"><code>@Spy</code> lets the real <code>total</code> run while still recording the call</div><div class="explain-item"><code>doThrow(...).when(mock).voidMethod()</code> is how to stub <code>void</code> methods</div><div class="explain-item"><code>mockStatic</code> is scoped to the try block; injecting a <code>Clock</code> is usually cleaner</div></div></section><section class="section-notes section-legacy" id="legacy"><h2 class="section-title">JUnit 4 / TestNG Equivalent</h2><ul class="note-list"><li class="note-item"><strong>JUnit 4</strong> Same Mockito API; runner or rule instead of the extension</li><li class="note-item"><strong>TestNG</strong> Same Mockito API; <code>MockitoTestNGListener</code> for annotations</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><code>mockStatic</code> for time → inject a <code>Clock</code></li><li class="note-item"><code>when(spy.x())</code> → <code>doReturn(v).when(spy).x()</code></li><li class="note-item">captors for simple equality → <code>verify(m).x(eq(expected))</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Do Table | Bdd Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-do"><h2 class="section-title">do… Family</h2><table><thead><tr><th>Call</th><th>Use for</th></tr></thead><tbody><tr><td>doReturn(v).when(m).x()</td><td class="desc">Spies, avoiding real call</td></tr><tr><td>doThrow(e).when(m).x()</td><td class="desc">Void methods that throw</td></tr><tr><td>doNothing().when(m).x()</td><td class="desc">Void on spies</td></tr><tr><td>doAnswer(inv -&gt; …).when(m).x()</td><td class="desc">Side effects, callbacks</td></tr><tr><td>doCallRealMethod().when(m).x()</td><td class="desc">Real method on a mock</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-bdd"><h2 class="section-title">Classic vs BDD</h2><table><thead><tr><th>Classic</th><th>BDDMockito</th></tr></thead><tbody><tr><td>when(m.x()).thenReturn(v)</td><td class="desc">given(m.x()).willReturn(v)</td></tr><tr><td>doThrow(e).when(m).x()</td><td class="desc">willThrow(e).given(m).x()</td></tr><tr><td>verify(m).x()</td><td class="desc">then(m).should().x()</td></tr><tr><td>verify(m, never()).x()</td><td class="desc">then(m).should(never()).x()</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item"><code>when(spy.method())</code> calling the real method during stubbing</li><li class="note-item">Forgetting to close <code>MockedStatic</code>, leaking the mock into other tests</li><li class="note-item">Captors used where a simple matcher would read better</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use BDD style if your team writes given/when/then test names</li><li class="note-item">Wrap static APIs (time, UUIDs) behind injectable interfaces</li><li class="note-item">Use <code>lenient()</code> on a single stub instead of loosening the whole class</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>ArgumentCaptor</code> — inspect arguments</li><li class="note-item"><code>@Spy</code> — real object + recording</li><li class="note-item"><code>do…().when()</code> — voids and spies</li><li class="note-item"><code>mockStatic</code> — scoped static mocks</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="ju-17-mockito-basics.html">Mockito Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JUnit Reference · 25 Sheets</a>
+				<a class="nav-link next" href="ju-19-spring-boot-test.html">Spring Boot Test Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jest &amp; Vitest — Sheet 24: Migrating Jest → Vitest</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jv-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s24">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 24</div>
+			<h1>Migrating Jest → Vitest</h1>
+			<div class="sheet-desc"><code>jest.*</code> → <code>vi.*</code> · <code>globals: true</code> · <code>done</code> callbacks · mock factory differences · snapshot header · config mapping</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Mostly Find-and-Replace</h2><div class="description">Vitest's API was designed to match Jest, so most suites move with a few mechanical changes: swap <code>jest.</code> for <code>vi.</code>, turn on <code>globals</code> (or add imports), and translate the config. The real work is in the differences: module mock factories, <code>done</code> callbacks, <code>mockReset</code> behavior, and anything that relied on Jest's module registry.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Migrate one folder at a time; both runners can live side by side</li><li class="note-item">Codemods exist (e.g. <code>vitest-codemod</code>); review the diff</li><li class="note-item">Snapshots regenerate on first run (<code>-u</code>)</li><li class="note-item">Run both suites in CI until the switch is done</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Jest ↔ Vitest + TypeScript + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Before and After</h2><pre><code class="language-typescript">// Jest                                   // Vitest
+jest.fn()                                  vi.fn()
+jest.spyOn(obj, 'm')                       vi.spyOn(obj, 'm')
+jest.mock('./api')                         vi.mock('./api')
+jest.requireActual('./api')                await vi.importActual('./api')
+jest.useFakeTimers()                       vi.useFakeTimers()
+jest.setTimeout(10_000)                    vi.setConfig({ testTimeout: 10_000 })
+
+// Factories: Vitest needs every export the code uses, incl. default
+jest.mock('./mailer', () =&gt; ({ send: jest.fn() }))
+vi.mock('./mailer', () =&gt; ({ default: { send: vi.fn() }, send: vi.fn() }))
+
+// done callbacks → promises
+it('emits', (done) =&gt; { bus.on('x', () =&gt; done()) })            // Jest
+it('emits', () =&gt; new Promise&lt;void&gt;((resolve) =&gt; bus.on('x', resolve)))
+
+// config
+// jest.config: testEnvironment, setupFilesAfterEnv, moduleNameMapper
+// vitest:      environment,     setupFiles,         resolve.alias (from vite.config)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>globals: true</code> lets old tests run without adding imports</div><div class="explain-item">Jest auto-fills a default export from CommonJS modules; Vitest needs an explicit <code>default</code> key</div><div class="explain-item"><code>done</code> callbacks become a returned promise</div><div class="explain-item"><code>importActual</code> is async in Vitest because ESM imports are async</div></div></section><section class="section-notes section-jest" id="jest"><h2 class="section-title">Jest ↔ Vitest</h2><ul class="note-list"><li class="note-item"><code>mockReset</code>: Jest leaves an empty function; Vitest 3+ restores the original implementation</li><li class="note-item">Jest's <code>jest.isolateModules</code> → <code>vi.resetModules()</code> + dynamic import</li><li class="note-item"><code>@testing-library/jest-dom</code> → import <code>@testing-library/jest-dom/vitest</code></li></ul></section><section class="section-notes section-ts" id="ts"><h2 class="section-title">TypeScript</h2><ul class="note-list"><li class="note-item">Swap <code>@types/jest</code> for <code>"types": ["vitest/globals"]</code> in tsconfig</li><li class="note-item">Remove <code>ts-jest</code> / <code>@swc/jest</code>; Vite handles TS</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">big-bang migration → folder by folder with both runners</li><li class="note-item">blindly accepting codemod output → review mock factories by hand</li><li class="note-item">keeping <code>@types/jest</code> → remove it to avoid conflicting globals</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Config Table | Gotchas Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-config"><h2 class="section-title">Config Mapping</h2><table><thead><tr><th>Jest</th><th>Vitest</th></tr></thead><tbody><tr><td>testEnvironment</td><td class="desc">test.environment</td></tr><tr><td>setupFilesAfterEnv</td><td class="desc">test.setupFiles</td></tr><tr><td>moduleNameMapper</td><td class="desc">resolve.alias</td></tr><tr><td>testMatch</td><td class="desc">test.include</td></tr><tr><td>clearMocks / restoreMocks</td><td class="desc">Same names under test</td></tr><tr><td>coverageThreshold</td><td class="desc">test.coverage.thresholds</td></tr><tr><td>projects</td><td class="desc">test.projects</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-gotchas"><h2 class="section-title">Behavior Differences</h2><table><thead><tr><th>Area</th><th>Watch for</th></tr></thead><tbody><tr><td>Mock factories</td><td class="desc">Need default + all used exports</td></tr><tr><td>done callbacks</td><td class="desc">Not supported</td></tr><tr><td>mockReset</td><td class="desc">Restores original in Vitest</td></tr><tr><td>Globals</td><td class="desc">Off unless globals: true</td></tr><tr><td>Snapshot header</td><td class="desc">Rewritten on update</td></tr><tr><td>jest.* in node_modules mocks</td><td class="desc">Rename __mocks__ helpers</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Leaving <code>@types/jest</code> installed, causing type conflicts with Vitest globals</li><li class="note-item">Forgetting the <code>default</code> key in mock factories</li><li class="note-item">Expecting <code>vi.importActual</code> to be synchronous</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Turn on <code>globals: true</code> first, then remove it later by adding imports</li><li class="note-item">Run the old and new suites side by side for a week</li><li class="note-item">Delete Jest config, transformers and types once the switch is done</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>jest.</code> → <code>vi.</code></li><li class="note-item"><code>globals: true</code> — run old tests as-is</li><li class="note-item">factories need <code>default</code> + used exports</li><li class="note-item"><code>done</code> → promises</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jv-23-jest-setup-config.html">Jest Setup &amp; Config</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jest &amp; Vitest Reference · 27 Sheets</a>
+				<a class="nav-link next" href="jv-25-jest-react-native.html">Jest in React Native</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

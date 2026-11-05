@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 30: Parallelism &amp; Sharding</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>Parallelism &amp; Sharding</h1>
+			<div class="sheet-desc">isolation requirements · splitting by file vs timing · sharding across machines · merging reports · shared resources</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Make Big Suites Fast</h2><div class="description"><strong>Parallelism</strong> runs tests at the same time on one machine (workers or threads); <strong>sharding</strong> splits the suite across several CI machines. Both need <strong>isolated</strong> tests: no shared files, ports, database rows or global state. Split by <strong>timing</strong> (balance by past duration) rather than file count for even shards, then <strong>merge</strong> the reports so failures show in one place.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Find order and isolation bugs before turning on parallelism</li><li class="note-item">Database per worker or unique data per test</li><li class="note-item">Too many workers can slow a resource-bound machine</li><li class="note-item">Timing data improves shard balance over time</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">From 40 Minutes to 8</h2><pre><code class="language-none">before: 1 machine, 1 worker → 40 min
+
+step 1 — parallel workers on one machine
+    workers = cpu_count            # 4
+    each worker: own DB schema "test_" + worker_id
+    → 12 min
+
+step 2 — shard across 4 CI machines
+    shard i of 4 gets tests balanced by last run's timings
+    each shard runs with 4 workers
+    → ~3 min per shard (+ setup)
+
+step 3 — merge results
+    collect report-shard-1..4 → merge → one JUnit / HTML report
+    → total wall time ≈ 8 min
+
+isolation checklist:
+    [ ] no fixed ports (use port 0 / random)
+    [ ] temp files per test
+    [ ] unique data or per-worker database
+    [ ] no reliance on test order</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Workers need their own resources or they collide</div><div class="explain-item">Timing-based shards finish at about the same time</div><div class="explain-item">Merged reports keep failures in one view</div><div class="explain-item">Setup time per shard limits how far sharding helps</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> pytest-xdist <code>-n auto</code>, <code>worker_id</code>; pytest-split <a class="xref" href="../Pytest-Sheets/pyt-19-parallel-flaky.html">↗19</a></li><li class="note-item"><strong>Vitest</strong> <code>pool</code>, <code>maxWorkers</code>, <code>--shard</code> + blob merge <a class="xref" href="../JestVitest-Sheets/jv-21-projects-performance.html">↗21</a></li><li class="note-item"><strong>JUnit</strong> <code>junit.jupiter.execution.parallel.*</code>, build forking <a class="xref" href="../JUnit-Sheets/ju-16-parallel-execution.html">↗16</a></li><li class="note-item"><strong>Playwright</strong> <code>workers</code>, <code>fullyParallel</code>, <code>--shard</code> + merge-reports <a class="xref" href="../Playwright-Sheets/pw-38-parallelism-sharding.html">↗38</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> tests that pass serially but fail with workers → <strong>it means</strong> shared state → <strong>do</strong> give each worker its own resources</li><li class="note-item"><strong>You see</strong> one shard always finishing last → <strong>it means</strong> splitting by count → <strong>do</strong> split by timing</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Levels Table | Shared Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-levels"><h2 class="section-title">Levels of Parallelism</h2><table><thead><tr><th>Level</th><th>Isolation</th><th>Cost</th></tr></thead><tbody><tr><td>Threads in one process</td><td class="desc">Weakest</td><td class="desc">Cheapest</td></tr><tr><td>Processes on one machine</td><td class="desc">Separate memory</td><td class="desc">Low</td></tr><tr><td>Shards on many machines</td><td class="desc">Separate machines</td><td class="desc">CI minutes + setup</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-shared"><h2 class="section-title">Shared-Resource Fixes</h2><table><thead><tr><th>Resource</th><th>Fix</th></tr></thead><tbody><tr><td>Database</td><td class="desc">Schema / DB per worker, or unique data</td></tr><tr><td>Ports</td><td class="desc">Bind to port 0</td></tr><tr><td>Files</td><td class="desc">Temp dir per test</td></tr><tr><td>Global config / env</td><td class="desc">Set and restore per test</td></tr><tr><td>External sandbox accounts</td><td class="desc">One account per worker</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Turning on parallelism before fixing order-dependent tests</li><li class="note-item">Sharding by file count with very uneven file sizes</li><li class="note-item">Forgetting to merge shard reports</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Randomize order first; parallel second</li><li class="note-item">Store timing data from CI to balance shards</li><li class="note-item">Measure: more workers isn't always faster</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">parallel — workers on one machine</li><li class="note-item">sharding — split across machines</li><li class="note-item">isolation is the prerequisite</li><li class="note-item">split by timing, merge reports</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-29-tests-in-pipeline.html">Tests in the Pipeline</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-31-reports-triage.html">Test Reports &amp; Failure Triage</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

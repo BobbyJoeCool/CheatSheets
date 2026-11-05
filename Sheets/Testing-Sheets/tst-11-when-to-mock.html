@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 11: When (and When Not) to Mock</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>When (and When Not) to Mock</h1>
+			<div class="sheet-desc">mock at boundaries · don't mock what you don't own · ports &amp; adapters · over-mocking · mocks that test the mock</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Interview Angle -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Mock the Edges, Not the Middle</h2><div class="description">Doubles belong at <strong>boundaries</strong>: the network, the clock, the file system, payment gateways, email. Inside your own code, use real objects. <strong>Don't mock what you don't own</strong>: instead of mocking a third-party SDK's many methods, wrap it in a small <strong>port</strong> (interface) you own, mock that, and test the <strong>adapter</strong> against the real thing in an integration test. Over-mocking produces tests that pass while the real system is broken.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">A mock encodes your assumption about a dependency; if it's wrong, the test lies</li><li class="note-item">Integration tests check those assumptions</li><li class="note-item">Network-level fakes (MSW, WireMock, <code>page.route</code>) avoid mocking client libraries</li><li class="note-item">Classicist vs mockist styles: sheet 14</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-interview" id="interview"><h2 class="section-title">Interview Angle</h2><ul class="note-list"><li class="note-item"><strong>Q:</strong> "When shouldn't you mock?" — your own domain objects, value objects, and libraries you don't own</li><li class="note-item">Explain ports and adapters: mock your interface, integration-test the adapter</li><li class="note-item">Mention that heavy mocking makes refactoring painful</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Wrap, Then Mock Your Own Port</h2><pre><code class="language-none"># ✗ mocking a third-party SDK directly
+stripe = mock StripeSDK
+stripe.customers.create(...) returns { id: "cus_1" }
+stripe.payment_intents.create(...) returns { status: "succeeded" }
+# … 6 more stubs mirroring Stripe's API, wrong in subtle ways
+
+# ✓ a small port you own
+interface PaymentGateway:
+    charge(customer_email, amount_cents) -&gt; Receipt
+
+# unit tests: fake the port
+gateway = FakePaymentGateway(always="succeeded")
+checkout = Checkout(gateway)
+assert checkout.pay(cart).status == "PAID"
+
+# integration test: the real adapter against Stripe's test mode
+test "StripeGateway charges in test mode" [tag: integration]:
+    receipt = StripeGateway(test_key).charge("ann@x.com", 1999)
+    assert receipt.status == "succeeded"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Mocking the SDK copies its API into every test and drifts from reality</div><div class="explain-item">The port describes what *your* app needs, in your terms</div><div class="explain-item">Unit tests use a fake gateway and stay fast</div><div class="explain-item">One integration test proves the adapter works with the real service</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> <code>monkeypatch</code> your port; <code>respx</code> / <code>responses</code> at HTTP level <a class="xref" href="../Pytest-Sheets/pyt-13-monkeypatch.html">↗13</a></li><li class="note-item"><strong>Vitest</strong> MSW intercepts HTTP instead of mocking clients <a class="xref" href="../JestVitest-Sheets/jv-15-network-globals.html">↗15</a></li><li class="note-item"><strong>JUnit</strong> Mockito on your interface; WireMock for HTTP <a class="xref" href="../JUnit-Sheets/ju-18-mockito-advanced.html">↗18</a></li><li class="note-item"><strong>Playwright</strong> <code>page.route</code> / HAR for third-party calls <a class="xref" href="../Playwright-Sheets/pw-29-route-mock-har.html">↗29</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> a test that only checks mocks talked to each other → <strong>it means</strong> nothing real is tested → <strong>do</strong> use real collaborators or an integration test</li><li class="note-item"><strong>You see</strong> mocks of <code>requests</code> / <code>axios</code> / <code>RestTemplate</code> everywhere → <strong>it means</strong> missing port → <strong>do</strong> wrap the client, or fake at the HTTP level</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Mock Table | Ports Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-mock"><h2 class="section-title">Mock or Real?</h2><table><thead><tr><th>Dependency</th><th>In unit tests</th></tr></thead><tbody><tr><td>Your own domain classes</td><td class="desc">Real</td></tr><tr><td>Value objects / DTOs</td><td class="desc">Real</td></tr><tr><td>Database</td><td class="desc">Fake repository; real in integration</td></tr><tr><td>Clock / randomness</td><td class="desc">Injected fake</td></tr><tr><td>Email, SMS, payments</td><td class="desc">Fake or mock your port</td></tr><tr><td>Third-party SDK</td><td class="desc">Wrap in a port; mock the port</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ports"><h2 class="section-title">Ports &amp; Adapters</h2><table><thead><tr><th>Part</th><th>Tested by</th></tr></thead><tbody><tr><td>Domain logic</td><td class="desc">Unit tests with fakes of ports</td></tr><tr><td>Port (interface)</td><td class="desc">Contract tests shared by fake and adapter</td></tr><tr><td>Adapter (SDK / DB / HTTP)</td><td class="desc">Integration tests against the real thing</td></tr><tr><td>Whole slice</td><td class="desc">A few end-to-end tests</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mocking the class under test</li><li class="note-item">Mocking a library's internals and breaking on every upgrade</li><li class="note-item">Never running the real adapter anywhere</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">When a mock setup gets long, introduce a port</li><li class="note-item">Run the same contract tests against your fake and the real adapter</li><li class="note-item">Prefer network-level fakes over client-library mocks</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">mock at boundaries</li><li class="note-item">don't mock what you don't own — wrap it</li><li class="note-item">ports &amp; adapters — fake the port, integration-test the adapter</li><li class="note-item">over-mocking — tests that lie</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-10-test-doubles.html">Dummy, Stub, Fake, Spy &amp; Mock</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-12-designing-for-testability.html">Designing for Testability</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

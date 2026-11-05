@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 06: Fixture Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s06">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 06</div>
+			<h1>Fixture Basics</h1>
+			<div class="sheet-desc"><code>@pytest.fixture</code> · requesting by argument name · return values · fixtures using fixtures · <code>autouse=True</code> · <code>usefixtures</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Setup That Tests Ask For</h2><div class="description">A <strong>fixture</strong> is a function decorated with <code>@pytest.fixture</code> that builds something a test needs: an object, a temp file, a database connection. A test <strong>requests</strong> it by naming it as a parameter; pytest calls the fixture and passes in the result. Fixtures can request other fixtures, so setup is built from small, reusable pieces instead of one big <code>setUp</code> method.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Each test gets a fresh fixture value by default (function scope)</li><li class="note-item">A fixture runs only for tests that request it (unless <code>autouse</code>)</li><li class="note-item"><code>pytest --fixtures</code> lists every available fixture with its docstring</li><li class="note-item"><code>@pytest.mark.usefixtures("name")</code> runs one without passing its value</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">pytest matches each test parameter <strong>by name</strong> to a registered fixture</li><li class="note-item">It builds a dependency graph per test and calls fixtures in order, each once per scope</li><li class="note-item">The <code>request</code> fixture gives a fixture access to the test that asked for it (<code>request.node</code>, <code>request.param</code>)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Fixtures Building on Fixtures</h2><pre><code class="language-python">import pytest
+from shop.cart import Cart
+from shop.catalog import Catalog
+
+@pytest.fixture
+def catalog():
+    """A catalog with two products."""
+    return Catalog({"apple": 0.50, "pear": 0.75})
+
+@pytest.fixture
+def cart(catalog):                 # fixture requests a fixture
+    return Cart(catalog)
+
+def test_add_item(cart):
+    cart.add("apple", qty=4)
+    assert cart.total() == 2.00
+
+def test_unknown_item(cart):
+    with pytest.raises(KeyError):
+        cart.add("kiwi")
+
+@pytest.fixture(autouse=True)
+def fixed_clock(monkeypatch):      # runs for every test in scope
+    monkeypatch.setattr("shop.cart.now", lambda: 1_700_000_000)
+
+@pytest.mark.usefixtures("clean_db")
+def test_checkout(cart): ...</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>cart</code> requests <code>catalog</code>, so pytest builds the catalog first and passes it in</div><div class="explain-item">Each test gets its own <code>cart</code>, so tests can't affect each other</div><div class="explain-item"><code>autouse=True</code> applies the fixture to every test in its module (or below its <code>conftest.py</code>)</div><div class="explain-item">The docstring shows up in <code>pytest --fixtures</code></div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item">fixture → <code>setUp(self)</code> storing <code>self.cart</code></li><li class="note-item">fixture requesting fixture → <code>setUp</code> calling helper methods in order</li><li class="note-item"><code>autouse</code> → <code>setUp</code> in a base class every test class inherits</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">a <code>setup_method</code> that builds everything → small fixtures each test requests</li><li class="note-item">global objects created at module import → fixtures</li><li class="note-item">calling a fixture function directly → request it as a parameter</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Options Table | Ways Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-options"><h2 class="section-title">@pytest.fixture Options</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td>scope="module"</td><td class="desc">Share one value (sheet 07)</td></tr><tr><td>autouse=True</td><td class="desc">Apply without requesting</td></tr><tr><td>params=[…]</td><td class="desc">Run tests once per value (sheet 08)</td></tr><tr><td>name="db"</td><td class="desc">Register under another name</td></tr><tr><td>ids=[…]</td><td class="desc">Labels for params</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ways"><h2 class="section-title">Ways to Use a Fixture</h2><table><thead><tr><th>Way</th><th>Gets the value?</th></tr></thead><tbody><tr><td>Test parameter</td><td class="desc">Yes</td></tr><tr><td>Another fixture's parameter</td><td class="desc">Yes</td></tr><tr><td>@pytest.mark.usefixtures</td><td class="desc">No (setup only)</td></tr><tr><td>autouse=True</td><td class="desc">No (setup only)</td></tr><tr><td>request.getfixturevalue("x")</td><td class="desc">Yes, dynamically</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling <code>cart()</code> directly inside a test; pytest raises an error, request it instead</li><li class="note-item">Making a heavy fixture <code>autouse</code> and slowing every test</li><li class="note-item">Mutating a shared fixture object in one test and relying on it in another</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Keep fixtures small and compose them; it's easier to see what each test needs</li><li class="note-item">Give fixtures docstrings so <code>pytest --fixtures</code> documents them</li><li class="note-item">Name fixtures as nouns (<code>cart</code>, <code>admin_user</code>), not verbs</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>@pytest.fixture</code> — setup as a function</li><li class="note-item">request by parameter name</li><li class="note-item">fixtures can use fixtures</li><li class="note-item"><code>autouse</code> / <code>usefixtures</code> — setup without the value</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-05-exceptions-warnings.html">Exceptions &amp; Warnings</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-07-fixture-scope-teardown.html">Fixture Scope &amp; Teardown</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>
