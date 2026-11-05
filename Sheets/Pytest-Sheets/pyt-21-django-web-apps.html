@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 21: Django &amp; Web Apps</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Django &amp; Web Apps</h1>
+			<div class="sheet-desc"><code>pytest-django</code> · <code>DJANGO_SETTINGS_MODULE</code> · <code>@pytest.mark.django_db</code> · <code>client</code> / <code>admin_client</code> · <code>settings</code> fixture · FastAPI <code>TestClient</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Testing Web Apps With pytest</h2><div class="description"><strong>pytest-django</strong> sets up Django for pytest: it creates a test database, gives you fixtures such as <code>client</code>, <code>admin_client</code>, <code>rf</code> (request factory) and <code>settings</code>, and blocks database access unless a test is marked <strong><code>django_db</code></strong>. For FastAPI and Starlette, <strong><code>TestClient</code></strong> calls the app in memory. Flask has <code>app.test_client()</code>. The Django set covers the app side.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Point pytest at settings: <code>DJANGO_SETTINGS_MODULE = "mysite.settings"</code> in config</li><li class="note-item">Each <code>django_db</code> test runs in a transaction rolled back afterwards</li><li class="note-item"><code>transaction=True</code> for tests that need real commits</li><li class="note-item">Use factory_boy or factory fixtures for model data</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">pytest-django and FastAPI</h2><pre><code class="language-python"># pyproject.toml
+# [tool.pytest]
+# DJANGO_SETTINGS_MODULE = "mysite.settings"
+# addopts = ["--reuse-db"]
+
+import pytest
+from orders.models import Order
+
+@pytest.mark.django_db
+def test_order_list(client, django_user_model):
+    user = django_user_model.objects.create_user("ann", password="pw")
+    Order.objects.create(owner=user, total=10)
+    client.force_login(user)
+    resp = client.get("/orders/")
+    assert resp.status_code == 200
+    assert "10.00" in resp.content.decode()
+
+def test_admin_page(admin_client):
+    assert admin_client.get("/admin/").status_code == 200
+
+def test_feature_flag(settings, client, db):
+    settings.NEW_CHECKOUT = True          # undone after the test
+    assert client.get("/checkout/").status_code == 200
+
+def test_query_count(django_assert_num_queries, db):
+    with django_assert_num_queries(2):
+        list(Order.objects.select_related("owner"))
+
+# FastAPI
+from fastapi.testclient import TestClient
+def test_health():
+    assert TestClient(app).get("/health").json() == {"ok": True}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>django_user_model</code> is the project's user model, whatever it's called</div><div class="explain-item">Requesting the <code>db</code> fixture is the same as <code>@pytest.mark.django_db</code></div><div class="explain-item"><code>settings</code> changes are reverted after the test</div><div class="explain-item"><code>--reuse-db</code> keeps the test database between runs for speed</div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item">pytest-django → Django's <code>TestCase</code> and <code>manage.py test</code></li><li class="note-item"><code>client</code> fixture → <code>self.client</code></li><li class="note-item"><code>django_db</code> → <code>TestCase</code> wraps each test in a transaction</li><li class="note-item"><code>settings</code> fixture → <code>@override_settings(...)</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><code>django.test.TestCase</code> classes for new tests → plain functions with fixtures</li><li class="note-item">raw <code>Model.objects.create</code> with many fields in every test → factories</li><li class="note-item">testing views through Selenium → <code>client</code> for logic, Playwright for real browser flows</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Fixtures Table | Other Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-fixtures"><h2 class="section-title">pytest-django Fixtures</h2><table><thead><tr><th>Fixture</th><th>Gives</th></tr></thead><tbody><tr><td>client / async_client</td><td class="desc">Test client</td></tr><tr><td>admin_client / admin_user</td><td class="desc">Logged-in superuser</td></tr><tr><td>rf</td><td class="desc">RequestFactory</td></tr><tr><td>db / transactional_db</td><td class="desc">Database access</td></tr><tr><td>settings</td><td class="desc">Overridable settings</td></tr><tr><td>django_assert_num_queries</td><td class="desc">Query count check</td></tr><tr><td>mailoutbox</td><td class="desc">Sent emails</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-other"><h2 class="section-title">Other Frameworks</h2><table><thead><tr><th>Framework</th><th>Test client</th></tr></thead><tbody><tr><td>FastAPI / Starlette</td><td class="desc">TestClient(app) or httpx.ASGITransport</td></tr><tr><td>Flask</td><td class="desc">app.test_client() (pytest-flask)</td></tr><tr><td>Django REST Framework</td><td class="desc">APIClient</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting <code>django_db</code> and getting "Database access not allowed"</li><li class="note-item">Using <code>transaction=True</code> everywhere and making the suite slow</li><li class="note-item">Running pytest without <code>DJANGO_SETTINGS_MODULE</code> configured</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>--reuse-db</code> locally and <code>--create-db</code> after migrations change</li><li class="note-item">Check N+1 problems with <code>django_assert_num_queries</code></li><li class="note-item">Test views with <code>client</code>; test business logic without HTTP at all</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">pytest-django — Django fixtures and test DB</li><li class="note-item"><code>django_db</code> — allow database access</li><li class="note-item"><code>client</code> / <code>admin_client</code> / <code>settings</code> — common fixtures</li><li class="note-item"><code>TestClient</code> — FastAPI in memory</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-20-async-tests.html">Async Tests</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-22-testing-patterns.html">Testing Patterns in pytest</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

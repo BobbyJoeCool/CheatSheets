@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 22: Testing Patterns in pytest</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Testing Patterns in pytest</h1>
+			<div class="sheet-desc">Arrange-Act-Assert · test data factories · golden files · snapshot testing (syrupy) · Hypothesis <code>@given</code> · testing CLIs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Patterns That Keep Tests Clear</h2><div class="description">Most good tests follow <strong>Arrange-Act-Assert</strong>: set up, do one thing, check the result. Factories build test data with sensible defaults; <strong>golden files</strong> and <strong>snapshot</strong> tests (syrupy) compare output to a stored, reviewed version; <strong>Hypothesis</strong> generates hundreds of inputs to check a property holds. The Testing set explains when to use each; this sheet shows the pytest way.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>pip install syrupy hypothesis</code></li><li class="note-item">Snapshots are files you commit and review in diffs</li><li class="note-item">Hypothesis shrinks a failing input to the smallest example</li><li class="note-item">Test CLIs by calling <code>main(argv)</code> with <code>capsys</code>, not by spawning a process</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Factories, Snapshots, Properties, CLIs</h2><pre><code class="language-python">from hypothesis import given, strategies as st
+
+def test_refund(make_order):               # Arrange-Act-Assert
+    order = make_order(total=50)           # arrange
+    refund(order, 20)                      # act
+    assert order.balance == 30             # assert
+
+def test_invoice_render(snapshot):         # syrupy
+    assert render_invoice(sample_order()) == snapshot
+# $ pytest --snapshot-update   (then review the diff)
+
+def test_report_matches_golden(tmp_path):
+    out = tmp_path / "report.csv"
+    export_report(out)
+    assert out.read_text() == Path("tests/golden/report.csv").read_text()
+
+@given(st.lists(st.floats(min_value=0, max_value=1e6)))
+def test_total_never_negative(prices):     # property-based
+    assert total(prices) &gt;= 0
+
+def test_cli(capsys):
+    exit_code = main(["export", "--format", "json"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.startswith("{")</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Blank lines between arrange, act and assert make the structure visible</div><div class="explain-item">syrupy stores snapshots under <code>__snapshots__/</code>; <code>--snapshot-update</code> rewrites them</div><div class="explain-item">A golden file is a hand-checked expected output kept in the repo</div><div class="explain-item"><code>@given</code> runs the test with many generated lists; failures show the minimal example</div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item">factories → helper methods on a base <code>TestCase</code></li><li class="note-item">syrupy → no built-in snapshot support</li><li class="note-item">Hypothesis → works with <code>unittest</code> too (<code>@given</code> on test methods)</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">updating snapshots without reading the diff → review every snapshot change</li><li class="note-item">many near-identical example tests → one Hypothesis property</li><li class="note-item">spawning <code>subprocess</code> for every CLI test → call <code>main(argv)</code> directly</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Patterns Table | St Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-patterns"><h2 class="section-title">Pattern Picker</h2><table><thead><tr><th>Need</th><th>Pattern</th></tr></thead><tbody><tr><td>Build objects with defaults</td><td class="desc">Factory fixture / factory_boy</td></tr><tr><td>Check large output</td><td class="desc">Snapshot (syrupy) or golden file</td></tr><tr><td>Many inputs, one rule</td><td class="desc">Hypothesis property</td></tr><tr><td>Several fixed cases</td><td class="desc">parametrize</td></tr><tr><td>External service</td><td class="desc">Fake or mock at the boundary</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-st"><h2 class="section-title">Hypothesis Strategies</h2><table><thead><tr><th>Strategy</th><th>Generates</th></tr></thead><tbody><tr><td>st.integers(min_value=0)</td><td class="desc">Ints</td></tr><tr><td>st.text(max_size=20)</td><td class="desc">Strings</td></tr><tr><td>st.lists(x)</td><td class="desc">Lists of x</td></tr><tr><td>st.builds(Order, total=…)</td><td class="desc">Objects</td></tr><tr><td>st.sampled_from([…])</td><td class="desc">One of the values</td></tr><tr><td>st.one_of(a, b)</td><td class="desc">Either strategy</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Snapshot tests on output with timestamps or IDs that change every run</li><li class="note-item">Hypothesis tests that just re-implement the function to compute the expected value</li><li class="note-item">Arrange sections so long the test's point is lost</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Strip or freeze volatile fields (dates, UUIDs) before snapshotting</li><li class="note-item">Look for properties like round-trips (<code>decode(encode(x)) == x</code>) and invariants</li><li class="note-item">Keep each test's Act to a single call</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Arrange-Act-Assert — one action per test</li><li class="note-item">syrupy / golden files — compare stored output</li><li class="note-item">Hypothesis <code>@given</code> — property-based</li><li class="note-item"><code>main(argv)</code> + <code>capsys</code> — test CLIs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-21-django-web-apps.html">Django &amp; Web Apps</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-23-pytest-in-ci.html">pytest in CI</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

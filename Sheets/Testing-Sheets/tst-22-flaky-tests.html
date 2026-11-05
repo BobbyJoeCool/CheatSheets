@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 22: Flaky Tests</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Flaky Tests</h1>
+			<div class="sheet-desc">causes (timing · order · shared state · network) · detecting flakes · quarantine · retries policy · fixing vs deleting</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Interview Angle -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Tests That Pass and Fail Without a Code Change</h2><div class="description">A <strong>flaky test</strong> gives different results on the same code. Flakes destroy trust: people rerun CI until green and stop reading failures. Common causes: <strong>timing</strong> (sleeps, races, animations), <strong>order dependence</strong> and <strong>shared state</strong>, <strong>real network or time</strong>, and <strong>resource limits</strong> in CI. Detect them by rerunning and randomizing order, <strong>quarantine</strong> known flakes so they don't block others, then <strong>fix or delete</strong> them.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Retries hide flakes; if you use them, report retried tests</li><li class="note-item">Run a suspect test many times in a loop to reproduce</li><li class="note-item">Randomized order exposes hidden dependencies</li><li class="note-item">Quarantine needs an owner and a deadline</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-interview" id="interview"><h2 class="section-title">Interview Angle</h2><ul class="note-list"><li class="note-item"><strong>Q:</strong> "How do you handle flaky tests?" Find the root cause; quarantine with an owner; never just add retries</li><li class="note-item">List causes: timing, order, shared state, network, time zones</li><li class="note-item">Mention tooling: rerun loops, random order, CI flake reports</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Finding and Fixing a Flake</h2><pre><code class="language-none"># 1. reproduce
+run test "search shows results" 200 times → 3 failures
+
+# 2. look for the cause
+failure trace: clicked "Search" before the input was enabled
+# cause: timing — test acted before the page was ready
+
+# 3. fix the cause, not the symptom
+# ✗ sleep(2) then click
+# ✓ wait for the condition
+expect(by_role("textbox", name="Search")).enabled
+click(by_role("button", name="Search"))
+
+# order dependence: passes alone, fails in the suite
+run suite with random order, seed=8812 → fails
+# cause: test A leaves a feature flag on; test B assumes off
+# fix: reset flags in per-test setup
+
+# quarantine while fixing
+mark test "imports nightly file" as quarantined(owner="bob", issue=#311, until="2026-11-30")</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Running a test hundreds of times turns "sometimes" into evidence</div><div class="explain-item">Traces and screenshots show what the page looked like at failure</div><div class="explain-item">The real fix waits for a condition instead of a fixed time</div><div class="explain-item">A fixed random seed reproduces an order-dependent failure</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> pytest-randomly, <code>--count</code>, pytest-rerunfailures (temporary) <a class="xref" href="../Pytest-Sheets/pyt-19-parallel-flaky.html">↗19</a></li><li class="note-item"><strong>Vitest</strong> <code>--sequence.shuffle</code>, <code>retry</code>, repeats <a class="xref" href="../JestVitest-Sheets/jv-21-projects-performance.html">↗21</a></li><li class="note-item"><strong>JUnit</strong> <code>@RepeatedTest</code>, random method order <a class="xref" href="../JUnit-Sheets/ju-13-dynamic-repeated.html">↗13</a></li><li class="note-item"><strong>Playwright</strong> <code>--repeat-each</code>, <code>retries</code>, <code>--fail-on-flaky-tests</code> <a class="xref" href="../Playwright-Sheets/pw-39-retries-flaky.html">↗39</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> a global "retry 3 times" setting → <strong>it means</strong> flakes are hidden, not fixed → <strong>do</strong> report retried tests and fix them</li><li class="note-item"><strong>You see</strong> "just rerun CI" in team chat → <strong>it means</strong> red no longer means broken → <strong>do</strong> track flake rate and quarantine with owners</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Causes Table | Policy Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-causes"><h2 class="section-title">Causes and Fixes</h2><table><thead><tr><th>Cause</th><th>Fix</th></tr></thead><tbody><tr><td>Fixed sleeps / races</td><td class="desc">Wait for conditions; await properly</td></tr><tr><td>Order dependence</td><td class="desc">Fresh state per test; random order</td></tr><tr><td>Shared data / files / ports</td><td class="desc">Unique per test or worker</td></tr><tr><td>Real time / time zones</td><td class="desc">Fixed clock; explicit zone</td></tr><tr><td>Real network</td><td class="desc">Fake at the boundary</td></tr><tr><td>CI resource limits</td><td class="desc">Fewer workers; longer timeouts only as last resort</td></tr><tr><td>Animations / async UI</td><td class="desc">Disable animations; web-first assertions</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-policy"><h2 class="section-title">Flake Policy</h2><table><thead><tr><th>Step</th><th>Rule</th></tr></thead><tbody><tr><td>Detect</td><td class="desc">Track retried / intermittent tests in CI</td></tr><tr><td>Quarantine</td><td class="desc">Skip in required job, with owner + issue</td></tr><tr><td>Fix</td><td class="desc">Root cause, not a longer timeout</td></tr><tr><td>Deadline</td><td class="desc">Fix or delete within a set time</td></tr><tr><td>Report</td><td class="desc">Flake rate per week</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Adding sleeps to "fix" timing flakes</li><li class="note-item">Raising timeouts until the flake goes away</li><li class="note-item">Quarantining tests forever with no owner</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Track a flake rate per test in CI</li><li class="note-item">Reproduce with the same seed, worker count and machine size as CI</li><li class="note-item">Delete a flaky test that tests nothing important; it's cheaper than living with it</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">flaky — same code, different results</li><li class="note-item">causes — timing, order, shared state, network, time</li><li class="note-item">quarantine with owner + deadline</li><li class="note-item">retries hide; root cause fixes</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-21-e2e-strategy.html">End-to-End Test Strategy</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-23-property-based.html">Property-Based Testing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

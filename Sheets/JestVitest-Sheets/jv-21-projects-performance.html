@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jest &amp; Vitest — Sheet 21: Projects &amp; Performance</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jv-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Projects &amp; Performance</h1>
+			<div class="sheet-desc"><code>projects</code> config · <code>pool</code> threads / forks · <code>isolate</code> · <code>--shard</code> · <code>maxWorkers</code> · <code>--changed</code> in CI · slow-test reporting</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">One Repo, Several Test Setups, Fast Runs</h2><div class="description"><strong>Projects</strong> run different test setups in one Vitest command: unit tests in <code>node</code>, component tests in jsdom, browser tests in Chromium, or one project per package in a monorepo. Speed comes from parallel <strong>workers</strong> (<code>pool</code>), skipping per-file isolation when tests are safe, <strong>sharding</strong> across CI machines, and running only tests affected by a change.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>projects</code> replaced the old <code>vitest.workspace</code> file</li><li class="note-item">Default pool is <code>forks</code> (child processes); <code>threads</code> can be faster</li><li class="note-item"><code>isolate: false</code> reuses module state between files: only for pure tests</li><li class="note-item">Slow tests are marked in the default reporter (over <code>slowTestThreshold</code>)</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Each worker runs test files one at a time; files spread across workers</li><li class="note-item"><code>forks</code> uses child processes (most compatible); <code>threads</code> uses worker threads (less overhead)</li><li class="note-item"><code>--shard=1/3</code> splits the file list into thirds; each CI job runs one</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Jest ↔ Vitest + TypeScript + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Projects and Speed Settings</h2><pre><code class="language-typescript">// vitest.config.ts
+export default defineConfig({
+  test: {
+    projects: [
+      { extends: true, test: { name: 'unit', environment: 'node',
+          include: ['src/**/*.test.ts'] } },
+      { extends: true, test: { name: 'dom', environment: 'happy-dom',
+          include: ['src/**/*.test.tsx'] } },
+      'packages/*',                     // each package's own config
+    ],
+    pool: 'threads',
+    maxWorkers: 4,
+    slowTestThreshold: 300,
+  },
+})
+
+// $ npx vitest --project unit
+// CI: shard across 3 jobs, then merge
+// $ npx vitest run --shard=1/3 --reporter=blob
+// $ npx vitest run --shard=2/3 --reporter=blob
+// $ npx vitest --merge-reports --reporter=junit</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>extends: true</code> makes a project inherit the root config (plugins, aliases)</div><div class="explain-item">A glob like <code>packages/*</code> picks up each package's own Vitest config</div><div class="explain-item"><code>--reporter=blob</code> saves partial results that <code>--merge-reports</code> combines</div><div class="explain-item"><code>--project</code> runs one project locally</div></div></section><section class="section-notes section-jest" id="jest"><h2 class="section-title">Jest ↔ Vitest</h2><ul class="note-list"><li class="note-item">Jest: <code>projects: [...]</code> in <code>jest.config</code> with separate configs per project</li><li class="note-item">Jest: <code>--shard=1/3</code>, <code>--maxWorkers</code>; workers are child processes</li><li class="note-item">Jest has no <code>isolate: false</code> equivalent</li></ul></section><section class="section-notes section-ts" id="ts"><h2 class="section-title">TypeScript</h2><ul class="note-list"><li class="note-item">Give type tests their own project with <code>typecheck: { enabled: true }</code></li><li class="note-item">Monorepo packages can each extend a shared base config</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">one config forcing jsdom on every file → <code>node</code> and <code>dom</code> projects</li><li class="note-item">one long CI job → <code>--shard</code> across jobs</li><li class="note-item"><code>vitest.workspace.ts</code> → <code>test.projects</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Pool Table | Ci Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-pool"><h2 class="section-title">Pool Options</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td>pool: "forks"</td><td class="desc">Child processes (default, most compatible)</td></tr><tr><td>pool: "threads"</td><td class="desc">Worker threads (faster, some native modules break)</td></tr><tr><td>maxWorkers</td><td class="desc">Parallel worker cap</td></tr><tr><td>isolate: false</td><td class="desc">Reuse modules across files (faster, riskier)</td></tr><tr><td>fileParallelism: false</td><td class="desc">One file at a time</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ci"><h2 class="section-title">CI Speed-Ups</h2><table><thead><tr><th>Technique</th><th>How</th></tr></thead><tbody><tr><td>Shard</td><td class="desc">--shard=i/n + blob reporter + --merge-reports</td></tr><tr><td>Affected only</td><td class="desc">--changed origin/main</td></tr><tr><td>Cache deps</td><td class="desc">Cache node_modules / npm cache</td></tr><tr><td>Split slow tests</td><td class="desc">Separate project, run less often</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item"><code>isolate: false</code> with tests that change globals, causing order-dependent failures</li><li class="note-item"><code>threads</code> with native modules that aren't thread-safe</li><li class="note-item">Projects without <code>extends: true</code> that lose the root plugins and aliases</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with defaults; profile before tuning pools</li><li class="note-item">Use <code>--changed</code> in PR builds and a full run on <code>main</code></li><li class="note-item">Put browser-mode tests in their own project</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>projects</code> — several setups in one run</li><li class="note-item"><code>pool</code> — forks (default) / threads</li><li class="note-item"><code>--shard</code> + blob — split across CI jobs</li><li class="note-item"><code>isolate: false</code> — faster, only for pure tests</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jv-20-coverage.html">Coverage</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jest &amp; Vitest Reference · 27 Sheets</a>
+				<a class="nav-link next" href="jv-22-reporters-ci.html">Reporters &amp; CI</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

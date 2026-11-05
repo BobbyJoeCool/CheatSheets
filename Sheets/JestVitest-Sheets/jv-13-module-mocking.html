@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jest &amp; Vitest — Sheet 13: Module Mocking</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jv-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Module Mocking</h1>
+			<div class="sheet-desc"><code>vi.mock(path, factory)</code> · hoisting · <code>importOriginal</code> · partial mocks · <code>__mocks__</code> folders · <code>vi.doMock</code> · <code>vi.hoisted</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Replace a Whole Import</h2><div class="description"><code>vi.mock(path, factory)</code> replaces a module for every import in the test file. Vitest <strong>hoists</strong> <code>vi.mock</code> calls to the top of the file, before imports, so the mocked version is what your code gets. Return the fake exports from the factory; use <strong><code>importOriginal</code></strong> for a partial mock that keeps the real exports you don't override. Without a factory, Vitest automocks every export or uses a <code>__mocks__</code> file.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">The path is resolved like an import from the test file</li><li class="note-item">Variables used in the factory must come from <code>vi.hoisted</code></li><li class="note-item">Default exports need a <code>default</code> key in the factory</li><li class="note-item"><code>vi.doMock</code> is not hoisted; it affects later dynamic imports only</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Vitest rewrites the file so <code>vi.mock</code> runs before any <code>import</code> statement</li><li class="note-item">That's why a factory can't use variables declared normally in the file: they don't exist yet</li><li class="note-item">Mocks apply per test file; each file has its own module graph</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Jest ↔ Vitest + TypeScript + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Mocking Imports</h2><pre><code class="language-typescript">import { vi, test, expect } from 'vitest'
+import { checkout } from './checkout'
+import { charge } from './payments'
+
+vi.mock('./payments', () =&gt; ({
+  charge: vi.fn().mockResolvedValue({ id: 'ch_1' }),
+}))
+
+// partial mock: keep everything real except fetchRate
+vi.mock('./rates', async (importOriginal) =&gt; ({
+  ...(await importOriginal&lt;typeof import('./rates')&gt;()),
+  fetchRate: vi.fn(() =&gt; 1.1),
+}))
+
+// variables for a factory must be hoisted too
+const { sendMail } = vi.hoisted(() =&gt; ({ sendMail: vi.fn() }))
+vi.mock('./mailer', () =&gt; ({ default: { send: sendMail } }))
+
+test('checkout charges and emails', async () =&gt; {
+  await checkout(cart)
+  expect(charge).toHaveBeenCalledWith(cart.total)
+  expect(sendMail).toHaveBeenCalledOnce()
+})
+
+vi.mock('node:fs')                  // automock, or __mocks__/fs.ts at the root</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>charge</code> is imported normally; because of hoisting it's the mocked version</div><div class="explain-item"><code>importOriginal</code> spreads the real module, then overrides one export</div><div class="explain-item"><code>vi.hoisted</code> makes <code>sendMail</code> available when the hoisted factory runs</div><div class="explain-item">A <code>default</code> key mocks a default export</div></div></section><section class="section-notes section-jest" id="jest"><h2 class="section-title">Jest ↔ Vitest</h2><ul class="note-list"><li class="note-item">Jest: <code>jest.mock(path, factory)</code> (hoisted by babel-jest), <code>jest.requireActual</code> for partials</li><li class="note-item">Jest factories may only reference variables named <code>mock…</code></li><li class="note-item">Jest's ESM module mocking needs <code>jest.unstable_mockModule</code> + dynamic import</li></ul></section><section class="section-notes section-ts" id="ts"><h2 class="section-title">TypeScript</h2><ul class="note-list"><li class="note-item">Type the partial with <code>importOriginal&lt;typeof import("./rates")&gt;()</code></li><li class="note-item">Use <code>vi.mocked(charge)</code> to get a typed mock of an imported function</li><li class="note-item"><code>vi.mock(import("./payments"), …)</code> gives the factory typed exports</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">mocking your own internal modules everywhere → inject dependencies or mock at the network edge (MSW)</li><li class="note-item">full factory copying every export → <code>importOriginal</code> partial mock</li><li class="note-item">variables declared above <code>vi.mock</code> → <code>vi.hoisted</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Api Table | Mocks Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-api"><h2 class="section-title">Module Mock API</h2><table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td>vi.mock(path, factory)</td><td class="desc">Replace (hoisted)</td></tr><tr><td>vi.mock(path)</td><td class="desc">Automock or __mocks__</td></tr><tr><td>importOriginal()</td><td class="desc">Real module inside a factory</td></tr><tr><td>vi.importActual(path)</td><td class="desc">Real module anywhere</td></tr><tr><td>vi.doMock(path, f)</td><td class="desc">Not hoisted; next dynamic import</td></tr><tr><td>vi.unmock(path)</td><td class="desc">Stop mocking</td></tr><tr><td>vi.hoisted(fn)</td><td class="desc">Values usable in factories</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-mocks"><h2 class="section-title">__mocks__ Folders</h2><table><thead><tr><th>Mocking</th><th>File</th></tr></thead><tbody><tr><td>A local module ./api.ts</td><td class="desc">src/__mocks__/api.ts next to it</td></tr><tr><td>A package (axios)</td><td class="desc">__mocks__/axios.ts at the project root</td></tr><tr><td>A Node built-in (fs)</td><td class="desc">__mocks__/fs.cjs at the root</td></tr><tr><td>Activate it</td><td class="desc">vi.mock(path) with no factory</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Referencing a normal variable inside the factory ("Cannot access before initialization")</li><li class="note-item">Forgetting <code>default</code> when the module has a default export</li><li class="note-item">Mocking a module in one file and expecting it in another</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Prefer MSW (sheet 15) over mocking your HTTP client module</li><li class="note-item">Use partial mocks so new exports don't break tests</li><li class="note-item">Check <code>vi.mocked(fn).mock.calls</code> when an assertion on a mocked import fails</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>vi.mock(path, factory)</code> — hoisted replacement</li><li class="note-item"><code>importOriginal</code> — partial mocks</li><li class="note-item"><code>vi.hoisted</code> — values for factories</li><li class="note-item"><code>__mocks__/</code> — reusable mocks</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jv-12-spies-reset.html">Spies &amp; Resetting Mocks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jest &amp; Vitest Reference · 27 Sheets</a>
+				<a class="nav-link next" href="jv-14-timers-dates.html">Fake Timers &amp; Dates</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

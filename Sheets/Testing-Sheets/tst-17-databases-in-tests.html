@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 17: Databases in Tests</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Databases in Tests</h1>
+			<div class="sheet-desc">transaction rollback per test · Testcontainers · running migrations · seeding · cleanup strategies · parallel-safe data</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Interview Angle -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Real Databases Without Slow, Shared Mess</h2><div class="description">Test against the <strong>same engine and version</strong> as production, started in a container. Apply the real <strong>migrations</strong> once, so tests also prove migrations work. Each test then gets a clean slate by <strong>rolling back</strong> a transaction, <strong>truncating</strong> tables, or using <strong>unique data</strong>. Seed only shared reference data; each test creates the rest itself.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Container start-up costs seconds; do it once per run</li><li class="note-item">Rollback can't test code that commits or uses multiple connections</li><li class="note-item">Parallel workers need separate databases or schemas</li><li class="note-item">Never point tests at a shared dev or staging database</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-interview" id="interview"><h2 class="section-title">Interview Angle</h2><ul class="note-list"><li class="note-item"><strong>Q:</strong> "How do you test code that uses a database?" Real engine in a container, migrations once, isolation per test</li><li class="note-item">Compare with in-memory fakes: faster, but miss SQL dialect bugs</li><li class="note-item">Mention parallel safety (database per worker or unique data)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Database Test Lifecycle</h2><pre><code class="language-none">once per run:
+    pg = PostgresContainer("postgres:17").start()
+    run_migrations(pg.url)                  # the real migration files
+    seed(pg, reference_data="countries, plans")
+
+per worker (parallel runs):
+    schema = "test_" + worker_id            # or one database per worker
+
+per test:
+    tx = pg.begin()
+    yield                                   # test runs inside tx
+    tx.rollback()
+
+test "monthly report counts only paid orders":
+    make_order(status="PAID", month="2026-10")
+    make_order(status="NEW",  month="2026-10")
+    assert monthly_report("2026-10").order_count == 1</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Running migrations in tests catches broken migrations before deploy</div><div class="explain-item">Reference data is seeded once; scenario data is created per test</div><div class="explain-item">A schema per worker keeps parallel tests from colliding</div><div class="explain-item">Factories (sheet 08) create rows with valid defaults</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> pytest-django <code>django_db</code>; session DB fixture + rollback <a class="xref" href="../Pytest-Sheets/pyt-21-django-web-apps.html">↗21</a></li><li class="note-item"><strong>Vitest</strong> Testcontainers for Node in <code>globalSetup</code> <a class="xref" href="../JestVitest-Sheets/jv-05-hooks-setup.html">↗05</a></li><li class="note-item"><strong>JUnit</strong> Testcontainers + <code>@ServiceConnection</code>; <code>@DataJpaTest</code> <a class="xref" href="../JUnit-Sheets/ju-21-testcontainers.html">↗21</a></li><li class="note-item"><strong>Playwright</strong> global setup seeds data; API calls create test records <a class="xref" href="../Playwright-Sheets/pw-26-global-setup.html">↗26</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> tests that fail when run twice → <strong>it means</strong> data left behind → <strong>do</strong> roll back or clean up per test</li><li class="note-item"><strong>You see</strong> a 2 GB fixture dump loaded before tests → <strong>it means</strong> mystery guests everywhere → <strong>do</strong> seed minimal reference data, build the rest per test</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Cleanup Table | Tools Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-cleanup"><h2 class="section-title">Cleanup Strategies</h2><table><thead><tr><th>Strategy</th><th>Speed</th><th>Limits</th></tr></thead><tbody><tr><td>Rollback per test</td><td class="desc">Fastest</td><td class="desc">No commits, one connection</td></tr><tr><td>Truncate tables</td><td class="desc">Fast</td><td class="desc">Real commits; reset sequences</td></tr><tr><td>Recreate schema</td><td class="desc">Slow</td><td class="desc">Strongest isolation</td></tr><tr><td>Unique data</td><td class="desc">Fast</td><td class="desc">Parallel-safe; data accumulates</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-tools"><h2 class="section-title">Tools by Stack</h2><table><thead><tr><th>Stack</th><th>Database testing</th></tr></thead><tbody><tr><td>Python</td><td class="desc">pytest-django, testcontainers-python, SQLAlchemy sessions</td></tr><tr><td>Node</td><td class="desc">Testcontainers, Prisma test DBs</td></tr><tr><td>Java</td><td class="desc">Testcontainers, @DataJpaTest, Flyway / Liquibase</td></tr><tr><td>Any</td><td class="desc">Docker Compose test profile</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using a shared staging database for automated tests</li><li class="note-item">Skipping migrations and creating schema from ORM models, so migrations go untested</li><li class="note-item">Huge shared fixture files that every test depends on</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Pin the database image version to production's</li><li class="note-item">Use a container reuse option locally to avoid restart cost</li><li class="note-item">Assert with SQL when you need to prove what was actually stored</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">real engine in a container</li><li class="note-item">migrations once per run</li><li class="note-item">rollback / truncate / unique data per test</li><li class="note-item">database per worker for parallel runs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-16-integration-basics.html">Integration Testing Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-18-testing-apis.html">Testing HTTP APIs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

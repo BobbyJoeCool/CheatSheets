@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JUnit — Sheet 20: Spring Test Slices</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ju-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Spring Test Slices</h1>
+			<div class="sheet-desc"><code>@WebMvcTest</code> · <code>MockMvc</code> / <code>MockMvcTester</code> · <code>@DataJpaTest</code> · <code>@JsonTest</code> · <code>@RestClientTest</code> · <code>@WebFluxTest</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Start Only the Layer You're Testing</h2><div class="description">A <strong>test slice</strong> starts a small part of the context: <strong><code>@WebMvcTest</code></strong> loads controllers and MVC config with <strong><code>MockMvc</code></strong> / <strong><code>MockMvcTester</code></strong>, <strong><code>@DataJpaTest</code></strong> loads JPA repositories with a test database, <strong><code>@JsonTest</code></strong> loads JSON mapping, <strong><code>@RestClientTest</code></strong> loads HTTP clients with a mock server. Slices start much faster than <code>@SpringBootTest</code> and keep tests focused.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Beans outside the slice must be mocked with <code>@MockitoBean</code></li><li class="note-item"><code>@DataJpaTest</code> runs each test in a rolled-back transaction</li><li class="note-item"><code>MockMvcTester</code> (Spring 6.2+) gives AssertJ-style checks</li><li class="note-item">Boot 4 moved slice annotations into per-technology modules; check imports</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + JUnit 4 / TestNG Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Controller Slice and a JPA Slice</h2><pre><code class="language-java">@WebMvcTest(OrderController.class)
+class OrderControllerTest {
+    @Autowired MockMvcTester mvc;
+    @MockitoBean OrderService service;
+
+    @Test
+    void returnsOrder() {
+        given(service.get(1L)).willReturn(new OrderDto(1L, "PAID"));
+        assertThat(mvc.get().uri("/orders/1"))
+            .hasStatusOk()
+            .bodyJson().extractingPath("$.status").isEqualTo("PAID");
+    }
+
+    @Test
+    void validatesInput() {
+        assertThat(mvc.post().uri("/orders")
+                      .contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .hasStatus(HttpStatus.BAD_REQUEST);
+    }
+}
+
+@DataJpaTest
+class OrderRepositoryTest {
+    @Autowired OrderRepository repo;
+    @Autowired TestEntityManager em;
+
+    @Test
+    void findsPaidOrders() {
+        em.persist(new Order(OrderStatus.PAID));
+        em.persist(new Order(OrderStatus.NEW));
+        assertThat(repo.findByStatus(OrderStatus.PAID)).hasSize(1);
+    }
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>@WebMvcTest(OrderController.class)</code> loads just that controller plus MVC infrastructure</div><div class="explain-item">The service is mocked because services aren't part of the web slice</div><div class="explain-item"><code>bodyJson().extractingPath(...)</code> reads a JSON path from the response</div><div class="explain-item"><code>TestEntityManager</code> sets up data; each test rolls back</div></div></section><section class="section-notes section-legacy" id="legacy"><h2 class="section-title">JUnit 4 / TestNG Equivalent</h2><ul class="note-list"><li class="note-item"><strong>JUnit 4</strong> Same slices with <code>@RunWith(SpringRunner.class)</code></li><li class="note-item"><strong>TestNG</strong> Same slices with <code>AbstractTestNGSpringContextTests</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><code>@SpringBootTest</code> + <code>MockMvc</code> for controller tests → <code>@WebMvcTest</code></li><li class="note-item">in-memory H2 for <code>@DataJpaTest</code> when prod is Postgres → Testcontainers (sheet 21)</li><li class="note-item">classic <code>MockMvc.perform(...).andExpect(...)</code> → <code>MockMvcTester</code> with AssertJ</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Slices Table | Mvc Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-slices"><h2 class="section-title">Slices</h2><table><thead><tr><th>Annotation</th><th>Loads</th></tr></thead><tbody><tr><td>@WebMvcTest</td><td class="desc">Controllers, filters, MVC config</td></tr><tr><td>@WebFluxTest</td><td class="desc">WebFlux controllers + WebTestClient</td></tr><tr><td>@DataJpaTest</td><td class="desc">JPA repositories, test DB</td></tr><tr><td>@JdbcTest / @DataJdbcTest</td><td class="desc">JDBC / Spring Data JDBC</td></tr><tr><td>@JsonTest</td><td class="desc">Jackson / JSON mapping</td></tr><tr><td>@RestClientTest</td><td class="desc">RestClient + MockRestServiceServer</td></tr><tr><td>@DataMongoTest / @DataRedisTest</td><td class="desc">NoSQL repositories</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-mvc"><h2 class="section-title">MockMvcTester Checks</h2><table><thead><tr><th>Check</th><th>Example</th></tr></thead><tbody><tr><td>Status</td><td class="desc">.hasStatusOk() / .hasStatus(400)</td></tr><tr><td>JSON path</td><td class="desc">.bodyJson().extractingPath("$.id")</td></tr><tr><td>Header</td><td class="desc">.hasHeader("Location", …)</td></tr><tr><td>View / model</td><td class="desc">.hasViewName("orders")</td></tr><tr><td>Redirect</td><td class="desc">.hasRedirectedUrl("/login")</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Expecting services to be injected in <code>@WebMvcTest</code> without mocking them</li><li class="note-item"><code>@DataJpaTest</code> against H2 hiding Postgres-specific SQL bugs</li><li class="note-item">Pulling the whole app into a slice with <code>@Import</code> of large configs</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Write most web tests as <code>@WebMvcTest</code> and a few as full <code>@SpringBootTest</code></li><li class="note-item">Use <code>@AutoConfigureTestDatabase(replace = NONE)</code> with Testcontainers in <code>@DataJpaTest</code></li><li class="note-item">Keep controllers thin so slice tests stay simple</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">slice — one layer of the context</li><li class="note-item"><code>@WebMvcTest</code> + <code>MockMvcTester</code></li><li class="note-item"><code>@DataJpaTest</code> — repositories, rolled back</li><li class="note-item">mock everything outside the slice</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="ju-19-spring-boot-test.html">Spring Boot Test Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JUnit Reference · 25 Sheets</a>
+				<a class="nav-link next" href="ju-21-testcontainers.html">Testcontainers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

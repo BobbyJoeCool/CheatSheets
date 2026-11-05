@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 21: End-to-End Test Strategy</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>End-to-End Test Strategy</h1>
+			<div class="sheet-desc">critical user journeys · stable selectors · auth &amp; test data setup · environments · keeping the suite small</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Few, Valuable, Reliable</h2><div class="description">E2E tests are the most expensive tests you have, so spend them on <strong>critical user journeys</strong>: sign up, log in, search, buy, the flows that lose money or users when broken. Make each test independent: set up <strong>data and auth through APIs</strong> rather than clicking through the UI, use <strong>stable selectors</strong> (roles, test IDs), and rely on auto-waiting instead of sleeps. Run them against a <strong>known environment</strong>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Reuse a logged-in session (storage state) instead of logging in every test</li><li class="note-item">Create test data via API or seed scripts; clean up or use unique names</li><li class="note-item">Run a small smoke subset on every deploy, the full set before release</li><li class="note-item">Record traces / videos on failure (sheet 31)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Journey Test With API Setup</h2><pre><code class="language-none">suite setup:
+    api.login_as("ann") → save session to "ann.json"      # once
+
+test "returning customer reorders a past purchase" [tag: critical]:
+    use session "ann.json"                                  # skip the login UI
+    order = api.create_order(customer="ann", sku="A1")     # fast setup via API
+    open_page("/orders")
+    click(by_role("row", name=order.reference) → by_role("button", name="Reorder"))
+    click(by_role("button", name="Checkout"))
+    expect(by_role("heading", name="Order confirmed")).visible
+
+# ✗ avoid
+sleep(3)                                  # use waiting assertions
+click("#app &gt; div:nth-child(4) &gt; button")  # use roles / test IDs
+test 2 depends on data from test 1        # each test sets up its own</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Logging in once and reusing the session removes minutes from a suite</div><div class="explain-item">API setup makes the test about the journey, not the setup screens</div><div class="explain-item">Waiting assertions retry until the page is ready, so no sleeps</div><div class="explain-item">Tagging lets CI run critical journeys on every deploy</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> <code>pytest-playwright</code> for Python E2E</li><li class="note-item"><strong>Vitest</strong> browser mode for components; Playwright for journeys <a class="xref" href="../JestVitest-Sheets/jv-19-browser-mode.html">↗19</a></li><li class="note-item"><strong>JUnit</strong> Playwright for Java with JUnit</li><li class="note-item"><strong>Playwright</strong> storage-state auth, API setup, tags <a class="xref" href="../Playwright-Sheets/pw-27-auth-storage-state.html">↗27</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> an E2E suite that takes an hour → <strong>it means</strong> too many tests or UI setup → <strong>do</strong> cut to critical journeys and set up via API</li><li class="note-item"><strong>You see</strong> <code>sleep</code> calls in E2E tests → <strong>it means</strong> timing guesses → <strong>do</strong> use auto-waiting assertions</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Pick Table | Env Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-pick"><h2 class="section-title">Choosing E2E Tests</h2><table><thead><tr><th>Include</th><th>Push down instead</th></tr></thead><tbody><tr><td>Sign up / log in</td><td class="desc">Password rules → unit</td></tr><tr><td>Search → buy</td><td class="desc">Price edge cases → unit</td></tr><tr><td>Core create / edit flow</td><td class="desc">Validation messages → component</td></tr><tr><td>Payment happy path</td><td class="desc">Payment errors → API / integration</td></tr><tr><td>Cross-service journey</td><td class="desc">Each service's rules → its own tests</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-env"><h2 class="section-title">Where E2E Tests Run</h2><table><thead><tr><th>Environment</th><th>Use</th></tr></thead><tbody><tr><td>Local app + test DB</td><td class="desc">Development, PR checks</td></tr><tr><td>Preview / ephemeral env</td><td class="desc">PR checks with real infra</td></tr><tr><td>Staging</td><td class="desc">Pre-release full run</td></tr><tr><td>Production</td><td class="desc">Smoke only, safe read paths</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Logging in through the UI in every test</li><li class="note-item">Tests that share and mutate the same records</li><li class="note-item">Running the full E2E suite against production</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Keep a short list of critical journeys and review it each quarter</li><li class="note-item">Give every test unique data (timestamped names)</li><li class="note-item">Fail fast in CI with a smoke subset first</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">critical journeys only</li><li class="note-item">auth and data via API, not the UI</li><li class="note-item">roles / test IDs + auto-waiting</li><li class="note-item">independent tests, known environment</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-20-component-vs-e2e.html">Component Tests vs End-to-End Tests</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-22-flaky-tests.html">Flaky Tests</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

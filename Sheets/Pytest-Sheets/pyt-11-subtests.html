@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 11: Subtests</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Subtests</h1>
+			<div class="sheet-desc"><code>subtests</code> fixture (9.0) · <code>subtests.test(msg=)</code> · subtests vs parametrize · reporting · <code>unittest</code> <code>subTest</code> support</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Several Checks, Each Reported</h2><div class="description">pytest 9 adds a built-in <strong><code>subtests</code></strong> fixture (it used to be the pytest-subtests plugin). Inside one test, each <code>with subtests.test(...)</code> block is reported separately, and a failure in one block doesn't stop the others. Use it when the cases are only known at run time (rows from a file, items from an API); use <strong>parametrize</strong> when they're known when the test is collected.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Keyword arguments to <code>subtests.test</code> label the block in the report</li><li class="note-item">A failing subtest marks the whole test as failed</li><li class="note-item"><code>unittest.TestCase.subTest</code> blocks are now reported the same way</li><li class="note-item">Fixtures run once for the test, not once per subtest</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">subtests in Practice</h2><pre><code class="language-python">import json
+
+def test_every_fixture_file_loads(subtests, tmp_path):
+    for path in sorted(Path("tests/data").glob("*.json")):
+        with subtests.test(msg="loads", file=path.name):
+            data = json.loads(path.read_text())
+            assert "id" in data
+
+def test_all_routes_require_auth(subtests, client):
+    for route in app.routes():               # known only at run time
+        with subtests.test(route=route.path):
+            assert client.get(route.path).status_code == 401
+
+# Output (abridged):
+# test_api.py::test_all_routes_require_auth [route='/admin'] SUBFAIL
+# test_api.py::test_all_routes_require_auth [route='/orders'] SUBPASS
+# test_api.py::test_all_routes_require_auth FAILED
+
+# unittest style, also reported per block in pytest 9:
+class TestFiles(unittest.TestCase):
+    def test_load(self):
+        for name in names:
+            with self.subTest(name=name):
+                self.assertTrue(load(name))</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Each block's label comes from <code>msg</code> and the keyword arguments</div><div class="explain-item">The loop keeps going after a failing block, so you see every bad route at once</div><div class="explain-item">The parent test is reported as failed if any subtest failed</div><div class="explain-item">Expensive fixtures (like <code>client</code>) are built once, not per subtest</div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item"><code>subtests.test(route=…)</code> → <code>self.subTest(route=…)</code> (same idea, now reported per block by pytest)</li><li class="note-item">pytest runs existing <code>subTest</code> code without changes</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">a <code>for</code> loop with bare asserts → <code>subtests.test</code> blocks</li><li class="note-item">subtests for a fixed list known up front → <code>parametrize</code></li><li class="note-item">dozens of subtests per test → split the test; reports get hard to read</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Vs Table | Report Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-vs"><h2 class="section-title">Subtests vs Parametrize</h2><table><thead><tr><th>Question</th><th>Parametrize</th><th>Subtests</th></tr></thead><tbody><tr><td>Cases known at collection?</td><td class="desc">Required</td><td class="desc">Not needed</td></tr><tr><td>Each case a separate test ID?</td><td class="desc">Yes</td><td class="desc">No (one test)</td></tr><tr><td>Run one case alone?</td><td class="desc">Yes (-k / node ID)</td><td class="desc">No</td></tr><tr><td>Fixtures rebuilt per case?</td><td class="desc">Yes (function scope)</td><td class="desc">No</td></tr><tr><td>Shown in --co?</td><td class="desc">Yes</td><td class="desc">No</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-report"><h2 class="section-title">Report Words</h2><table><thead><tr><th>Word</th><th>Means</th></tr></thead><tbody><tr><td>SUBPASS</td><td class="desc">Block passed</td></tr><tr><td>SUBFAIL</td><td class="desc">Block failed</td></tr><tr><td>SUBSKIP</td><td class="desc">Block skipped</td></tr><tr><td>FAILED (parent)</td><td class="desc">At least one block failed</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using subtests where parametrize fits and losing the ability to rerun one case</li><li class="note-item">Expecting a fresh fixture per subtest; state carries over between blocks</li><li class="note-item">Installing the old pytest-subtests plugin alongside pytest 9</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Put the identifying value in the keyword arguments so the failing case is obvious</li><li class="note-item">Use subtests for data-driven checks over files, routes or database rows</li><li class="note-item">Remove <code>pytest-subtests</code> from dependencies when moving to pytest 9</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>subtests.test(**labels)</code> — report each block</li><li class="note-item">keeps going after a failure</li><li class="note-item">cases at run time → subtests</li><li class="note-item">cases at collection → parametrize</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-10-parametrize.html">Parametrize</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-12-marks.html">Marks: skip, xfail &amp; Custom</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

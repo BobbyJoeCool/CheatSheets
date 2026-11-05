@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 36: Testing Time, Async &amp; Concurrency</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>Testing Time, Async &amp; Concurrency</h1>
+			<div class="sheet-desc">fake clocks · fake timers · awaiting vs polling · eventual consistency · race conditions · never <code>sleep</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Make Time and Ordering Test Inputs</h2><div class="description">Code that depends on time, timers, background work or concurrency is the main source of slow and flaky tests. Control <strong>time</strong> with an injected clock or <strong>fake timers</strong>. <strong>Await</strong> async work directly; for work that completes later (queues, eventual consistency), <strong>poll</strong> for a condition with a timeout instead of sleeping. For races, make interleavings deterministic or run many iterations to expose them.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>sleep</code> in a test is a guess: too short = flaky, too long = slow</li><li class="note-item">Polling assertions retry until true or time out</li><li class="note-item">Fake timers advance time instantly</li><li class="note-item">Concurrency bugs need stress runs, thread-safety tools, or deterministic schedulers</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Time, Async and Eventual Consistency</h2><pre><code class="language-none"># time: inject a clock
+test "session expires after 30 minutes":
+    clock = FakeClock("2026-11-04T10:00:00Z")
+    s = Session(clock); clock.advance(minutes=31)
+    assert s.expired()
+
+# timers: fake them
+test "autosave fires once after typing stops":
+    timers.fake(); editor.type("hello"); timers.advance(ms=999)
+    assert saves == 0
+    timers.advance(ms=1);  assert saves == 1
+
+# async: await, don't sleep
+test "fetches the profile":
+    profile = await api.get_profile(7)
+    assert profile.name == "Ann"
+
+# eventual consistency: poll with a timeout
+test "order event updates the search index":
+    publish(OrderPlaced(id=7))
+    eventually(timeout=5s): assert search("order 7").count == 1
+
+# ✗ never
+sleep(2); assert search("order 7").count == 1</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Advancing a fake clock tests a 30-minute rule in microseconds</div><div class="explain-item">Fake timers let a test check "not yet" and "now" exactly</div><div class="explain-item">Awaiting the promise / future means no guessing</div><div class="explain-item"><code>eventually</code> retries quickly and fails with a clear timeout</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> freezegun / time-machine, pytest-asyncio <a class="xref" href="../Pytest-Sheets/pyt-20-async-tests.html">↗20</a></li><li class="note-item"><strong>Vitest</strong> <code>vi.useFakeTimers</code>, <code>vi.setSystemTime</code>, <code>expect.poll</code> <a class="xref" href="../JestVitest-Sheets/jv-14-timers-dates.html">↗14</a></li><li class="note-item"><strong>JUnit</strong> inject <code>Clock</code>, Awaitility for polling, <code>@Timeout</code> <a class="xref" href="../JUnit-Sheets/ju-15-builtin-extensions.html">↗15</a></li><li class="note-item"><strong>Playwright</strong> <code>page.clock</code>, auto-waiting web-first assertions <a class="xref" href="../Playwright-Sheets/pw-34-clock-permissions.html">↗34</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> <code>sleep(5)</code> before an assertion → <strong>it means</strong> a timing guess → <strong>do</strong> await the work or poll for the condition</li><li class="note-item"><strong>You see</strong> tests that fail around midnight or month-end → <strong>it means</strong> real time leaks in → <strong>do</strong> inject a clock and test those dates on purpose</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Tools Table | Dates Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-tools"><h2 class="section-title">Control Techniques</h2><table><thead><tr><th>Problem</th><th>Technique</th></tr></thead><tbody><tr><td>Business rules on dates</td><td class="desc">Inject a clock</td></tr><tr><td>Debounce / timers</td><td class="desc">Fake timers</td></tr><tr><td>Promises / futures</td><td class="desc">Await directly</td></tr><tr><td>Background jobs / events</td><td class="desc">Poll with timeout (eventually)</td></tr><tr><td>Races</td><td class="desc">Deterministic scheduling, stress loops</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-dates"><h2 class="section-title">Date Edge Cases to Test</h2><table><thead><tr><th>Case</th><th>Example</th></tr></thead><tbody><tr><td>Month end</td><td class="desc">Jan 31 + 1 month</td></tr><tr><td>Leap day</td><td class="desc">2028-02-29</td></tr><tr><td>DST change</td><td class="desc">Local 02:30 that doesn't exist</td></tr><tr><td>Time zones</td><td class="desc">Same instant, different local date</td></tr><tr><td>Year end</td><td class="desc">Dec 31 23:59:59 → Jan 1</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Sleeping instead of waiting for a condition</li><li class="note-item">Using the real clock in business-rule tests</li><li class="note-item">Testing concurrency once and declaring it safe</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Search the test suite for <code>sleep</code> and replace each one</li><li class="note-item">Test date edge cases explicitly with a fake clock</li><li class="note-item">Run concurrent code under stress loops in CI nightly</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">inject clocks, fake timers</li><li class="note-item">await async work directly</li><li class="note-item">poll with timeout for eventual results</li><li class="note-item">never <code>sleep</code> to wait</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-35-legacy-code.html">Testing Legacy Code</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-37-test-strategy.html">A Test Strategy for a Project</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
