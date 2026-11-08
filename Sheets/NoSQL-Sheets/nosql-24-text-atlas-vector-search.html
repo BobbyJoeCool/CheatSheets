@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 24: Text, Atlas Search &amp; Vector Search</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s24">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 24</div>
+			<h1>Text, Atlas Search &amp; Vector Search</h1>
+			<div class="sheet-desc"><code>$text</code> · text index · <code>$search</code> · Atlas Search indexes · <code>$vectorSearch</code> · embeddings</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Words, Relevance and Meaning</h2><div class="description">A classic <strong>text index</strong> supports simple word search with <code>$text</code>. <strong>Atlas Search</strong> (<code>$search</code>) runs Apache Lucene beside the database for real relevance: fuzzy matching, autocomplete, synonyms and facets. <strong>Vector Search</strong> (<code>$vectorSearch</code>) finds documents whose <strong>embeddings</strong> are closest in meaning to a query vector, which is the base for semantic search and RAG. Both started in Atlas; MongoDB 8.2 also offers them in self-managed deployments as a preview.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">One text index per collection</li><li class="note-item">Search indexes are created with <code>createSearchIndex</code>, not <code>createIndex</code></li><li class="note-item">Search indexes update asynchronously, a little behind writes</li><li class="note-item"><code>$search</code> / <code>$vectorSearch</code> must be the first stage</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + In Your Code | Explain + SQL Equivalent + Across Engines -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">$text, $search &amp; $vectorSearch</h2><pre><code class="language-javascript">// classic text index
+db.products.createIndex({ name: "text", description: "text" })
+db.products.find({ $text: { $search: "usb cable -lightning" } },
+                 { score: { $meta: "textScore" } })
+  .sort({ score: { $meta: "textScore" } })
+
+// Atlas Search: Lucene relevance, typo tolerance
+db.products.aggregate([
+  { $search: { index: "products",
+               text: { query: "keybord", path: ["name", "description"],
+                       fuzzy: { maxEdits: 1 } } } },
+  { $limit: 10 },
+  { $project: { name: 1, score: { $meta: "searchScore" } } }
+])
+
+// Vector Search: index once, then query by embedding
+db.products.createSearchIndex("product_vectors", "vectorSearch", {
+  fields: [ { type: "vector", path: "embedding", numDimensions: 384, similarity: "cosine" },
+            { type: "filter", path: "category" } ] })
+
+db.products.aggregate([
+  { $vectorSearch: { index: "product_vectors", path: "embedding",
+                     queryVector: embed("cable for my laptop"),
+                     numCandidates: 100, limit: 5,
+                     filter: { category: "Electronics" } } },
+  { $project: { name: 1, score: { $meta: "vectorSearchScore" } } }
+])</code></pre></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await products.createSearchIndex({ name: "product_vectors", type: "vectorSearch", definition })</code></li><li class="note-item"><strong>Python</strong> <code>products.create_search_index(SearchIndexModel(definition=d, name="product_vectors", type="vectorSearch"))</code></li><li class="note-item"><strong>Java</strong> <code>products.createSearchIndexes(List.of(new SearchIndexModel("product_vectors", def, SearchIndexType.vectorSearch())))</code></li></ul></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>-lightning</code> excludes a word; quotes would search a phrase</div><div class="explain-item"><code>fuzzy: { maxEdits: 1 }</code> finds "keyboard" from "keybord"</div><div class="explain-item"><code>embed()</code> stands for your embedding model call; the vector length must match <code>numDimensions</code></div><div class="explain-item"><code>numCandidates</code> trades accuracy for speed; 10–20× <code>limit</code> is typical</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>$text</code> ↔ <code>to_tsvector(…) @@ to_tsquery(…)</code> with a GIN index</li><li class="note-item"><code>$vectorSearch</code> ↔ pgvector <code>ORDER BY embedding &lt;=&gt; $1 LIMIT 5</code> · <a class="xref" href="../SQL-Sheets/sql-80-full-text-search.html">See SQL 80</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> <code>FT.CREATE</code> with TEXT and VECTOR fields, then <code>FT.SEARCH</code> (sheet 40)</li><li class="note-item"><strong>DynamoDB</strong> no full-text; zero-ETL integration streams tables into OpenSearch</li><li class="note-item"><strong>Cassandra</strong> SAI vector search: <code>ORDER BY v ANN OF [...] LIMIT 5</code></li><li class="note-item"><strong>Neo4j</strong> full-text indexes (Lucene) and vector indexes on nodes</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Search Table | Sim Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-search"><h2 class="section-title">Which Search?</h2><table><thead><tr><th>Feature</th><th><code>$text</code></th><th><code>$search</code></th><th><code>$vectorSearch</code></th></tr></thead><tbody><tr><td>Engine</td><td class="desc">B-tree index</td><td class="desc">Lucene</td><td class="desc">HNSW</td></tr><tr><td>Relevance</td><td class="desc">Basic score</td><td class="desc">BM25, boosts</td><td class="desc">Similarity</td></tr><tr><td>Typos</td><td class="desc">No</td><td class="desc">Fuzzy</td><td class="desc">Meaning, not spelling</td></tr><tr><td>Autocomplete / facets</td><td class="desc">No</td><td class="desc">Yes</td><td class="desc">No</td></tr><tr><td>Index command</td><td class="desc"><code>createIndex</code></td><td class="desc"><code>createSearchIndex</code></td><td class="desc"><code>createSearchIndex</code></td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-sim"><h2 class="section-title">Vector Similarity</h2><table><thead><tr><th>Function</th><th>Use when</th></tr></thead><tbody><tr><td><code>cosine</code></td><td class="desc">Direction matters, length doesn't (most text)</td></tr><tr><td><code>dotProduct</code></td><td class="desc">Vectors already normalized; fastest</td></tr><tr><td><code>euclidean</code></td><td class="desc">Distance in space (images, geo-like)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using <code>$text</code> and expecting fuzzy matching</li><li class="note-item">Embedding queries with a different model than the documents</li><li class="note-item">Forgetting the vector filter field in the index definition</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Combine <code>$vectorSearch</code> and <code>$search</code> for hybrid ranking</li><li class="note-item">Store the model name and version with each embedding</li><li class="note-item">Test <code>numCandidates</code> against a set of known good answers</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>$text</code> — simple words</li><li class="note-item"><code>$search</code> — Lucene relevance</li><li class="note-item"><code>$vectorSearch</code> — meaning</li><li class="note-item">First stage in the pipeline</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-23-index-strategy-explain.html">Index Strategy &amp; explain()</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-25-schema-design-patterns.html">Schema Design Patterns</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

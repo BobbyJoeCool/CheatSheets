@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 26: Schema Validation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Schema Validation</h1>
+			<div class="sheet-desc"><code>$jsonSchema</code> · <code>validator</code> · <code>validationLevel</code> · <code>validationAction</code> · required fields · <code>collMod</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Rules on the Server</h2><div class="description"><strong>Schema validation</strong> makes MongoDB check documents on insert and update with a <strong><code>$jsonSchema</code></strong> validator: required fields, BSON types, ranges, patterns and allowed values. <strong><code>validationLevel</code></strong> decides which documents are checked (<code>strict</code>: all; <code>moderate</code>: only those already valid) and <strong><code>validationAction</code></strong> decides what happens to a bad write (<code>error</code> rejects it, <code>warn</code> logs it). Change the rules later with <strong><code>collMod</code></strong>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Validation doesn't touch existing documents until they're updated</li><li class="note-item">Failed writes report which rule failed (<code>errInfo</code>)</li><li class="note-item">Use <code>bypassDocumentValidation</code> only for repair jobs</li><li class="note-item">App-side validation still gives better error messages</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">$jsonSchema Validator</h2><pre><code class="language-javascript">db.createCollection("customers", {
+  validator: { $jsonSchema: {
+    bsonType: "object",
+    required: ["name", "email", "createdAt"],
+    properties: {
+      name:      { bsonType: "string", minLength: 1, maxLength: 100 },
+      email:     { bsonType: "string", pattern: "^[^@\\s]+@[^@\\s]+$" },
+      country:   { enum: ["US", "CA", "GB", "DE"] },
+      createdAt: { bsonType: "date" },
+      credit:    { bsonType: "decimal", minimum: 0 },
+      addresses: { bsonType: "array", maxItems: 5,
+                   items: { bsonType: "object", required: ["city"] } }
+    }
+  } },
+  validationLevel: "strict",
+  validationAction: "error"
+})
+
+// change the rules on an existing collection
+db.runCommand({ collMod: "customers",
+  validator: { $jsonSchema: newSchema },
+  validationLevel: "moderate" })
+
+// find documents that break the rules
+db.customers.find({ $nor: [ { $jsonSchema: newSchema } ] })
+db.getCollectionInfos({ name: "customers" })[0].options.validator</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>required</code> lists fields that must exist; <code>properties</code> sets rules for each</div><div class="explain-item"><code>enum</code> limits a field to listed values</div><div class="explain-item"><code>moderate</code> lets old invalid documents be updated without fixing them first</div><div class="explain-item">The <code>$nor</code> query lists documents to clean up before switching to <code>strict</code></div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>$jsonSchema</code> ↔ column types, <code>NOT NULL</code> and <code>CHECK</code> constraints · <code>enum</code> ↔ <code>CHECK (country IN …)</code></li><li class="note-item"><code>moderate</code> ↔ adding a constraint <code>NOT VALID</code> · <a class="xref" href="../SQL-Sheets/sql-57-constraints.html">See SQL 57</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> no validation; validate in the app</li><li class="note-item"><strong>DynamoDB</strong> only key attributes are typed; validate in code</li><li class="note-item"><strong>Cassandra</strong> typed columns enforce types; no <code>CHECK</code> constraints</li><li class="note-item"><strong>Neo4j</strong> uniqueness and key constraints; existence and type constraints in Enterprise</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> Mongoose: <code>new Schema({ email: { type: String, required: true, match: /@/ } })</code></li><li class="note-item"><strong>Python</strong> Pydantic models (Beanie / ODMantic) validate before writing</li><li class="note-item"><strong>Java</strong> Bean Validation: <code>@NotBlank @Email String email;</code> on the document class</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Kw Table | Levels Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-kw"><h2 class="section-title">$jsonSchema Keywords</h2><table><thead><tr><th>Keyword</th><th>Checks</th></tr></thead><tbody><tr><td><code>bsonType</code></td><td class="desc">BSON type (or list of types)</td></tr><tr><td><code>required</code></td><td class="desc">Fields that must exist</td></tr><tr><td><code>enum</code></td><td class="desc">Allowed values</td></tr><tr><td><code>minimum</code> / <code>maximum</code></td><td class="desc">Number range</td></tr><tr><td><code>minLength</code> / <code>pattern</code></td><td class="desc">String length / regex</td></tr><tr><td><code>minItems</code> / <code>items</code></td><td class="desc">Array size / element rules</td></tr><tr><td><code>additionalProperties</code></td><td class="desc">Allow unknown fields?</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-levels"><h2 class="section-title">Level &amp; Action</h2><table><thead><tr><th>Setting</th><th>Effect</th></tr></thead><tbody><tr><td><code>strict</code></td><td class="desc">Check every insert and update</td></tr><tr><td><code>moderate</code></td><td class="desc">Skip updates to already-invalid docs</td></tr><tr><td><code>off</code></td><td class="desc">No checks</td></tr><tr><td><code>error</code></td><td class="desc">Reject invalid writes</td></tr><tr><td><code>warn</code></td><td class="desc">Allow, but log</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Turning on <code>strict</code> without checking existing data</li><li class="note-item">Using <code>type</code> instead of <code>bsonType</code> for BSON-specific types like decimal</li><li class="note-item"><code>additionalProperties: false</code> without listing <code>_id</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with <code>warn</code>, watch the logs, then switch to <code>error</code></li><li class="note-item">Keep the schema in version control and apply it with migrations</li><li class="note-item">Validate in the app too, for friendly messages</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>$jsonSchema</code> — server rules</li><li class="note-item"><code>strict</code> / <code>moderate</code></li><li class="note-item"><code>error</code> / <code>warn</code></li><li class="note-item"><code>collMod</code> — change later</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-25-schema-design-patterns.html">Schema Design Patterns</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-27-transactions-concerns.html">Transactions, Read &amp; Write Concerns</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

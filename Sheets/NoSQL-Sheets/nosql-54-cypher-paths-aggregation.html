@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 54: Paths, Patterns &amp; Aggregation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s54">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 54</div>
+			<h1>Paths, Patterns &amp; Aggregation</h1>
+			<div class="sheet-desc">variable-length <code>*1..3</code> · <code>shortestPath</code> · quantified path patterns · <code>count</code> · <code>collect</code> · <code>WITH</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Multi-Hop Questions</h2><div class="description">Patterns can chain many hops: "customers who bought what Ada bought" is one <code>MATCH</code>. <strong>Variable-length</strong> relationships (<code>*1..3</code>) and <strong>quantified path patterns</strong> (<code>{1,3}</code>) follow a relationship a range of times, and <strong><code>SHORTEST</code></strong> finds the shortest paths. Aggregation is implicit: any non-aggregated value in <code>RETURN</code> or <code>WITH</code> is a grouping key. <strong><code>WITH</code></strong> pipes results to the next part of the query, which also lets you filter after aggregating.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Always bound variable-length patterns (<code>*1..3</code>, not <code>*</code>)</li><li class="note-item"><code>collect()</code> builds a list; <code>UNWIND</code> turns a list into rows</li><li class="note-item">Quantified path patterns arrived in Neo4j 5.9</li><li class="note-item"><code>DISTINCT</code> removes repeated rows from multiple paths</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Hops, Paths &amp; Aggregation</h2><pre><code class="language-cypher">// customers who bought what Ada bought
+MATCH (:Customer {id: 42})-[:PLACED]-&gt;(:Order)-[:CONTAINS]-&gt;(p:Product)
+      &lt;-[:CONTAINS]-(:Order)&lt;-[:PLACED]-(other:Customer)
+WHERE other.id &lt;&gt; 42
+RETURN other.name, count(DISTINCT p) AS shared
+ORDER BY shared DESC LIMIT 5;
+
+// variable length: 1 to 3 hops
+MATCH (a:Customer {id: 42})-[:FOLLOWS*1..3]-&gt;(b:Customer)
+RETURN DISTINCT b.name;
+
+// quantified path pattern
+MATCH (a:Customer {id: 42}) ((x)-[:FOLLOWS]-&gt;(y)){1,3} (b:Customer)
+RETURN DISTINCT b.name;
+
+// shortest path
+MATCH p = SHORTEST 1 (a:Customer {id: 42})-[:FOLLOWS]-+(b:Customer {id: 99})
+RETURN length(p), [n IN nodes(p) | n.name];
+
+// grouping: non-aggregated columns are the keys
+MATCH (c:Customer)-[:PLACED]-&gt;(o:Order)
+RETURN c.name, count(o) AS orders, sum(o.total) AS revenue,
+       collect(o.id)[..5] AS firstIds;
+
+// WITH: aggregate, then filter (like HAVING)
+MATCH (p:Product)&lt;-[r:CONTAINS]-(:Order)
+WITH p, sum(r.qty) AS units
+WHERE units &gt; 100
+RETURN p.name, units ORDER BY units DESC;</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The pattern walks out from Ada to products and back to other customers in one statement</div><div class="explain-item"><code>*1..3</code> and <code>{1,3}</code> both mean one to three hops; the quantified form can add conditions inside the group</div><div class="explain-item"><code>-+</code> means one or more hops; <code>SHORTEST 1</code> returns one shortest path</div><div class="explain-item"><code>[n IN nodes(p) | n.name]</code> is a list comprehension</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Multi-hop patterns ↔ chains of self joins, or a recursive CTE for variable depth</li><li class="note-item"><code>collect()</code> ↔ <code>array_agg</code> · <code>WITH … WHERE</code> ↔ <code>HAVING</code> · <a class="xref" href="../SQL-Sheets/sql-42-recursive-ctes.html">See SQL 42</a>, <a class="xref" href="../SQL-Sheets/sql-29-having-conditional-aggregation.html">29</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> <code>$graphLookup</code> with <code>maxDepth</code> for recursive lookups</li><li class="note-item"><strong>Redis</strong> none; walk sets in the app</li><li class="note-item"><strong>DynamoDB</strong> adjacency lists: one hop per Query</li><li class="note-item"><strong>Cassandra</strong> precompute relationships into tables</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>const { records } = await driver.executeQuery(cypher, { id: 42 }); records.map(r =&gt; r.get("shared"))</code></li><li class="note-item"><strong>Python</strong> <code>records, summary, keys = driver.execute_query(cypher, id=42)</code></li><li class="note-item"><strong>Java</strong> <code>var result = driver.executableQuery(cypher).withParameters(Map.of("id", 42)).execute(); result.records()</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Paths Table | Agg Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-paths"><h2 class="section-title">Path Syntax</h2><table><thead><tr><th>Syntax</th><th>Means</th></tr></thead><tbody><tr><td><code>-[:T]-&gt;</code></td><td class="desc">One hop, directed</td></tr><tr><td><code>-[:T]-</code></td><td class="desc">Either direction</td></tr><tr><td><code>-[:T*1..3]-&gt;</code></td><td class="desc">1 to 3 hops</td></tr><tr><td><code>((a)-[:T]-&gt;(b)){1,3}</code></td><td class="desc">Quantified path pattern</td></tr><tr><td><code>-[:T]-+</code></td><td class="desc">One or more hops</td></tr><tr><td><code>SHORTEST k</code></td><td class="desc">k shortest paths</td></tr><tr><td><code>shortestPath((a)-[*]-(b))</code></td><td class="desc">Older shortest-path function</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-agg"><h2 class="section-title">Aggregating Functions</h2><table><thead><tr><th>Function</th><th>Result</th></tr></thead><tbody><tr><td><code>count(x)</code> / <code>count(*)</code></td><td class="desc">Count</td></tr><tr><td><code>sum</code> / <code>avg</code></td><td class="desc">Total / mean</td></tr><tr><td><code>min</code> / <code>max</code></td><td class="desc">Extremes</td></tr><tr><td><code>collect(x)</code></td><td class="desc">List of values</td></tr><tr><td><code>percentileCont</code></td><td class="desc">Percentile</td></tr><tr><td><code>stDev</code></td><td class="desc">Standard deviation</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Unbounded <code>*</code> patterns that explore the whole graph</li><li class="note-item">Counting paths when you meant distinct nodes</li><li class="note-item">Expecting <code>GROUP BY</code>; grouping comes from the non-aggregated columns</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start traversals from an indexed node</li><li class="note-item">Use <code>count(DISTINCT x)</code> across multiple paths</li><li class="note-item">Break long queries into <code>WITH</code> steps</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Multi-hop patterns in one <code>MATCH</code></li><li class="note-item"><code>*1..3</code> / <code>{1,3}</code> — variable length</li><li class="note-item"><code>SHORTEST</code> — shortest paths</li><li class="note-item">Implicit grouping + <code>WITH</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-53-cypher-basics.html">Cypher Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-55-graph-modeling-indexes.html" title="Graph Modeling, Indexes &amp; Constraints">Graph Modeling &amp; Indexes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cypher.min.js"></script>
+	</body>
+</html>

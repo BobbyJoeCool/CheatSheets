@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 45: Secondary Indexes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s45">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 45</div>
+			<h1>Secondary Indexes</h1>
+			<div class="sheet-desc">GSI · LSI · projections · sparse indexes · index overloading · eventual consistency</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Other Ways In</h2><div class="description">A <strong>global secondary index (GSI)</strong> is a copy of selected attributes with a different partition and sort key, so you can Query by something other than the table key. It can be added any time and is <strong>eventually consistent</strong>. A <strong>local secondary index (LSI)</strong> keeps the table's partition key with a different sort key, supports strong reads, but must be created with the table. Items without the index key attributes are left out, which makes <strong>sparse indexes</strong> a cheap filter.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">GSIs have their own capacity on provisioned tables</li><li class="note-item">Projection decides which attributes are copied</li><li class="note-item">One GSI can serve several entity types (overloading)</li><li class="note-item">LSIs cap an item collection at 10 GB</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">GSIs are eventually consistent: a Query right after a write may not see it</li><li class="note-item">A throttled GSI holds back writes to the base table; give GSIs enough capacity (on-demand helps)</li><li class="note-item">Every projected attribute is copied and billed on write; project only what the query needs</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + In Your Code | Explain + SQL Equivalent + Across Engines -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Add, Fill &amp; Query a GSI</h2><pre><code class="language-bash"># GSI1: orders by status, newest first
+aws dynamodb update-table --table-name Shop \
+  --attribute-definitions AttributeName=GSI1PK,AttributeType=S \
+                          AttributeName=GSI1SK,AttributeType=S \
+  --global-secondary-index-updates '[{"Create":{"IndexName":"GSI1",
+     "KeySchema":[{"AttributeName":"GSI1PK","KeyType":"HASH"},
+                  {"AttributeName":"GSI1SK","KeyType":"RANGE"}],
+     "Projection":{"ProjectionType":"INCLUDE","NonKeyAttributes":["total"]}}}]'
+
+# an item joins the index by having the GSI key attributes
+aws dynamodb update-item --table-name Shop \
+  --key '{"PK":{"S":"CUSTOMER#42"},"SK":{"S":"ORDER#2026-11-01#1001"}}' \
+  --update-expression "SET GSI1PK = :s, GSI1SK = :d" \
+  --expression-attribute-values '{":s":{"S":"STATUS#pending"},
+                                  ":d":{"S":"2026-11-01#1001"}}'
+
+aws dynamodb query --table-name Shop --index-name GSI1 \
+  --key-condition-expression "GSI1PK = :s" \
+  --expression-attribute-values '{":s":{"S":"STATUS#pending"}}' \
+  --no-scan-index-forward
+
+# LSI: only at create-table time
+#   --local-secondary-indexes '[{"IndexName":"ByTotal","KeySchema":[
+#     {"AttributeName":"PK","KeyType":"HASH"},{"AttributeName":"total","KeyType":"RANGE"}],
+#     "Projection":{"ProjectionType":"KEYS_ONLY"}}]' </code></pre></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>new QueryCommand({ TableName: "Shop", IndexName: "GSI1", KeyConditionExpression: "GSI1PK = :s", ExpressionAttributeValues: { ":s": "STATUS#pending" } })</code></li><li class="note-item"><strong>Python</strong> <code>table.query(IndexName="GSI1", KeyConditionExpression=Key("GSI1PK").eq("STATUS#pending"))</code></li><li class="note-item"><strong>Java</strong> <code>table.index("GSI1").query(QueryConditional.keyEqualTo(k -&gt; k.partitionValue("STATUS#pending")))</code></li></ul></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Generic names (<code>GSI1PK</code>) let one index serve many access patterns</div><div class="explain-item"><code>INCLUDE</code> copies the keys plus <code>total</code>; other attributes need a second read</div><div class="explain-item">Removing <code>GSI1PK</code> (when an order ships) drops it from the index: a sparse index of pending orders</div><div class="explain-item">A busy status value is a hot GSI partition; add a shard suffix if it gets heavy</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">GSI ↔ <code>CREATE INDEX</code> on other columns, but kept as an async copy · LSI ↔ an index sharing the partition</li><li class="note-item"><code>INCLUDE</code> projection ↔ <code>CREATE INDEX … INCLUDE (total)</code> · <a class="xref" href="../SQL-Sheets/sql-72-index-types-strategies.html">See SQL 72</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> secondary indexes are synchronous and always consistent</li><li class="note-item"><strong>Redis</strong> hand-built index sets, or <code>FT.CREATE</code></li><li class="note-item"><strong>Cassandra</strong> SAI, or a second table per query</li><li class="note-item"><strong>Neo4j</strong> indexes on label properties, always consistent</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Gsilsi Table | Proj Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-gsilsi"><h2 class="section-title">GSI vs LSI</h2><table><thead><tr><th></th><th>GSI</th><th>LSI</th></tr></thead><tbody><tr><td>Partition key</td><td class="desc">Any attribute</td><td class="desc">Same as table</td></tr><tr><td>Create</td><td class="desc">Any time</td><td class="desc">With the table only</td></tr><tr><td>Consistency</td><td class="desc">Eventual</td><td class="desc">Eventual or strong</td></tr><tr><td>Capacity</td><td class="desc">Its own</td><td class="desc">The table's</td></tr><tr><td>Per table</td><td class="desc">20 (quota)</td><td class="desc">5</td></tr><tr><td>Size cap</td><td class="desc">None</td><td class="desc">10 GB per partition key</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-proj"><h2 class="section-title">Projection Types</h2><table><thead><tr><th>Type</th><th>Copies</th></tr></thead><tbody><tr><td><code>KEYS_ONLY</code></td><td class="desc">Table and index keys</td></tr><tr><td><code>INCLUDE</code></td><td class="desc">Keys + listed attributes</td></tr><tr><td><code>ALL</code></td><td class="desc">Every attribute</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Reading from a GSI right after writing and expecting the new item</li><li class="note-item">Projecting <code>ALL</code> on every index</li><li class="note-item">Planning on an LSI after the table exists</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Overload one or two GSIs instead of creating many</li><li class="note-item">Use sparse indexes for "items in state X"</li><li class="note-item">Shard hot GSI keys: <code>STATUS#pending#3</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">GSI — new key, any time, eventual</li><li class="note-item">LSI — same partition, at create</li><li class="note-item">Sparse indexes filter for free</li><li class="note-item">Project only what you read</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-44-dynamodb-query-scan.html">Query vs Scan</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-46-dynamodb-single-table.html">Single-Table Design</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 04: Modeling From Access Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s04">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 04</div>
+			<h1>Modeling From Access Patterns</h1>
+			<div class="sheet-desc">list queries first · read / write ratio · query-driven design · denormalization · duplication trade-offs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">List the Questions First</h2><div class="description">NoSQL modeling starts from the <strong>access patterns</strong>: the questions the app asks, with how often and how fast each must answer. Rank them, then shape the data so each common question is <strong>one read</strong> from one place. That usually means <strong>denormalizing</strong>: copying data to where it's read and accepting extra work on writes. Rare or slow questions can fall back to secondary indexes, batch jobs or an analytics store.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Reads usually outnumber writes, so optimize them first</li><li class="note-item">Every copy of data needs a plan for updating it</li><li class="note-item">Key design is hard to change later in DynamoDB and Cassandra</li><li class="note-item">Keep the access-pattern list in the repo</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Access-Pattern Worksheet</h2><pre><code class="language-yaml"># shop access patterns, most frequent first
+- id: AP1
+  question: Show a product page
+  key: productId
+  rate: 2000/s
+  needs: product, average rating, 3 newest reviews
+- id: AP2
+  question: Customer's recent orders
+  key: customerId, newest first
+  rate: 150/s
+  needs: date, status, total, line count
+- id: AP3
+  question: One order with its items
+  key: orderId
+  rate: 300/s
+- id: AP4
+  question: Reserve stock when an order is placed
+  key: productId
+  rate: 80/s
+  rule: stock never below 0
+- id: AP5
+  question: Monthly sales by category
+  rate: nightly
+  rule: can be slow, read from analytics</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">AP1: keep the 3 newest reviews and the rating total on the product (subset and computed patterns, sheet 25)</div><div class="explain-item">AP2: store orders keyed by customer, sorted by date</div><div class="explain-item">AP3: embed line items in the order, since they're always read together</div><div class="explain-item">AP4: a conditional atomic update on one record</div><div class="explain-item">AP5: don't model the operational store for it; export or aggregate offline</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">SQL models entities first and adds indexes for queries; NoSQL models the queries first</li><li class="note-item">Denormalizing is an optimization in SQL and the default in NoSQL · <a class="xref" href="../SQL-Sheets/sql-61-normalization.html">See SQL 61</a>, <a class="xref" href="../SQL-Sheets/sql-63-design-conventions.html">63</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> embed what's read together, reference what grows</li><li class="note-item"><strong>Redis</strong> one key per lookup; pick the structure by operation</li><li class="note-item"><strong>DynamoDB</strong> choose PK / SK so each pattern is a single Query</li><li class="note-item"><strong>Cassandra</strong> one table per query</li><li class="note-item"><strong>Neo4j</strong> model the traversals: which things connect to which</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>const recent = (id) =&gt; orders.find({ customerId: id }).sort({ orderDate: -1 }).limit(10).toArray()</code></li><li class="note-item"><strong>Python</strong> <code>def recent(cid): return list(orders.find({"customerId": cid}).sort("orderDate", -1).limit(10))</code></li><li class="note-item"><strong>Java</strong> <code>List&lt;Order&gt; findTop10ByCustomerIdOrderByOrderDateDesc(int customerId);</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Ask Table | Denorm Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-ask"><h2 class="section-title">Questions per Pattern</h2><table><thead><tr><th>Ask</th><th>Why</th></tr></thead><tbody><tr><td>What is the key?</td><td class="desc">Decides the partition or index</td></tr><tr><td>How often?</td><td class="desc">Rank and optimize the top few</td></tr><tr><td>Read / write ratio?</td><td class="desc">How much write cost copies can add</td></tr><tr><td>How big does it grow?</td><td class="desc">Embed or reference</td></tr><tr><td>How fresh must it be?</td><td class="desc">Strong or eventual read</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-denorm"><h2 class="section-title">Denormalizing Trade-offs</h2><table><thead><tr><th>Choice</th><th>Read</th><th>Write</th></tr></thead><tbody><tr><td>Embed</td><td class="desc">One read</td><td class="desc">Rewrites the parent</td></tr><tr><td>Copy a field</td><td class="desc">No join</td><td class="desc">Update every copy</td></tr><tr><td>Precompute a total</td><td class="desc">Instant</td><td class="desc">Recompute on change</td></tr><tr><td>Reference</td><td class="desc">Extra read</td><td class="desc">One place to update</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Designing from the ER diagram instead of the queries</li><li class="note-item">Ignoring how fast arrays and partitions grow</li><li class="note-item">Copying data without a way to keep copies in sync</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Rank patterns by frequency and latency</li><li class="note-item">Design for the top patterns; index or batch the rest</li><li class="note-item">Revisit with real traffic numbers</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Questions first</li><li class="note-item">One read per common question</li><li class="note-item">Denormalize on purpose</li><li class="note-item">Plan the update path</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-03-cap-consistency.html">CAP, Consistency &amp; BASE</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-05-embed-vs-reference.html">Embedding vs Referencing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

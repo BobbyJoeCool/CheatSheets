@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 33: Keys &amp; Strings</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s33">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 33</div>
+			<h1>Keys &amp; Strings</h1>
+			<div class="sheet-desc"><code>SET</code> · <code>GET</code> · <code>NX</code> / <code>XX</code> · <code>INCR</code> · <code>MSET</code> · key naming · <code>SCAN</code> vs <code>KEYS</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">The Basic Building Block</h2><div class="description">A <strong>string</strong> value can hold text, a number or up to 512 MB of bytes. <strong><code>SET</code></strong> and <strong><code>GET</code></strong> read and write it; options on <code>SET</code> make it conditional (<strong><code>NX</code></strong>: only if missing, <strong><code>XX</code></strong>: only if present) or expiring (<strong><code>EX</code></strong> seconds). <strong><code>INCR</code></strong> and friends turn strings into atomic counters. Key commands (<code>EXISTS</code>, <code>TYPE</code>, <code>DEL</code>, <code>RENAME</code>) work on any type, and <strong><code>SCAN</code></strong> walks keys safely in pages.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>SET … NX EX</code> is the standard simple lock</li><li class="note-item"><code>INCR</code> on a missing key starts at 0</li><li class="note-item"><code>UNLINK</code> frees memory in the background</li><li class="note-item"><code>SCAN</code> may return a key more than once</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item"><code>KEYS *</code> walks every key and blocks the server; use <code>SCAN</code> with a cursor</li><li class="note-item">Keys without a TTL pile up until memory runs out; give cache and session keys an expiry</li><li class="note-item">Multi-megabyte values block the single thread while they're sent; split or compress them</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">SET Options, Counters &amp; SCAN</h2><pre><code class="language-bash">&gt; SET product:7:name "SQL Pocket Guide"
+OK
+&gt; GET product:7:name
+"SQL Pocket Guide"
+&gt; SET lock:order:1001 worker-3 NX EX 30       # only if missing, 30 s TTL
+OK
+&gt; SET lock:order:1001 worker-4 NX EX 30
+(nil)
+&gt; SET product:7:name "SQL Pocket Guide 5e" XX GET   # only if exists; old value
+"SQL Pocket Guide"
+
+&gt; INCR counter:orders
+(integer) 1002
+&gt; INCRBY product:7:views 5
+&gt; INCRBYFLOAT product:7:rating 0.5
+&gt; MSET product:7:stock 10 product:3:stock 120
+&gt; MGET product:7:stock product:3:stock
+
+&gt; EXISTS product:7:name
+&gt; TYPE product:7
+&gt; RENAME product:7:name product:7:title
+&gt; UNLINK big:report
+&gt; SCAN 0 MATCH product:* COUNT 100
+1) "176"                                      # next cursor; "0" = done
+2) 1) "product:7:title"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>(nil)</code> from the second <code>SET … NX</code> means another worker holds the lock</div><div class="explain-item"><code>GET</code> on <code>SET</code> returns the old value in the same atomic step</div><div class="explain-item">Counters are stored as strings but <code>INCR</code> treats them as 64-bit integers</div><div class="explain-item">Call <code>SCAN</code> again with the returned cursor until it returns <code>0</code></div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>SET</code> / <code>GET</code> ↔ <code>INSERT</code> / <code>SELECT</code> by primary key · <code>INCR</code> ↔ <code>UPDATE … SET n = n + 1</code> or a sequence</li><li class="note-item"><code>SET … NX</code> ↔ <code>INSERT … ON CONFLICT DO NOTHING</code> · <a class="xref" href="../SQL-Sheets/sql-58-auto-increment-sequences.html">See SQL 58</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> counters: <code>findOneAndUpdate</code> with <code>$inc</code> and <code>upsert: true</code></li><li class="note-item"><strong>DynamoDB</strong> atomic counters: <code>UpdateItem … ADD views :one</code></li><li class="note-item"><strong>Cassandra</strong> <code>counter</code> columns: <code>UPDATE … SET views = views + 1</code></li><li class="note-item"><strong>Neo4j</strong> <code>SET n.views = n.views + 1</code> inside a transaction</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await r.set("lock:order:1001", "w3", { NX: true, EX: 30 })</code></li><li class="note-item"><strong>Python</strong> <code>r.set("lock:order:1001", "w3", nx=True, ex=30)</code></li><li class="note-item"><strong>Java</strong> <code>jedis.set("lock:order:1001", "w3", SetParams.setParams().nx().ex(30))</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Str Table | Key Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-str"><h2 class="section-title">String Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td><code>SET k v [NX|XX] [EX s] [GET]</code></td><td class="desc">Write, with conditions</td></tr><tr><td><code>GET</code> / <code>MGET</code></td><td class="desc">Read one / many</td></tr><tr><td><code>INCR</code> / <code>INCRBY</code> / <code>DECR</code></td><td class="desc">Atomic integer math</td></tr><tr><td><code>INCRBYFLOAT</code></td><td class="desc">Atomic float math</td></tr><tr><td><code>APPEND</code> / <code>STRLEN</code></td><td class="desc">Append / length</td></tr><tr><td><code>GETDEL</code> / <code>GETEX</code></td><td class="desc">Read and delete / re-expire</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-key"><h2 class="section-title">Key Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td><code>EXISTS</code> / <code>TYPE</code></td><td class="desc">Present? / which type</td></tr><tr><td><code>DEL</code> / <code>UNLINK</code></td><td class="desc">Delete now / in background</td></tr><tr><td><code>RENAME</code></td><td class="desc">Rename (overwrites target)</td></tr><tr><td><code>SCAN cursor MATCH p</code></td><td class="desc">Iterate keys safely</td></tr><tr><td><code>OBJECT ENCODING</code></td><td class="desc">Internal encoding</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Running <code>KEYS *</code> in production</li><li class="note-item">Storing JSON blobs as strings and rewriting them for one field (use a hash or JSON)</li><li class="note-item">Locks without an expiry that stay forever if a worker crashes</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Prefix keys by app and type: <code>shop:product:7</code></li><li class="note-item">Use <code>SET … NX EX</code> for locks and idempotency keys</li><li class="note-item">Use <code>UNLINK</code> for big keys</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>SET</code> / <code>GET</code></li><li class="note-item"><code>NX</code> / <code>XX</code> / <code>EX</code> options</li><li class="note-item"><code>INCR</code> — atomic counters</li><li class="note-item"><code>SCAN</code>, never <code>KEYS</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-32-redis-intro-setup.html">Redis Introduction &amp; Setup</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-34-redis-expiry.html">Expiry &amp; Eviction</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

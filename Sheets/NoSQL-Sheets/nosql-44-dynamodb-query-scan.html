@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 44: Query vs Scan</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s44">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 44</div>
+			<h1>Query vs Scan</h1>
+			<div class="sheet-desc"><code>Query</code> · key condition · <code>begins_with</code> · filter expression · pagination · <code>Scan</code> cost · PartiQL</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Read by Key, Not by Search</h2><div class="description"><strong><code>Query</code></strong> reads one item collection: it needs the partition key with <code>=</code> and can narrow by sort key (<code>begins_with</code>, <code>BETWEEN</code>, <code>&lt;</code>, <code>&gt;</code>), returning items in sort-key order. <strong><code>Scan</code></strong> reads the entire table. A <strong>filter expression</strong> removes items after they're read, so it saves bandwidth but not cost. Results come in pages of up to <strong>1 MB</strong>; continue from <strong><code>LastEvaluatedKey</code></strong>. <strong>PartiQL</strong> offers SQL-like syntax over the same rules.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">The CLI follows pages for you; SDKs give you <code>LastEvaluatedKey</code></li><li class="note-item"><code>Limit</code> caps items read, before filtering</li><li class="note-item">Parallel Scan splits a table into segments for exports</li><li class="note-item">A PartiQL <code>SELECT</code> without a key condition becomes a Scan</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item"><code>Scan</code> reads every item and bills for all of it, even with a filter; use Query on a key or a GSI</li><li class="note-item">Filters run after the read: a Query that returns 10 of 10,000 items still pays for 10,000</li><li class="note-item">Results come in 1 MB pages; loop on <code>LastEvaluatedKey</code> or you silently miss data</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Query, Filters, Paging, Scan &amp; PartiQL</h2><pre><code class="language-bash"># a customer's orders, newest first
+aws dynamodb query --table-name Shop \
+  --key-condition-expression "PK = :c AND begins_with(SK, :o)" \
+  --expression-attribute-values '{":c":{"S":"CUSTOMER#42"},":o":{"S":"ORDER#"}}' \
+  --no-scan-index-forward --max-items 10
+
+# sort-key range: November 2026
+aws dynamodb query --table-name Shop \
+  --key-condition-expression "PK = :c AND SK BETWEEN :a AND :b" \
+  --expression-attribute-values '{":c":{"S":"CUSTOMER#42"},
+     ":a":{"S":"ORDER#2026-11"},":b":{"S":"ORDER#2026-12"}}'
+
+# filter after reading (still billed for what was read)
+  --filter-expression "#s = :p" --expression-attribute-names '{"#s":"status"}'
+
+# next page with the CLI
+  --max-items 10 --starting-token &lt;NextToken from the last call&gt;
+
+# Scan: whole table; segments for parallel exports
+aws dynamodb scan --table-name Shop --total-segments 4 --segment 0
+
+# PartiQL: SQL-like, same rules underneath
+aws dynamodb execute-statement --statement \
+  "SELECT * FROM Shop WHERE PK = 'CUSTOMER#42' AND begins_with(SK, 'ORDER#')"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>--no-scan-index-forward</code> reverses sort-key order: newest dates first</div><div class="explain-item"><code>ORDER#2026-12</code> sorts after every November key, so <code>BETWEEN</code> covers the month</div><div class="explain-item">The filter lines are added to a query like the one above</div><div class="explain-item">PartiQL with a key condition runs as a Query; without one, as a Scan</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>Query</code> ↔ <code>SELECT … WHERE pk = ?</code> using the index · <code>Scan</code> ↔ a full table scan</li><li class="note-item">Filter expression ↔ <code>WHERE</code> on an unindexed column, applied after reading · <a class="xref" href="../SQL-Sheets/sql-73-explain-query-plans.html">See SQL 73</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> any field can be filtered; indexes decide the cost</li><li class="note-item"><strong>Redis</strong> key lookups, or <code>SCAN</code> through keys</li><li class="note-item"><strong>Cassandra</strong> same rule: <code>WHERE</code> must name the partition key</li><li class="note-item"><strong>Neo4j</strong> <code>MATCH</code> on an indexed property seeks; otherwise it scans the label</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>new QueryCommand({ TableName: "Shop", KeyConditionExpression: "PK = :c", ExpressionAttributeValues: { ":c": "CUSTOMER#42" }, ScanIndexForward: false })</code></li><li class="note-item"><strong>Python</strong> <code>table.query(KeyConditionExpression=Key("PK").eq("CUSTOMER#42") &amp; Key("SK").begins_with("ORDER#"), ScanIndexForward=False)</code></li><li class="note-item"><strong>Java</strong> <code>table.query(QueryConditional.sortBeginsWith(Key.builder().partitionValue("CUSTOMER#42").sortValue("ORDER#").build()))</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Keycond Table | Qs Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-keycond"><h2 class="section-title">Key Conditions</h2><table><thead><tr><th>On</th><th>Allowed</th></tr></thead><tbody><tr><td>Partition key</td><td class="desc"><code>=</code> only</td></tr><tr><td>Sort key</td><td class="desc"><code>=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code></td></tr><tr><td>Sort key</td><td class="desc"><code>BETWEEN :a AND :b</code></td></tr><tr><td>Sort key</td><td class="desc"><code>begins_with(SK, :p)</code></td></tr><tr><td>Anything else</td><td class="desc">Filter expression (after read)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-qs"><h2 class="section-title">Query vs Scan</h2><table><thead><tr><th></th><th>Query</th><th>Scan</th></tr></thead><tbody><tr><td>Reads</td><td class="desc">One item collection</td><td class="desc">Whole table</td></tr><tr><td>Cost</td><td class="desc">Items read</td><td class="desc">Every item</td></tr><tr><td>Order</td><td class="desc">By sort key</td><td class="desc">None</td></tr><tr><td>Use for</td><td class="desc">App access patterns</td><td class="desc">Exports, migrations</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using <code>Scan</code> + filter as a general query</li><li class="note-item">Ignoring pagination and returning the first page only</li><li class="note-item">Expecting <code>Limit</code> to mean "results after filtering"</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Design keys so every frequent read is a Query</li><li class="note-item">Put dates in sort keys in ISO format so they sort correctly</li><li class="note-item">Use parallel Scan or export to S3 for bulk jobs</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Query — partition key + sort condition</li><li class="note-item">Scan — whole table, avoid</li><li class="note-item">Filters don't save cost</li><li class="note-item">Page on <code>LastEvaluatedKey</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-43-dynamodb-item-crud.html">Item Operations</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-45-dynamodb-indexes.html">Secondary Indexes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

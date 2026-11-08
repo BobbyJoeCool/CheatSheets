@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 59: Testing &amp; Schema Migration</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s59">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 59</div>
+			<h1>Testing &amp; Schema Migration</h1>
+			<div class="sheet-desc">Testcontainers · DynamoDB Local · in-memory fakes · seed data · schema versioning · lazy vs batch migration</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Real Engines in Tests, Gradual Schema Change</h2><div class="description">Test against the real engine: <strong>Testcontainers</strong> starts MongoDB, Redis, Cassandra or Neo4j in Docker for a test run, and <strong>DynamoDB Local</strong> or LocalStack stands in for AWS. Seed known data before each test and clean it after. Schemas still change without <code>ALTER TABLE</code>: <strong>lazy migration</strong> upgrades documents when they're read, <strong>batch migration</strong> rewrites them in the background. Tag documents with a <code>schemaVersion</code> so code knows what it's looking at.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">In-memory fakes are fast but miss real query behavior</li><li class="note-item">Reuse containers across a test run; Cassandra starts slowly</li><li class="note-item">Keep migration scripts in version control</li><li class="note-item">Code must read both old and new shapes during a migration</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Testcontainers &amp; Migrations</h2><pre><code class="language-javascript">// Testcontainers: a real MongoDB for the test run
+import { MongoDBContainer } from "@testcontainers/mongodb"
+import { MongoClient } from "mongodb"
+
+let mongo, client
+beforeAll(async () =&gt; {
+  mongo = await new MongoDBContainer("mongo:8").start()
+  client = new MongoClient(mongo.getConnectionString(), { directConnection: true })
+  await client.connect()
+  await client.db("shop").collection("products").insertMany(seedProducts)
+}, 60_000)
+afterAll(async () =&gt; { await client.close(); await mongo.stop() })
+
+test("reserves stock atomically", async () =&gt; {
+  const products = client.db("shop").collection("products")
+  const r = await products.updateOne({ _id: 7, stock: { $gte: 2 } },
+                                     { $inc: { stock: -2 } })
+  expect(r.modifiedCount).toBe(1)
+})
+
+// lazy migration: upgrade when read
+function upgrade(doc) {
+  if ((doc.schemaVersion ?? 1) &lt; 2) {
+    const [first, ...rest] = doc.name.split(" ")
+    return { ...doc, name: { first, last: rest.join(" ") }, schemaVersion: 2 }
+  }
+  return doc
+}
+
+// batch migration (mongosh): rewrite old documents in place
+db.customers.updateMany({ schemaVersion: { $exists: false } }, [
+  { $set: { name: { first: { $arrayElemAt: [ { $split: ["$name", " "] }, 0 ] },
+                    last:  { $arrayElemAt: [ { $split: ["$name", " "] }, 1 ] } },
+            schemaVersion: 2 } } ])</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The container is a single-node replica set, so transactions and change streams work in tests</div><div class="explain-item"><code>directConnection: true</code> talks to that one node directly</div><div class="explain-item">Lazy migration spreads the work but leaves old shapes until each document is read</div><div class="explain-item">The batch migration uses an update pipeline so it can read <code>name</code> while rewriting it</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Migration tools like Flyway and Liquibase ↔ migrate-mongo, Mongock, Neo4j-Migrations</li><li class="note-item"><code>ALTER TABLE</code> happens at once; NoSQL migrations are usually gradual · <a class="xref" href="../SQL-Sheets/sql-59-alter-drop.html">See SQL 59</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> Testcontainers or <code>mongodb-memory-server</code>; migrate-mongo / Mongock</li><li class="note-item"><strong>Redis</strong> Testcontainers; <code>FLUSHDB</code> between tests</li><li class="note-item"><strong>DynamoDB</strong> DynamoDB Local or LocalStack; create tables in test setup</li><li class="note-item"><strong>Cassandra</strong> Testcontainers with a reused container; cassandra-migration</li><li class="note-item"><strong>Neo4j</strong> Testcontainers or Neo4j Harness; Neo4j-Migrations</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>@testcontainers/mongodb</code>, <code>@testcontainers/redis</code></li><li class="note-item"><strong>Python</strong> <code>with MongoDbContainer("mongo:8") as m: client = m.get_connection_client()</code></li><li class="note-item"><strong>Java</strong> <code>@Container static MongoDBContainer mongo = new MongoDBContainer("mongo:8");</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Doubles Table | Migrate Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-doubles"><h2 class="section-title">Test Options</h2><table><thead><tr><th>Option</th><th>Trade-off</th></tr></thead><tbody><tr><td>Testcontainers</td><td class="desc">Real engine; needs Docker</td></tr><tr><td>Emulator (DynamoDB Local)</td><td class="desc">Close to real; some gaps</td></tr><tr><td>In-memory server</td><td class="desc">Fast; may differ in edge cases</td></tr><tr><td>Mocks of the driver</td><td class="desc">Fastest; tests little</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-migrate"><h2 class="section-title">Migration Strategies</h2><table><thead><tr><th>Strategy</th><th>How</th></tr></thead><tbody><tr><td>Lazy</td><td class="desc">Upgrade on read, save on next write</td></tr><tr><td>Batch</td><td class="desc">Background job rewrites documents</td></tr><tr><td>Dual-shape code</td><td class="desc">Read old and new until done</td></tr><tr><td>Expand / contract</td><td class="desc">Add new field, migrate, remove old</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mocking the driver and missing real query bugs</li><li class="note-item">Tests that depend on leftover data from earlier tests</li><li class="note-item">Removing support for the old shape before every document is migrated</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Seed each test with only the data it needs</li><li class="note-item">Run batch migrations in small, resumable chunks</li><li class="note-item">Count documents per <code>schemaVersion</code> to track progress</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Testcontainers — real engines</li><li class="note-item">Seed and clean per test</li><li class="note-item">Lazy or batch migration</li><li class="note-item"><code>schemaVersion</code> on documents</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-58-polyglot-persistence.html">Polyglot Persistence</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-60-quick-ref-mongodb-redis.html">Quick Reference — MongoDB &amp; Redis</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

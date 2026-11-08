@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 19: $lookup &amp; $unwind</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>$lookup &amp; $unwind</h1>
+			<div class="sheet-desc"><code>$lookup</code> · pipeline <code>$lookup</code> · <code>$unwind</code> · <code>preserveNullAndEmptyArrays</code> · joins vs embedding</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Joins When You Need Them</h2><div class="description"><strong><code>$lookup</code></strong> brings in matching documents from another collection as an <strong>array</strong> field, a left outer join. <strong><code>$unwind</code></strong> turns one document with an array into one document per element. Together they rebuild joined rows. The <strong>pipeline</strong> form of <code>$lookup</code> adds filters, sorting and limits inside the join. Use joins for occasional or reporting queries; if every read needs one, the data probably belongs embedded.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>$lookup</code> always returns an array (empty if no match)</li><li class="note-item"><code>$unwind</code> drops documents with empty arrays unless told otherwise</li><li class="note-item"><code>from</code> must be in the same database</li><li class="note-item">Sharded <code>from</code> collections are supported since 5.1</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item"><code>$lookup</code> without an index on <code>foreignField</code> scans the other collection once per input document; index the foreign field</li><li class="note-item">Joins multiply work on big inputs; <code>$match</code> and <code>$limit</code> before the <code>$lookup</code></li><li class="note-item">If every request needs the same <code>$lookup</code>, embed or copy the fields instead (sheet 05)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">$lookup and $unwind</h2><pre><code class="language-javascript">// orders → customers
+db.orders.aggregate([
+  { $match: { status: "pending" } },
+  { $lookup: { from: "customers", localField: "customerId",
+               foreignField: "_id", as: "customer" } },
+  { $unwind: "$customer" },                       // [ {…} ] → {…}
+  { $project: { total: 1, "customer.name": 1, "customer.email": 1 } }
+])
+
+// add product names to each order line
+db.orders.aggregate([
+  { $match: { _id: 1001 } },
+  { $unwind: "$items" },
+  { $lookup: { from: "products", localField: "items.productId",
+               foreignField: "_id", as: "product" } },
+  { $set: { "items.name": { $first: "$product.name" } } },
+  { $group: { _id: "$_id", items: { $push: "$items" } } }
+])
+
+// pipeline form: each customer's 3 newest orders
+db.customers.aggregate([
+  { $lookup: { from: "orders", localField: "_id", foreignField: "customerId",
+               as: "recent",
+               pipeline: [ { $sort: { orderDate: -1 } }, { $limit: 3 },
+                           { $project: { total: 1, orderDate: 1 } } ] } }
+])
+
+// keep orders whose customer is missing
+{ $unwind: { path: "$customer", preserveNullAndEmptyArrays: true } }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>as</code> names the new array field</div><div class="explain-item">Unwinding, looking up and regrouping enriches every line of an order</div><div class="explain-item">Inside the lookup pipeline, stages run against the <code>orders</code> collection</div><div class="explain-item"><code>preserveNullAndEmptyArrays</code> keeps documents that found no match, like an outer join</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>$lookup</code> ↔ <code>LEFT OUTER JOIN</code> (always left) · <code>$unwind</code> ↔ one row per child</li><li class="note-item">Pipeline <code>$lookup</code> with <code>$limit</code> ↔ <code>LATERAL</code> join · <a class="xref" href="../SQL-Sheets/sql-33-outer-joins.html">See SQL 33</a>, <a class="xref" href="../SQL-Sheets/sql-37-lateral-apply.html">37</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> no joins: fetch both keys (pipelined) and combine in the app</li><li class="note-item"><strong>DynamoDB</strong> no joins: store related items under one partition key and <code>Query</code> once</li><li class="note-item"><strong>Cassandra</strong> no joins: copy data into a table per query</li><li class="note-item"><strong>Neo4j</strong> joins are traversals: <code>MATCH (c:Customer)-[:PLACED]-&gt;(o:Order)</code></li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>{ $lookup: { from: "customers", localField: "customerId", foreignField: "_id", as: "customer" } }</code> or Mongoose <code>.populate()</code></li><li class="note-item"><strong>Python</strong> <code>{"$lookup": {"from": "customers", "localField": "customerId", "foreignField": "_id", "as": "customer"}}</code></li><li class="note-item"><strong>Java</strong> <code>lookup("customers", "customerId", "_id", "customer")</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Lookup Table | Unwind Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-lookup"><h2 class="section-title">$lookup Forms</h2><table><thead><tr><th>Form</th><th>Use for</th></tr></thead><tbody><tr><td><code>localField</code> / <code>foreignField</code></td><td class="desc">Equality join</td></tr><tr><td>+ <code>pipeline</code></td><td class="desc">Equality join plus filter / sort / limit</td></tr><tr><td><code>let</code> + <code>pipeline</code></td><td class="desc">Non-equality conditions with <code>$expr</code></td></tr><tr><td><code>$graphLookup</code></td><td class="desc">Recursive joins (trees, networks)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-unwind"><h2 class="section-title">$unwind Options</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td><code>"$arr"</code></td><td class="desc">One document per element</td></tr><tr><td><code>preserveNullAndEmptyArrays</code></td><td class="desc">Keep docs with empty / missing arrays</td></tr><tr><td><code>includeArrayIndex</code></td><td class="desc">Add the element's position</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">No index on the foreign field</li><li class="note-item">Running <code>$lookup</code> before <code>$match</code></li><li class="note-item">Unwinding large arrays and regrouping when a projection would do</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Index every <code>foreignField</code> you join on</li><li class="note-item">Prefer embedding for data read together on every request</li><li class="note-item">Use the pipeline form to cap joined arrays</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>$lookup</code> — left join into an array</li><li class="note-item"><code>$unwind</code> — one doc per element</li><li class="note-item">Index the foreign field</li><li class="note-item">Frequent joins → embed</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-18-group-accumulators.html">$group &amp; Accumulators</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-20-advanced-stages.html">$facet, $bucket &amp; Window Stages</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
