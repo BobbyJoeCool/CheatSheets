@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 13: monkeypatch</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>monkeypatch</h1>
+			<div class="sheet-desc"><code>setattr</code> · <code>setenv</code> / <code>delenv</code> · <code>setitem</code> · <code>chdir</code> · <code>syspath_prepend</code> · <code>context()</code> · automatic undo</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Temporary Patches, Undone for You</h2><div class="description">The <strong><code>monkeypatch</code></strong> fixture replaces attributes, dictionary items, environment variables and the working directory for the length of one test, then puts everything back during teardown. Use it to swap a slow or external function for a fake, set environment variables, or simulate a missing key, without leaking changes into other tests.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Patch the name <strong>where it is looked up</strong>: <code>"shop.cart.requests.get"</code>, not <code>"requests.get"</code></li><li class="note-item"><code>raising=False</code> allows setting an attribute that doesn't exist yet</li><li class="note-item"><code>monkeypatch.context()</code> limits a patch to a <code>with</code> block</li><li class="note-item">It's function-scoped; use <code>pytest.MonkeyPatch.context()</code> in wider fixtures</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Each patch records the original value on an undo stack</li><li class="note-item">At teardown, <code>undo()</code> restores entries in reverse order</li><li class="note-item">That's why it can't be requested by module- or session-scoped fixtures</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Patching Without Cleanup Code</h2><pre><code class="language-python">import pytest
+import shop.rates
+
+def test_converts_with_fake_rate(monkeypatch):
+    monkeypatch.setattr(shop.rates, "fetch_rate", lambda cur: 2.0)
+    assert convert(10, "EUR") == 20.0
+
+def test_dotted_string_target(monkeypatch):
+    monkeypatch.setattr("shop.cart.now", lambda: 1_700_000_000)
+
+def test_env(monkeypatch):
+    monkeypatch.setenv("API_URL", "http://localhost:9999")
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    assert Settings().api_url.endswith("9999")
+
+def test_dict_item(monkeypatch):
+    monkeypatch.setitem(CONFIG, "retries", 0)
+    monkeypatch.delitem(CONFIG, "proxy", raising=False)
+
+def test_cwd(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    write_default_config()
+    assert (tmp_path / "config.toml").exists()
+
+@pytest.fixture(scope="module")
+def offline():
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("socket.socket", None)
+        yield</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>setattr(module, "name", value)</code> or the dotted-string form both work</div><div class="explain-item"><code>delenv(..., raising=False)</code> doesn't fail if the variable isn't set</div><div class="explain-item"><code>chdir</code> is undone too, so relative paths in later tests still work</div><div class="explain-item"><code>pytest.MonkeyPatch.context()</code> is the way to patch in wider-scoped fixtures</div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item"><code>monkeypatch.setattr</code> → <code>unittest.mock.patch("mod.name", value)</code> as decorator or context manager</li><li class="note-item"><code>setenv</code> → <code>patch.dict(os.environ, {"API_URL": …})</code></li><li class="note-item"><code>setitem</code> → <code>patch.dict(CONFIG, {…})</code></li><li class="note-item">automatic undo → <code>patch</code> restores when the block exits</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">assigning <code>module.func = fake</code> by hand → <code>monkeypatch.setattr</code></li><li class="note-item">patching <code>requests.get</code> globally → patch <code>shop.cart.requests.get</code> where it's used</li><li class="note-item"><code>os.environ["X"] = "y"</code> in a test → <code>monkeypatch.setenv</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Api Table | Vs Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-api"><h2 class="section-title">monkeypatch API</h2><table><thead><tr><th>Method</th><th>Patches</th></tr></thead><tbody><tr><td>setattr(obj, name, value)</td><td class="desc">Attribute</td></tr><tr><td>delattr(obj, name)</td><td class="desc">Remove attribute</td></tr><tr><td>setitem(d, key, value)</td><td class="desc">Dict item</td></tr><tr><td>delitem(d, key)</td><td class="desc">Remove item</td></tr><tr><td>setenv(name, value)</td><td class="desc">Environment variable</td></tr><tr><td>delenv(name)</td><td class="desc">Unset variable</td></tr><tr><td>chdir(path)</td><td class="desc">Working directory</td></tr><tr><td>syspath_prepend(path)</td><td class="desc">sys.path</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-vs"><h2 class="section-title">monkeypatch vs mock</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Swap a value or function</td><td class="desc">monkeypatch.setattr</td></tr><tr><td>Set / unset env vars</td><td class="desc">monkeypatch.setenv / delenv</td></tr><tr><td>Check how it was called</td><td class="desc">mocker.patch / Mock (sheet 14)</td></tr><tr><td>Return different values per call</td><td class="desc">Mock side_effect</td></tr><tr><td>Keep real behavior, record calls</td><td class="desc">mocker.spy</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Patching the original module after the code under test did <code>from x import fn</code></li><li class="note-item">Setting <code>os.environ</code> directly and leaking the value into later tests</li><li class="note-item">Requesting <code>monkeypatch</code> from a module-scoped fixture (ScopeMismatch)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Find the right target by asking "which module's namespace does the code read this name from?"</li><li class="note-item">Use monkeypatch for simple replacements; use mocks (sheet 14) when you need to check calls</li><li class="note-item">Combine with <code>tmp_path</code> and <code>chdir</code> to test code that uses relative paths</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>setattr</code> — swap a function or value</li><li class="note-item"><code>setenv</code> / <code>delenv</code> — environment</li><li class="note-item"><code>chdir</code> — working directory</li><li class="note-item">undone automatically at teardown</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-12-marks.html">Marks: skip, xfail &amp; Custom</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-14-mock-pytest-mock.html">unittest.mock &amp; pytest-mock</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

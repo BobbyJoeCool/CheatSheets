@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>pytest — Sheet 07: Fixture Scope &amp; Teardown</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/pyt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s07">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 07</div>
+			<h1>Fixture Scope &amp; Teardown</h1>
+			<div class="sheet-desc"><code>function</code> / <code>class</code> / <code>module</code> / <code>package</code> / <code>session</code> · <code>yield</code> teardown · <code>request.addfinalizer</code> · scope mismatch</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">How Long a Fixture Lives</h2><div class="description"><strong>Scope</strong> decides how often a fixture is built: once per test (<code>function</code>, the default), per class, module, package, or once for the whole run (<code>session</code>). Expensive resources like a database server or a browser use wider scopes. Put cleanup after a <strong><code>yield</code></strong>: code before it is setup, the yielded value goes to the test, and code after it runs as teardown even if the test failed.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Teardown runs in reverse order of setup</li><li class="note-item">A fixture may only request fixtures of the <strong>same or wider</strong> scope</li><li class="note-item">Shared mutable objects in wide scopes leak state between tests</li><li class="note-item"><code>--setup-show</code> prints every SETUP / TEARDOWN as it happens</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">pytest caches each fixture value per scope key (test, class, module…) and reuses it until that scope ends</li><li class="note-item">Teardown is LIFO: the last fixture set up is the first torn down</li><li class="note-item">A function-scoped fixture requested by a session fixture raises <strong>ScopeMismatch</strong></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + unittest Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">yield Teardown and Scopes</h2><pre><code class="language-python">import pytest, sqlite3
+
+@pytest.fixture(scope="session")
+def db_path(tmp_path_factory):
+    path = tmp_path_factory.mktemp("db") / "test.sqlite"
+    create_schema(path)
+    return path
+
+@pytest.fixture
+def db(db_path):
+    conn = sqlite3.connect(db_path)
+    conn.execute("BEGIN")
+    yield conn                      # ← test runs here
+    conn.rollback()                 # teardown, runs even on failure
+    conn.close()
+
+@pytest.fixture(scope="module")
+def api_server():
+    server = start_server(port=0)
+    yield server
+    server.stop()
+
+def test_insert(db):
+    db.execute("INSERT INTO orders VALUES (1, 'ann')")
+    assert db.execute("SELECT count(*) FROM orders").fetchone()[0] == 1
+
+# $ pytest --setup-show tests/test_db.py</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The schema is built once per run; each test gets a fresh connection inside a transaction</div><div class="explain-item">Rolling back after each test keeps tests independent while sharing the expensive setup</div><div class="explain-item"><code>tmp_path_factory</code> is the session-scoped version of <code>tmp_path</code></div><div class="explain-item"><code>--setup-show</code> makes scope bugs visible</div></div></section><section class="section-notes section-unittest" id="unittest"><h2 class="section-title">unittest Equivalent</h2><ul class="note-list"><li class="note-item"><code>function</code> scope → <code>setUp</code> / <code>tearDown</code></li><li class="note-item"><code>class</code> scope → <code>setUpClass</code> / <code>tearDownClass</code> (classmethods)</li><li class="note-item"><code>module</code> scope → <code>setUpModule</code> / <code>tearDownModule</code></li><li class="note-item"><code>yield</code> teardown → <code>self.addCleanup(fn)</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">cleanup in a <code>try/finally</code> inside each test → <code>yield</code> fixture</li><li class="note-item">session-scoped mutable list shared by tests → function scope or a fresh copy</li><li class="note-item"><code>request.addfinalizer</code> for simple cases → <code>yield</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Scopes Table | Teardown Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-scopes"><h2 class="section-title">Scopes</h2><table><thead><tr><th>Scope</th><th>Built once per</th><th>Use for</th></tr></thead><tbody><tr><td>function</td><td class="desc">Test (default)</td><td class="desc">Most fixtures</td></tr><tr><td>class</td><td class="desc">Test class</td><td class="desc">Shared state in a class</td></tr><tr><td>module</td><td class="desc">Test file</td><td class="desc">A server per file</td></tr><tr><td>package</td><td class="desc">Test package</td><td class="desc">Per-folder resources</td></tr><tr><td>session</td><td class="desc">Whole run</td><td class="desc">Databases, browsers, containers</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-teardown"><h2 class="section-title">Teardown Options</h2><table><thead><tr><th>Way</th><th>When to use</th></tr></thead><tbody><tr><td>yield</td><td class="desc">Default choice</td></tr><tr><td>request.addfinalizer(fn)</td><td class="desc">Several cleanups registered conditionally</td></tr><tr><td>Context manager inside yield</td><td class="desc">with open(…) as f: yield f</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Requesting a function-scoped fixture (like <code>monkeypatch</code>) from a module-scoped one</li><li class="note-item">Putting teardown before <code>yield</code>, or returning instead of yielding</li><li class="note-item">Session-scoped database without per-test rollback, so test order changes results</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Combine a wide-scope resource with a narrow-scope reset (transaction, truncate)</li><li class="note-item">Use <code>scope="session"</code> for anything that takes seconds to start</li><li class="note-item">Run <code>--setup-show</code> when you suspect a fixture isn't being rebuilt</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>scope=</code> — function, class, module, package, session</li><li class="note-item"><code>yield</code> — setup above, teardown below</li><li class="note-item">teardown runs LIFO, even on failure</li><li class="note-item">request only same-or-wider scopes</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="pyt-06-fixture-basics.html">Fixture Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">pytest Reference · 25 Sheets</a>
+				<a class="nav-link next" href="pyt-08-conftest-sharing.html">conftest.py &amp; Sharing Fixtures</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

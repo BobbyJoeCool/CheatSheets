@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 16: Integration Testing Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>Integration Testing Basics</h1>
+			<div class="sheet-desc">what "integration" covers · real vs fake dependencies · in-memory database pitfalls · test isolation · speed budget</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Prove the Pieces Fit</h2><div class="description">An <strong>integration test</strong> runs several parts of the system together, usually with <strong>real infrastructure</strong>: a real database, message broker, or HTTP stack. It catches what unit tests can't: wrong SQL, mismatched serialization, missing configuration, transaction bugs. The trade-offs are speed and <strong>isolation</strong>: each test must start from a known state and clean up.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Use the same database engine as production (containers make this easy)</li><li class="note-item">In-memory stand-ins (H2, SQLite for Postgres) hide dialect bugs</li><li class="note-item">Keep a separate, slower job for integration tests if needed</li><li class="note-item">Start the app once per suite; reset data per test</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">An Integration Test With Real Infrastructure</h2><pre><code class="language-none">suite setup (once):
+    db  = start_container("postgres:17")
+    app = start_app(database_url=db.url)
+
+each test setup:
+    db.begin_transaction()            # or truncate tables
+
+test "placing an order writes order and lines":
+    response = app.post("/orders", { sku: "A1", qty: 2 })
+    assert response.status == 201
+    row = db.query_one("select status, total from orders where id = ?", response.body.id)
+    assert row == ("NEW", 20.00)
+
+each test teardown:
+    db.rollback()
+
+suite teardown:
+    app.stop(); db.stop()</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Expensive things (container, app) start once per suite</div><div class="explain-item">Each test runs in a transaction rolled back afterward, so tests stay independent</div><div class="explain-item">The test checks the database row, proving the SQL and mapping really work</div><div class="explain-item">The same pattern works for queues, caches and search engines</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> session-scoped fixtures for the DB, function-scoped rollback <a class="xref" href="../Pytest-Sheets/pyt-07-fixture-scope-teardown.html">↗07</a></li><li class="note-item"><strong>Vitest</strong> <code>globalSetup</code> starts services; per-test reset in hooks <a class="xref" href="../JestVitest-Sheets/jv-05-hooks-setup.html">↗05</a></li><li class="note-item"><strong>JUnit</strong> <code>@SpringBootTest</code> + Testcontainers <a class="xref" href="../JUnit-Sheets/ju-19-spring-boot-test.html">↗19</a></li><li class="note-item"><strong>Playwright</strong> <code>webServer</code> starts the app before E2E tests <a class="xref" href="../Playwright-Sheets/pw-49-webserver.html">↗49</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> integration tests that pass on H2 but fail on Postgres → <strong>it means</strong> the stand-in lies → <strong>do</strong> test on the real engine in a container</li><li class="note-item"><strong>You see</strong> tests that only pass in a fixed order → <strong>it means</strong> leftover data → <strong>do</strong> reset state per test</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Catches Table | Isolate Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-catches"><h2 class="section-title">What Integration Tests Catch</h2><table><thead><tr><th>Bug</th><th>Example</th></tr></thead><tbody><tr><td>Wrong SQL / query</td><td class="desc">Missing join condition</td></tr><tr><td>Mapping / serialization</td><td class="desc">Field renamed in JSON</td></tr><tr><td>Transactions</td><td class="desc">Partial write on failure</td></tr><tr><td>Configuration</td><td class="desc">Wrong connection settings</td></tr><tr><td>Migrations</td><td class="desc">Column missing in real schema</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-isolate"><h2 class="section-title">Isolation Strategies</h2><table><thead><tr><th>Strategy</th><th>Trade-off</th></tr></thead><tbody><tr><td>Transaction rollback</td><td class="desc">Fast; can't test commits or multiple connections</td></tr><tr><td>Truncate tables</td><td class="desc">Real commits; slower</td></tr><tr><td>Fresh schema per test</td><td class="desc">Strong isolation; slowest</td></tr><tr><td>Unique data per test</td><td class="desc">Parallel-safe; needs discipline</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling everything with a database an "integration test" but mocking the database</li><li class="note-item">Sharing one database between parallel test workers without unique data</li><li class="note-item">No integration tests at all, trusting mocks completely</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Test each adapter (repository, HTTP client, queue) against the real thing at least once</li><li class="note-item">Keep integration tests in their own folder / tag</li><li class="note-item">Measure suite time and set a budget</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">integration — real pieces + real infra</li><li class="note-item">same engine as production</li><li class="note-item">start once, reset per test</li><li class="note-item">catches SQL, config and mapping bugs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-15-bdd-gherkin.html">BDD &amp; Gherkin</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-17-databases-in-tests.html">Databases in Tests</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

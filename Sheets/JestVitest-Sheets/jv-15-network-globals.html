@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jest &amp; Vitest — Sheet 15: Mocking Network, Globals &amp; Env</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jv-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>Mocking Network, Globals &amp; Env</h1>
+			<div class="sheet-desc">MSW <code>setupServer</code> · <code>http.get</code> handlers · <code>server.use</code> overrides · <code>vi.stubGlobal('fetch')</code> · <code>vi.stubEnv</code> · <code>unstubAll</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Fake the Network, Not Your Code</h2><div class="description"><strong>MSW</strong> (Mock Service Worker) intercepts real HTTP requests made with <code>fetch</code>, axios or anything else and answers from <strong>handlers</strong> you write. Your code runs unchanged, which makes it the most realistic way to test API calls. For quick cases, <code>vi.stubGlobal</code> replaces a global like <code>fetch</code>, and <code>vi.stubEnv</code> sets <code>import.meta.env</code> / <code>process.env</code> values.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>npm i -D msw</code> (v2 API: <code>http</code>, <code>HttpResponse</code>)</li><li class="note-item">Start the server in a setup file so every test file gets it</li><li class="note-item"><code>onUnhandledRequest: "error"</code> fails tests that hit an unmocked URL</li><li class="note-item"><code>unstubGlobals</code> / <code>unstubEnvs</code> config options undo stubs after each test</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Jest ↔ Vitest + TypeScript + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">MSW Setup and Overrides</h2><pre><code class="language-typescript">// src/test/server.ts
+import { setupServer } from 'msw/node'
+import { http, HttpResponse } from 'msw'
+
+export const server = setupServer(
+  http.get('/api/users/:id', ({ params }) =&gt;
+    HttpResponse.json({ id: Number(params.id), name: 'Ann' })),
+  http.post('/api/orders', async ({ request }) =&gt;
+    HttpResponse.json({ id: 'o1', ...(await request.json()) }, { status: 201 })),
+)
+
+// vitest.setup.ts
+beforeAll(() =&gt; server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() =&gt; server.resetHandlers())
+afterAll(() =&gt; server.close())
+
+// a test
+test('shows an error when the API fails', async () =&gt; {
+  server.use(http.get('/api/users/:id', () =&gt; new HttpResponse(null, { status: 500 })))
+  await expect(loadUser(1)).rejects.toThrow('500')
+})
+
+test('reads the API URL', () =&gt; {
+  vi.stubEnv('VITE_API_URL', 'http://test')
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}')))
+  // …
+})</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Handlers match method and path, with <code>:id</code> params like a router</div><div class="explain-item"><code>server.use</code> adds an override for one test; <code>resetHandlers</code> removes it afterwards</div><div class="explain-item"><code>onUnhandledRequest: "error"</code> catches calls you forgot to mock</div><div class="explain-item"><code>vi.stubEnv</code> works for <code>import.meta.env</code> in Vite projects</div></div></section><section class="section-notes section-jest" id="jest"><h2 class="section-title">Jest ↔ Vitest</h2><ul class="note-list"><li class="note-item">MSW is runner-agnostic: the same server works in Jest</li><li class="note-item">Jest has no <code>stubGlobal</code> / <code>stubEnv</code>; assign <code>global.fetch = jest.fn()</code> and restore it yourself</li></ul></section><section class="section-notes section-ts" id="ts"><h2 class="section-title">TypeScript</h2><ul class="note-list"><li class="note-item">Type responses: <code>http.get&lt;{ id: string }, never, User&gt;(…)</code></li><li class="note-item">Share response types with the app so handlers break when the API type changes</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">mocking <code>axios</code> / <code>fetch</code> modules → MSW handlers</li><li class="note-item">one handler per test file → shared default handlers + <code>server.use</code> overrides</li><li class="note-item">tests calling real staging APIs → MSW in unit tests, real APIs only in E2E</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Msw Table | Stubs Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-msw"><h2 class="section-title">MSW Lifecycle</h2><table><thead><tr><th>Call</th><th>When</th></tr></thead><tbody><tr><td>server.listen()</td><td class="desc">beforeAll</td></tr><tr><td>server.use(...handlers)</td><td class="desc">Inside a test</td></tr><tr><td>server.resetHandlers()</td><td class="desc">afterEach</td></tr><tr><td>server.close()</td><td class="desc">afterAll</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-stubs"><h2 class="section-title">Stubs</h2><table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td>vi.stubGlobal(name, value)</td><td class="desc">Replace a global</td></tr><tr><td>vi.unstubAllGlobals()</td><td class="desc">Undo</td></tr><tr><td>vi.stubEnv(name, value)</td><td class="desc">Set env / import.meta.env</td></tr><tr><td>vi.unstubAllEnvs()</td><td class="desc">Undo</td></tr><tr><td>unstubGlobals / unstubEnvs: true</td><td class="desc">Auto-undo in config</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting <code>resetHandlers</code>, so one test's override leaks into the next</li><li class="note-item">Relative URLs in Node without a base URL configured</li><li class="note-item">Leaving <code>onUnhandledRequest</code> at "warn" and missing a real network call</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Keep default handlers next to API types; override per test only the error paths</li><li class="note-item">Reuse the same MSW handlers in Storybook and the browser</li><li class="note-item">Turn on <code>unstubEnvs: true</code> so env stubs never leak</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">MSW — intercept real requests</li><li class="note-item"><code>server.use</code> — per-test overrides</li><li class="note-item"><code>vi.stubGlobal</code> — replace a global</li><li class="note-item"><code>vi.stubEnv</code> — env values</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jv-14-timers-dates.html">Fake Timers &amp; Dates</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jest &amp; Vitest Reference · 27 Sheets</a>
+				<a class="nav-link next" href="jv-16-snapshots.html">Snapshot Testing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

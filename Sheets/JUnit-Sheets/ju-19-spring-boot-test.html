@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JUnit — Sheet 19: Spring Boot Test Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ju-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Spring Boot Test Basics</h1>
+			<div class="sheet-desc"><code>@SpringBootTest</code> · <code>webEnvironment</code> · <code>@MockitoBean</code> · <code>@TestConfiguration</code> · <code>@ActiveProfiles</code> · context caching</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Test With the Whole Application Context</h2><div class="description"><strong><code>@SpringBootTest</code></strong> starts your Spring Boot application context for a test class, so beans are real and wired together. With <code>webEnvironment = RANDOM_PORT</code> it starts a real server too. <strong><code>@MockitoBean</code></strong> swaps one bean for a mock, <strong><code>@TestConfiguration</code></strong> adds test-only beans, and <strong><code>@ActiveProfiles</code></strong> picks configuration. Contexts are <strong>cached</strong> between classes with identical setup, so keep setups consistent. The Spring set covers the app side.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>@MockBean</code> was deprecated in Boot 3.4 and removed in Boot 4; use <code>@MockitoBean</code></li><li class="note-item">Each distinct context configuration costs a full start-up</li><li class="note-item">Use slices (sheet 20) when you only need one layer</li><li class="note-item">Test properties: <code>@SpringBootTest(properties = "feature.x=true")</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + JUnit 4 / TestNG Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Full-Context Tests</h2><pre><code class="language-java">@SpringBootTest
+@ActiveProfiles("test")
+class CheckoutFlowTest {
+    @Autowired CheckoutService checkout;
+    @MockitoBean PaymentGateway gateway;          // replaces the real bean
+
+    @Test
+    void chargesAndStoresOrder() {
+        given(gateway.charge(any())).willReturn(new Receipt("r1"));
+        Order o = checkout.pay(sampleCart());
+        assertThat(o.status()).isEqualTo(OrderStatus.PAID);
+    }
+}
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class HealthEndpointTest {
+    @Autowired WebTestClient client;              // or TestRestTemplate
+
+    @Test
+    void healthIsUp() {
+        client.get().uri("/actuator/health").exchange()
+              .expectStatus().isOk()
+              .expectBody().jsonPath("$.status").isEqualTo("UP");
+    }
+}
+
+@TestConfiguration
+class FixedClockConfig {
+    @Bean Clock clock() { return Clock.fixed(Instant.parse("2026-11-04T00:00:00Z"), ZoneOffset.UTC); }
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>@MockitoBean</code> mocks are reset after each test</div><div class="explain-item"><code>RANDOM_PORT</code> starts a real embedded server on a free port</div><div class="explain-item"><code>@TestConfiguration</code> beans are added only when imported or found as nested classes</div><div class="explain-item">Every class with the same annotations reuses one cached context</div></div></section><section class="section-notes section-legacy" id="legacy"><h2 class="section-title">JUnit 4 / TestNG Equivalent</h2><ul class="note-list"><li class="note-item"><strong>JUnit 4</strong> <code>@RunWith(SpringRunner.class)</code> + <code>@SpringBootTest</code>; <code>@MockBean</code></li><li class="note-item"><strong>TestNG</strong> <code>AbstractTestNGSpringContextTests</code> base class + <code>@SpringBootTest</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><code>@MockBean</code> → <code>@MockitoBean</code></li><li class="note-item"><code>@SpringBootTest</code> for a controller test → <code>@WebMvcTest</code> slice</li><li class="note-item"><code>@DirtiesContext</code> everywhere → reset state explicitly, keep the cache</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Web Table | Ann Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-web"><h2 class="section-title">webEnvironment</h2><table><thead><tr><th>Value</th><th>Starts</th></tr></thead><tbody><tr><td>MOCK (default)</td><td class="desc">Mock servlet environment, no server</td></tr><tr><td>RANDOM_PORT</td><td class="desc">Real server, random port</td></tr><tr><td>DEFINED_PORT</td><td class="desc">Real server, configured port</td></tr><tr><td>NONE</td><td class="desc">No web environment</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ann"><h2 class="section-title">Common Annotations</h2><table><thead><tr><th>Annotation</th><th>Effect</th></tr></thead><tbody><tr><td>@MockitoBean</td><td class="desc">Replace bean with a mock</td></tr><tr><td>@MockitoSpyBean</td><td class="desc">Wrap a real bean</td></tr><tr><td>@TestConfiguration</td><td class="desc">Extra test beans</td></tr><tr><td>@ActiveProfiles("test")</td><td class="desc">Profile</td></tr><tr><td>@DynamicPropertySource</td><td class="desc">Properties computed at run time</td></tr><tr><td>@DirtiesContext</td><td class="desc">Drop cached context (slow)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Slightly different <code>@MockitoBean</code> sets per class, each forcing a new context</li><li class="note-item">Using <code>@SpringBootTest</code> for every test and making the suite take minutes</li><li class="note-item">Tests that change shared beans and break later classes using the cached context</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Keep a few standard test base annotations so contexts are reused</li><li class="note-item">Use slices or plain unit tests for most cases</li><li class="note-item">Watch the log for "Started … in N seconds" to count context starts</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>@SpringBootTest</code> — whole context</li><li class="note-item"><code>@MockitoBean</code> — replace a bean</li><li class="note-item"><code>RANDOM_PORT</code> — real server</li><li class="note-item">context caching — keep setups identical</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="ju-18-mockito-advanced.html">Mockito Advanced</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JUnit Reference · 25 Sheets</a>
+				<a class="nav-link next" href="ju-20-spring-test-slices.html">Spring Test Slices</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

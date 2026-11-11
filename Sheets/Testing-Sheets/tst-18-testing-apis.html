@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Software Testing — Sheet 18: Testing HTTP APIs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/tst-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Testing HTTP APIs</h1>
+			<div class="sheet-desc">status · headers · body · schema validation · auth in tests · error cases · test clients vs real HTTP</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Test the Contract Your Clients Use</h2><div class="description">An API test sends a request and checks <strong>status</strong>, <strong>headers</strong> and <strong>body</strong>, the parts clients depend on. Test the <strong>error paths</strong> as carefully as success: validation errors, missing auth, wrong role, not found, conflicts. In-process <strong>test clients</strong> call the app without a network and are fast; real HTTP against a running server catches proxy, TLS and serialization issues. The HTTP set covers status codes and headers.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Validate responses against the OpenAPI schema to catch drift</li><li class="note-item">Create a token / session once per test file, not per request</li><li class="note-item">Check <code>Content-Type</code>, <code>Location</code> and cache headers, not just status</li><li class="note-item">Test pagination edges: empty page, last page, invalid cursor</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + In Your Stack + Smell Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Success and Failure Paths</h2><pre><code class="language-none">test "POST /orders creates an order":
+    res = client.post("/orders", json={ sku: "A1", qty: 2 }, auth=token("ann"))
+    assert res.status == 201
+    assert res.headers["Location"] == "/orders/" + res.body.id
+    assert res.body matches schema("Order")
+
+test "POST /orders without a token is 401":
+    assert client.post("/orders", json={…}).status == 401
+
+test "POST /orders by a read-only user is 403":
+    assert client.post("/orders", json={…}, auth=token("viewer")).status == 403
+
+test "invalid quantity returns a problem+json error":
+    res = client.post("/orders", json={ sku: "A1", qty: 0 }, auth=token("ann"))
+    assert res.status == 422
+    assert res.headers["Content-Type"] == "application/problem+json"
+    assert res.body.errors == [{ field: "qty", message: "must be &gt; 0" }]
+
+test "GET another user's order is 404, not 403":
+    assert client.get("/orders/" + bob_order, auth=token("ann")).status == 404</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Status, <code>Location</code> header and schema are all part of the contract</div><div class="explain-item">401 (who are you?) vs 403 (not allowed) vs 404 (hide existence) each get a test</div><div class="explain-item">Validation errors check the machine-readable error body</div><div class="explain-item">Schema validation catches fields added or renamed by accident</div></div></section><section class="section-notes section-stack" id="stack"><h2 class="section-title">In Your Stack</h2><ul class="note-list"><li class="note-item"><strong>pytest</strong> FastAPI <code>TestClient</code>, Django <code>client</code>, DRF <code>APIClient</code> <a class="xref" href="../Pytest-Sheets/pyt-21-django-web-apps.html">↗21</a></li><li class="note-item"><strong>Vitest</strong> Supertest or <code>fetch</code> against the app; MSW for outbound calls <a class="xref" href="../JestVitest-Sheets/jv-15-network-globals.html">↗15</a></li><li class="note-item"><strong>JUnit</strong> <code>MockMvcTester</code> / <code>WebTestClient</code> <a class="xref" href="../JUnit-Sheets/ju-20-spring-test-slices.html">↗20</a></li><li class="note-item"><strong>Playwright</strong> <code>request</code> fixture for API tests <a class="xref" href="../Playwright-Sheets/pw-31-api-testing.html">↗31</a></li></ul></section><section class="section-notes section-smell" id="smell"><h2 class="section-title">Smell Check</h2><ul class="note-list"><li class="note-item"><strong>You see</strong> only happy-path API tests → <strong>it means</strong> auth and validation bugs go unnoticed → <strong>do</strong> add a test per error status</li><li class="note-item"><strong>You see</strong> assertions only on status codes → <strong>it means</strong> body and header regressions slip through → <strong>do</strong> validate the body against the schema</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Checklist Table | Clients Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-checklist"><h2 class="section-title">Per-Endpoint Checklist</h2><table><thead><tr><th>Check</th><th>Example status</th></tr></thead><tbody><tr><td>Success</td><td class="desc">200 / 201 / 204</td></tr><tr><td>Validation error</td><td class="desc">400 / 422</td></tr><tr><td>No auth</td><td class="desc">401</td></tr><tr><td>Wrong role</td><td class="desc">403</td></tr><tr><td>Not found / not yours</td><td class="desc">404</td></tr><tr><td>Conflict</td><td class="desc">409</td></tr><tr><td>Response schema</td><td class="desc">Matches OpenAPI</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-clients"><h2 class="section-title">Test Client vs Real HTTP</h2><table><thead><tr><th>Approach</th><th>Pros</th><th>Cons</th></tr></thead><tbody><tr><td>In-process client</td><td class="desc">Fast, no ports</td><td class="desc">Skips network stack</td></tr><tr><td>Real HTTP to local server</td><td class="desc">Real serialization, middleware</td><td class="desc">Slower, ports</td></tr><tr><td>Against deployed env</td><td class="desc">Real infra (smoke)</td><td class="desc">Slow, shared data</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Asserting on the exact error message text that product changes often</li><li class="note-item">Reusing one admin token for every test and missing authorization bugs</li><li class="note-item">Testing through the UI what an API test could cover faster</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Generate request / response types from the OpenAPI spec and reuse them in tests</li><li class="note-item">Keep one test per status code an endpoint can return</li><li class="note-item">Run a small API smoke suite against each deployed environment</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">status + headers + body = the contract</li><li class="note-item">test every error path (400 / 401 / 403 / 404 / 409 / 422)</li><li class="note-item">schema validation catches drift</li><li class="note-item">test client fast · real HTTP thorough</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="tst-17-databases-in-tests.html">Databases in Tests</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Testing Reference · 40 Sheets</a>
+				<a class="nav-link next" href="tst-19-contract-testing.html">Contract Testing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
