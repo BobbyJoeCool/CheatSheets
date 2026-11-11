@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 36: Testing Jakarta Apps</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<div class="spec-tag">JUnit 6 · Arquillian · Testcontainers</div>
+			<h1>Testing Jakarta Apps</h1>
+			<div class="sheet-desc">JUnit unit tests · Weld JUnit · Arquillian · Testcontainers · REST Assured · mocking <code>EntityManager</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description">Test Jakarta code in three layers. <strong>Unit tests</strong> construct beans directly with mocks (constructor injection makes this easy). <strong>CDI tests</strong> boot a lightweight container (Weld JUnit) to check wiring. <strong>Integration tests</strong> deploy to a real runtime, via Arquillian or a Testcontainers server image, and hit it over HTTP with REST Assured.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">The JUnit set covers JUnit itself</li>
+							<li class="note-item">Runtimes with dev mode (Liberty, WildFly) also run tests against a live server</li>
+							<li class="note-item">Use Testcontainers for the database even in unit-ish tests</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Unit, CDI and Integration Tests</h2>
+						<pre><code class="language-java">class PriceServiceTest {                         // plain unit test
+    @Test void appliesDiscount() {
+        var repo = mock(ProductRepository.class);
+        when(repo.price("MUG")).thenReturn(new BigDecimal("10"));
+        var svc = new PriceService(repo);         // constructor injection
+        assertEquals(new BigDecimal("9.00"), svc.discounted("MUG"));
+    }
+}
+
+@EnableAutoWeld @AddBeanClasses({PriceService.class, FakeRepo.class})
+class PriceWiringTest {                          // real CDI container
+    @Inject PriceService svc;
+    @Test void wires() { assertNotNull(svc); }
+}
+
+@Testcontainers
+class ProductApiIT {                             // real server
+    @Container static GenericContainer&lt;?&gt; app =
+        new GenericContainer&lt;&gt;("shop-wildfly").withExposedPorts(8080);
+    @Test void lists() {
+        given().port(app.getMappedPort(8080))
+            .get("/shop/api/products").then().statusCode(200);
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Mock repositories, not the <code>EntityManager</code>, where you can</div>
+							<div class="explain-item"><code>@EnableAutoWeld</code> — Weld JUnit 5 extension; add beans explicitly</div>
+							<div class="explain-item"><code>GenericContainer</code> — your app image with the war deployed</div>
+							<div class="explain-item">REST Assured <code>given().get().then()</code> — HTTP assertions</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@SpringBootTest</code> ≈ integration test; <code>@WebMvcTest</code> slices ≈ CDI tests (Spring 52–53)</li>
+							<li class="note-item">Testcontainers works the same in both · See Spring 56</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">Arquillian for every test</span> → <span class="idiom-prefer">unit tests + a few integration tests</span></li>
+							<li class="note-item"><span class="idiom-avoid">mocking <code>EntityManager</code> chains</span> → <span class="idiom-prefer">test with a real DB container</span></li>
+							<li class="note-item"><span class="idiom-avoid">field injection in beans under test</span> → <span class="idiom-prefer">constructor injection</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Test Layers Table | Maven Plugins Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-test-layers">
+						<h2 class="section-title">Test Layers</h2>
+						<table><thead><tr><th>Layer</th><th>Tool</th><th>Speed</th></tr></thead><tbody>
+							<tr><td>unit</td><td>JUnit + Mockito</td><td class="desc">ms</td></tr>
+							<tr><td>CDI wiring</td><td>Weld JUnit</td><td class="desc">~1 s</td></tr>
+							<tr><td>persistence</td><td>Testcontainers DB + JPA</td><td class="desc">seconds</td></tr>
+							<tr><td>full app</td><td>Arquillian / server container</td><td class="desc">10s of seconds</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-maven-plugins">
+						<h2 class="section-title">Maven Plugins</h2>
+						<table><thead><tr><th>Plugin</th><th>Runs</th></tr></thead><tbody>
+							<tr><td>surefire</td><td class="desc"><code>*Test</code> in <code>test</code> phase</td></tr>
+							<tr><td>failsafe</td><td class="desc"><code>*IT</code> in <code>integration-test</code></td></tr>
+							<tr><td>liberty:dev</td><td class="desc">tests on Enter, live server</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Mocking <code>EntityManager</code> query chains — brittle and proves nothing about the SQL</li>
+							<li class="note-item">Running integration tests with Surefire — they run before the war is built</li>
+							<li class="note-item">Sharing a mutable container between tests without cleanup — order-dependent failures</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Make beans constructor-injected so tests need no container</li>
+							<li class="note-item">Reuse containers across a test class with <code>static</code></li>
+							<li class="note-item">Name integration tests <code>*IT</code> so Failsafe picks them up</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>unit</code> — new + mocks</li>
+							<li class="note-item"><code>Weld JUnit</code> — CDI wiring</li>
+							<li class="note-item"><code>Testcontainers</code> — real DB / server</li>
+							<li class="note-item"><code>REST Assured</code> — HTTP checks</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-35-batch-mail-other.html" title="Batch, Mail &amp; Other Specs">Batch, Mail &amp; Other</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-37-microprofile.html">MicroProfile</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

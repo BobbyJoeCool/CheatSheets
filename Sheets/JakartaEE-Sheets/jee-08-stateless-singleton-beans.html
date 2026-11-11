@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 08: Stateless &amp; Singleton Session Beans</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<div class="spec-tag">Enterprise Beans 4.0</div>
+			<h1>Stateless &amp; Singleton Session Beans</h1>
+			<div class="sheet-desc"><code>@Stateless</code> · <code>@Singleton</code> · <code>@Startup</code> · <code>@Lock</code> · <code>@ConcurrencyManagement</code> · <code>@Local</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Session beans</strong> are EJB components the container pools, secures and wraps in transactions. A **<code>@Stateless</code><strong> bean holds no per-client state, so any pooled instance can serve any call. A </strong><code>@Singleton</code>** has exactly one instance per app, with container-managed locking. Both get a container transaction on every public method by default.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">No-interface view: inject the class itself; <code>@Local</code> only for interfaces</li>
+							<li class="note-item"><code>@Startup</code> creates a singleton eagerly at deploy</li>
+							<li class="note-item">Singleton default lock is <strong>WRITE</strong> — one caller at a time</li>
+							<li class="note-item">Inject with <code>@Inject</code> (CDI) rather than <code>@EJB</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">Stateless instances are <strong>pooled</strong>; never keep caller data in fields</li>
+							<li class="note-item">Every business method runs in a container transaction (<code>REQUIRED</code>) unless told otherwise</li>
+							<li class="note-item"><code>this.other()</code> skips the proxy — no new transaction, no security check</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Stateless Service + Singleton Cache</h2>
+						<pre><code class="language-java">@Stateless                                   // pooled, transactional
+public class OrderService {
+    @PersistenceContext EntityManager em;
+    public void place(Order o) { em.persist(o); }   // tx per call
+}
+
+@Singleton @Startup                          // one instance, eager
+@ConcurrencyManagement(ConcurrencyManagementType.CONTAINER)
+public class RateCache {
+    private Map&lt;String, BigDecimal&gt; rates = new HashMap&lt;&gt;();
+
+    @PostConstruct void load() { rates = fetchRates(); }
+
+    @Lock(LockType.READ)                     // many readers at once
+    public BigDecimal rate(String ccy) { return rates.get(ccy); }
+
+    @Lock(LockType.WRITE)                    // exclusive
+    public void refresh() { rates = fetchRates(); }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@Stateless</code> — container picks a free instance per call</div>
+							<div class="explain-item"><code>@Startup</code> — runs <code>@PostConstruct</code> during deployment</div>
+							<div class="explain-item"><code>@Lock(READ)</code> — concurrent callers; <code>WRITE</code> blocks everyone</div>
+							<div class="explain-item"><code>BEAN</code> concurrency → you use <code>synchronized</code> yourself</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Stateless</code> → <code>@Service</code> + <code>@Transactional</code> (Spring beans aren't pooled)</li>
+							<li class="note-item"><code>@Singleton @Startup</code> → <code>@Component</code> + <code>ApplicationReadyEvent</code> · See Spring 42</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>@Stateless</code> only for transactions</span> → <span class="idiom-prefer"><code>@ApplicationScoped</code> + <code>@Transactional</code></span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>@EJB</code> field injection</span> → <span class="idiom-prefer"><code>@Inject</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">WRITE lock on read methods</span> → <span class="idiom-prefer"><code>@Lock(READ)</code></span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Session Bean Kinds Table | Views Injection Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-session-bean-kinds">
+						<h2 class="section-title">Session Bean Kinds</h2>
+						<table><thead><tr><th>Type</th><th>Instances</th><th>State</th></tr></thead><tbody>
+							<tr><td>@Stateless</td><td>pool</td><td class="desc">none between calls</td></tr>
+							<tr><td>@Singleton</td><td>one per app</td><td class="desc">shared, locked</td></tr>
+							<tr><td>@Stateful</td><td>one per client</td><td class="desc">conversational (sheet 09)</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-views-injection">
+						<h2 class="section-title">Views &amp; Injection</h2>
+						<table><thead><tr><th>Form</th><th>Use</th></tr></thead><tbody>
+							<tr><td>no-interface</td><td class="desc">inject the class; default</td></tr>
+							<tr><td>@Local</td><td class="desc">local interface view</td></tr>
+							<tr><td>@Remote</td><td class="desc">remote calls — avoid</td></tr>
+							<tr><td>@Inject / @EJB</td><td class="desc">prefer <code>@Inject</code></td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Storing request data in a stateless field — the next caller may get the same instance and see it</li>
+							<li class="note-item">Long work under a WRITE lock — every other call to the singleton waits or times out</li>
+							<li class="note-item">Calling a <code>REQUIRES_NEW</code> method on <code>this</code> — the annotation is ignored</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>@AccessTimeout</code> to fail fast instead of piling up on a lock</li>
+							<li class="note-item">Inject <code>SessionContext</code> and call <code>getBusinessObject()</code> to self-call through the proxy</li>
+							<li class="note-item">For new code, try a CDI bean first (sheet 10)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Stateless</code> — pooled, no state</li>
+							<li class="note-item"><code>@Singleton</code> — one, container-locked</li>
+							<li class="note-item"><code>@Lock(READ/WRITE)</code> — concurrency</li>
+							<li class="note-item"><code>@Startup</code> — eager init</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-07-bean-types-map.html">Which Bean Is Which?</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-09-stateful-lifecycle-timers.html" title="Stateful Beans, Lifecycle &amp; Timers">Stateful &amp; Timers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

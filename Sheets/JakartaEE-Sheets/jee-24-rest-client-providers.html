@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 24: REST Client, Filters &amp; Providers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s24">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 24</div>
+			<div class="spec-tag">REST 4.0</div>
+			<h1>REST Client, Filters &amp; Providers</h1>
+			<div class="sheet-desc"><code>ClientBuilder</code> · <code>WebTarget</code> · async client · <code>ContainerRequestFilter</code> · <code>@Provider</code> · <code>@NameBinding</code> · CORS</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description">The <strong>REST Client API</strong> calls other HTTP services with a fluent builder. On the server side, <strong>providers</strong> extend the runtime: <strong>filters</strong> see every request/response (auth, CORS, logging), <strong>interceptors</strong> wrap entity reading/writing, and **<code>@NameBinding</code>** limits a filter to annotated resources.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Client</code> is heavy and thread-safe — create once, reuse</li>
+							<li class="note-item">Pre-matching filters run before a resource is chosen</li>
+							<li class="note-item">MicroProfile Rest Client offers a typed interface style</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-client">
+						<h2 class="section-title">Client Call</h2>
+						<pre><code class="language-java">Client client = ClientBuilder.newClient();          // reuse this
+Product p = client.target("https://api.example.com")
+    .path("products/{id}").resolveTemplate("id", 42)
+    .request(MediaType.APPLICATION_JSON)
+    .get(Product.class);                             // throws on 4xx/5xx
+var later = client.target(url).request()
+    .rx().get(Product.class);                        // async</code></pre>
+					</section>
+					<section class="section-code" id="code-filters">
+						<h2 class="section-title">Name-Bound Filter + CORS</h2>
+						<pre><code class="language-java">@NameBinding @Retention(RUNTIME) public @interface Audited { }
+
+@Provider @Audited
+public class AuditFilter implements ContainerRequestFilter {
+    public void filter(ContainerRequestContext ctx) {
+        log.info(ctx.getMethod() + " " + ctx.getUriInfo().getPath());
+    }
+}
+@Provider
+public class Cors implements ContainerResponseFilter {
+    public void filter(ContainerRequestContext rq,
+                       ContainerResponseContext rs) {
+        rs.getHeaders().add("Access-Control-Allow-Origin",
+                            "https://shop.app");
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>resolveTemplate</code> — fills <code>{id}</code> safely (URL-encoded)</div>
+							<div class="explain-item"><code>get(Product.class)</code> — reads body; errors throw <code>WebApplicationException</code></div>
+							<div class="explain-item"><code>rx()</code> — <code>CompletionStage</code> invoker</div>
+							<div class="explain-item"><code>@Audited</code> on a method/class → only those get <code>AuditFilter</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Client</code> → <code>RestClient</code> / HTTP interface clients (Spring 30–31)</li>
+							<li class="note-item"><code>ContainerRequestFilter</code> → <code>OncePerRequestFilter</code>; CORS → <code>@CrossOrigin</code> (Spring 27)</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">new <code>Client</code> per call</span> → <span class="idiom-prefer">one shared client</span></li>
+							<li class="note-item"><span class="idiom-avoid">CORS headers in each resource</span> → <span class="idiom-prefer">one response filter</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Provider Types Table | Ordering Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-provider-types">
+						<h2 class="section-title">Provider Types</h2>
+						<table><thead><tr><th>Interface</th><th>Runs</th></tr></thead><tbody>
+							<tr><td>ContainerRequestFilter</td><td class="desc">before resource method</td></tr>
+							<tr><td>ContainerResponseFilter</td><td class="desc">after resource method</td></tr>
+							<tr><td>ReaderInterceptor / WriterInterceptor</td><td class="desc">around body (de)serialization</td></tr>
+							<tr><td>ExceptionMapper</td><td class="desc">exception → response</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-ordering">
+						<h2 class="section-title">Ordering</h2>
+						<table><thead><tr><th>Tool</th><th>Effect</th></tr></thead><tbody>
+							<tr><td>@Priority(Priorities.AUTHENTICATION)</td><td class="desc">1000 — runs early</td></tr>
+							<tr><td>@PreMatching</td><td class="desc">before routing</td></tr>
+							<tr><td>abortWith(resp)</td><td class="desc">stop and respond</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Creating a <code>Client</code> per request — leaks connections and threads</li>
+							<li class="note-item">CORS filter only on responses — preflight <code>OPTIONS</code> also needs <code>Allow-Methods</code>/<code>Allow-Headers</code></li>
+							<li class="note-item">Reading a <code>Response</code> entity twice — the stream is gone; call <code>bufferEntity()</code> first</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Register client filters with <code>client.register(...)</code></li>
+							<li class="note-item">Set <code>connectTimeout</code> and <code>readTimeout</code> on the <code>ClientBuilder</code></li>
+							<li class="note-item">Use <code>@Priority</code> constants from <code>Priorities</code> for predictable order</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ClientBuilder</code> — outbound calls</li>
+							<li class="note-item"><code>ContainerRequestFilter</code> — pre-processing</li>
+							<li class="note-item"><code>@NameBinding</code> — targeted filters</li>
+							<li class="note-item"><code>@Provider</code> — auto-register</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-23-json-p-json-b.html" title="JSON Processing &amp; Binding">JSON-P &amp; JSON-B</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-25-persistence-entities.html" title="Entities &amp; persistence.xml">Entities</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

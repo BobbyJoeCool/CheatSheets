@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 28: JPQL, Criteria &amp; Fetching</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<div class="spec-tag">Persistence 3.2</div>
+			<h1>JPQL, Criteria &amp; Fetching</h1>
+			<div class="sheet-desc"><code>createQuery</code> · named parameters · <code>@NamedQuery</code> · <code>JOIN FETCH</code> · entity graphs · Criteria API · pagination</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>JPQL</strong> queries entities and fields, not tables and columns; the provider translates it to SQL. Use <strong>named parameters</strong> for values, **<code>JOIN FETCH</code><strong> or </strong>entity graphs<strong> to load relationships in one query, and the </strong>Criteria API** when a query is built dynamically. Persistence 3.2 adds <code>union</code>, <code>||</code>, <code>cast</code> and <code>left</code>/<code>right</code> to JPQL.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>TypedQuery&lt;T&gt;</code> avoids casts</li>
+							<li class="note-item"><code>getSingleResult()</code> throws if 0 or 2+ rows</li>
+							<li class="note-item">Native SQL: <code>createNativeQuery(sql, Product.class)</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">JPQL is translated to SQL for your database's dialect at runtime</li>
+							<li class="note-item">Lazy associations in a loop cause <strong>N+1</strong>: one query, then one per row</li>
+							<li class="note-item"><code>JOIN FETCH</code> and entity graphs change the generated SQL to load it all at once</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Queries</h2>
+						<pre><code class="language-java">List&lt;Order&gt; recent = em.createQuery(
+        "SELECT o FROM PurchaseOrder o JOIN FETCH o.lines " +
+        "WHERE o.customer.email = :email ORDER BY o.placed DESC",
+        PurchaseOrder.class)
+    .setParameter("email", email)
+    .setFirstResult(0).setMaxResults(20)        // page 1, size 20
+    .getResultList();
+
+@NamedQuery(name = "Product.bySku",
+            query = "SELECT p FROM Product p WHERE p.sku = :sku")
+
+EntityGraph&lt;?&gt; g = em.getEntityGraph("Order.withLines");
+em.find(PurchaseOrder.class, id,
+        Map.of("jakarta.persistence.fetchgraph", g));
+
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery&lt;Product&gt; q = cb.createQuery(Product.class);
+Root&lt;Product&gt; p = q.from(Product.class);
+q.where(cb.lt(p.get("price"), max), cb.like(p.get("sku"), "MUG%"));
+List&lt;Product&gt; cheap = em.createQuery(q).getResultList();</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>:email</code> — named parameter, never string-concatenate</div>
+							<div class="explain-item"><code>setFirstResult/setMaxResults</code> — offset pagination</div>
+							<div class="explain-item"><code>fetchgraph</code> — load exactly the graph's attributes</div>
+							<div class="explain-item">Criteria — type-safe with the generated metamodel (<code>Product_.price</code>)</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item">JPQL in <code>@Query</code> on Spring Data repositories (Spring 40)</li>
+							<li class="note-item"><code>@EntityGraph</code> on repository methods; <code>Specification</code> ≈ Criteria (Spring 43–44)</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">string concatenation into JPQL</span> → <span class="idiom-prefer">named parameters</span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>JOIN FETCH</code> + pagination on collections</span> → <span class="idiom-prefer">two queries or entity graph</span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>p.get("price")</code> strings</span> → <span class="idiom-prefer">metamodel <code>Product_.price</code></span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Jpql Cheat Lines Table | Result Methods Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-jpql-cheat-lines">
+						<h2 class="section-title">JPQL Cheat Lines</h2>
+						<table><thead><tr><th>JPQL</th><th>Meaning</th></tr></thead><tbody>
+							<tr><td>SELECT NEW com.x.Dto(p.id, p.sku)</td><td class="desc">constructor projection</td></tr>
+							<tr><td>LEFT JOIN o.lines l</td><td class="desc">outer join</td></tr>
+							<tr><td>WHERE p.tags IS EMPTY</td><td class="desc">empty collection</td></tr>
+							<tr><td>GROUP BY … HAVING COUNT(l) &gt; 2</td><td class="desc">aggregates</td></tr>
+							<tr><td>UPDATE Product p SET …</td><td class="desc">bulk update (skips context)</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-result-methods">
+						<h2 class="section-title">Result Methods</h2>
+						<table><thead><tr><th>Method</th><th>Returns</th></tr></thead><tbody>
+							<tr><td>getResultList()</td><td class="desc"><code>List&lt;T&gt;</code></td></tr>
+							<tr><td>getSingleResult()</td><td class="desc">one or exception</td></tr>
+							<tr><td>getResultStream()</td><td class="desc"><code>Stream&lt;T&gt;</code></td></tr>
+							<tr><td>executeUpdate()</td><td class="desc">rows changed</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>JOIN FETCH</code> a collection with <code>setMaxResults</code> — the provider paginates in memory (and warns)</li>
+							<li class="note-item">Using table/column names in JPQL — it uses entity and field names</li>
+							<li class="note-item">Bulk <code>UPDATE</code>/<code>DELETE</code> then reading managed entities — the context still holds old values; <code>clear()</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Enable SQL logging and count queries per request to catch N+1</li>
+							<li class="note-item">Use DTO projections for read-only lists</li>
+							<li class="note-item">Validate named queries at deploy: errors surface early</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>JPQL</code> — entity-level queries</li>
+							<li class="note-item"><code>JOIN FETCH</code> — eager load per query</li>
+							<li class="note-item"><code>EntityGraph</code> — reusable fetch plan</li>
+							<li class="note-item"><code>Criteria</code> — dynamic queries</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-27-entitymanager-lifecycle.html" title="EntityManager &amp; Entity Lifecycle">EntityManager</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-29-jakarta-data.html" title="Jakarta Data Repositories">Jakarta Data</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

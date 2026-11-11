@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 27: EntityManager &amp; Entity Lifecycle</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<div class="spec-tag">Persistence 3.2</div>
+			<h1>EntityManager &amp; Entity Lifecycle</h1>
+			<div class="sheet-desc"><code>@PersistenceContext</code> · <code>persist</code> · <code>find</code> · <code>merge</code> · <code>remove</code> · managed / detached · <code>flush</code> · <code>@PrePersist</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description">The **<code>EntityManager</code><strong> is the gateway to the </strong>persistence context<strong>: the set of managed entities for the current transaction. Changes to managed entities are written automatically at flush (</strong>dirty checking**). Entities move between four states: new, managed, detached and removed.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Inject with <code>@PersistenceContext</code> (or <code>@Inject</code> with a producer)</li>
+							<li class="note-item"><code>find()</code> returns null; <code>getReference()</code> returns a lazy proxy</li>
+							<li class="note-item"><code>merge()</code> returns a <strong>new</strong> managed copy</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">The persistence context is a first-level cache: <code>find()</code> twice → one SELECT</li>
+							<li class="note-item">Dirty checking at flush writes changed fields — no <code>update()</code> call needed</li>
+							<li class="note-item">Flush happens before queries and at commit; transaction-scoped context ends at commit</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">State Transitions</h2>
+						<pre><code class="language-java">@ApplicationScoped @Transactional
+public class ProductService {
+    @PersistenceContext EntityManager em;
+
+    public Long create(String sku) {
+        Product p = new Product(sku);          // NEW
+        em.persist(p);                         // → MANAGED
+        return p.getId();                      // id after flush/IDENTITY
+    }
+    public void reprice(Long id, BigDecimal price) {
+        Product p = em.find(Product.class, id);   // MANAGED (or null)
+        p.setPrice(price);                     // UPDATE at commit
+    }
+    public Product save(Product detached) {    // from REST, DETACHED
+        return em.merge(detached);             // returns managed copy
+    }
+    public void delete(Long id) {
+        em.remove(em.getReference(Product.class, id));  // → REMOVED
+    }
+}
+@Entity @EntityListeners(Audit.class) class Product {
+    @PrePersist void onCreate() { createdAt = Instant.now(); }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>persist</code> — new → managed; INSERT at flush</div>
+							<div class="explain-item"><code>setPrice</code> on a managed entity — no save call needed</div>
+							<div class="explain-item"><code>merge</code> — copies state onto a managed instance; keep using the return value</div>
+							<div class="explain-item"><code>@PrePersist</code> — lifecycle callback before INSERT</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>em.persist/merge</code> → <code>repository.save()</code> (Spring 38)</li>
+							<li class="note-item">Dirty checking works the same inside <code>@Transactional</code></li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>em.merge()</code> on managed entities</span> → <span class="idiom-prefer">just modify them</span></li>
+							<li class="note-item"><span class="idiom-avoid">calling <code>flush()</code> everywhere</span> → <span class="idiom-prefer">let commit flush</span></li>
+							<li class="note-item"><span class="idiom-avoid">keeping entities across requests</span> → <span class="idiom-prefer">reload by id</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Entity States Table | Callbacks Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-entity-states">
+						<h2 class="section-title">Entity States</h2>
+						<table><thead><tr><th>State</th><th>In context?</th><th>Saved?</th></tr></thead><tbody>
+							<tr><td>new</td><td>no</td><td class="desc">no</td></tr>
+							<tr><td>managed</td><td>yes</td><td class="desc">at flush</td></tr>
+							<tr><td>detached</td><td>no</td><td class="desc">only via <code>merge</code></td></tr>
+							<tr><td>removed</td><td>yes, scheduled</td><td class="desc">DELETE at flush</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-callbacks">
+						<h2 class="section-title">Callbacks</h2>
+						<table><thead><tr><th>Annotation</th><th>When</th></tr></thead><tbody>
+							<tr><td>@PrePersist / @PostPersist</td><td class="desc">around INSERT</td></tr>
+							<tr><td>@PreUpdate / @PostUpdate</td><td class="desc">around UPDATE</td></tr>
+							<tr><td>@PreRemove / @PostRemove</td><td class="desc">around DELETE</td></tr>
+							<tr><td>@PostLoad</td><td class="desc">after load / refresh</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Ignoring <code>merge()</code>'s return value — further changes go to the detached object and are lost</li>
+							<li class="note-item">Calling <code>persist()</code> on a detached entity — <code>EntityExistsException</code></li>
+							<li class="note-item">Using <code>EntityManager</code> outside a transaction for writes — <code>TransactionRequiredException</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use <code>getReference()</code> to set a FK without loading the row</li>
+							<li class="note-item"><code>em.detach(e)</code> or <code>clear()</code> in batch jobs to keep memory flat</li>
+							<li class="note-item">Batch inserts: flush + clear every N rows</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>persist</code> — new → managed</li>
+							<li class="note-item"><code>find</code> — load by id</li>
+							<li class="note-item"><code>merge</code> — reattach copy</li>
+							<li class="note-item"><code>flush</code> — write pending changes</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-26-persistence-relationships.html" title="Relationships &amp; Inheritance">Relationships</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-28-jpql-criteria.html" title="JPQL, Criteria &amp; Fetching">JPQL &amp; Criteria</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

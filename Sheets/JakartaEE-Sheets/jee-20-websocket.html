@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 20: WebSocket</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<div class="spec-tag">WebSocket 2.2</div>
+			<h1>WebSocket</h1>
+			<div class="sheet-desc"><code>@ServerEndpoint</code> · <code>@OnOpen</code> · <code>@OnMessage</code> · <code>@OnClose</code> · <code>Session</code> · encoders · broadcasting</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Jakarta WebSocket</strong> gives a full-duplex connection between browser and server over one TCP socket. Annotate a class with **<code>@ServerEndpoint</code>** and handle lifecycle callbacks. Each connection gets a <code>Session</code> you use to send messages; broadcasting means looping over open sessions.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">A new endpoint instance per connection by default</li>
+							<li class="note-item">Path params: <code>@ServerEndpoint("/chat/{room}")</code></li>
+							<li class="note-item">Encoders/decoders map messages ↔ Java objects</li>
+							<li class="note-item"><code>getAsyncRemote()</code> doesn't block the sender</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Chat Room Endpoint</h2>
+						<pre><code class="language-java">@ServerEndpoint(value = "/chat/{room}",
+                encoders = ChatJson.class, decoders = ChatJson.class)
+public class ChatEndpoint {
+    private static final Set&lt;Session&gt; sessions =
+        ConcurrentHashMap.newKeySet();
+
+    @OnOpen
+    public void open(Session s, @PathParam("room") String room) {
+        s.getUserProperties().put("room", room);
+        sessions.add(s);
+    }
+    @OnMessage
+    public void onMessage(ChatMsg msg, Session from) {
+        sessions.stream()
+            .filter(s -&gt; s.isOpen() &amp;&amp; room(s).equals(room(from)))
+            .forEach(s -&gt; s.getAsyncRemote().sendObject(msg));
+    }
+    @OnClose public void close(Session s) { sessions.remove(s); }
+    @OnError public void error(Session s, Throwable t) { log(t); }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>static</code> set — shared across per-connection instances</div>
+							<div class="explain-item"><code>getUserProperties()</code> — per-session data map</div>
+							<div class="explain-item"><code>sendObject</code> — runs the encoder; <code>sendText</code> for raw strings</div>
+							<div class="explain-item">Browser: <code>new WebSocket("wss://host/shop/chat/java")</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@ServerEndpoint</code> works in Boot with <code>ServerEndpointExporter</code></li>
+							<li class="note-item">Spring's own: <code>WebSocketHandler</code> or STOMP <code>@MessageMapping</code></li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>getBasicRemote()</code> in broadcasts</span> → <span class="idiom-prefer"><code>getAsyncRemote()</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">plain <code>HashSet</code> of sessions</span> → <span class="idiom-prefer"><code>ConcurrentHashMap.newKeySet()</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">polling every second</span> → <span class="idiom-prefer">WebSocket or SSE</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Callbacks Table | Session Api Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-callbacks">
+						<h2 class="section-title">Callbacks</h2>
+						<table><thead><tr><th>Annotation</th><th>Params</th></tr></thead><tbody>
+							<tr><td>@OnOpen</td><td class="desc"><code>Session</code>, <code>EndpointConfig</code>, <code>@PathParam</code></td></tr>
+							<tr><td>@OnMessage</td><td class="desc"><code>String</code> / object / <code>ByteBuffer</code>, <code>Session</code></td></tr>
+							<tr><td>@OnClose</td><td class="desc"><code>Session</code>, <code>CloseReason</code></td></tr>
+							<tr><td>@OnError</td><td class="desc"><code>Session</code>, <code>Throwable</code></td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-session-api">
+						<h2 class="section-title">Session API</h2>
+						<table><thead><tr><th>Method</th><th>Does</th></tr></thead><tbody>
+							<tr><td>getBasicRemote().sendText()</td><td class="desc">blocking send</td></tr>
+							<tr><td>getAsyncRemote().sendObject()</td><td class="desc">non-blocking send</td></tr>
+							<tr><td>close(CloseReason)</td><td class="desc">close with code</td></tr>
+							<tr><td>setMaxIdleTimeout(ms)</td><td class="desc">idle limit</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Non-thread-safe session collection — concurrent opens/closes throw <code>ConcurrentModificationException</code></li>
+							<li class="note-item">Blocking sends in a loop — one slow client stalls everyone</li>
+							<li class="note-item">Forgetting <code>wss://</code> behind HTTPS — browsers block mixed content</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Send heartbeats (<code>sendPing</code>) so proxies don't drop idle sockets</li>
+							<li class="note-item">Use a <code>ServerEndpointConfig.Configurator</code> to read the HTTP session or auth</li>
+							<li class="note-item">For one-way server pushes, Server-Sent Events via Jakarta REST are simpler</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@ServerEndpoint</code> — endpoint path</li>
+							<li class="note-item"><code>@OnMessage</code> — handle frames</li>
+							<li class="note-item"><code>Session</code> — send / close</li>
+							<li class="note-item"><code>Encoder/Decoder</code> — object mapping</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-19-faces-navigation-ajax.html" title="Faces Navigation, Validation &amp; AJAX">Faces Nav &amp; AJAX</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-21-rest-resources.html">REST Resources</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

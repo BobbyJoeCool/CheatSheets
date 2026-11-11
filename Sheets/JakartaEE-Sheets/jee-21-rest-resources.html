@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 21: REST Resources</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<div class="spec-tag">REST 4.0</div>
+			<h1>REST Resources</h1>
+			<div class="sheet-desc"><code>@ApplicationPath</code> · <code>@Path</code> · <code>@GET</code> / <code>@POST</code> / <code>@PUT</code> / <code>@DELETE</code> · <code>@Produces</code> · sub-resources</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Jakarta REST</strong> (formerly JAX-RS) maps HTTP requests to Java methods. An <code>Application</code> subclass with **<code>@ApplicationPath</code><strong> turns it on; each </strong>resource class** has a <code>@Path</code> and methods annotated with an HTTP verb. Return a Java object and a provider (JSON-B) writes the body based on **<code>@Produces</code>**.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">REST 4.0 (EE 11) removed the old <code>ManagedBean</code> and JAXB coupling</li>
+							<li class="note-item">Resources are CDI beans; inject freely</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">Resource classes are <strong>request-scoped</strong> by default — a new instance per request</li>
+							<li class="note-item">The runtime picks a <code>MessageBodyWriter</code> by return type + <code>@Produces</code> + <code>Accept</code></li>
+							<li class="note-item">No match on <code>@Consumes</code> → 415; no match on <code>@Produces</code> → 406</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">CRUD Resource</h2>
+						<pre><code class="language-java">@ApplicationPath("/api")
+public class RestApp extends Application { }
+
+@Path("/products")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+public class ProductResource {
+    @Inject ProductRepository repo;
+
+    @GET public List&lt;Product&gt; all() { return repo.findAll(); }
+    @GET @Path("{id}")
+    public Product one(@PathParam("id") long id) {
+        return repo.findById(id).orElseThrow(NotFoundException::new);
+    }
+    @POST public Response create(Product p, @Context UriInfo uri) {
+        repo.insert(p);
+        URI loc = uri.getAbsolutePathBuilder()
+            .path(String.valueOf(p.id())).build();
+        return Response.created(loc).build();                 // 201
+    }
+    @DELETE @Path("{id}") public void delete(@PathParam("id") long id) {
+        repo.deleteById(id);                                  // 204
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Class-level <code>@Produces</code>/<code>@Consumes</code> apply to every method</div>
+							<div class="explain-item"><code>NotFoundException</code> → 404 automatically</div>
+							<div class="explain-item"><code>Response.created(uri)</code> → 201 + <code>Location</code> header</div>
+							<div class="explain-item"><code>void</code> return → 204 No Content</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Path</code> + <code>@GET</code> → <code>@RestController</code> + <code>@GetMapping</code></li>
+							<li class="note-item"><code>@PathParam</code> → <code>@PathVariable</code></li>
+							<li class="note-item">Spring also runs Jersey via <code>spring-boot-starter-jersey</code> · See Spring 20</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">returning <code>Response</code> everywhere</span> → <span class="idiom-prefer">return the entity; use <code>Response</code> for 201/headers</span></li>
+							<li class="note-item"><span class="idiom-avoid">string-built JSON</span> → <span class="idiom-prefer">return records/DTOs</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Annotations Table | Sub Resources Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-annotations">
+						<h2 class="section-title">Annotations</h2>
+						<table><thead><tr><th>Annotation</th><th>Purpose</th></tr></thead><tbody>
+							<tr><td>@Path</td><td class="desc">URI template, <code>{id: \\d+}</code> regex</td></tr>
+							<tr><td>@GET @POST @PUT…</td><td class="desc">HTTP method</td></tr>
+							<tr><td>@Produces</td><td class="desc">response media types</td></tr>
+							<tr><td>@Consumes</td><td class="desc">request media types</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-sub-resources">
+						<h2 class="section-title">Sub-resources</h2>
+						<table><thead><tr><th>Pattern</th><th>Example</th></tr></thead><tbody>
+							<tr><td>sub-resource method</td><td class="desc"><code>@GET @Path("{id}/reviews")</code></td></tr>
+							<tr><td>sub-resource locator</td><td class="desc"><code>@Path("{id}/reviews") ReviewResource r()</code></td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Missing <code>@ApplicationPath</code> (and no <code>web.xml</code> mapping) — every endpoint returns 404</li>
+							<li class="note-item">Two methods with the same path + verb + media type — ambiguous, request fails</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Constrain ids with regex: <code>@Path("{id: \\d+}")</code> to avoid route clashes</li>
+							<li class="note-item">Use <code>@Context UriInfo</code> to build links instead of hard-coding hosts</li>
+							<li class="note-item">See the HTTP &amp; REST APIs set for status codes and design</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@ApplicationPath</code> — enables REST</li>
+							<li class="note-item"><code>@Path</code> — URI template</li>
+							<li class="note-item"><code>@GET/@POST…</code> — verb</li>
+							<li class="note-item"><code>@Produces</code> — response type</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-20-websocket.html">WebSocket</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-22-rest-params-responses.html" title="Parameters, Responses &amp; Errors">Params &amp; Responses</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

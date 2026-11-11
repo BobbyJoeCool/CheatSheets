@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 22: Parameters, Responses &amp; Errors</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<div class="spec-tag">REST 4.0</div>
+			<h1>Parameters, Responses &amp; Errors</h1>
+			<div class="sheet-desc"><code>@PathParam</code> · <code>@QueryParam</code> · <code>@BeanParam</code> · <code>Response</code> · <code>WebApplicationException</code> · <code>ExceptionMapper</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description">Jakarta REST injects request data into method parameters by annotation and converts strings to Java types. **<code>Response</code><strong> builds any status, header or entity. Exceptions become responses: throw a </strong><code>WebApplicationException</code><strong> subclass for HTTP errors, or register an </strong><code>ExceptionMapper</code>** to translate your own exceptions.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@DefaultValue</code> applies when the param is missing</li>
+							<li class="note-item">Types convert via <code>valueOf(String)</code>, <code>fromString</code> or a String ctor</li>
+							<li class="note-item"><code>List&lt;String&gt;</code> collects repeated query params</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Params, Response, Mapper</h2>
+						<pre><code class="language-java">@GET
+public Response search(@QueryParam("q") String q,
+                       @QueryParam("page") @DefaultValue("0") int page,
+                       @HeaderParam("Accept-Language") String lang,
+                       @BeanParam Paging paging) {
+    var hits = service.search(q, page);
+    return Response.ok(hits)
+        .header("X-Total-Count", hits.total())
+        .build();                                           // 200
+}
+
+public class Paging {                          // @BeanParam holder
+    @QueryParam("size") @DefaultValue("20") public int size;
+    @QueryParam("sort") public String sort;
+}
+
+@Provider
+public class MissingMapper
+        implements ExceptionMapper&lt;ProductMissing&gt; {
+    public Response toResponse(ProductMissing e) {
+        return Response.status(404)
+            .entity(Map.of("error", e.getMessage())).build();
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@BeanParam</code> — groups related params into one class</div>
+							<div class="explain-item"><code>Response.ok(entity)</code> — 200 + body; chain headers</div>
+							<div class="explain-item"><code>@Provider</code> — registers the mapper automatically</div>
+							<div class="explain-item">Mapper picks the closest exception type in the hierarchy</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@QueryParam</code> → <code>@RequestParam</code>; <code>@HeaderParam</code> → <code>@RequestHeader</code></li>
+							<li class="note-item"><code>ExceptionMapper</code> → <code>@RestControllerAdvice</code> + <code>ProblemDetail</code> · See Spring 24</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>try/catch</code> in every method</span> → <span class="idiom-prefer">one <code>ExceptionMapper</code></span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>Response.status(404)</code> inline</span> → <span class="idiom-prefer"><code>throw new NotFoundException()</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">ad-hoc error JSON</span> → <span class="idiom-prefer">RFC 9457 problem details shape</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Parameter Sources Table | Built In Exceptions Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-parameter-sources">
+						<h2 class="section-title">Parameter Sources</h2>
+						<table><thead><tr><th>Annotation</th><th>From</th></tr></thead><tbody>
+							<tr><td>@PathParam</td><td class="desc">URI template <code>{x}</code></td></tr>
+							<tr><td>@QueryParam</td><td class="desc"><code>?x=1</code></td></tr>
+							<tr><td>@HeaderParam</td><td class="desc">request header</td></tr>
+							<tr><td>@CookieParam</td><td class="desc">cookie</td></tr>
+							<tr><td>@FormParam</td><td class="desc">form body</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-built-in-exceptions">
+						<h2 class="section-title">Built-in Exceptions</h2>
+						<table><thead><tr><th>Exception</th><th>Status</th></tr></thead><tbody>
+							<tr><td>BadRequestException</td><td class="desc">400</td></tr>
+							<tr><td>NotAuthorizedException</td><td class="desc">401</td></tr>
+							<tr><td>ForbiddenException</td><td class="desc">403</td></tr>
+							<tr><td>NotFoundException</td><td class="desc">404</td></tr>
+							<tr><td>InternalServerErrorException</td><td class="desc">500</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>int</code> query param with no default — missing param becomes 0, hiding bugs; use <code>Integer</code> or <code>@DefaultValue</code></li>
+							<li class="note-item">Bad conversion on <code>@PathParam</code> returns 404, on <code>@QueryParam</code> 404 too — not 400 as many expect</li>
+							<li class="note-item">Mapper for <code>Exception</code> catches <code>WebApplicationException</code> too — keep their status</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Return <code>Optional</code>-free domain objects; map absence to <code>NotFoundException</code></li>
+							<li class="note-item">Validate params with <code>@Valid</code>/constraints (sheet 31)</li>
+							<li class="note-item">Use <code>UriInfo.getQueryParameters()</code> for dynamic filters</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@QueryParam</code> — query string</li>
+							<li class="note-item"><code>@BeanParam</code> — param holder</li>
+							<li class="note-item"><code>Response</code> — full control</li>
+							<li class="note-item"><code>ExceptionMapper</code> — exception → HTTP</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-21-rest-resources.html">REST Resources</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-23-json-p-json-b.html" title="JSON Processing &amp; Binding">JSON-P &amp; JSON-B</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

@@ -174,6 +174,8 @@ CheatSheets/
 | ✅ | JSP | 34 | directives, implicit objects & scope, Expression Language, standard actions, JSTL (core, fmt, fn), custom tags & TLDs, integration & security |
 | ✅ | Spring | 69 | Spring Boot 4.1 / Framework 7: introduction & setup, IoC & dependency injection, configuration & auto-configuration, AOP, Spring MVC REST APIs, Thymeleaf views, HTTP clients, JDBC & schema migrations, Spring Data JPA, Spring Security (JWT, OAuth2), testing, Actuator & observability, events, scheduling, async & virtual threads, caching, resilience, WebFlux, packaging & GraalVM native images |
 | ✅ | Maven | 24 | Maven 3.9 / 3.10 with Maven 4 preview: introduction & setup, the POM, dependencies, lifecycle & plugins, testing & quality, multi-module builds & releasing, Maven 4, CI & troubleshooting, quick reference; Gradle equivalents throughout |
+| ✅ | Jakarta EE | 40 | Jakarta EE 11: platform & setup, JavaBeans, Enterprise Beans, CDI, Servlets & Pages, Faces, WebSocket, REST & JSON, Persistence & Jakarta Data, transactions, Bean Validation, security, concurrency, messaging, testing, MicroProfile, packaging, quick reference; Spring equivalents throughout |
+| ✅ | IntelliJ | 32 | setup & UI, settings & keymaps, plugins, completion & live templates, editing & code generation, navigation & search, inspections, refactoring, run configurations, debugging, testing & coverage, profiler, Maven & Gradle, Spring & Jakarta support, HTTP client & database, Git, AI Assistant, remote dev, quick reference; VS Code equivalents throughout |
 
 ### JavaScript / TypeScript
 

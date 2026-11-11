@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 06: Introspection &amp; Property Change Events</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s06">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 06</div>
+			<div class="spec-tag">java.beans (Java SE)</div>
+			<h1>Introspection &amp; Property Change Events</h1>
+			<div class="sheet-desc"><code>Introspector</code> · <code>BeanInfo</code> · <code>PropertyDescriptor</code> · <code>PropertyChangeSupport</code> · bound · constrained</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Introspection</strong> is how tools discover a bean's properties at runtime: <code>Introspector.getBeanInfo()</code> returns a <code>BeanInfo</code> with a <code>PropertyDescriptor</code> for each getter/setter pair. <strong>Bound properties</strong> fire a <code>PropertyChangeEvent</code> when they change; <strong>constrained</strong> properties let listeners veto a change by throwing <code>PropertyVetoException</code>.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>PropertyChangeSupport</code> does the listener bookkeeping for you</li>
+							<li class="note-item">Events fire only if old and new values differ (<code>equals</code>)</li>
+							<li class="note-item">Swing uses bound properties heavily — see Swing set</li>
+							<li class="note-item"><code>Introspector.flushCaches()</code> after hot-reloading classes</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">Properties come from <strong>method names</strong>, not fields — a field with no getter is invisible</li>
+							<li class="note-item"><code>BeanInfo</code> results are cached per class, so introspection is cheap after the first call</li>
+							<li class="note-item">EL resolves <code>#{user.name}</code> via <code>BeanELResolver</code>, which calls the descriptor's read method</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Bound Property + Introspection</h2>
+						<pre><code class="language-java">public class Order {
+    private final PropertyChangeSupport pcs =
+        new PropertyChangeSupport(this);
+    private String status = "NEW";
+
+    public String getStatus() { return status; }
+    public void setStatus(String s) {
+        String old = status; status = s;
+        pcs.firePropertyChange("status", old, s);  // bound
+    }
+    public void addPropertyChangeListener(PropertyChangeListener l) {
+        pcs.addPropertyChangeListener(l);
+    }
+}
+order.addPropertyChangeListener(e -&gt;
+    log.info(e.getPropertyName() + ": " + e.getOldValue()
+             + " → " + e.getNewValue()));    // status: NEW → PAID
+order.setStatus("PAID");
+
+BeanInfo info = Introspector.getBeanInfo(Order.class, Object.class);
+for (PropertyDescriptor pd : info.getPropertyDescriptors())
+    System.out.println(pd.getName());        // status</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>firePropertyChange</code> — skips the event when old equals new</div>
+							<div class="explain-item"><code>getBeanInfo(cls, Object.class)</code> — stop class excludes <code>getClass()</code></div>
+							<div class="explain-item"><code>PropertyDescriptor</code> — <code>getReadMethod()</code>, <code>getWriteMethod()</code>, <code>getPropertyType()</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item">Spring <code>BeanUtils.getPropertyDescriptors()</code> wraps the same API</li>
+							<li class="note-item">Spring app events (<code>ApplicationEventPublisher</code>) replace bean events for app logic · See Spring 60</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">hand-rolled listener lists</span> → <span class="idiom-prefer"><code>PropertyChangeSupport</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">reflection on fields</span> → <span class="idiom-prefer"><code>Introspector</code> + descriptors</span></li>
+							<li class="note-item"><span class="idiom-avoid">bean events for business workflows</span> → <span class="idiom-prefer">CDI events (sheet 14)</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Key Classes Table | Property Kinds Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-key-classes">
+						<h2 class="section-title">Key Classes</h2>
+						<table><thead><tr><th>Class</th><th>Role</th></tr></thead><tbody>
+							<tr><td>Introspector</td><td class="desc">builds <code>BeanInfo</code> for a class</td></tr>
+							<tr><td>PropertyDescriptor</td><td class="desc">one property: read/write methods</td></tr>
+							<tr><td>PropertyChangeSupport</td><td class="desc">fires bound-property events</td></tr>
+							<tr><td>VetoableChangeSupport</td><td class="desc">fires constrained events</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-property-kinds">
+						<h2 class="section-title">Property Kinds</h2>
+						<table><thead><tr><th>Kind</th><th>Behavior</th></tr></thead><tbody>
+							<tr><td>simple</td><td class="desc">getter / setter only</td></tr>
+							<tr><td>bound</td><td class="desc">fires <code>PropertyChangeEvent</code> after change</td></tr>
+							<tr><td>constrained</td><td class="desc">fires before; listener may throw <code>PropertyVetoException</code></td></tr>
+							<tr><td>indexed</td><td class="desc"><code>getX(int)</code> / <code>setX(int, v)</code></td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Firing before assigning the field — listeners that read the bean see the old value</li>
+							<li class="note-item">Forgetting the stop class — <code>class</code> shows up as a property from <code>getClass()</code></li>
+							<li class="note-item">Using bound properties across threads — listeners run on the caller's thread, not the UI thread</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Make <code>PropertyChangeSupport</code> field <code>final</code> and <code>transient</code> if the bean is serialized</li>
+							<li class="note-item">Use <code>fireIndexedPropertyChange</code> for list-like properties</li>
+							<li class="note-item">Prefer CDI events in server code; keep bean events for UI models</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Introspector</code> — discovers properties</li>
+							<li class="note-item"><code>PropertyDescriptor</code> — getter/setter pair</li>
+							<li class="note-item"><code>bound</code> — notifies after change</li>
+							<li class="note-item"><code>constrained</code> — listeners can veto</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-05-javabeans-conventions.html">JavaBeans Conventions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-07-bean-types-map.html">Which Bean Is Which?</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

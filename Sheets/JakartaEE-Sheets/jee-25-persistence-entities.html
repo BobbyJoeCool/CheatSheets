@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 25: Entities &amp; persistence.xml</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<div class="spec-tag">Persistence 3.2</div>
+			<h1>Entities &amp; persistence.xml</h1>
+			<div class="sheet-desc"><code>@Entity</code> · <code>@Id</code> · <code>@GeneratedValue</code> · <code>@Column</code> · persistence unit · <code>@Embeddable</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Jakarta Persistence</strong> (JPA) maps Java classes to tables. An **<code>@Entity</code>** needs an <code>@Id</code> and a no-arg constructor; fields map to columns by name. A <strong>persistence unit</strong> in <code>META-INF/persistence.xml</code> names the datasource and settings. EE 11's Persistence 3.2 adds Java records as embeddables and more Java time types.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Field access if <code>@Id</code> is on a field; property access if on a getter</li>
+							<li class="note-item">Use <code>jta-data-source</code> so the server manages connections</li>
+							<li class="note-item"><code>jakarta.persistence.schema-generation.*</code> creates tables (dev only)</li>
+							<li class="note-item">See the SQL set for schema design</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-entity">
+						<h2 class="section-title">Entity + Embeddable</h2>
+						<pre><code class="language-java">@Entity @Table(name = "products",
+       uniqueConstraints = @UniqueConstraint(columnNames = "sku"))
+public class Product {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    @Column(nullable = false, length = 40) private String sku;
+    @Column(precision = 10, scale = 2) private BigDecimal price;
+    @Enumerated(EnumType.STRING) private Status status;
+    @Embedded private Dimensions size;          // columns in same table
+    @Version private long version;              // optimistic locking
+    protected Product() { }                     // required by JPA
+}
+@Embeddable public record Dimensions(int width, int height) { } // 3.2</code></pre>
+					</section>
+					<section class="section-code" id="code-xml">
+						<h2 class="section-title">persistence.xml</h2>
+						<pre><code class="language-markup">&lt;persistence-unit name="shop" transaction-type="JTA"&gt;
+  &lt;jta-data-source&gt;java:app/jdbc/shop&lt;/jta-data-source&gt;
+  &lt;properties&gt;
+    &lt;property name="jakarta.persistence.schema-generation.database.action"
+              value="create"/&gt;
+  &lt;/properties&gt;
+&lt;/persistence-unit&gt;</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>IDENTITY</code> — DB auto-increment; <code>SEQUENCE</code> batches better</div>
+							<div class="explain-item"><code>EnumType.STRING</code> — survives enum reordering</div>
+							<div class="explain-item"><code>@Version</code> — throws <code>OptimisticLockException</code> on stale updates</div>
+							<div class="explain-item"><code>transaction-type="JTA"</code> — container transactions</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item">Same <code>jakarta.persistence</code> annotations in Spring Data JPA</li>
+							<li class="note-item"><code>persistence.xml</code> → <code>spring.datasource.*</code> + <code>spring.jpa.*</code> · See Spring 36</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>EnumType.ORDINAL</code></span> → <span class="idiom-prefer"><code>EnumType.STRING</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">schema generation in prod</span> → <span class="idiom-prefer">Flyway/Liquibase migrations</span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>java.util.Date</code></span> → <span class="idiom-prefer"><code>LocalDate</code> / <code>Instant</code></span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Id Strategies Table | Column Mappings Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-id-strategies">
+						<h2 class="section-title">Id Strategies</h2>
+						<table><thead><tr><th>Strategy</th><th>Notes</th></tr></thead><tbody>
+							<tr><td>IDENTITY</td><td class="desc">auto-increment; no batch inserts</td></tr>
+							<tr><td>SEQUENCE</td><td class="desc">DB sequence; <code>allocationSize</code> batches</td></tr>
+							<tr><td>UUID</td><td class="desc"><code>@GeneratedValue(strategy = UUID)</code> (3.1+)</td></tr>
+							<tr><td>TABLE</td><td class="desc">portable, slow</td></tr>
+							<tr><td>AUTO</td><td class="desc">provider decides</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-column-mappings">
+						<h2 class="section-title">Column Mappings</h2>
+						<table><thead><tr><th>Annotation</th><th>Use</th></tr></thead><tbody>
+							<tr><td>@Column</td><td class="desc">name, nullable, length, precision</td></tr>
+							<tr><td>@Lob</td><td class="desc">large text/binary</td></tr>
+							<tr><td>@Transient</td><td class="desc">not persisted</td></tr>
+							<tr><td>@Convert</td><td class="desc">custom <code>AttributeConverter</code></td></tr>
+							<tr><td>@Embedded</td><td class="desc">value object columns</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>equals</code>/<code>hashCode</code> on the generated id — new entities (id null) break sets; use a business key</li>
+							<li class="note-item">Public no-arg constructor missing — provider can't instantiate; <code>protected</code> is enough</li>
+							<li class="note-item"><code>schema-generation</code> <code>drop-and-create</code> left on — wipes the database on redeploy</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Define the datasource in the server or with <code>@DataSourceDefinition</code></li>
+							<li class="note-item">Use <code>@Column(nullable=false)</code> to match DB constraints so errors surface early</li>
+							<li class="note-item">Log SQL with your provider's property (<code>hibernate.show_sql</code>) during dev</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Entity</code> — mapped class</li>
+							<li class="note-item"><code>@Id</code> + <code>@GeneratedValue</code> — primary key</li>
+							<li class="note-item"><code>persistence.xml</code> — unit + datasource</li>
+							<li class="note-item"><code>@Version</code> — optimistic lock</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-24-rest-client-providers.html" title="REST Client, Filters &amp; Providers">Client &amp; Providers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-26-persistence-relationships.html" title="Relationships &amp; Inheritance">Relationships</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

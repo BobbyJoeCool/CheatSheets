@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 14: Events, Interceptors &amp; Decorators</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<div class="spec-tag">CDI 4.1 · Interceptors 2.2</div>
+			<h1>Events, Interceptors &amp; Decorators</h1>
+			<div class="sheet-desc"><code>Event&lt;T&gt;.fire()</code> · <code>@Observes</code> · <code>@ObservesAsync</code> · <code>@InterceptorBinding</code> · <code>@AroundInvoke</code> · <code>@Decorator</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Events</strong> decouple beans: a producer fires an object, every matching observer receives it. <strong>Interceptors</strong> wrap method calls with cross-cutting logic (timing, logging, auditing) bound by an annotation. <strong>Decorators</strong> wrap a specific interface to add business behavior. All three run through the same container proxy.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Sync observers run in the firing thread and transaction</li>
+							<li class="note-item"><code>@Observes(during = AFTER_SUCCESS)</code> waits for commit</li>
+							<li class="note-item">Decorators are CDI Full only</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">Interceptors and decorators are applied through the bean's proxy</li>
+							<li class="note-item">Self-invocation (<code>this.save()</code>) bypasses them — call through an injected reference</li>
+							<li class="note-item">Lower <code>@Priority</code> value runs first (outermost) for interceptors</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Event + Interceptor</h2>
+						<pre><code class="language-java">@Inject Event&lt;OrderPlaced&gt; placed;
+void checkout(Order o) { placed.fire(new OrderPlaced(o.id())); }
+
+void email(@Observes OrderPlaced e) { mailer.confirm(e.id()); }
+void stats(@ObservesAsync OrderPlaced e) { metrics.inc(); } // fireAsync
+
+@InterceptorBinding @Retention(RUNTIME) @Target({TYPE, METHOD})
+public @interface Timed { }
+
+@Timed @Interceptor @Priority(Interceptor.Priority.APPLICATION)
+public class TimedInterceptor {
+    @AroundInvoke
+    Object time(InvocationContext ctx) throws Exception {
+        long t0 = System.nanoTime();
+        try { return ctx.proceed(); }                  // call the method
+        finally { log.info(ctx.getMethod().getName() + " "
+                  + (System.nanoTime() - t0) / 1_000_000 + "ms"); }
+    }
+}
+@Timed @ApplicationScoped public class ReportService { }   // all methods</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>fire()</code> — sync observers only; <code>fireAsync()</code> — async observers, returns <code>CompletionStage</code></div>
+							<div class="explain-item"><code>@InterceptorBinding</code> — the annotation that links bean → interceptor</div>
+							<div class="explain-item"><code>ctx.proceed()</code> — calls the next interceptor or the target</div>
+							<div class="explain-item"><code>Interceptor.Priority.APPLICATION</code> = 2000</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Event&lt;T&gt;</code> → <code>ApplicationEventPublisher</code>, <code>@Observes</code> → <code>@EventListener</code> (Spring 60)</li>
+							<li class="note-item">Interceptor → <code>@Aspect</code> + <code>@Around</code> (Spring 19)</li>
+							<li class="note-item"><code>AFTER_SUCCESS</code> → <code>@TransactionalEventListener</code></li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">direct calls to five services</span> → <span class="idiom-prefer">one event, five observers</span></li>
+							<li class="note-item"><span class="idiom-avoid">logging boilerplate in every method</span> → <span class="idiom-prefer"><code>@Timed</code> interceptor</span></li>
+							<li class="note-item"><span class="idiom-avoid">side effects before commit</span> → <span class="idiom-prefer"><code>@Observes(during = AFTER_SUCCESS)</code></span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Transaction Phases Table | Interceptor Kinds Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-transaction-phases">
+						<h2 class="section-title">Transaction Phases</h2>
+						<table><thead><tr><th>during =</th><th>Runs</th></tr></thead><tbody>
+							<tr><td>IN_PROGRESS</td><td class="desc">immediately (default)</td></tr>
+							<tr><td>BEFORE_COMPLETION</td><td class="desc">just before commit</td></tr>
+							<tr><td>AFTER_COMPLETION</td><td class="desc">after commit or rollback</td></tr>
+							<tr><td>AFTER_SUCCESS</td><td class="desc">only after commit</td></tr>
+							<tr><td>AFTER_FAILURE</td><td class="desc">only after rollback</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-interceptor-kinds">
+						<h2 class="section-title">Interceptor Kinds</h2>
+						<table><thead><tr><th>Annotation</th><th>Wraps</th></tr></thead><tbody>
+							<tr><td>@AroundInvoke</td><td class="desc">business methods</td></tr>
+							<tr><td>@AroundConstruct</td><td class="desc">constructor</td></tr>
+							<tr><td>@AroundTimeout</td><td class="desc">EJB timer callbacks</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Expecting <code>fireAsync()</code> to reach <code>@Observes</code> methods — only <code>@ObservesAsync</code> observers get async events</li>
+							<li class="note-item">Interceptor without <code>@Priority</code> — never enabled unless listed in <code>beans.xml</code></li>
+							<li class="note-item">Throwing from a sync observer — the exception propagates and can roll back the firing transaction</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Fire immutable records as event payloads</li>
+							<li class="note-item">Use qualifiers on events (<code>Event&lt;@Express OrderPlaced&gt;</code>) to target observers</li>
+							<li class="note-item">Put binding annotations on the class to cover every method</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>Event.fire()</code> — sync broadcast</li>
+							<li class="note-item"><code>@ObservesAsync</code> — async observer</li>
+							<li class="note-item"><code>@AroundInvoke</code> — wrap calls</li>
+							<li class="note-item"><code>@Decorator</code> — typed wrapper (Full)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-13-qualifiers-producers.html" title="Qualifiers, Producers &amp; Alternatives">Qualifiers &amp; Producers</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-15-servlets.html">Servlets</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

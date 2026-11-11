@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 09: Stateful Beans, Lifecycle &amp; Timers</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s09">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 09</div>
+			<div class="spec-tag">Enterprise Beans 4.0</div>
+			<h1>Stateful Beans, Lifecycle &amp; Timers</h1>
+			<div class="sheet-desc"><code>@Stateful</code> · <code>@Remove</code> · <code>@PostConstruct</code> · passivation · <code>@Asynchronous</code> · <code>@Schedule</code> · <code>TimerService</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description">A **<code>@Stateful</code><strong> bean keeps state for one client across calls (a shopping cart), and the container may </strong>passivate<strong> it to disk when idle. EJBs also give you </strong>timers** (<code>@Schedule</code> for cron-style, <code>TimerService</code> for programmatic) and **<code>@Asynchronous</code>** methods that return a <code>Future</code>. Timers are the main reason EJB survives in new code.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Remove</code> ends a stateful bean; otherwise it times out</li>
+							<li class="note-item">Passivated beans must be <code>Serializable</code> (fields too)</li>
+							<li class="note-item"><code>@Schedule(persistent=false)</code> skips the timer database</li>
+							<li class="note-item">EE 11 Concurrency <code>@Asynchronous</code> is the CDI alternative</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Cart, Nightly Job and Async Call</h2>
+						<pre><code class="language-java">@Stateful @StatefulTimeout(value = 30, unit = MINUTES)
+public class Cart implements Serializable {
+    private final List&lt;Item&gt; items = new ArrayList&lt;&gt;();
+    public void add(Item i) { items.add(i); }
+    @Remove public Order checkout() { return Order.of(items); }
+}
+
+@Singleton
+public class Jobs {
+    @Schedule(hour = "2", minute = "0", persistent = false)
+    void nightlyCleanup() { /* 02:00 every day */ }
+
+    @Resource TimerService timers;
+    public void remindIn(Duration d) {
+        timers.createSingleActionTimer(d.toMillis(), new TimerConfig());
+    }
+    @Timeout void onTimer(Timer t) { /* fires once */ }
+
+    @Asynchronous
+    public Future&lt;Report&gt; build() { return new AsyncResult&lt;&gt;(make()); }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@StatefulTimeout</code> — idle time before the container removes it</div>
+							<div class="explain-item"><code>@Remove</code> — call it to end the conversation and free memory</div>
+							<div class="explain-item"><code>@Schedule</code> — cron fields: <code>second minute hour dayOfMonth month dayOfWeek year</code></div>
+							<div class="explain-item"><code>@Timeout</code> — callback for programmatic timers</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Schedule</code> → <code>@Scheduled(cron=…)</code> (Spring 61)</li>
+							<li class="note-item"><code>@Asynchronous</code> → <code>@Async</code> + <code>CompletableFuture</code> (Spring 62)</li>
+							<li class="note-item"><code>@Stateful</code> → <code>@SessionScope</code> bean</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>AsyncResult</code> + <code>Future</code></span> → <span class="idiom-prefer"><code>CompletableFuture</code> (EJB 3.2+)</span></li>
+							<li class="note-item"><span class="idiom-avoid">persistent timers by default</span> → <span class="idiom-prefer"><code>persistent = false</code> unless they must survive restarts</span></li>
+							<li class="note-item"><span class="idiom-avoid">stateful EJB for web carts</span> → <span class="idiom-prefer"><code>@SessionScoped</code> CDI bean</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Lifecycle Callbacks Table | Schedule Examples Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-lifecycle-callbacks">
+						<h2 class="section-title">Lifecycle Callbacks</h2>
+						<table><thead><tr><th>Callback</th><th>When</th></tr></thead><tbody>
+							<tr><td>@PostConstruct</td><td class="desc">after injection</td></tr>
+							<tr><td>@PreDestroy</td><td class="desc">before removal</td></tr>
+							<tr><td>@PrePassivate</td><td class="desc">before writing to disk</td></tr>
+							<tr><td>@PostActivate</td><td class="desc">after reading back</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-schedule-examples">
+						<h2 class="section-title">@Schedule Examples</h2>
+						<table><thead><tr><th>Attributes</th><th>Fires</th></tr></thead><tbody>
+							<tr><td>minute="*/15", hour="*"</td><td class="desc">every 15 min</td></tr>
+							<tr><td>hour="2"</td><td class="desc">02:00 daily</td></tr>
+							<tr><td>dayOfWeek="Mon-Fri", hour="9"</td><td class="desc">weekdays 09:00</td></tr>
+							<tr><td>dayOfMonth="Last"</td><td class="desc">last day of month, midnight</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Forgetting <code>hour = "*"</code> — <code>@Schedule</code> defaults hour to 0, so <code>minute="*/5"</code> only fires during midnight</li>
+							<li class="note-item">Non-serializable fields in a stateful bean — passivation fails and the bean is discarded</li>
+							<li class="note-item">Never calling <code>@Remove</code> — stateful beans pile up until timeout</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Put <code>@Schedule</code> methods on a <code>@Singleton</code> so two nodes don't double-run without clustering</li>
+							<li class="note-item">Use <code>timers.getTimers()</code> to list and cancel active timers</li>
+							<li class="note-item">Prefer <code>ManagedScheduledExecutorService</code> (sheet 33) when you don't need persistence</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Stateful</code> — one per client</li>
+							<li class="note-item"><code>@Remove</code> — end conversation</li>
+							<li class="note-item"><code>@Schedule</code> — cron timer</li>
+							<li class="note-item"><code>@Asynchronous</code> — returns a <code>Future</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-08-stateless-singleton-beans.html" title="Stateless &amp; Singleton Session Beans">Stateless &amp; Singleton</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-10-ejb-vs-cdi.html" title="Enterprise Beans vs CDI Beans">EJB vs CDI</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

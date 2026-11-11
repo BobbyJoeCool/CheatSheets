@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 32: Security</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s32">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 32</div>
+			<div class="spec-tag">Security 4.0</div>
+			<h1>Security</h1>
+			<div class="sheet-desc"><code>@RolesAllowed</code> · <code>SecurityContext</code> · identity stores · <code>@BasicAuthenticationMechanismDefinition</code> · OpenID Connect</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Jakarta Security</strong> lets an app define <strong>authentication mechanisms</strong> (Basic, Form, OpenID Connect) and <strong>identity stores</strong> (database, LDAP, custom) in code, without server-specific config. **<code>@RolesAllowed</code><strong> protects CDI beans, EJBs and REST resources; </strong><code>SecurityContext</code>** answers who the caller is.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Security 4.0 (EE 11) supports multiple mechanisms with qualifiers</li>
+							<li class="note-item">Roles must be declared (<code>@DeclareRoles</code>) or mapped</li>
+							<li class="note-item"><code>@PermitAll</code> / <code>@DenyAll</code> override class-level rules</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Basic Auth + DB Identity Store</h2>
+						<pre><code class="language-java">@BasicAuthenticationMechanismDefinition(realmName = "shop")
+@DatabaseIdentityStoreDefinition(
+    dataSourceLookup = "java:app/jdbc/shop",
+    callerQuery = "SELECT password FROM users WHERE email = ?",
+    groupsQuery = "SELECT role FROM user_roles WHERE email = ?",
+    hashAlgorithm = Pbkdf2PasswordHash.class)
+@DeclareRoles({"admin", "customer"})
+@ApplicationScoped public class SecurityConfig { }
+
+@Path("/admin") @RolesAllowed("admin")
+public class AdminResource {
+    @Inject SecurityContext security;
+
+    @GET public String me() {
+        return security.getCallerPrincipal().getName();   // bob@shop.app
+    }
+    @GET @Path("public") @PermitAll public String ping() { return "ok"; }
+}
+
+@OpenIdAuthenticationMechanismDefinition(
+    providerURI = "https://login.example.com",
+    clientId = "shop", clientSecret = "${oidc.secret}",
+    redirectURI = "${baseURL}/callback")</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item">Mechanism + identity store = complete login with no <code>web.xml</code></div>
+							<div class="explain-item"><code>Pbkdf2PasswordHash</code> — salted hashing for stored passwords</div>
+							<div class="explain-item"><code>isCallerInRole("admin")</code> — programmatic check</div>
+							<div class="explain-item">OIDC mechanism handles the redirect/callback flow</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item">Spring Security <code>SecurityFilterChain</code> replaces mechanisms/stores (Spring 45–46)</li>
+							<li class="note-item"><code>@RolesAllowed</code> works with <code>@EnableMethodSecurity(jsr250Enabled = true)</code></li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>&lt;security-constraint&gt;</code> in <code>web.xml</code></span> → <span class="idiom-prefer"><code>@RolesAllowed</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">plain-text passwords</span> → <span class="idiom-prefer"><code>Pbkdf2PasswordHash</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">server-specific realms</span> → <span class="idiom-prefer"><code>@…IdentityStoreDefinition</code></span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Mechanisms Table | Checks Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-mechanisms">
+						<h2 class="section-title">Mechanisms</h2>
+						<table><thead><tr><th>Annotation</th><th>Flow</th></tr></thead><tbody>
+							<tr><td>@BasicAuthenticationMechanismDefinition</td><td class="desc">HTTP Basic</td></tr>
+							<tr><td>@FormAuthenticationMechanismDefinition</td><td class="desc">login page</td></tr>
+							<tr><td>@CustomFormAuthenticationMechanismDefinition</td><td class="desc">your Faces/JSP form</td></tr>
+							<tr><td>@OpenIdAuthenticationMechanismDefinition</td><td class="desc">OIDC login</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-checks">
+						<h2 class="section-title">Checks</h2>
+						<table><thead><tr><th>API</th><th>Use</th></tr></thead><tbody>
+							<tr><td>@RolesAllowed("x")</td><td class="desc">declarative</td></tr>
+							<tr><td>SecurityContext.isCallerInRole</td><td class="desc">programmatic</td></tr>
+							<tr><td>getCallerPrincipal()</td><td class="desc">current user</td></tr>
+							<tr><td>authenticate(req, res, params)</td><td class="desc">trigger login</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@RolesAllowed</code> on a class nobody intercepts (plain <code>new</code> object) — no check happens</li>
+							<li class="note-item">Basic auth over HTTP — credentials are only Base64; always TLS</li>
+							<li class="note-item">Mixing REST's <code>jakarta.ws.rs.core.SecurityContext</code> and Jakarta Security's — different APIs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Implement <code>IdentityStore</code> for custom user sources</li>
+							<li class="note-item">Use <code>HttpAuthenticationMechanism</code> for token/JWT auth (or MicroProfile JWT)</li>
+							<li class="note-item">Test with <code>@RunAs</code> or runtime test utilities</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>mechanism</code> — how credentials arrive</li>
+							<li class="note-item"><code>IdentityStore</code> — validates them</li>
+							<li class="note-item"><code>@RolesAllowed</code> — authorization</li>
+							<li class="note-item"><code>SecurityContext</code> — caller info</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-31-bean-validation.html">Bean Validation</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-33-concurrency.html">Concurrency</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>
