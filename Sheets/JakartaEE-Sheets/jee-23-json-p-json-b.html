@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 23: JSON Processing &amp; Binding</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<div class="spec-tag">JSON-B 3.0 · JSON-P 2.1</div>
+			<h1>JSON Processing &amp; Binding</h1>
+			<div class="sheet-desc"><code>JsonbBuilder</code> · <code>@JsonbProperty</code> · <code>@JsonbTransient</code> · adapters · <code>Json.createObjectBuilder</code> · <code>JsonPatch</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>JSON-B</strong> binds Java objects to JSON and back, the default provider behind Jakarta REST. <strong>JSON-P</strong> is the lower-level API: build and read JSON trees or stream tokens, plus <code>JsonPointer</code> and <code>JsonPatch</code>. Use JSON-B for DTOs; reach for JSON-P for dynamic shapes and partial updates.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Records serialize by component (JSON-B 3)</li>
+							<li class="note-item">Default naming is Java property names; change with a strategy</li>
+							<li class="note-item">Implementations: Yasson (JSON-B), Parsson (JSON-P)</li>
+							<li class="note-item">Jackson is common too, but isn't a Jakarta spec</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code-jsonb">
+						<h2 class="section-title">JSON-B Binding</h2>
+						<pre><code class="language-java">public record ProductDto(
+    long id,
+    @JsonbProperty("display_name") String name,
+    @JsonbNumberFormat("#0.00") BigDecimal price,
+    @JsonbDateFormat("yyyy-MM-dd") LocalDate added,
+    @JsonbTransient String internalNote) { }
+
+Jsonb jsonb = JsonbBuilder.create(new JsonbConfig()
+    .withPropertyNamingStrategy(
+        PropertyNamingStrategy.LOWER_CASE_WITH_UNDERSCORES)
+    .withNullValues(false));
+String json = jsonb.toJson(dto);
+    // {"id":1,"display_name":"Mug","price":"9.50",...}
+ProductDto back = jsonb.fromJson(json, ProductDto.class);</code></pre>
+					</section>
+					<section class="section-code" id="code-jsonp">
+						<h2 class="section-title">JSON-P Tree &amp; Patch</h2>
+						<pre><code class="language-java">JsonObject o = Json.createObjectBuilder()
+    .add("sku", "MUG-1").add("qty", 2).build();  // {"sku":"MUG-1","qty":2}
+JsonPatch patch = Json.createPatchBuilder()
+    .replace("/qty", 5).build();
+JsonObject updated = patch.apply(o);         // {"sku":"MUG-1","qty":5}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@JsonbProperty</code> — rename one field</div>
+							<div class="explain-item"><code>@JsonbTransient</code> — never serialized</div>
+							<div class="explain-item"><code>withNullValues(false)</code> — omit nulls</div>
+							<div class="explain-item"><code>JsonPatch</code> — RFC 6902 ops: add, remove, replace, move</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item">Spring uses Jackson: <code>@JsonProperty</code>, <code>@JsonIgnore</code>, <code>@JsonFormat</code></li>
+							<li class="note-item"><code>ObjectMapper</code> / Jackson 3 <code>JsonMapper</code> ≈ <code>Jsonb</code> · See Spring 25</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">serializing entities</span> → <span class="idiom-prefer">record DTOs</span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>new Jsonb</code> per call</span> → <span class="idiom-prefer">one shared <code>Jsonb</code> (thread-safe)</span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>Map&lt;String,Object&gt;</code> for known shapes</span> → <span class="idiom-prefer">typed records</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Json B Annotations Table | Json P Classes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-json-b-annotations">
+						<h2 class="section-title">JSON-B Annotations</h2>
+						<table><thead><tr><th>Annotation</th><th>Does</th></tr></thead><tbody>
+							<tr><td>@JsonbProperty</td><td class="desc">JSON name</td></tr>
+							<tr><td>@JsonbTransient</td><td class="desc">skip</td></tr>
+							<tr><td>@JsonbDateFormat</td><td class="desc">date pattern</td></tr>
+							<tr><td>@JsonbNillable</td><td class="desc">write nulls</td></tr>
+							<tr><td>@JsonbTypeAdapter</td><td class="desc">custom mapping</td></tr>
+							<tr><td>@JsonbCreator</td><td class="desc">ctor / factory for reading</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-json-p-classes">
+						<h2 class="section-title">JSON-P Classes</h2>
+						<table><thead><tr><th>Class</th><th>Use</th></tr></thead><tbody>
+							<tr><td>JsonObjectBuilder</td><td class="desc">build objects</td></tr>
+							<tr><td>JsonReader</td><td class="desc">parse to tree</td></tr>
+							<tr><td>JsonParser</td><td class="desc">streaming tokens</td></tr>
+							<tr><td>JsonPointer</td><td class="desc"><code>/a/0/b</code> paths</td></tr>
+							<tr><td>JsonMergePatch</td><td class="desc">RFC 7386 merge</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Returning JPA entities — lazy collections trigger extra queries or fail outside the transaction</li>
+							<li class="note-item">Expecting Jackson annotations to work with JSON-B — they're ignored unless Jackson is the provider</li>
+							<li class="note-item">Creating a <code>Jsonb</code> per request — it's expensive; cache it or use a <code>ContextResolver</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Customize REST's JSON-B with a <code>ContextResolver&lt;Jsonb&gt;</code> provider</li>
+							<li class="note-item">Use <code>JsonMergePatch</code> for <code>PATCH</code> with <code>application/merge-patch+json</code></li>
+							<li class="note-item">Keep DTOs as records; validation annotations work on components</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>JSON-B</code> — object ↔ JSON</li>
+							<li class="note-item"><code>@JsonbProperty</code> — rename</li>
+							<li class="note-item"><code>JSON-P</code> — trees &amp; streams</li>
+							<li class="note-item"><code>JsonPatch</code> — partial updates</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-22-rest-params-responses.html" title="Parameters, Responses &amp; Errors">Params &amp; Responses</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-24-rest-client-providers.html" title="REST Client, Filters &amp; Providers">Client &amp; Providers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

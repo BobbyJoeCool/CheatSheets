@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 26: Relationships &amp; Inheritance</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<div class="spec-tag">Persistence 3.2</div>
+			<h1>Relationships &amp; Inheritance</h1>
+			<div class="sheet-desc"><code>@OneToMany</code> · <code>@ManyToOne</code> · <code>@ManyToMany</code> · <code>mappedBy</code> · cascade · <code>FetchType.LAZY</code> · <code>@Inheritance</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description">Relationships map foreign keys to object references. The side with the foreign key is the <strong>owner</strong>; the other side uses **<code>mappedBy</code><strong> and is ignored for writes. </strong>Cascade<strong> propagates operations to children; </strong>fetch type** decides when related rows load. Inheritance maps a class hierarchy to one or more tables.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@ManyToOne</code> / <code>@OneToOne</code> default to EAGER — set LAZY</li>
+							<li class="note-item"><code>@OneToMany</code> / <code>@ManyToMany</code> default to LAZY</li>
+							<li class="note-item">Keep both sides in sync with helper methods</li>
+							<li class="note-item"><code>orphanRemoval</code> deletes children removed from the collection</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Order ↔ Lines, Many-to-Many Tags</h2>
+						<pre><code class="language-java">@Entity public class PurchaseOrder {
+    @Id @GeneratedValue Long id;
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL,
+               orphanRemoval = true)
+    private List&lt;OrderLine&gt; lines = new ArrayList&lt;&gt;();
+
+    public void addLine(OrderLine l) { lines.add(l); l.setOrder(this); }
+}
+
+@Entity public class OrderLine {
+    @Id @GeneratedValue Long id;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "order_id")              // owner: has the FK
+    private PurchaseOrder order;
+}
+
+@Entity public class Product {
+    @ManyToMany
+    @JoinTable(name = "product_tags",
+        joinColumns = @JoinColumn(name = "product_id"),
+        inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    private Set&lt;Tag&gt; tags = new HashSet&lt;&gt;();
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>mappedBy = "order"</code> — field name on the owning side</div>
+							<div class="explain-item"><code>CascadeType.ALL</code> — persist/remove lines with the order</div>
+							<div class="explain-item"><code>addLine</code> — sets both sides so memory matches the DB</div>
+							<div class="explain-item"><code>Set</code> for many-to-many avoids duplicate-row deletes</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item">Identical mappings in Spring Data JPA</li>
+							<li class="note-item">Spring's <code>@EntityGraph</code> on repository methods ≈ entity graphs here · See Spring 37</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">EAGER <code>@ManyToOne</code></span> → <span class="idiom-prefer"><code>fetch = LAZY</code> + fetch joins</span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>CascadeType.ALL</code> on <code>@ManyToOne</code></span> → <span class="idiom-prefer">cascade only parent → child</span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>List</code> for <code>@ManyToMany</code></span> → <span class="idiom-prefer"><code>Set</code></span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Inheritance Strategies Table | Cascade Types Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-inheritance-strategies">
+						<h2 class="section-title">Inheritance Strategies</h2>
+						<table><thead><tr><th>Strategy</th><th>Tables</th><th>Trade-off</th></tr></thead><tbody>
+							<tr><td>SINGLE_TABLE</td><td>one + discriminator</td><td class="desc">fast; nullable columns</td></tr>
+							<tr><td>JOINED</td><td>one per class</td><td class="desc">normalized; joins</td></tr>
+							<tr><td>TABLE_PER_CLASS</td><td>one per concrete</td><td class="desc">unions for polymorphic queries</td></tr>
+							<tr><td>@MappedSuperclass</td><td>none (fields copied)</td><td class="desc">no polymorphic queries</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-cascade-types">
+						<h2 class="section-title">Cascade Types</h2>
+						<table><thead><tr><th>Type</th><th>Propagates</th></tr></thead><tbody>
+							<tr><td>PERSIST</td><td class="desc"><code>persist()</code></td></tr>
+							<tr><td>MERGE</td><td class="desc"><code>merge()</code></td></tr>
+							<tr><td>REMOVE</td><td class="desc"><code>remove()</code></td></tr>
+							<tr><td>ALL</td><td class="desc">everything</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Setting only the inverse side — <code>mappedBy</code> side is ignored, so the FK stays null</li>
+							<li class="note-item"><code>CascadeType.REMOVE</code> on many-to-many — deleting one product deletes shared tags</li>
+							<li class="note-item">Lazy access after the transaction ends — <code>LazyInitializationException</code> (Hibernate)</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Default every to-one to LAZY and load what you need per query (sheet 28)</li>
+							<li class="note-item">Use <code>@MappedSuperclass</code> for shared audit columns</li>
+							<li class="note-item">Prefer <code>JOINED</code> when subclasses add many columns</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>owner</code> — side with <code>@JoinColumn</code></li>
+							<li class="note-item"><code>mappedBy</code> — inverse side</li>
+							<li class="note-item"><code>cascade</code> — propagate ops</li>
+							<li class="note-item"><code>@Inheritance</code> — hierarchy mapping</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-25-persistence-entities.html" title="Entities &amp; persistence.xml">Entities</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-27-entitymanager-lifecycle.html" title="EntityManager &amp; Entity Lifecycle">EntityManager</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

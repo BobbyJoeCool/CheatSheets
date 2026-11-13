@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 12: Scopes &amp; Lifecycle</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<div class="spec-tag">CDI 4.1</div>
+			<h1>Scopes &amp; Lifecycle</h1>
+			<div class="sheet-desc"><code>@RequestScoped</code> · <code>@SessionScoped</code> · <code>@ApplicationScoped</code> · <code>@ConversationScoped</code> · <code>@Dependent</code> · proxies</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description">A <strong>scope</strong> decides how long a bean instance lives and who shares it. <strong>Normal scopes</strong> (request, session, application, conversation) are reached through a client proxy, so a long-lived bean can safely hold a short-lived one. **<code>@Dependent</code>** is a pseudo-scope: a new instance per injection point that lives and dies with its owner.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Dependent</code> is the default when no scope is given (with <code>all</code> discovery)</li>
+							<li class="note-item">Session- and conversation-scoped beans must be <code>Serializable</code></li>
+							<li class="note-item">Faces adds <code>@ViewScoped</code> and <code>@FlowScoped</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">Each scope has a context that stores its instances; the proxy looks up the current one per call</li>
+							<li class="note-item">A <code>@RequestScoped</code> bean inside an <code>@ApplicationScoped</code> one works: the proxy finds the current request</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">One Bean per Scope</h2>
+						<pre><code class="language-java">@RequestScoped                               // one per HTTP request
+public class RequestInfo { String traceId = UUID.randomUUID().toString(); }
+
+@SessionScoped                               // one per user session
+public class UserPrefs implements Serializable { Locale locale; }
+
+@ApplicationScoped                           // one for the whole app
+public class Catalog {
+    @Inject RequestInfo req;                 // proxy → current request
+    @PostConstruct void warm() { loadAll(); }    // once
+}
+
+@ConversationScoped                          // spans several requests
+public class Wizard implements Serializable {
+    @Inject Conversation conv;
+    void start() { conv.begin(); }           // until conv.end()
+    void finish() { conv.end(); }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>RequestInfo</code> gets a new <code>traceId</code> every request, even inside <code>Catalog</code></div>
+							<div class="explain-item"><code>@PostConstruct</code> — after injection; <code>@PreDestroy</code> — before discard</div>
+							<div class="explain-item"><code>Conversation.begin()</code> / <code>end()</code> — <code>?cid=</code> carries it between requests</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@RequestScoped</code> → <code>@RequestScope</code>, <code>@SessionScoped</code> → <code>@SessionScope</code></li>
+							<li class="note-item"><code>@ApplicationScoped</code> → default singleton</li>
+							<li class="note-item"><code>@Dependent</code> → prototype · See Spring 11</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid">mutable app-scoped state</span> → <span class="idiom-prefer">narrower scope</span></li>
+							<li class="note-item"><span class="idiom-avoid">storing user data in static fields</span> → <span class="idiom-prefer"><code>@SessionScoped</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">conversation for one page</span> → <span class="idiom-prefer"><code>@ViewScoped</code></span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Scopes Table | Lifecycle Order Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-scopes">
+						<h2 class="section-title">Scopes</h2>
+						<table><thead><tr><th>Scope</th><th>Lives for</th><th>Proxy?</th></tr></thead><tbody>
+							<tr><td>@RequestScoped</td><td>one request</td><td class="desc">yes</td></tr>
+							<tr><td>@SessionScoped</td><td>HTTP session</td><td class="desc">yes</td></tr>
+							<tr><td>@ApplicationScoped</td><td>app lifetime</td><td class="desc">yes</td></tr>
+							<tr><td>@ConversationScoped</td><td>begin() → end()</td><td class="desc">yes</td></tr>
+							<tr><td>@Dependent</td><td>its owner</td><td class="desc">no</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-lifecycle-order">
+						<h2 class="section-title">Lifecycle Order</h2>
+						<table><thead><tr><th>Step</th><th>What happens</th></tr></thead><tbody>
+							<tr><td>1. construct</td><td class="desc">constructor (with injection)</td></tr>
+							<tr><td>2. inject</td><td class="desc">fields, initializer methods</td></tr>
+							<tr><td>3. @PostConstruct</td><td class="desc">init logic</td></tr>
+							<tr><td>4. @PreDestroy</td><td class="desc">context ends</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>final</code> methods on a scoped bean — the proxy can't intercept them and you read its empty fields</li>
+							<li class="note-item">Expecting <code>@PostConstruct</code> at startup — <code>@ApplicationScoped</code> is lazy; use <code>@Observes Startup</code></li>
+							<li class="note-item">Non-serializable <code>@SessionScoped</code> bean — session replication and passivation fail</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Pick the narrowest scope that works; it avoids thread-safety bugs</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>normal scope</code> — shared through a proxy</li>
+							<li class="note-item"><code>@Dependent</code> — per injection point</li>
+							<li class="note-item"><code>@PostConstruct</code> — after injection</li>
+							<li class="note-item"><code>@ConversationScoped</code> — multi-request</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-11-cdi-basics.html">CDI Basics &amp; Injection</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-13-qualifiers-producers.html" title="Qualifiers, Producers &amp; Alternatives">Qualifiers &amp; Producers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

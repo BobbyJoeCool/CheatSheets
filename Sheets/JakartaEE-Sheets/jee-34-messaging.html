@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 34: Messaging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<div class="spec-tag">Messaging 3.1</div>
+			<h1>Messaging</h1>
+			<div class="sheet-desc"><code>JMSContext</code> · queues vs topics · <code>@MessageDriven</code> · <code>MessageListener</code> · acknowledgement · <code>@JMSConnectionFactoryDefinition</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Jakarta Messaging</strong> (JMS) sends messages through a broker. A <strong>queue</strong> delivers each message to one consumer; a <strong>topic</strong> delivers to every subscriber. Send with the simplified **<code>JMSContext</code><strong> API; consume with a </strong>message-driven bean**, which the container pools and wraps in a transaction.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Platform profile only</li>
+							<li class="note-item">Brokers: ActiveMQ Artemis (WildFly, Payara), Liberty built-in</li>
+							<li class="note-item">Messages: <code>TextMessage</code>, <code>ObjectMessage</code>, <code>MapMessage</code>…</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">Message-driven beans are pooled consumers; many messages process in parallel</li>
+							<li class="note-item">The container acknowledges the message when the MDB's transaction commits</li>
+							<li class="note-item">On rollback the broker redelivers; set a max-redelivery and dead-letter queue</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Send and Consume</h2>
+						<pre><code class="language-java">@ApplicationScoped
+public class OrderPublisher {
+    @Inject JMSContext jms;                         // container-managed
+    @Resource(lookup = "java:app/jms/orders") Queue orders;
+
+    public void publish(Order o) {
+        jms.createProducer()
+           .setProperty("priority", o.vip() ? "high" : "normal")
+           .send(orders, jsonb.toJson(o));          // TextMessage
+    }
+}
+
+@MessageDriven(activationConfig = {
+    @ActivationConfigProperty(propertyName = "destinationLookup",
+                              propertyValue = "java:app/jms/orders"),
+    @ActivationConfigProperty(propertyName = "messageSelector",
+                              propertyValue = "priority = 'high'") })
+public class VipOrderListener implements MessageListener {
+    public void onMessage(Message m) {
+        Order o = jsonb.fromJson(((TextMessage) m).getText(), Order.class);
+        fulfil(o);                                  // throws → redelivery
+    }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>createProducer().send()</code> — one line to send</div>
+							<div class="explain-item"><code>messageSelector</code> — SQL-like filter on properties</div>
+							<div class="explain-item">Exception in <code>onMessage</code> → rollback → redelivery</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item">MDB → <code>@JmsListener</code> (Spring JMS) or <code>@KafkaListener</code></li>
+							<li class="note-item"><code>JMSContext</code> → <code>JmsTemplate</code> / <code>JmsClient</code></li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>ObjectMessage</code> with Java serialization</span> → <span class="idiom-prefer">JSON <code>TextMessage</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">classic <code>Connection</code>/<code>Session</code> code</span> → <span class="idiom-prefer"><code>JMSContext</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">non-idempotent consumers</span> → <span class="idiom-prefer">handle redelivered duplicates</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Queue Vs Topic Table | Acknowledgement Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-queue-vs-topic">
+						<h2 class="section-title">Queue vs Topic</h2>
+						<table><thead><tr><th>Aspect</th><th>Queue</th><th>Topic</th></tr></thead><tbody>
+							<tr><td>delivery</td><td>one consumer</td><td class="desc">all subscribers</td></tr>
+							<tr><td>missed messages</td><td>kept until read</td><td class="desc">lost unless durable</td></tr>
+							<tr><td>use for</td><td>work items</td><td class="desc">notifications</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-acknowledgement">
+						<h2 class="section-title">Acknowledgement</h2>
+						<table><thead><tr><th>Mode</th><th>Behavior</th></tr></thead><tbody>
+							<tr><td>transacted (MDB default)</td><td class="desc">ack on commit</td></tr>
+							<tr><td>AUTO_ACKNOWLEDGE</td><td class="desc">ack after onMessage returns</td></tr>
+							<tr><td>DUPS_OK_ACKNOWLEDGE</td><td class="desc">lazy ack, duplicates possible</td></tr>
+							<tr><td>CLIENT_ACKNOWLEDGE</td><td class="desc"><code>message.acknowledge()</code></td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Poison message with no redelivery limit — fails and redelivers forever</li>
+							<li class="note-item">Non-durable topic subscriber — messages sent while it's down are gone</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Configure a dead-letter queue and max delivery attempts on the broker</li>
+							<li class="note-item">Make consumers idempotent (dedupe by message id or business key)</li>
+							<li class="note-item">Use <code>JMSContext.createSharedDurableConsumer</code> for scaled topic consumers</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>queue</code> — point-to-point</li>
+							<li class="note-item"><code>topic</code> — publish/subscribe</li>
+							<li class="note-item"><code>JMSContext</code> — simplified send</li>
+							<li class="note-item"><code>@MessageDriven</code> — pooled consumer</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-33-concurrency.html">Concurrency</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-35-batch-mail-other.html" title="Batch, Mail &amp; Other Specs">Batch, Mail &amp; Other</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

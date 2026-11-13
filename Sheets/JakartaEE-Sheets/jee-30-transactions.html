@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 30: Transactions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<div class="spec-tag">Transactions 2.0</div>
+			<h1>Transactions</h1>
+			<div class="sheet-desc">JTA · <code>@Transactional</code> · <code>TxType</code> · <code>rollbackOn</code> · <code>@TransactionAttribute</code> · <code>UserTransaction</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description">Jakarta EE uses <strong>JTA</strong> transactions managed by the container. Put **<code>@Transactional</code><strong> on a CDI bean class or method and the interceptor starts, joins or suspends a transaction based on </strong><code>TxType</code>**. EJBs are transactional by default (<code>@TransactionAttribute</code>). Use **<code>UserTransaction</code>** only for manual control.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Transactional</code> from <code>jakarta.transaction</code>, not Spring's</li>
+							<li class="note-item">Default type is <code>REQUIRED</code></li>
+							<li class="note-item">Persistence <code>EntityManager</code> joins the JTA transaction</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">JTA binds the transaction to the current thread</li>
+							<li class="note-item"><code>REQUIRED</code> joins an existing transaction; <code>REQUIRES_NEW</code> suspends it and starts another</li>
+							<li class="note-item">Unchecked exceptions roll back; checked exceptions commit unless listed in <code>rollbackOn</code></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Declarative and Manual</h2>
+						<pre><code class="language-java">@ApplicationScoped
+public class PaymentService {
+    @Inject AuditLog audit;
+    @PersistenceContext EntityManager em;
+
+    @Transactional(rollbackOn = PaymentDeclined.class)
+    public void charge(Order o) throws PaymentDeclined {
+        em.persist(new Payment(o));
+        audit.record("charge " + o.id());   // runs in its own tx
+        gateway.charge(o);                  // may throw
+    }
+}
+@ApplicationScoped
+public class AuditLog {
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    public void record(String msg) { em.persist(new AuditEntry(msg)); }
+}
+
+@Resource UserTransaction utx;              // manual (rare)
+utx.begin();
+try { work(); utx.commit(); }
+catch (Exception e) { utx.rollback(); throw e; }</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>rollbackOn</code> — make a checked exception roll back</div>
+							<div class="explain-item"><code>REQUIRES_NEW</code> — audit entry commits even if <code>charge</code> rolls back</div>
+							<div class="explain-item">Must call <code>record</code> through the injected bean, not <code>this</code></div>
+							<div class="explain-item"><code>UserTransaction</code> — bean-managed; don't mix with <code>@Transactional</code></div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Transactional</code> → Spring <code>@Transactional</code> (<code>rollbackFor</code>, <code>propagation</code>)</li>
+							<li class="note-item"><code>TxType</code> names match Spring <code>Propagation</code> · See Spring 42</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>@Stateless</code> just for transactions</span> → <span class="idiom-prefer">CDI + <code>@Transactional</code></span></li>
+							<li class="note-item"><span class="idiom-avoid"><code>UserTransaction</code> boilerplate</span> → <span class="idiom-prefer"><code>@Transactional</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">transactions on REST resources</span> → <span class="idiom-prefer">on the service layer</span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Txtype Table | Ejb Equivalent Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-txtype">
+						<h2 class="section-title">TxType</h2>
+						<table><thead><tr><th>Type</th><th>No tx exists</th><th>Tx exists</th></tr></thead><tbody>
+							<tr><td>REQUIRED</td><td>start new</td><td class="desc">join</td></tr>
+							<tr><td>REQUIRES_NEW</td><td>start new</td><td class="desc">suspend, start new</td></tr>
+							<tr><td>MANDATORY</td><td>throw</td><td class="desc">join</td></tr>
+							<tr><td>SUPPORTS</td><td>run without</td><td class="desc">join</td></tr>
+							<tr><td>NOT_SUPPORTED</td><td>run without</td><td class="desc">suspend</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-ejb-equivalent">
+						<h2 class="section-title">EJB Equivalent</h2>
+						<table><thead><tr><th>EJB</th><th>CDI</th></tr></thead><tbody>
+							<tr><td>@TransactionAttribute</td><td class="desc"><code>@Transactional</code></td></tr>
+							<tr><td>setRollbackOnly()</td><td class="desc">same, on <code>TransactionManager</code></td></tr>
+							<tr><td>@ApplicationException</td><td class="desc"><code>rollbackOn</code></td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Importing Spring's <code>@Transactional</code> in a Jakarta app — nothing intercepts it</li>
+							<li class="note-item">Self-invocation of a <code>REQUIRES_NEW</code> method — runs in the caller's transaction</li>
+							<li class="note-item">Catching the exception inside the method — the interceptor never sees it, so it commits</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Keep transactions short; no remote calls inside if you can help it</li>
+							<li class="note-item">Use <code>@Transactional(dontRollbackOn = …)</code> for expected business exceptions</li>
+							<li class="note-item">Observe <code>AFTER_SUCCESS</code> events for work that must follow a commit</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Transactional</code> — CDI interceptor</li>
+							<li class="note-item"><code>REQUIRED</code> — join or start</li>
+							<li class="note-item"><code>REQUIRES_NEW</code> — independent tx</li>
+							<li class="note-item"><code>rollbackOn</code> — checked rollback</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-29-jakarta-data.html" title="Jakarta Data Repositories">Jakarta Data</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-31-bean-validation.html">Bean Validation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jakarta EE — Sheet 33: Concurrency</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jee-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s33">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 33</div>
+			<div class="spec-tag">Concurrency 3.1</div>
+			<h1>Concurrency</h1>
+			<div class="sheet-desc"><code>ManagedExecutorService</code> · <code>@ManagedExecutorDefinition</code> · <code>@Asynchronous</code> · context propagation · virtual threads</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1">
+					<section class="section-desc" id="desc">
+						<h2 class="section-title">Description</h2>
+						<div class="description"><strong>Jakarta Concurrency</strong> gives you executors that the server manages and that carry the <strong>container context</strong> (security, naming, CDI) into the task. EE 11's 3.1 adds <strong>virtual threads</strong> (<code>virtual = true</code>), CDI <code>@Asynchronous</code> with scheduling, and injectable executors via qualifiers.</div>
+					</section>
+				</div>
+				<div class="col" id="col-1-2">
+					<section class="section-notes" id="notes">
+						<h2 class="section-title">Notes</h2>
+						<ul class="note-list">
+							<li class="note-item">Never create raw threads in a server app</li>
+							<li class="note-item">Every server has a default <code>ManagedExecutorService</code></li>
+							<li class="note-item"><code>@Asynchronous</code> methods return <code>CompletableFuture</code></li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-1-3">
+					<section class="section-notes section-container" id="container">
+						<h2 class="section-title">Under the Container</h2>
+						<ul class="note-list">
+							<li class="note-item">Managed executors propagate security, naming and CDI context that a raw <code>ExecutorService</code> drops</li>
+							<li class="note-item">The server tracks and stops managed tasks at undeploy</li>
+							<li class="note-item"><code>virtual = true</code> runs tasks on virtual threads (Java 21+)</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Spring Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1">
+					<section class="section-code" id="code">
+						<h2 class="section-title">Executors and @Asynchronous</h2>
+						<pre><code class="language-java">@ManagedExecutorDefinition(name = "java:app/concurrent/io",
+                           maxAsync = 50, virtual = true)
+@ApplicationScoped
+public class ReportService {
+    @Resource(lookup = "java:app/concurrent/io")
+    ManagedExecutorService io;
+
+    public CompletableFuture&lt;Report&gt; build(long id) {
+        return io.supplyAsync(() -&gt; render(id));     // context propagated
+    }
+
+    @Asynchronous(executor = "java:app/concurrent/io")
+    public CompletableFuture&lt;Void&gt; email(long id) {
+        mailer.send(id);
+        return Asynchronous.Result.complete(null);
+    }
+
+    @Asynchronous(runAt = @Schedule(cron = "0 2 * * *"))   // 3.1
+    public void nightly() { purgeOld(); }
+}</code></pre>
+					</section>
+				</div>
+				<div class="col" id="col-2-2">
+					<section class="section-explain" id="explain">
+						<h2 class="section-title">Code Explained</h2>
+						<div class="section-body">
+							<div class="explain-item"><code>@ManagedExecutorDefinition</code> — declare an executor in code</div>
+							<div class="explain-item"><code>supplyAsync</code> — managed <code>CompletableFuture</code></div>
+							<div class="explain-item"><code>runAt = @Schedule</code> — cron scheduling without EJB</div>
+						</div>
+					</section>
+					<section class="section-notes section-spring" id="spring">
+						<h2 class="section-title">Spring Equivalent</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>@Asynchronous</code> → <code>@Async</code> (Spring 62)</li>
+							<li class="note-item"><code>virtual = true</code> → <code>spring.threads.virtual.enabled=true</code></li>
+							<li class="note-item"><code>runAt</code> → <code>@Scheduled(cron = …)</code> (Spring 61)</li>
+						</ul>
+					</section>
+					<section class="section-notes section-prefer" id="prefer">
+						<h2 class="section-title">Prefer / Avoid</h2>
+						<ul class="note-list">
+							<li class="note-item"><span class="idiom-avoid"><code>new Thread()</code> / <code>Executors.newFixedThreadPool</code></span> → <span class="idiom-prefer">managed executor</span></li>
+							<li class="note-item"><span class="idiom-avoid">EJB <code>@Asynchronous</code></span> → <span class="idiom-prefer">Concurrency <code>@Asynchronous</code></span></li>
+							<li class="note-item"><span class="idiom-avoid">EJB timers without persistence</span> → <span class="idiom-prefer"><code>@Asynchronous(runAt)</code></span></li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-2 -->
+			<!-- Row 3: Resource Types Table | Definition Attributes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1">
+					<section id="tbl-resource-types">
+						<h2 class="section-title">Resource Types</h2>
+						<table><thead><tr><th>Type</th><th>Use</th></tr></thead><tbody>
+							<tr><td>ManagedExecutorService</td><td class="desc">async tasks</td></tr>
+							<tr><td>ManagedScheduledExecutorService</td><td class="desc">delayed / periodic</td></tr>
+							<tr><td>ManagedThreadFactory</td><td class="desc">threads for libraries</td></tr>
+							<tr><td>ContextService</td><td class="desc">wrap tasks with context</td></tr>
+						</tbody></table>
+					</section>
+				</div>
+				<div class="col" id="col-3-2">
+					<section id="tbl-definition-attributes">
+						<h2 class="section-title">Definition Attributes</h2>
+						<table><thead><tr><th>Attribute</th><th>Meaning</th></tr></thead><tbody>
+							<tr><td>maxAsync</td><td class="desc">concurrency limit</td></tr>
+							<tr><td>virtual</td><td class="desc">virtual threads</td></tr>
+							<tr><td>context</td><td class="desc">which contexts propagate</td></tr>
+							<tr><td>qualifiers</td><td class="desc">inject with <code>@Inject @MyQualifier</code></td></tr>
+						</tbody></table>
+					</section>
+				</div>
+			</div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1">
+					<section class="section-mistakes" id="mistakes">
+						<h2 class="section-title">⚠ Common Mistakes</h2>
+						<ul class="note-list">
+							<li class="note-item">Using <code>ForkJoinPool.commonPool()</code> (<code>CompletableFuture.supplyAsync</code> without executor) — tasks lose security and CDI context</li>
+							<li class="note-item">Using <code>@RequestScoped</code> beans in async tasks — the request is over; pass data in</li>
+							<li class="note-item">Blocking on <code>.get()</code> right after submitting — no concurrency gained</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-2">
+					<section class="section-tips" id="tips">
+						<h2 class="section-title">✓ Tips &amp; Best Practices</h2>
+						<ul class="note-list">
+							<li class="note-item">Use qualifiers (3.1) to inject executors without JNDI strings</li>
+							<li class="note-item">Cap <code>maxAsync</code> to protect downstream systems</li>
+							<li class="note-item">Prefer virtual threads for blocking I/O work</li>
+						</ul>
+					</section>
+				</div>
+				<div class="col" id="col-4-3">
+					<section class="section-summary" id="summary">
+						<h2 class="section-title">Quick Summary</h2>
+						<ul class="note-list">
+							<li class="note-item"><code>ManagedExecutorService</code> — server-managed pool</li>
+							<li class="note-item"><code>@Asynchronous</code> — async CDI method</li>
+							<li class="note-item"><code>virtual = true</code> — virtual threads</li>
+							<li class="note-item"><code>runAt</code> — scheduled method</li>
+						</ul>
+					</section>
+				</div>
+			</div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jee-32-security.html">Security</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Jakarta EE Reference · 40 Sheets</a>
+				<a class="nav-link next" href="jee-34-messaging.html">Messaging</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+	</body>
+</html>
