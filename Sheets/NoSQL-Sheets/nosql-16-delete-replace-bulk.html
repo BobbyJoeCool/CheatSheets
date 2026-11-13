@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 16: Delete, Replace, Upsert &amp; Bulk</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>Delete, Replace, Upsert &amp; Bulk</h1>
+			<div class="sheet-desc"><code>deleteOne</code> · <code>deleteMany</code> · <code>replaceOne</code> · <code>upsert: true</code> · <code>findOneAndUpdate</code> · <code>bulkWrite</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Remove, Replace, Upsert, Batch</h2><div class="description"><strong><code>deleteOne</code></strong> and <strong><code>deleteMany</code></strong> remove matching documents. <strong><code>replaceOne</code></strong> swaps a whole document except its <code>_id</code>. An <strong>upsert</strong> (<code>upsert: true</code>) updates a match or inserts a new document built from the filter and update. The <strong><code>findOneAnd…</code></strong> methods change one document and return it, before or after the change. <strong><code>bulkWrite</code></strong> sends many operations in one round trip.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>$setOnInsert</code> writes fields only when the upsert inserts</li><li class="note-item">Concurrent upserts on unindexed filters can create duplicates</li><li class="note-item">MongoDB 8.0 adds a client-level <code>bulkWrite</code> across collections</li><li class="note-item">Deleting all documents keeps indexes; <code>drop()</code> removes them too</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Delete, Replace, Upsert, Find-and-Modify, Bulk</h2><pre><code class="language-javascript">db.orders.deleteOne({ _id: 1001 })
+db.orders.deleteMany({ status: "cancelled", orderDate: { $lt: ISODate("2025-01-01") } })
+
+// replace: everything except _id
+db.products.replaceOne({ _id: 7 },
+  { name: "SQL Pocket Guide, 5th ed.", category: "Books",
+    price: NumberDecimal("21.99"), stock: 10 })
+
+// upsert: update if found, insert if not
+db.carts.updateOne(
+  { customerId: 42 },
+  { $push: { items: { productId: 3, qty: 1 } },
+    $setOnInsert: { createdAt: new Date() } },
+  { upsert: true })
+
+// find-and-modify: returns the document
+db.counters.findOneAndUpdate(
+  { _id: "orderId" }, { $inc: { seq: 1 } },
+  { upsert: true, returnDocument: "after" })
+db.jobs.findOneAndDelete({ status: "queued" }, { sort: { createdAt: 1 } })
+
+// bulk: several operations, one round trip
+db.products.bulkWrite([
+  { updateOne: { filter: { _id: 7 }, update: { $inc: { stock: -2 } } } },
+  { insertOne: { document: { _id: 30, name: "Notebook" } } },
+  { deleteOne: { filter: { _id: 21 } } }
+], { ordered: false })</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The upserted cart gets <code>customerId: 42</code> from the filter, the pushed item, and <code>createdAt</code></div><div class="explain-item"><code>returnDocument: "after"</code> returns the incremented counter; the default is the document before the change</div><div class="explain-item"><code>findOneAndDelete</code> with <code>sort</code> takes the oldest queued job, a simple work queue</div><div class="explain-item"><code>bulkWrite</code> returns counts per operation type</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>deleteMany</code> ↔ <code>DELETE … WHERE</code> · <code>replaceOne</code> ↔ <code>UPDATE</code> of every column</li><li class="note-item">Upsert ↔ <code>INSERT … ON CONFLICT DO UPDATE</code>; <code>findOneAndUpdate</code> ↔ <code>UPDATE … RETURNING</code> · <a class="xref" href="../SQL-Sheets/sql-52-delete-truncate.html">See SQL 52</a>, <a class="xref" href="../SQL-Sheets/sql-53-upsert-merge.html">53</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> <code>DEL</code>, or <code>UNLINK</code> to free memory in the background; <code>SET</code> always upserts</li><li class="note-item"><strong>DynamoDB</strong> <code>PutItem</code> replaces; <code>UpdateItem</code> upserts; <code>ReturnValues: ALL_NEW</code>; <code>BatchWriteItem</code> takes 25 puts / deletes</li><li class="note-item"><strong>Cassandra</strong> <code>DELETE</code> writes a tombstone; <code>INSERT</code> and <code>UPDATE</code> both upsert</li><li class="note-item"><strong>Neo4j</strong> <code>DETACH DELETE</code>; <code>MERGE … ON CREATE SET … ON MATCH SET</code></li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await counters.findOneAndUpdate(f, u, { upsert: true, returnDocument: "after" })</code></li><li class="note-item"><strong>Python</strong> <code>find_one_and_update(f, u, upsert=True, return_document=ReturnDocument.AFTER)</code></li><li class="note-item"><strong>Java</strong> <code>findOneAndUpdate(f, u, new FindOneAndUpdateOptions().upsert(true).returnDocument(ReturnDocument.AFTER))</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Results Table | Upsert Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-results"><h2 class="section-title">What Each Returns</h2><table><thead><tr><th>Method</th><th>Result</th></tr></thead><tbody><tr><td><code>deleteOne</code> / <code>deleteMany</code></td><td class="desc"><code>deletedCount</code></td></tr><tr><td><code>replaceOne</code></td><td class="desc"><code>matchedCount</code>, <code>modifiedCount</code></td></tr><tr><td><code>updateOne</code> + upsert</td><td class="desc"><code>upsertedId</code> when inserted</td></tr><tr><td><code>findOneAnd…</code></td><td class="desc">The document (or <code>null</code>)</td></tr><tr><td><code>bulkWrite</code></td><td class="desc">Counts per operation</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-upsert"><h2 class="section-title">Upsert Rules</h2><table><thead><tr><th>Situation</th><th>Result</th></tr></thead><tbody><tr><td>Filter matches</td><td class="desc">Normal update</td></tr><tr><td>No match</td><td class="desc">Insert: filter fields + update</td></tr><tr><td><code>$setOnInsert</code></td><td class="desc">Applied only on insert</td></tr><tr><td>Filter has operators (<code>$gt</code>)</td><td class="desc">Those fields aren't copied</td></tr><tr><td>Concurrent upserts</td><td class="desc">Use a unique index to prevent duplicates</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item"><code>deleteMany({})</code> when you meant one document</li><li class="note-item">Using <code>replaceOne</code> to change one field and losing the rest</li><li class="note-item">Upserting on a filter with no unique index</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Run the filter with <code>find</code> before a <code>deleteMany</code></li><li class="note-item">Use <code>findOneAndUpdate</code> for counters and queues</li><li class="note-item">Group many small writes into a <code>bulkWrite</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>deleteOne</code> / <code>deleteMany</code></li><li class="note-item"><code>replaceOne</code> — whole document</li><li class="note-item"><code>upsert: true</code> — update or insert</li><li class="note-item"><code>bulkWrite</code> — one round trip</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-15-update-operators.html">Updating Documents</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-17-aggregation-basics.html">Aggregation Pipeline Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

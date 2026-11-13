@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 47: Streams, TTL &amp; Transactions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s47">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 47</div>
+			<h1>Streams, TTL &amp; Transactions</h1>
+			<div class="sheet-desc">DynamoDB Streams · Lambda triggers · TTL attribute · <code>TransactWriteItems</code> · idempotency tokens</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Changes, Expiry, All-or-Nothing</h2><div class="description"><strong>DynamoDB Streams</strong> records every item change for 24 hours, and <strong>Lambda</strong> can process it to update caches, search indexes or aggregates. <strong>TTL</strong> deletes items after a timestamp attribute (epoch seconds) passes, at no cost, usually within a few days. <strong>Transactions</strong> (<code>TransactWriteItems</code>, <code>TransactGetItems</code>) group up to 100 actions across items and tables: all succeed or all fail, and a client token makes retries idempotent.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">TTL deletions appear in the stream, marked as service deletions</li><li class="note-item">Filter Lambda events to pay only for the ones you need</li><li class="note-item">Transactions cost twice the capacity of normal writes</li><li class="note-item">The idempotency token is honored for 10 minutes</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Streams, TTL &amp; TransactWriteItems</h2><pre><code class="language-bash"># change log, read by Lambda
+aws dynamodb update-table --table-name Shop \
+  --stream-specification StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES
+aws lambda create-event-source-mapping --function-name onShopChange \
+  --event-source-arn &lt;stream-arn&gt; --starting-position LATEST \
+  --filter-criteria '{"Filters":[{"Pattern":"{\"eventName\":[\"INSERT\"]}"}]}'
+
+# expire items when expiresAt (epoch seconds) passes
+aws dynamodb update-time-to-live --table-name Shop \
+  --time-to-live-specification Enabled=true,AttributeName=expiresAt
+
+# place an order: reserve stock and create the order together
+aws dynamodb transact-write-items --client-request-token order-1002-v1 \
+  --transact-items '[
+  {"Update": {"TableName": "Shop",
+    "Key": {"PK": {"S": "PRODUCT#7"}, "SK": {"S": "META"}},
+    "UpdateExpression": "SET stock = stock - :q",
+    "ConditionExpression": "stock &gt;= :q",
+    "ExpressionAttributeValues": {":q": {"N": "2"}}}},
+  {"Put": {"TableName": "Shop",
+    "Item": {"PK": {"S": "CUSTOMER#42"}, "SK": {"S": "ORDER#2026-11-07#1002"},
+             "status": {"S": "pending"}},
+    "ConditionExpression": "attribute_not_exists(SK)"}}
+]' </code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>NEW_AND_OLD_IMAGES</code> puts both versions of the item in each stream record</div><div class="explain-item">The filter means Lambda only runs for inserts</div><div class="explain-item">If stock is short, the whole transaction is canceled and no order is created</div><div class="explain-item">Retrying with the same <code>--client-request-token</code> won't apply it twice</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Streams ↔ logical decoding / CDC · TTL ↔ a scheduled <code>DELETE</code></li><li class="note-item"><code>TransactWriteItems</code> ↔ <code>BEGIN … COMMIT</code>; the token ↔ an idempotency key · <a class="xref" href="../SQL-Sheets/sql-67-triggers.html">See SQL 67</a>, <a class="xref" href="../SQL-Sheets/sql-68-transactions.html">68</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> change streams; TTL indexes; <code>withTransaction()</code></li><li class="note-item"><strong>Redis</strong> keyspace notifications or streams; <code>EXPIRE</code>; <code>MULTI</code> / <code>EXEC</code></li><li class="note-item"><strong>Cassandra</strong> CDC; <code>USING TTL</code>; lightweight transactions per partition</li><li class="note-item"><strong>Neo4j</strong> CDC; no built-in TTL; ACID transactions</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await doc.send(new TransactWriteCommand({ TransactItems: [...], ClientRequestToken: "order-1002-v1" }))</code></li><li class="note-item"><strong>Python</strong> <code>client.transact_write_items(TransactItems=[...], ClientRequestToken="order-1002-v1")</code></li><li class="note-item"><strong>Java</strong> <code>enhanced.transactWriteItems(r -&gt; r.addUpdateItem(products, p).addPutItem(orders, o))</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: View Table | Tx Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-view"><h2 class="section-title">Stream View Types</h2><table><thead><tr><th>Type</th><th>Record holds</th></tr></thead><tbody><tr><td><code>KEYS_ONLY</code></td><td class="desc">Key attributes</td></tr><tr><td><code>NEW_IMAGE</code></td><td class="desc">Item after the change</td></tr><tr><td><code>OLD_IMAGE</code></td><td class="desc">Item before the change</td></tr><tr><td><code>NEW_AND_OLD_IMAGES</code></td><td class="desc">Both</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-tx"><h2 class="section-title">Transactions</h2><table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody><tr><td>Actions per call</td><td class="desc">Up to 100</td></tr><tr><td>Action types</td><td class="desc">Put, Update, Delete, ConditionCheck</td></tr><tr><td>Cost</td><td class="desc">2× normal capacity</td></tr><tr><td>Failure</td><td class="desc"><code>TransactionCanceledException</code> with reasons</td></tr><tr><td>Idempotency</td><td class="desc">Token, 10 minutes</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Expecting TTL deletes at the exact second; filter expired items in reads</li><li class="note-item">Non-idempotent Lambda handlers (records can repeat)</li><li class="note-item">Using transactions for things one conditional update can do</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Filter expired items with <code>expiresAt &gt; :now</code> until TTL catches up</li><li class="note-item">Use <code>ConditionCheck</code> to assert on items you don't change</li><li class="note-item">Read cancellation reasons to tell which condition failed</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Streams + Lambda — react to changes</li><li class="note-item">TTL — free, delayed deletes</li><li class="note-item">Transactions — 100 actions, all-or-nothing</li><li class="note-item">Client token — safe retries</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-46-dynamodb-single-table.html">Single-Table Design</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-48-cassandra-architecture.html">Cassandra Architecture</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

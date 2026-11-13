@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 30: Security &amp; Backup</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>Security &amp; Backup</h1>
+			<div class="sheet-desc">users &amp; roles · <code>createUser</code> · TLS · network access · <code>mongodump</code> / <code>mongorestore</code> · Atlas backups</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Users, Network, Backups</h2><div class="description">Turn on <strong>authentication</strong> and give each app its own <strong>user</strong> with only the <strong>roles</strong> it needs, scoped to a database. Limit network access with <code>bindIp</code> and firewalls (Atlas: IP access lists or private endpoints) and encrypt traffic with <strong>TLS</strong>. For backups, <strong><code>mongodump</code></strong> / <strong><code>mongorestore</code></strong> handle small to medium data; larger deployments use filesystem snapshots or Atlas continuous backups with point-in-time restore.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Since 3.6, <code>mongod</code> listens only on localhost by default</li><li class="note-item">SCRAM-SHA-256 is the default password mechanism</li><li class="note-item">Database Tools are a separate download from the server</li><li class="note-item">Test restores, not just backups</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Users, Config &amp; Backups</h2><pre><code class="language-bash"># create users (in mongosh, as an admin)
+use admin
+db.createUser({ user: "shopApp", pwd: passwordPrompt(),
+  roles: [ { role: "readWrite", db: "shop" } ] })
+db.createUser({ user: "analyst", pwd: passwordPrompt(),
+  roles: [ { role: "read", db: "shop" } ] })
+db.createRole({ role: "orderReader", roles: [], privileges: [
+  { resource: { db: "shop", collection: "orders" }, actions: ["find"] } ] })
+db.grantRolesToUser("analyst", [ { role: "orderReader", db: "admin" } ])
+
+# mongod.conf
+security:
+  authorization: enabled
+net:
+  bindIp: 127.0.0.1,10.0.0.5
+  tls:
+    mode: requireTLS
+    certificateKeyFile: /etc/ssl/mongo.pem
+
+# backup and restore
+mongodump --uri "mongodb://admin@localhost:27017/?authSource=admin" \
+  --db shop --gzip --archive=shop-2026-11-07.gz
+mongorestore --uri "mongodb://admin@localhost:27017/?authSource=admin" \
+  --gzip --archive=shop-2026-11-07.gz --drop
+mongoexport --db shop --collection orders --type=csv \
+  --fields _id,status,total --out orders.csv</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>passwordPrompt()</code> keeps the password out of shell history</div><div class="explain-item">A custom role grants exactly <code>find</code> on one collection</div><div class="explain-item"><code>--archive</code> writes one file; <code>--gzip</code> compresses it</div><div class="explain-item"><code>--drop</code> replaces collections on restore instead of merging</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>createUser</code> ↔ <code>CREATE ROLE … LOGIN</code> · roles ↔ <code>GRANT</code> · <code>mongodump</code> ↔ <code>pg_dump</code></li><li class="note-item">Atlas point-in-time restore ↔ PostgreSQL WAL archiving and PITR · <a class="xref" href="../SQL-Sheets/sql-75-users-roles-privileges.html">See SQL 75</a>, <a class="xref" href="../SQL-Sheets/sql-77-backup-restore.html">77</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> ACL users (<code>ACL SETUSER</code>), TLS; back up RDB / AOF files</li><li class="note-item"><strong>DynamoDB</strong> IAM policies per table or item; PITR (35 days) and on-demand backups</li><li class="note-item"><strong>Cassandra</strong> <code>CREATE ROLE</code>, <code>GRANT</code>; <code>nodetool snapshot</code></li><li class="note-item"><strong>Neo4j</strong> role-based access (fine-grained in Enterprise); <code>neo4j-admin database dump</code> / <code>backup</code></li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>new MongoClient(uri, { tls: true, auth: { username, password } })</code></li><li class="note-item"><strong>Python</strong> <code>MongoClient(uri, tls=True, username=u, password=p)</code></li><li class="note-item"><strong>Java</strong> <code>MongoCredential.createScramSha256Credential(u, "admin", pw)</code> in <code>MongoClientSettings</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Roles Table | Backup Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-roles"><h2 class="section-title">Built-in Roles</h2><table><thead><tr><th>Role</th><th>Grants</th></tr></thead><tbody><tr><td><code>read</code> / <code>readWrite</code></td><td class="desc">Query / query and modify one database</td></tr><tr><td><code>dbAdmin</code></td><td class="desc">Indexes, stats, validation</td></tr><tr><td><code>userAdmin</code></td><td class="desc">Manage users and roles</td></tr><tr><td><code>clusterMonitor</code></td><td class="desc">Read-only monitoring</td></tr><tr><td><code>root</code></td><td class="desc">Everything (avoid for apps)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-backup"><h2 class="section-title">Backup Options</h2><table><thead><tr><th>Method</th><th>Good for</th></tr></thead><tbody><tr><td><code>mongodump</code></td><td class="desc">Small data, single collections</td></tr><tr><td>Filesystem snapshot</td><td class="desc">Large data, fast restore</td></tr><tr><td>Atlas backups</td><td class="desc">Continuous, point-in-time</td></tr><tr><td>Delayed secondary</td><td class="desc">Undo window, not a backup</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Running with <code>authorization</code> off on a reachable server</li><li class="note-item">Apps connecting as <code>root</code></li><li class="note-item">Never testing a restore</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">One user per app, least privilege</li><li class="note-item">Keep connection strings in secrets, not code</li><li class="note-item">Schedule restore drills</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Auth on, users per app</li><li class="note-item">Roles scoped to databases</li><li class="note-item">TLS + bindIp</li><li class="note-item">Dump, snapshot or Atlas PITR</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-29-replica-sets-sharding.html">Replica Sets &amp; Sharding</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-31-mongodb-drivers-odms.html">Drivers &amp; ODMs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

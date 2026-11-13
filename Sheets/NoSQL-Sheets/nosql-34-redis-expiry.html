@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 34: Expiry &amp; Eviction</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>Expiry &amp; Eviction</h1>
+			<div class="sheet-desc"><code>EXPIRE</code> · <code>TTL</code> · <code>SET … EX</code> · <code>PERSIST</code> · <code>maxmemory</code> · eviction policies · <code>HEXPIRE</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Data That Cleans Itself Up</h2><div class="description">Any key can have a <strong>TTL</strong>: set it with <code>EX</code> on <code>SET</code> or with <strong><code>EXPIRE</code></strong>, read it with <strong><code>TTL</code></strong>, remove it with <strong><code>PERSIST</code></strong>. Since 7.4 individual <strong>hash fields</strong> can expire too. When memory reaches <strong><code>maxmemory</code></strong>, the <strong>eviction policy</strong> decides what to drop: nothing (writes fail), least recently used, least frequently used, or keys closest to expiring. Cache-only instances usually run <strong><code>allkeys-lru</code></strong> or <strong><code>allkeys-lfu</code></strong>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Writing a key with plain <code>SET</code> clears its TTL (use <code>KEEPTTL</code>)</li><li class="note-item"><code>TTL</code> returns -1 for no expiry, -2 for no key</li><li class="note-item">Expired keys are removed lazily and by a background sweep</li><li class="note-item">The default policy is <code>noeviction</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">TTLs, Field Expiry &amp; Eviction</h2><pre><code class="language-bash">&gt; SET session:abc123 "{...}" EX 1800        # 30 minutes
+&gt; EXPIRE cart:42 86400                       # set or reset the TTL
+&gt; EXPIRE cart:42 3600 GT                     # only if longer than now
+&gt; TTL cart:42
+(integer) 86400
+&gt; PTTL cart:42                               # milliseconds
+&gt; EXPIREAT promo:fall 1796083200             # at a Unix time
+&gt; PERSIST cart:42                            # remove the TTL
+&gt; TTL cart:42
+(integer) -1
+&gt; SET product:7:name "x" KEEPTTL             # keep the existing TTL
+&gt; GETEX session:abc123 EX 1800               # read and slide expiry
+
+# hash field expiry (7.4+)
+&gt; HSET session:abc123 csrf t0k3n cartId 99
+&gt; HEXPIRE session:abc123 600 FIELDS 1 csrf
+&gt; HTTL session:abc123 FIELDS 1 csrf
+
+# memory limit and eviction
+&gt; CONFIG SET maxmemory 2gb
+&gt; CONFIG SET maxmemory-policy allkeys-lru
+&gt; INFO memory
+&gt; MEMORY USAGE cart:42</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>GT</code> only extends a TTL, never shortens it (<code>NX</code>, <code>XX</code>, <code>LT</code> also exist)</div><div class="explain-item"><code>GETEX</code> makes a sliding session: each read pushes expiry out</div><div class="explain-item"><code>HEXPIRE</code> expires just the <code>csrf</code> field; the rest of the hash stays</div><div class="explain-item"><code>MEMORY USAGE</code> reports bytes used by one key</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">No SQL equivalent for TTL; the nearest is an <code>expires_at</code> column plus a scheduled <code>DELETE</code></li><li class="note-item">Eviction has no SQL counterpart: databases don't throw data away · <a class="xref" href="../SQL-Sheets/sql-52-delete-truncate.html">See SQL 52</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> TTL indexes delete documents, checked about every 60 s</li><li class="note-item"><strong>DynamoDB</strong> TTL attribute (epoch seconds); expired items are deleted within a few days, free</li><li class="note-item"><strong>Cassandra</strong> <code>USING TTL</code> per write or <code>default_time_to_live</code> per table</li><li class="note-item"><strong>Neo4j</strong> no built-in TTL; scheduled deletes or APOC's TTL procedures</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await r.set("session:abc", val, { EX: 1800 }); await r.expire("cart:42", 86400)</code></li><li class="note-item"><strong>Python</strong> <code>r.set("session:abc", val, ex=1800); r.expire("cart:42", 86400)</code></li><li class="note-item"><strong>Java</strong> <code>jedis.setex("session:abc", 1800, val); jedis.expire("cart:42", 86400);</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Ttl Table | Evict Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-ttl"><h2 class="section-title">TTL Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td><code>EXPIRE</code> / <code>PEXPIRE</code></td><td class="desc">TTL in s / ms</td></tr><tr><td><code>EXPIREAT</code></td><td class="desc">Expire at Unix time</td></tr><tr><td><code>TTL</code> / <code>PTTL</code></td><td class="desc">Remaining time</td></tr><tr><td><code>PERSIST</code></td><td class="desc">Remove TTL</td></tr><tr><td><code>GETEX</code></td><td class="desc">Read and change TTL</td></tr><tr><td><code>HEXPIRE</code> / <code>HTTL</code></td><td class="desc">Hash field TTL</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-evict"><h2 class="section-title">Eviction Policies</h2><table><thead><tr><th>Policy</th><th>Evicts</th></tr></thead><tbody><tr><td><code>noeviction</code></td><td class="desc">Nothing; writes fail (default)</td></tr><tr><td><code>allkeys-lru</code></td><td class="desc">Least recently used key</td></tr><tr><td><code>allkeys-lfu</code></td><td class="desc">Least frequently used key</td></tr><tr><td><code>volatile-lru</code> / <code>-lfu</code></td><td class="desc">Same, only keys with a TTL</td></tr><tr><td><code>volatile-ttl</code></td><td class="desc">Keys closest to expiring</td></tr><tr><td><code>allkeys-random</code></td><td class="desc">Any key</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Overwriting a key with <code>SET</code> and losing its TTL</li><li class="note-item">Running a cache with <code>noeviction</code> until writes fail</li><li class="note-item">Using <code>volatile-*</code> policies when most keys have no TTL</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add a little random jitter to TTLs to avoid mass expiry</li><li class="note-item">Set <code>maxmemory</code> below the machine's RAM</li><li class="note-item">Watch <code>evicted_keys</code> and <code>expired_keys</code> in <code>INFO stats</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>EX</code> / <code>EXPIRE</code> — set TTL</li><li class="note-item"><code>TTL</code> -1 none, -2 missing</li><li class="note-item"><code>HEXPIRE</code> — field TTL</li><li class="note-item"><code>maxmemory-policy</code> — eviction</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-33-redis-keys-strings.html">Keys &amp; Strings</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-35-redis-hashes.html">Hashes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

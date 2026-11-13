@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 41: Transactions, Lua &amp; Operations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s41">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 41</div>
+			<h1>Transactions, Lua &amp; Operations</h1>
+			<div class="sheet-desc"><code>MULTI</code> / <code>EXEC</code> · <code>WATCH</code> · pipelining · <code>EVAL</code> / functions · RDB / AOF · replication · Cluster</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Atomic Groups, Scripts and Durability</h2><div class="description">Redis runs commands one at a time, so <strong>every single command is atomic</strong>. <strong><code>MULTI</code> … <code>EXEC</code></strong> queues commands and runs them as one block that no other client can interleave with, but there is <strong>no rollback</strong>: if one command fails at run time the others still apply. <strong><code>WATCH</code></strong> adds optimistic locking, and <code>EXEC</code> returns nil if a watched key changed. <strong>Lua scripts</strong> (<code>EVAL</code>) and <strong>Functions</strong> (<code>FCALL</code>, Redis 7+) run logic on the server atomically. <strong>Pipelining</strong> only saves round trips. For durability, Redis offers <strong>RDB</strong> snapshots, an <strong>AOF</strong> write log, replicas and <strong>Cluster</strong> sharding.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">A syntax error while queuing aborts the whole <code>EXEC</code>; a wrong-type error at run time doesn't</li><li class="note-item">Scripts block the server while they run; Redis answers <code>BUSY</code> after 5 s (<code>busy-reply-threshold</code>)</li><li class="note-item">Pass every key a script touches in <code>KEYS</code>, not built inside the script</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">Out of the box Redis saves only RDB snapshots, so a crash loses writes since the last one. Set <code>appendonly yes</code> with <code>appendfsync everysec</code> to lose at most about 1 s</li><li class="note-item">In Cluster, a transaction or script touching keys in different slots fails with <code>CROSSSLOT</code>. Group keys with hash tags: <code>{order:1001}:items</code></li><li class="note-item">Replication is asynchronous; a failover can drop acknowledged writes. <code>WAIT 1 100</code> narrows the gap but isn't strong consistency</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Transactions, Scripts &amp; Persistence</h2><pre><code class="language-bash"># MULTI / EXEC: queue, then run as one block
+&gt; MULTI
+OK
+&gt; DECRBY product:7:stock 2
+QUEUED
+&gt; RPUSH order:1001:items "7:2"
+QUEUED
+&gt; EXEC
+1) (integer) 8
+2) (integer) 1
+
+# WATCH: optimistic lock on the stock key
+&gt; WATCH product:7:stock
+&gt; GET product:7:stock            # "8", client checks it's &gt;= 2
+&gt; MULTI
+&gt; DECRBY product:7:stock 2
+&gt; EXEC                           # (nil) = changed by someone else, retry
+
+# Lua: check and decrement in one atomic step
+$ redis-cli EVAL "
+    local s = tonumber(redis.call('GET', KEYS[1]))
+    if s and s &gt;= tonumber(ARGV[1]) then
+      return redis.call('DECRBY', KEYS[1], ARGV[1]) end
+    return -1" 1 product:7:stock 2
+
+# Functions (Redis 7+): load a library once, call by name
+$ redis-cli FUNCTION LOAD "$(cat shop.lua)"
+&gt; FCALL reserve_stock 1 product:7:stock 2
+
+# Persistence and replication
+&gt; CONFIG SET appendonly yes
+&gt; BGSAVE                         # RDB snapshot in the background
+&gt; REPLICAOF 10.0.0.5 6379        # follow a primary</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>QUEUED</code> means accepted for later; nothing runs until <code>EXEC</code>, which returns one reply per command</div><div class="explain-item"><code>WATCH</code> must come before <code>MULTI</code>; any write to the key by another client makes <code>EXEC</code> return nil, so wrap it in a retry loop</div><div class="explain-item">The <code>1</code> after the script is the number of keys; then come <code>KEYS[1]</code> and <code>ARGV[1]</code></div><div class="explain-item">A function library starts with <code>#!lua name=shop</code> and calls <code>redis.register_function</code></div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>MULTI</code> / <code>EXEC</code> ↔ <code>BEGIN</code> … <code>COMMIT</code>, but Redis has no <code>ROLLBACK</code></li><li class="note-item"><code>WATCH</code> ↔ optimistic locking with a version column (<code>UPDATE … WHERE version = 3</code>); SQL also offers <code>SELECT … FOR UPDATE</code></li><li class="note-item">Lua and Functions ↔ stored procedures · <a class="xref" href="../SQL-Sheets/sql-68-transactions.html">See SQL 68</a>, <a class="xref" href="../SQL-Sheets/sql-66-stored-procedures.html">66</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> single-document writes are atomic; <code>session.withTransaction()</code> spans documents and rolls back on error</li><li class="note-item"><strong>DynamoDB</strong> <code>TransactWriteItems</code>: up to 100 actions, all-or-nothing, with condition checks</li><li class="note-item"><strong>Cassandra</strong> no multi-partition transactions; lightweight transactions (<code>IF</code>) per partition; logged batches apply eventually</li><li class="note-item"><strong>Neo4j</strong> full ACID; every Cypher query runs in a transaction that rolls back on error</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await client.multi().decrBy("product:7:stock", 2).rPush("order:1001:items", "7:2").exec()</code></li><li class="note-item"><strong>Python</strong> <code>r.pipeline().decrby("product:7:stock", 2).rpush("order:1001:items", "7:2").execute()</code></li><li class="note-item"><strong>Java</strong> <code>Transaction t = jedis.multi(); t.decrBy("product:7:stock", 2); t.exec();</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Atomicity Table | Persistence Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-atomicity"><h2 class="section-title">Atomicity Options</h2><table><thead><tr><th>Tool</th><th>Atomic</th><th>Use for</th></tr></thead><tbody><tr><td>Single command</td><td class="desc">Yes</td><td class="desc">Counters, <code>SET NX EX</code> locks</td></tr><tr><td>Pipeline</td><td class="desc">No</td><td class="desc">Fewer round trips</td></tr><tr><td><code>MULTI</code> / <code>EXEC</code></td><td class="desc">Yes, no rollback</td><td class="desc">Grouping writes</td></tr><tr><td><code>WATCH</code> + <code>MULTI</code></td><td class="desc">Aborts on change</td><td class="desc">Check-then-set</td></tr><tr><td><code>EVAL</code> (Lua)</td><td class="desc">Yes</td><td class="desc">Logic between reads and writes</td></tr><tr><td>Functions</td><td class="desc">Yes</td><td class="desc">Reusable server logic</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-persistence"><h2 class="section-title">Persistence &amp; Topology</h2><table><thead><tr><th>Option</th><th>What it gives you</th></tr></thead><tbody><tr><td>RDB</td><td class="desc">Snapshots (<code>save</code>, <code>BGSAVE</code>); fast restart, loses recent writes</td></tr><tr><td>AOF</td><td class="desc">Logs every write; <code>everysec</code> loses ≤ ~1 s</td></tr><tr><td>RDB + AOF</td><td class="desc">Both; the usual durable setup</td></tr><tr><td>Replication</td><td class="desc">Async copies via <code>REPLICAOF</code></td></tr><tr><td>Sentinel</td><td class="desc">Automatic failover for primary + replicas</td></tr><tr><td>Cluster</td><td class="desc">16,384 hash slots across primaries</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Expecting <code>EXEC</code> to roll back when one command fails</li><li class="note-item">Treating a pipeline as a transaction; other clients can run between its commands</li><li class="note-item">Using <code>WATCH</code> without a retry loop, so a nil <code>EXEC</code> silently drops the write</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Reach for a single atomic command first (<code>INCRBY</code>, <code>SET NX EX</code>, <code>LMOVE</code>)</li><li class="note-item">Prefer Functions over <code>EVAL</code> for logic you call often; <code>EVALSHA</code> avoids resending scripts</li><li class="note-item">Run <code>INFO persistence</code> after config changes to confirm AOF is on</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>MULTI</code> / <code>EXEC</code> — atomic, no rollback</li><li class="note-item"><code>WATCH</code> — optimistic lock</li><li class="note-item">Lua / Functions — server-side logic</li><li class="note-item">RDB + AOF — durability</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-40-redis-json-search.html">JSON, Search &amp; Vectors</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-42-dynamodb-concepts.html">DynamoDB Concepts</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

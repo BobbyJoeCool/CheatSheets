@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 49: CQL: Keyspaces &amp; Tables</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s49">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 49</div>
+			<h1>CQL: Keyspaces &amp; Tables</h1>
+			<div class="sheet-desc"><code>CREATE KEYSPACE</code> · partition key · clustering columns · <code>PRIMARY KEY ((a), b)</code> · data types · collections</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Keys Decide Everything</h2><div class="description"><strong>CQL</strong> looks like SQL, but the <strong>primary key</strong> controls storage. In <code>PRIMARY KEY ((a, b), c, d)</code>, the inner parentheses are the <strong>partition key</strong> (which node, and the unit of a fast read) and the rest are <strong>clustering columns</strong> (sort order inside the partition). Columns are typed, and <strong>collections</strong> (<code>list</code>, <code>set</code>, <code>map</code>) and <strong>user-defined types</strong> hold small nested data. A keyspace sets the <strong>replication</strong> strategy and factor.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>frozen&lt;&gt;</code> stores a collection or UDT as one value</li><li class="note-item">Adding columns is cheap; changing the primary key means a new table</li><li class="note-item"><code>timeuuid</code> gives unique, time-ordered ids</li><li class="note-item">Every write is an upsert</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item"><code>QUORUM</code> needs a majority of replicas: with RF 3, two must answer; with RF 1, any down node fails the query</li><li class="note-item">In multi-datacenter clusters use <code>LOCAL_QUORUM</code> so requests don't wait on the far region</li><li class="note-item">Choose partition keys that spread data and keep each partition under about 100 MB</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Keyspace, Types &amp; Tables</h2><pre><code class="language-sql">CREATE KEYSPACE IF NOT EXISTS shop
+  WITH replication = { 'class': 'NetworkTopologyStrategy', 'dc1': 3, 'dc2': 3 };
+
+CREATE TYPE IF NOT EXISTS shop.line_item (
+  product_id int, name text, qty int, unit_price decimal);
+
+CREATE TABLE IF NOT EXISTS shop.orders (
+  order_id    int,
+  customer_id int,
+  order_date  date,
+  status      text,
+  total       decimal,
+  items       list&lt;frozen&lt;line_item&gt;&gt;,
+  tags        set&lt;text&gt;,
+  attrs       map&lt;text, text&gt;,
+  created_at  timestamp,
+  PRIMARY KEY (order_id)                          -- partition key only
+);
+
+CREATE TABLE IF NOT EXISTS shop.orders_by_customer (
+  customer_id int, order_date date, order_id int,
+  status text, total decimal,
+  PRIMARY KEY ((customer_id), order_date, order_id)
+) WITH CLUSTERING ORDER BY (order_date DESC, order_id ASC);
+
+-- composite partition key: one partition per product per month
+CREATE TABLE IF NOT EXISTS shop.events_by_product (
+  product_id int, month text, ts timeuuid, type text,
+  PRIMARY KEY ((product_id, month), ts));
+
+ALTER TABLE shop.orders ADD coupon text;
+DESCRIBE TABLE shop.orders;</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>dc1: 3, dc2: 3</code> keeps three copies in each of two datacenters</div><div class="explain-item">The order lines become a list of a user-defined type inside the order row</div><div class="explain-item"><code>orders_by_customer</code> sorts each customer's orders by date, newest first</div><div class="explain-item">Adding <code>month</code> to the partition key stops one product's events growing into one giant partition</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>PRIMARY KEY ((a), b)</code> ↔ <code>PRIMARY KEY (a, b)</code>, except <code>a</code> picks the server and <code>b</code> sorts rows inside it</li><li class="note-item">UDT ↔ a composite type · collections ↔ arrays or child tables · <a class="xref" href="../SQL-Sheets/sql-55-create-table.html">See SQL 55</a>, <a class="xref" href="../SQL-Sheets/sql-56-primary-foreign-keys.html">56</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> no table DDL; collections take any document</li><li class="note-item"><strong>Redis</strong> no DDL; keys appear when written</li><li class="note-item"><strong>DynamoDB</strong> only the key schema is declared: partition = HASH, sort = RANGE</li><li class="note-item"><strong>Neo4j</strong> no table DDL; only constraints and indexes</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await client.execute("INSERT INTO orders_by_customer (customer_id, order_date, order_id) VALUES (?, ?, ?)", [42, "2026-11-01", 1001], { prepare: true })</code></li><li class="note-item"><strong>Python</strong> <code>session.execute(session.prepare("INSERT INTO orders_by_customer (customer_id, order_date, order_id) VALUES (?, ?, ?)"), (42, date(2026, 11, 1), 1001))</code></li><li class="note-item"><strong>Java</strong> <code>session.execute(session.prepare(insertCql).bind(42, LocalDate.of(2026, 11, 1), 1001));</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Types Table | Cl Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-types"><h2 class="section-title">Common Types</h2><table><thead><tr><th>Type</th><th>Holds</th></tr></thead><tbody><tr><td><code>int</code> / <code>bigint</code></td><td class="desc">32 / 64-bit integers</td></tr><tr><td><code>text</code></td><td class="desc">UTF-8 string</td></tr><tr><td><code>timestamp</code> / <code>date</code></td><td class="desc">Instant / calendar date</td></tr><tr><td><code>uuid</code> / <code>timeuuid</code></td><td class="desc">Random / time-based id</td></tr><tr><td><code>list</code> / <code>set</code> / <code>map</code></td><td class="desc">Small collections</td></tr><tr><td><code>vector&lt;float, n&gt;</code></td><td class="desc">Embeddings (5.0)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-cl"><h2 class="section-title">Consistency Levels</h2><table><thead><tr><th>Level</th><th>Replicas that answer</th></tr></thead><tbody><tr><td><code>ONE</code></td><td class="desc">Any one</td></tr><tr><td><code>QUORUM</code></td><td class="desc">Majority across all datacenters</td></tr><tr><td><code>LOCAL_QUORUM</code></td><td class="desc">Majority in the local datacenter</td></tr><tr><td><code>EACH_QUORUM</code></td><td class="desc">Majority in every datacenter (writes)</td></tr><tr><td><code>ALL</code></td><td class="desc">Every replica</td></tr><tr><td><code>SERIAL</code></td><td class="desc">For lightweight transactions</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">A partition key with few values (<code>status</code>), creating huge, hot partitions</li><li class="note-item">Large collections; they're read whole</li><li class="note-item">Expecting to change a table's primary key with <code>ALTER</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Name tables after their query: <code>orders_by_customer</code></li><li class="note-item">Bucket time series by day or month in the partition key</li><li class="note-item">Use prepared statements for every repeated query</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>((partition), clustering…)</code></li><li class="note-item">Partition — where; clustering — order</li><li class="note-item">Collections and UDTs for small nesting</li><li class="note-item">Replication per datacenter</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-48-cassandra-architecture.html">Cassandra Architecture</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-50-cassandra-query-modeling.html">Query-First Modeling</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

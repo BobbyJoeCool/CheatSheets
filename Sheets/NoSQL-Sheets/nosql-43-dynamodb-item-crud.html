@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 43: Item Operations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s43">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 43</div>
+			<h1>Item Operations</h1>
+			<div class="sheet-desc"><code>PutItem</code> · <code>GetItem</code> · <code>UpdateItem</code> · <code>DeleteItem</code> · condition expressions · update expressions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Put, Get, Update, Delete</h2><div class="description"><strong><code>PutItem</code></strong> writes a whole item, replacing any item with the same key. <strong><code>GetItem</code></strong> reads one item by its full primary key. <strong><code>UpdateItem</code></strong> changes attributes with an <strong>update expression</strong> and creates the item if it doesn't exist. <strong><code>DeleteItem</code></strong> removes one item. Any write can carry a <strong>condition expression</strong>; if it's false the write fails with <code>ConditionalCheckFailedException</code>, which gives you insert-only puts and safe decrements.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Attribute names that are reserved words (<code>name</code>, <code>status</code>) need <code>#aliases</code></li><li class="note-item">Values always go through <code>:placeholders</code></li><li class="note-item"><code>ReturnValues</code> returns old or new attributes</li><li class="note-item">Writes are billed per 1 KB, reads per 4 KB</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + In Your Code | Explain + SQL Equivalent + Across Engines -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Item Operations with Conditions</h2><pre><code class="language-bash"># insert-only put
+aws dynamodb put-item --table-name Shop \
+  --item '{"PK":{"S":"PRODUCT#7"},"SK":{"S":"META"},
+           "name":{"S":"SQL Pocket Guide"},"stock":{"N":"10"}}' \
+  --condition-expression "attribute_not_exists(PK)"
+
+# read one item, two attributes
+aws dynamodb get-item --table-name Shop \
+  --key '{"PK":{"S":"PRODUCT#7"},"SK":{"S":"META"}}' \
+  --projection-expression "#n, stock" \
+  --expression-attribute-names '{"#n":"name"}'
+
+# conditional decrement plus other changes
+aws dynamodb update-item --table-name Shop \
+  --key '{"PK":{"S":"PRODUCT#7"},"SK":{"S":"META"}}' \
+  --update-expression "SET stock = stock - :q, updatedAt = :now ADD sold :q REMOVE promo" \
+  --condition-expression "stock &gt;= :q" \
+  --expression-attribute-values '{":q":{"N":"2"},":now":{"S":"2026-11-07T10:00:00Z"}}' \
+  --return-values UPDATED_NEW
+# stock &lt; 2 → ConditionalCheckFailedException
+
+# delete only if it exists
+aws dynamodb delete-item --table-name Shop \
+  --key '{"PK":{"S":"PRODUCT#7"},"SK":{"S":"META"}}' \
+  --condition-expression "attribute_exists(PK)"</code></pre></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>new UpdateCommand({ TableName: "Shop", Key, UpdateExpression: "SET stock = stock - :q", ConditionExpression: "stock &gt;= :q", ExpressionAttributeValues: { ":q": 2 } })</code></li><li class="note-item"><strong>Python</strong> <code>table.update_item(Key=key, UpdateExpression="SET stock = stock - :q", ConditionExpression="stock &gt;= :q", ExpressionAttributeValues={":q": 2})</code></li><li class="note-item"><strong>Java</strong> <code>table.updateItem(UpdateItemEnhancedRequest.builder(Product.class).item(p).conditionExpression(cond).build())</code></li></ul></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>attribute_not_exists(PK)</code> makes the put fail if the item already exists</div><div class="explain-item"><code>#n</code> stands in for <code>name</code>, a reserved word</div><div class="explain-item">One update expression can <code>SET</code>, <code>ADD</code> and <code>REMOVE</code> in a single atomic write</div><div class="explain-item"><code>UPDATED_NEW</code> returns only the attributes that changed, with new values</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>PutItem</code> ↔ <code>INSERT</code> (or a full replace) · condition ↔ the <code>WHERE</code> of an <code>UPDATE</code></li><li class="note-item"><code>UPDATE products SET stock = stock - 2 WHERE product_id = 7 AND stock &gt;= 2</code> · <a class="xref" href="../SQL-Sheets/sql-50-insert.html">See SQL 50</a>, <a class="xref" href="../SQL-Sheets/sql-51-update.html">51</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> <code>updateOne({ _id: 7, stock: { $gte: 2 } }, { $inc: { stock: -2 } })</code></li><li class="note-item"><strong>Redis</strong> Lua or <code>WATCH</code> for a conditional decrement</li><li class="note-item"><strong>Cassandra</strong> <code>UPDATE … IF stock = 10</code> (lightweight transaction)</li><li class="note-item"><strong>Neo4j</strong> <code>MATCH (p:Product {id: 7}) WHERE p.stock &gt;= 2 SET p.stock = p.stock - 2</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Update Table | Cond Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-update"><h2 class="section-title">Update Expression Actions</h2><table><thead><tr><th>Action</th><th>Example</th></tr></thead><tbody><tr><td><code>SET</code></td><td class="desc"><code>SET stock = stock - :q</code></td></tr><tr><td><code>SET</code> + function</td><td class="desc"><code>SET tags = list_append(tags, :t)</code></td></tr><tr><td><code>SET</code> default</td><td class="desc"><code>SET n = if_not_exists(n, :zero)</code></td></tr><tr><td><code>ADD</code></td><td class="desc">Add to a number or a set</td></tr><tr><td><code>REMOVE</code></td><td class="desc">Delete attributes</td></tr><tr><td><code>DELETE</code></td><td class="desc">Remove values from a set</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-cond"><h2 class="section-title">Condition Functions</h2><table><thead><tr><th>Function</th><th>True when</th></tr></thead><tbody><tr><td><code>attribute_exists(a)</code></td><td class="desc">Attribute present</td></tr><tr><td><code>attribute_not_exists(a)</code></td><td class="desc">Attribute absent</td></tr><tr><td><code>attribute_type(a, :t)</code></td><td class="desc">Has that type</td></tr><tr><td><code>begins_with(a, :s)</code></td><td class="desc">String prefix</td></tr><tr><td><code>contains(a, :v)</code></td><td class="desc">Substring or set member</td></tr><tr><td><code>size(a)</code></td><td class="desc">Length, for comparisons</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using <code>PutItem</code> to change one attribute and wiping the others</li><li class="note-item">Read-then-write instead of a condition expression</li><li class="note-item">Forgetting reserved words like <code>name</code>, <code>status</code>, <code>date</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use conditions for every "only if" rule</li><li class="note-item">Use <code>UpdateItem</code> for partial changes</li><li class="note-item">Catch <code>ConditionalCheckFailedException</code> as a normal outcome</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>PutItem</code> — whole item</li><li class="note-item"><code>UpdateItem</code> — expressions, upserts</li><li class="note-item">Condition expressions guard writes</li><li class="note-item"><code>#name</code> for reserved words</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-42-dynamodb-concepts.html">DynamoDB Concepts</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-44-dynamodb-query-scan.html">Query vs Scan</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

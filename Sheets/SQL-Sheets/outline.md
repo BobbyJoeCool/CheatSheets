@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- **Group it belongs to:** SQL & Tools
+- **Group it belongs to:** Databases
 - **Folder Directory:** `Sheets/SQL-Sheets/sql-##-[slug].html`
 - **PDF Name:** `SQL Reference Guide.pdf`
 - **Groups:** 19

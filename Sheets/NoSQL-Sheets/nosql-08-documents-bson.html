@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 08: Documents, BSON &amp; Types</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>Documents, BSON &amp; Types</h1>
+			<div class="sheet-desc">BSON · ObjectId · Date · Decimal128 · arrays · embedded documents · 16 MB limit</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">JSON With More Types</h2><div class="description">Documents are stored as <strong>BSON</strong>, a binary JSON with extra types: <strong>ObjectId</strong>, <strong>Date</strong>, <strong>Decimal128</strong>, 32- and 64-bit integers, binary data and more. Field order is kept, values can nest up to 100 levels deep, and a document can be at most <strong>16 MB</strong>. The type matters for queries and sorting: <code>"10"</code> (string) and <code>10</code> (number) never match each other.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Use Decimal128 or integer cents for money</li><li class="note-item">Dates are stored as UTC milliseconds</li><li class="note-item"><code>null</code> and a missing field are different things</li><li class="note-item">Use GridFS for files over 16 MB</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">BSON Types in mongosh</h2><pre><code class="language-javascript">db.products.insertOne({
+  _id: ObjectId(),                    // 12 bytes: time + random + counter
+  sku: "BK-0007",                     // String
+  name: "SQL Pocket Guide",
+  price: NumberDecimal("19.99"),       // Decimal128: exact
+  stock: NumberInt(10),                // Int32
+  views: NumberLong("9000000000"),     // Int64
+  rating: 4.5,                         // Double
+  active: true,                        // Boolean
+  tags: ["sql", "reference"],          // Array
+  dims: { w: 11, h: 18, unit: "cm" },  // embedded document
+  createdAt: new Date(),               // Date (UTC)
+  discontinuedAt: null                 // Null
+})
+
+ObjectId("6929a1c2e4b0a1b2c3d4e5f6").getTimestamp()
+db.products.find({ price: { $type: "decimal" } })
+db.products.find({ discontinuedAt: null })       // null OR missing
+db.products.find({ discontinuedAt: { $type: "null" } })   // null only
+typeof db.products.findOne().stock</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">An ObjectId starts with a timestamp, so ids sort roughly by creation time</div><div class="explain-item"><code>NumberDecimal("19.99")</code> is exact; <code>19.99</code> as a Double can show rounding errors</div><div class="explain-item"><code>{ field: null }</code> matches both null and missing fields; <code>$type: "null"</code> matches only real nulls</div><div class="explain-item"><code>$type</code> accepts names (<code>"decimal"</code>) or numbers</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">ObjectId ↔ identity / UUID · Decimal128 ↔ <code>NUMERIC(10,2)</code> · Date ↔ <code>TIMESTAMPTZ</code></li><li class="note-item">Arrays and embedded documents ↔ child tables or <code>jsonb</code> · <a class="xref" href="../SQL-Sheets/sql-07-numeric-types.html">See SQL 7</a>, <a class="xref" href="../SQL-Sheets/sql-09-date-time-types.html">9</a>, <a class="xref" href="../SQL-Sheets/sql-10-boolean-binary-uuid-enum-types.html">10</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> values are strings at heart; RedisJSON stores real JSON</li><li class="note-item"><strong>DynamoDB</strong> types <code>S</code>, <code>N</code>, <code>B</code>, <code>BOOL</code>, <code>NULL</code>, <code>M</code>, <code>L</code>, sets; numbers travel as strings</li><li class="note-item"><strong>Cassandra</strong> typed columns: <code>int</code>, <code>decimal</code>, <code>text</code>, <code>timestamp</code>, <code>uuid</code>, collections, UDTs</li><li class="note-item"><strong>Neo4j</strong> properties: numbers, strings, booleans, temporal, point, and lists of these</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>import { ObjectId, Decimal128 } from "mongodb"; Decimal128.fromString("19.99")</code></li><li class="note-item"><strong>Python</strong> <code>from bson import ObjectId, Decimal128; Decimal128("19.99")</code></li><li class="note-item"><strong>Java</strong> <code>new Decimal128(new BigDecimal("19.99"))</code> · <code>new ObjectId()</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Types Table | Limits Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-types"><h2 class="section-title">Common BSON Types</h2><table><thead><tr><th>Type</th><th>mongosh</th><th><code>$type</code></th></tr></thead><tbody><tr><td>Double</td><td class="desc"><code>4.5</code></td><td class="desc">"double"</td></tr><tr><td>String</td><td class="desc"><code>"text"</code></td><td class="desc">"string"</td></tr><tr><td>Object</td><td class="desc"><code>{ … }</code></td><td class="desc">"object"</td></tr><tr><td>Array</td><td class="desc"><code>[ … ]</code></td><td class="desc">"array"</td></tr><tr><td>ObjectId</td><td class="desc"><code>ObjectId()</code></td><td class="desc">"objectId"</td></tr><tr><td>Boolean</td><td class="desc"><code>true</code></td><td class="desc">"bool"</td></tr><tr><td>Date</td><td class="desc"><code>new Date()</code></td><td class="desc">"date"</td></tr><tr><td>Int32 / Int64</td><td class="desc"><code>NumberInt</code> / <code>NumberLong</code></td><td class="desc">"int" / "long"</td></tr><tr><td>Decimal128</td><td class="desc"><code>NumberDecimal("1.0")</code></td><td class="desc">"decimal"</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-limits"><h2 class="section-title">Limits &amp; Rules</h2><table><thead><tr><th>Rule</th><th>Value</th></tr></thead><tbody><tr><td>Max document size</td><td class="desc">16 MB</td></tr><tr><td>Max nesting depth</td><td class="desc">100 levels</td></tr><tr><td><code>_id</code></td><td class="desc">Required, unique, immutable</td></tr><tr><td>Field names</td><td class="desc">Avoid leading <code>$</code> and dots</td></tr><tr><td>Large files</td><td class="desc">GridFS (chunks of 255 KB)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Storing prices as Doubles and summing them</li><li class="note-item">Storing dates as strings, which breaks range queries</li><li class="note-item">Mixing types in one field, such as <code>"10"</code> and <code>10</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Pick one type per field and enforce it with validation (sheet 26)</li><li class="note-item">Store dates as Date in UTC; format in the app</li><li class="note-item">Use short field names only if storage really matters</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">BSON — JSON plus types</li><li class="note-item">Decimal128 for money</li><li class="note-item">Date in UTC</li><li class="note-item">16 MB per document</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-07-mongodb-intro-setup.html">MongoDB Introduction &amp; Setup</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-09-databases-collections.html">Databases, Collections &amp; _id</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

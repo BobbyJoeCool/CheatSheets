@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 40: JSON, Search &amp; Vectors</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s40">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 40</div>
+			<h1>JSON, Search &amp; Vectors</h1>
+			<div class="sheet-desc"><code>JSON.SET</code> · <code>JSON.GET</code> · <code>FT.CREATE</code> · <code>FT.SEARCH</code> · vector fields · hybrid search</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Documents and Queries in Redis</h2><div class="description">Redis Open Source 8 includes <strong>JSON</strong> (store and update nested documents by JSONPath) and the <strong>Query Engine</strong> (formerly RediSearch). <strong><code>FT.CREATE</code></strong> indexes hashes or JSON documents by key prefix with <strong>TEXT</strong>, <strong>TAG</strong>, <strong>NUMERIC</strong>, <strong>GEO</strong> and <strong>VECTOR</strong> fields; <strong><code>FT.SEARCH</code></strong> filters, ranks and sorts, and <strong><code>FT.AGGREGATE</code></strong> groups and computes. The index updates automatically as matching keys change.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Commands below are wrapped for space; type each on one line</li><li class="note-item">TAG fields match exact values: <code>@category:{Books}</code></li><li class="note-item">Vectors are passed as raw float32 bytes in <code>PARAMS</code></li><li class="note-item">Indexes live in memory alongside the data</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">JSON, FT.CREATE &amp; FT.SEARCH</h2><pre><code class="language-bash">&gt; JSON.SET product:7 $ '{"name":"SQL Pocket Guide","category":"Books",
+    "price":19.99,"tags":["sql"]}'
+&gt; JSON.GET product:7 $.price
+"[19.99]"
+&gt; JSON.NUMINCRBY product:7 $.price -2
+&gt; JSON.ARRAPPEND product:7 $.tags '"reference"'
+
+# index every key starting with product:
+&gt; FT.CREATE idx:products ON JSON PREFIX 1 product: SCHEMA
+    $.name AS name TEXT
+    $.category AS category TAG
+    $.price AS price NUMERIC SORTABLE
+    $.embedding AS embedding VECTOR HNSW 6 TYPE FLOAT32 DIM 384 DISTANCE_METRIC COSINE
+
+# full-text + tag + range, sorted
+&gt; FT.SEARCH idx:products "@name:(pocket guide) @category:{Books} @price:[10 30]"
+    RETURN 2 name price SORTBY price ASC LIMIT 0 10
+
+# group and count
+&gt; FT.AGGREGATE idx:products "*" GROUPBY 1 @category REDUCE COUNT 0 AS n
+
+# vector nearest neighbors with a filter
+&gt; FT.SEARCH idx:products "(@category:{Books})=&gt;[KNN 5 @embedding $v AS score]"
+    PARAMS 2 v "&lt;384 float32 bytes&gt;" SORTBY score DIALECT 2</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">JSONPath <code>$.price</code> returns an array because paths can match several values</div><div class="explain-item">The index covers keys created before and after <code>FT.CREATE</code></div><div class="explain-item"><code>@price:[10 30]</code> is an inclusive numeric range</div><div class="explain-item">The part before <code>=&gt;</code> filters; KNN then ranks the survivors by vector distance</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">JSON ↔ a <code>jsonb</code> column with <code>-&gt;</code> / <code>-&gt;&gt;</code> · <code>FT.SEARCH</code> ↔ <code>tsvector @@ tsquery</code></li><li class="note-item">Vector KNN ↔ pgvector <code>ORDER BY embedding &lt;=&gt; $1 LIMIT 5</code> · <a class="xref" href="../SQL-Sheets/sql-78-json.html">See SQL 78</a>, <a class="xref" href="../SQL-Sheets/sql-80-full-text-search.html">80</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> <code>$search</code> and <code>$vectorSearch</code> (sheet 24)</li><li class="note-item"><strong>DynamoDB</strong> zero-ETL to OpenSearch for search and vectors</li><li class="note-item"><strong>Cassandra</strong> SAI indexes with <code>ANN OF</code> vector search</li><li class="note-item"><strong>Neo4j</strong> full-text and vector indexes on node properties</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await r.json.set("product:7", "$", product); await r.ft.search("idx:products", "@category:{Books}")</code></li><li class="note-item"><strong>Python</strong> <code>r.json().set("product:7", "$", product); r.ft("idx:products").search("@category:{Books}")</code></li><li class="note-item"><strong>Java</strong> <code>jedis.jsonSet("product:7", Path2.ROOT_PATH, product); jedis.ftSearch("idx:products", "@category:{Books}")</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Json Table | Ft Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-json"><h2 class="section-title">JSON Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td><code>JSON.SET key path value</code></td><td class="desc">Write at a path</td></tr><tr><td><code>JSON.GET key path</code></td><td class="desc">Read</td></tr><tr><td><code>JSON.NUMINCRBY</code></td><td class="desc">Add to a number</td></tr><tr><td><code>JSON.ARRAPPEND</code></td><td class="desc">Append to an array</td></tr><tr><td><code>JSON.DEL</code></td><td class="desc">Remove a path</td></tr><tr><td><code>JSON.MGET</code></td><td class="desc">Same path from many keys</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ft"><h2 class="section-title">Index Field Types</h2><table><thead><tr><th>Type</th><th>Query syntax</th></tr></thead><tbody><tr><td>TEXT</td><td class="desc"><code>@name:(pocket guide)</code></td></tr><tr><td>TAG</td><td class="desc"><code>@category:{Books|Music}</code></td></tr><tr><td>NUMERIC</td><td class="desc"><code>@price:[10 30]</code></td></tr><tr><td>GEO</td><td class="desc"><code>@loc:[lon lat 5 km]</code></td></tr><tr><td>VECTOR</td><td class="desc"><code>=&gt;[KNN 5 @embedding $v]</code></td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Indexing text that should be TAG (ids, categories)</li><li class="note-item">Forgetting <code>SORTABLE</code> on fields you sort by</li><li class="note-item">Index prefixes that don't match your key names</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use TAG for exact values and TEXT for words</li><li class="note-item">Return only needed fields with <code>RETURN</code></li><li class="note-item">Check an index with <code>FT.INFO idx:products</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">JSON — nested docs by path</li><li class="note-item"><code>FT.CREATE</code> — index by prefix</li><li class="note-item"><code>FT.SEARCH</code> — query and rank</li><li class="note-item">VECTOR — KNN search</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-39-redis-caching-patterns.html">Caching Patterns</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-41-redis-atomicity-ops.html">Transactions, Lua &amp; Operations</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

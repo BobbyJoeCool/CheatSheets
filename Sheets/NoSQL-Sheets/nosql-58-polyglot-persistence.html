@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 58: Polyglot Persistence</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s58">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 58</div>
+			<h1>Polyglot Persistence</h1>
+			<div class="sheet-desc">SQL + cache · SQL + search · CQRS read models · outbox / CDC · dual-write pitfalls · consistency between stores</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">More Than One Store</h2><div class="description"><strong>Polyglot persistence</strong> means using different stores for different jobs: SQL or MongoDB as the source of truth, Redis as a cache, a search engine for text, a graph for recommendations. The hard part is keeping copies in step. Writing to two stores in one request (<strong>dual write</strong>) drifts when one write fails. Instead, record changes once and propagate them: the <strong>outbox</strong> pattern or <strong>change data capture (CDC)</strong> feeds events to consumers that update <strong>read models</strong> (CQRS).</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Copies are eventually consistent by design</li><li class="note-item">Consumers must be idempotent: events can repeat</li><li class="note-item">Debezium reads change logs from PostgreSQL, MySQL, MongoDB and more</li><li class="note-item">Each extra store adds operations work</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">Dual writes leave stores out of sync when the second write fails; use an outbox or CDC</li><li class="note-item">Name one source of truth for each piece of data; every other store is a rebuildable copy</li><li class="note-item">Plan for rebuilds: you should be able to reindex search or refill a cache from the source</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Outbox, Relay &amp; Consumers</h2><pre><code class="language-javascript">// 1. change + event in ONE database transaction (outbox)
+await sql.begin(async tx =&gt; {
+  await tx`UPDATE products SET price = ${price} WHERE product_id = ${id}`
+  await tx`INSERT INTO outbox (aggregate, aggregate_id, type, payload)
+           VALUES ('product', ${id}, 'PriceChanged',
+                   ${JSON.stringify({ id, price })})`
+})
+
+// 2. relay (or Debezium CDC) publishes outbox rows, then marks them sent
+const batch = await sql`SELECT * FROM outbox WHERE sent_at IS NULL ORDER BY id LIMIT 100`
+for (const evt of batch) {
+  await producer.send({ topic: "product-events",
+    messages: [ { key: String(evt.aggregate_id), value: evt.payload } ] })
+  await sql`UPDATE outbox SET sent_at = now() WHERE id = ${evt.id}`
+}
+
+// 3. consumers update their own stores (safe to run twice)
+on("PriceChanged", async ({ id, price }) =&gt; {
+  await redis.del(`product:${id}`)                                    // cache
+  await es.update({ index: "products", id: String(id), doc: { price } })  // search
+  await mongo.collection("productViews")
+    .updateOne({ _id: id }, { $set: { price } }, { upsert: true })   // read model
+})</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The price change and its event commit together, or neither does</div><div class="explain-item">If the relay crashes after sending but before marking, the event is sent again; consumers must tolerate that</div><div class="explain-item">Keying messages by product id keeps one product's events in order</div><div class="explain-item">Each consumer owns its store and can be rebuilt by replaying events</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">The outbox is an ordinary SQL table written in the same transaction</li><li class="note-item">CDC reads PostgreSQL's write-ahead log through logical decoding · <a class="xref" href="../SQL-Sheets/sql-68-transactions.html">See SQL 68</a>, <a class="xref" href="../SQL-Sheets/sql-67-triggers.html">67</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> a source of truth or a read model; change streams act as CDC</li><li class="note-item"><strong>Redis</strong> cache and session store in front of the source of truth</li><li class="note-item"><strong>DynamoDB</strong> often the source of truth; Streams feed other stores</li><li class="note-item"><strong>Cassandra</strong> high-volume events or time series beside a SQL core</li><li class="note-item"><strong>Neo4j</strong> recommendation and relationship queries on a copy synced from SQL</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> postgres.js + kafkajs + node-redis, or a CDC connector instead of a relay</li><li class="note-item"><strong>Python</strong> SQLAlchemy outbox table + Debezium; consumers with confluent-kafka</li><li class="note-item"><strong>Java</strong> Spring Modulith event publication registry, or Debezium Embedded</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Patterns Table | Roles Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-patterns"><h2 class="section-title">Integration Patterns</h2><table><thead><tr><th>Pattern</th><th>Use</th></tr></thead><tbody><tr><td>Cache-aside</td><td class="desc">Speed up reads (sheet 39)</td></tr><tr><td>CQRS read model</td><td class="desc">Query-shaped copies</td></tr><tr><td>Outbox</td><td class="desc">Reliable events from a database</td></tr><tr><td>CDC</td><td class="desc">Events from the change log</td></tr><tr><td>Saga</td><td class="desc">Multi-step workflows across services</td></tr><tr><td>Dual write</td><td class="desc">Avoid</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-roles"><h2 class="section-title">Typical Roles</h2><table><thead><tr><th>Need</th><th>Store</th></tr></thead><tbody><tr><td>Source of truth, joins</td><td class="desc">PostgreSQL / MySQL</td></tr><tr><td>Flexible documents</td><td class="desc">MongoDB</td></tr><tr><td>Hot reads, sessions</td><td class="desc">Redis</td></tr><tr><td>Text relevance</td><td class="desc">Elasticsearch / OpenSearch</td></tr><tr><td>Relationships</td><td class="desc">Neo4j</td></tr><tr><td>Huge event volume</td><td class="desc">Cassandra</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Writing to the database and the cache / search index in the same request</li><li class="note-item">No way to rebuild a copy from the source</li><li class="note-item">Consumers that break when an event arrives twice</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add stores only for a measured need</li><li class="note-item">Make every consumer idempotent with upserts and version checks</li><li class="note-item">Monitor lag between the source and each copy</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Different stores, different jobs</li><li class="note-item">One source of truth</li><li class="note-item">Outbox or CDC, never dual writes</li><li class="note-item">Idempotent consumers</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-57-vector-databases.html">Vector Databases &amp; Embeddings</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-59-testing-migrations.html">Testing &amp; Schema Migration</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

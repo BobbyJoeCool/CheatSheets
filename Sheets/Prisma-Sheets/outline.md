@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- **Group it belongs to:** SQL & Tools
+- **Group it belongs to:** Databases
 - **Folder Directory:** `Sheets/Prisma-Sheets/prisma-##-[slug].html`
 - **PDF Name:** `Prisma Reference Guide.pdf`
 - **Groups:** 7

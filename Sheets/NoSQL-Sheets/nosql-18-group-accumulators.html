@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 18: $group &amp; Accumulators</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>$group &amp; Accumulators</h1>
+			<div class="sheet-desc"><code>$group</code> · <code>$sum</code> · <code>$avg</code> · <code>$min</code> / <code>$max</code> · <code>$push</code> · <code>$addToSet</code> · <code>$count</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Grouping and Totals</h2><div class="description"><strong><code>$group</code></strong> collects documents that share an <strong><code>_id</code></strong> expression and computes <strong>accumulators</strong> for each group: <code>$sum</code>, <code>$avg</code>, <code>$min</code>, <code>$max</code>, <code>$push</code>, <code>$addToSet</code>, <code>$first</code>, <code>$count</code> and the top-N family. Use <code>_id: null</code> for one group over everything, or a document for several grouping fields. <strong><code>$unwind</code></strong> before <code>$group</code> lets you total array elements, such as order lines.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Only <code>_id</code> and accumulator fields come out of <code>$group</code></li><li class="note-item"><code>$sum: 1</code> counts documents</li><li class="note-item"><code>$topN</code>, <code>$bottomN</code>, <code>$firstN</code> arrived in 5.2</li><li class="note-item">Filter groups with a <code>$match</code> after <code>$group</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">$group, Accumulators &amp; Top N</h2><pre><code class="language-javascript">// revenue per customer
+db.orders.aggregate([
+  { $match: { status: "paid" } },
+  { $group: { _id: "$customerId",
+              orders: { $sum: 1 },
+              revenue: { $sum: "$total" },
+              avgOrder: { $avg: "$total" },
+              firstOrder: { $min: "$orderDate" } } },
+  { $match: { revenue: { $gte: 500 } } },          // like HAVING
+  { $sort: { revenue: -1 } }
+])
+
+// group by year and status
+db.orders.aggregate([
+  { $group: { _id: { year: { $year: "$orderDate" }, status: "$status" },
+              n: { $count: {} } } }
+])
+
+// units sold per product from order lines
+db.orders.aggregate([
+  { $unwind: "$items" },
+  { $group: { _id: "$items.productId",
+              units: { $sum: "$items.qty" },
+              buyers: { $addToSet: "$customerId" } } }
+])
+
+// three most expensive products per category
+db.products.aggregate([
+  { $group: { _id: "$category",
+              top3: { $topN: { n: 3, sortBy: { price: -1 }, output: "$name" } } } }
+])</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>_id: "$customerId"</code> makes one output document per customer</div><div class="explain-item">The <code>$match</code> after <code>$group</code> filters on computed totals, like SQL's <code>HAVING</code></div><div class="explain-item">A compound <code>_id</code> groups by several values at once</div><div class="explain-item"><code>$addToSet</code> collects unique customer ids; <code>$push</code> would keep duplicates</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>$group</code> ↔ <code>GROUP BY</code> · <code>$sum: 1</code> ↔ <code>COUNT(*)</code> · <code>$push</code> ↔ <code>array_agg</code></li><li class="note-item"><code>$addToSet</code> ↔ <code>array_agg(DISTINCT …)</code> · <code>$match</code> after <code>$group</code> ↔ <code>HAVING</code> · <a class="xref" href="../SQL-Sheets/sql-28-group-by.html">See SQL 28</a>, <a class="xref" href="../SQL-Sheets/sql-29-having-conditional-aggregation.html">29</a>, <a class="xref" href="../SQL-Sheets/sql-31-string-array-aggregation.html">31</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> keep counters on write (<code>HINCRBY</code>) instead of grouping later</li><li class="note-item"><strong>DynamoDB</strong> maintain totals on write (<code>ADD revenue :t</code>) or in a Streams consumer</li><li class="note-item"><strong>Cassandra</strong> <code>GROUP BY</code> only on partition and clustering columns</li><li class="note-item"><strong>Neo4j</strong> implicit grouping: <code>RETURN c.id, count(o), sum(o.total)</code></li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>{ $group: { _id: "$customerId", revenue: { $sum: "$total" } } }</code></li><li class="note-item"><strong>Python</strong> <code>{"$group": {"_id": "$customerId", "revenue": {"$sum": "$total"}}}</code></li><li class="note-item"><strong>Java</strong> <code>group("$customerId", sum("revenue", "$total"), avg("avgOrder", "$total"))</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Acc Table | Gpat Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-acc"><h2 class="section-title">Accumulators</h2><table><thead><tr><th>Operator</th><th>Result</th></tr></thead><tbody><tr><td><code>$sum</code> / <code>$avg</code></td><td class="desc">Total / mean</td></tr><tr><td><code>$min</code> / <code>$max</code></td><td class="desc">Smallest / largest</td></tr><tr><td><code>$count</code></td><td class="desc">Documents in group</td></tr><tr><td><code>$push</code> / <code>$addToSet</code></td><td class="desc">Array of values / unique values</td></tr><tr><td><code>$first</code> / <code>$last</code></td><td class="desc">By current sort order</td></tr><tr><td><code>$topN</code> / <code>$bottomN</code></td><td class="desc">N values by a sort</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-gpat"><h2 class="section-title">Group Patterns</h2><table><thead><tr><th>Goal</th><th><code>_id</code></th></tr></thead><tbody><tr><td>Whole collection</td><td class="desc"><code>null</code></td></tr><tr><td>One field</td><td class="desc"><code>"$status"</code></td></tr><tr><td>Several fields</td><td class="desc"><code>{ y: { $year: "$d" }, s: "$status" }</code></td></tr><tr><td>Array elements</td><td class="desc"><code>$unwind</code> first</td></tr><tr><td>Date buckets</td><td class="desc"><code>{ $dateTrunc: { date: "$d", unit: "week" } }</code></td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Expecting other fields to pass through <code>$group</code></li><li class="note-item">Summing Double prices and getting rounding noise; store Decimal128</li><li class="note-item">Using <code>$first</code> without a <code>$sort</code> before the group</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item"><code>$match</code> before <code>$group</code> to shrink the input</li><li class="note-item">Name accumulator fields for what they mean (<code>revenue</code>, not <code>total2</code>)</li><li class="note-item">Cache heavy group results with <code>$merge</code> (sheet 21)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>$group</code> by <code>_id</code></li><li class="note-item">Accumulators compute per group</li><li class="note-item"><code>$match</code> after = HAVING</li><li class="note-item"><code>$unwind</code> to total arrays</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-17-aggregation-basics.html">Aggregation Pipeline Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-19-lookup-unwind.html">$lookup &amp; $unwind</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

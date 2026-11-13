@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 12: Finding Documents</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Finding Documents</h1>
+			<div class="sheet-desc"><code>find</code> · <code>findOne</code> · projection · <code>sort</code> · <code>limit</code> · <code>skip</code> · <code>countDocuments</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Reading Documents</h2><div class="description"><strong><code>find(filter, projection)</code></strong> returns a cursor over every match and <strong><code>findOne</code></strong> returns the first. A <strong>filter</strong> is a document of conditions joined by AND; a <strong>projection</strong> chooses fields with <code>1</code> (include) or <code>0</code> (exclude). Chain <strong><code>sort</code></strong>, <strong><code>skip</code></strong> and <strong><code>limit</code></strong> to shape the result. <strong><code>countDocuments</code></strong> counts matches with a query; <strong><code>estimatedDocumentCount</code></strong> reads collection metadata and is instant.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Don't mix 1 and 0 in one projection (except <code>_id: 0</code>)</li><li class="note-item">Sort runs before skip and limit, whatever order you chain them</li><li class="note-item">An empty filter <code>{}</code> matches everything</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">A query without a matching index scans every document (COLLSCAN). Check with <code>explain("executionStats")</code> before shipping (sheet 23)</li><li class="note-item">Deep <code>skip()</code> pages read and throw away every skipped document; page with a range on an indexed field instead</li><li class="note-item">Always <code>limit()</code> user-facing queries and project only the fields you display</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">find, Projection, Sort &amp; Paging</h2><pre><code class="language-javascript">db.products.find({ category: "Books" })
+db.products.find({ category: "Books", price: { $lt: 20 } })   // AND
+db.products.findOne({ _id: 7 })
+
+// projection: choose fields
+db.products.find({ category: "Books" }, { name: 1, price: 1, _id: 0 })
+db.orders.find({}, { items: 0 })                             // all but items
+
+// sort, skip, limit
+db.orders.find({ customerId: 42 }).sort({ orderDate: -1 }).limit(10)
+db.orders.find().sort({ _id: 1 }).skip(20).limit(10)          // page 3
+
+// range paging: fast at any depth
+db.orders.find({ _id: { $gt: lastSeenId } }).sort({ _id: 1 }).limit(10)
+
+// counting and distinct values
+db.orders.countDocuments({ status: "pending" })
+db.orders.estimatedDocumentCount()
+db.products.distinct("category")</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Two conditions in one filter must both match</div><div class="explain-item"><code>{ items: 0 }</code> returns every field except <code>items</code></div><div class="explain-item">Range paging remembers the last <code>_id</code> shown and asks for the next ones</div><div class="explain-item"><code>distinct</code> returns an array of the unique values</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>find({ category: "Books" }, { name: 1 })</code> ↔ <code>SELECT name FROM products WHERE category = 'Books'</code></li><li class="note-item"><code>sort</code> / <code>skip</code> / <code>limit</code> ↔ <code>ORDER BY</code> / <code>OFFSET</code> / <code>LIMIT</code> · <a class="xref" href="../SQL-Sheets/sql-13-select-basics.html">See SQL 13</a>, <a class="xref" href="../SQL-Sheets/sql-16-limiting-pagination.html">16</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> no ad hoc queries; read by key, or add Search (<code>FT.SEARCH</code>)</li><li class="note-item"><strong>DynamoDB</strong> <code>Query</code> needs the partition key; other fields need a GSI or a <code>Scan</code></li><li class="note-item"><strong>Cassandra</strong> <code>WHERE</code> must include the partition key, or use SAI / <code>ALLOW FILTERING</code></li><li class="note-item"><strong>Neo4j</strong> <code>MATCH (p:Product {category: "Books"}) RETURN p.name ORDER BY p.price LIMIT 10</code></li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await products.find({ category: "Books" }).project({ name: 1 }).limit(10).toArray()</code></li><li class="note-item"><strong>Python</strong> <code>list(products.find({"category": "Books"}, {"name": 1}).limit(10))</code></li><li class="note-item"><strong>Java</strong> <code>products.find(eq("category", "Books")).projection(include("name")).limit(10)</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Shape Table | Count Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-shape"><h2 class="section-title">Shaping Results</h2><table><thead><tr><th>Method</th><th>Does</th></tr></thead><tbody><tr><td><code>.sort({ f: 1 })</code></td><td class="desc">Ascending (<code>-1</code> descending)</td></tr><tr><td><code>.limit(n)</code></td><td class="desc">At most n documents</td></tr><tr><td><code>.skip(n)</code></td><td class="desc">Skip n documents</td></tr><tr><td><code>.collation({ locale: "en" })</code></td><td class="desc">Language-aware sorting</td></tr><tr><td><code>.maxTimeMS(ms)</code></td><td class="desc">Abort slow queries</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-count"><h2 class="section-title">Counting</h2><table><thead><tr><th>Method</th><th>Speed / accuracy</th></tr></thead><tbody><tr><td><code>countDocuments(filter)</code></td><td class="desc">Runs a query; exact</td></tr><tr><td><code>estimatedDocumentCount()</code></td><td class="desc">Metadata; instant, approximate</td></tr><tr><td><code>distinct(field)</code></td><td class="desc">Unique values</td></tr><tr><td><code>$count</code> stage</td><td class="desc">Count inside a pipeline</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mixing included and excluded fields in a projection</li><li class="note-item">Using <code>skip(100000)</code> for deep pages</li><li class="note-item">Fetching whole documents when the page shows two fields</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Sort on an indexed field</li><li class="note-item">Use <code>findOne</code> when you expect one result</li><li class="note-item">Add <code>.maxTimeMS()</code> to protect user-facing queries</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>find</code> — cursor of matches</li><li class="note-item">Projection — pick fields</li><li class="note-item"><code>sort</code> · <code>skip</code> · <code>limit</code></li><li class="note-item">Range paging beats <code>skip</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-11-mongodb-insert.html">Inserting Documents</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-13-query-operators.html">Query Operators</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 11: Inserting Documents</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Inserting Documents</h1>
+			<div class="sheet-desc"><code>insertOne</code> · <code>insertMany</code> · <code>ordered</code> · generated <code>_id</code> · write result · duplicate key error</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Adding Documents</h2><div class="description"><strong><code>insertOne</code></strong> adds one document and <strong><code>insertMany</code></strong> adds an array of them in batches. If a document has no <code>_id</code>, the driver generates an <code>ObjectId</code> before sending it. A duplicate <code>_id</code> or unique-index value fails with error <strong>E11000</strong>. With <code>ordered: true</code> (the default) <code>insertMany</code> stops at the first error; with <code>ordered: false</code> it skips failures and inserts the rest. The <strong>write concern</strong> says how many replicas must confirm the write before the call returns.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>insert()</code> is deprecated; use <code>insertOne</code> / <code>insertMany</code></li><li class="note-item">Default write concern is <code>w: "majority"</code></li><li class="note-item">Schema validation runs on insert (sheet 26)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">insertOne, insertMany &amp; Errors</h2><pre><code class="language-javascript">db.products.insertOne({ name: "Mechanical Keyboard", category: "Electronics",
+  price: NumberDecimal("89.00"), stock: 25 })
+// { acknowledged: true, insertedId: ObjectId("…") }
+
+db.products.insertMany([
+  { _id: 21, name: "Desk Mat", price: NumberDecimal("24.50"), stock: 40 },
+  { _id: 22, name: "Monitor Arm", price: NumberDecimal("79.00"), stock: 12 }
+])
+// { acknowledged: true, insertedIds: { '0': 21, '1': 22 } }
+
+// duplicate _id → E11000; ordered: false keeps going
+db.products.insertMany(
+  [ { _id: 22, name: "Duplicate" }, { _id: 23, name: "Desk Lamp" } ],
+  { ordered: false })
+// MongoBulkWriteError: E11000 duplicate key error … insertedCount: 1
+
+// stronger durability for an important write
+db.orders.insertOne(
+  { _id: 1002, customerId: 42, status: "pending", items: [] },
+  { writeConcern: { w: "majority", j: true, wtimeout: 5000 } })</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>insertedId</code> is the generated or supplied <code>_id</code></div><div class="explain-item">With <code>ordered: false</code> the "Desk Lamp" document is inserted even though the first one failed</div><div class="explain-item"><code>j: true</code> waits for the on-disk journal; <code>wtimeout</code> fails the call if replicas don't confirm in time</div><div class="explain-item">A failed write-concern wait doesn't undo the write; it may still be applied</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>insertOne</code> ↔ <code>INSERT INTO products (…) VALUES (…) RETURNING product_id</code></li><li class="note-item"><code>insertMany</code> ↔ multi-row <code>VALUES</code>; E11000 ↔ unique violation (<code>23505</code>) · <a class="xref" href="../SQL-Sheets/sql-50-insert.html">See SQL 50</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> <code>SET</code> and <code>HSET</code> create or overwrite; <code>SET … NX</code> inserts only if missing</li><li class="note-item"><strong>DynamoDB</strong> <code>PutItem</code> overwrites; add <code>attribute_not_exists(PK)</code> for insert-only</li><li class="note-item"><strong>Cassandra</strong> <code>INSERT</code> is an upsert; <code>IF NOT EXISTS</code> for insert-only (lightweight transaction)</li><li class="note-item"><strong>Neo4j</strong> <code>CREATE</code> always adds; <code>MERGE</code> avoids duplicates</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>const { insertedId } = await products.insertOne(doc)</code></li><li class="note-item"><strong>Python</strong> <code>products.insert_one(doc).inserted_id</code></li><li class="note-item"><strong>Java</strong> <code>products.insertOne(doc).getInsertedId()</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Opts Table | Wc Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-opts"><h2 class="section-title">Insert Options</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td><code>ordered</code></td><td class="desc">Stop at first error (<code>true</code>) or continue</td></tr><tr><td><code>writeConcern</code></td><td class="desc">How many replicas confirm</td></tr><tr><td><code>bypassDocumentValidation</code></td><td class="desc">Skip schema validation</td></tr><tr><td><code>comment</code></td><td class="desc">Tag the operation in logs and profiler</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-wc"><h2 class="section-title">Write Concern</h2><table><thead><tr><th>Setting</th><th>Meaning</th></tr></thead><tbody><tr><td><code>w: 1</code></td><td class="desc">Primary confirmed</td></tr><tr><td><code>w: "majority"</code></td><td class="desc">Most members confirmed (default)</td></tr><tr><td><code>w: 0</code></td><td class="desc">Fire and forget</td></tr><tr><td><code>j: true</code></td><td class="desc">Written to the journal</td></tr><tr><td><code>wtimeout: ms</code></td><td class="desc">Give up waiting after ms</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Assuming <code>ordered: false</code> inserts in a predictable order</li><li class="note-item">Parsing error message strings instead of checking error code 11000</li><li class="note-item">Using <code>w: 0</code> for data you can't lose</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Supply your own <code>_id</code> when you need idempotent retries</li><li class="note-item">Batch inserts with <code>insertMany</code> instead of loops</li><li class="note-item">Catch duplicate-key errors by code (<code>err.code === 11000</code>)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>insertOne</code> / <code>insertMany</code></li><li class="note-item"><code>_id</code> generated if missing</li><li class="note-item">E11000 — duplicate key</li><li class="note-item"><code>ordered: false</code> — keep going</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-10-mongosh-essentials.html">mongosh Essentials</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-12-mongodb-find.html">Finding Documents</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

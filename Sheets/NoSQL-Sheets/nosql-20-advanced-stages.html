@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 20: $facet, $bucket &amp; Window Stages</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>$facet, $bucket &amp; Window Stages</h1>
+			<div class="sheet-desc"><code>$facet</code> · <code>$bucket</code> · <code>$setWindowFields</code> · <code>$densify</code> · <code>$fill</code> · <code>$sortByCount</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Facets, Buckets and Windows</h2><div class="description"><strong><code>$facet</code></strong> runs several sub-pipelines over the same input in one pass, which suits search pages with filters and counts. <strong><code>$bucket</code></strong> and <strong><code>$bucketAuto</code></strong> group values into ranges. <strong><code>$setWindowFields</code></strong> (5.0+) adds window functions: running totals, ranks and moving averages without collapsing documents. <strong><code>$densify</code></strong> and <strong><code>$fill</code></strong> fill gaps in time series.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Each <code>$facet</code> output is one array inside one document (16 MB cap)</li><li class="note-item"><code>$sortByCount</code> = <code>$group</code> + <code>$sort</code> by count</li><li class="note-item">Windows can count documents or a time / value range</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">$facet, $bucket, Windows &amp; Gap Filling</h2><pre><code class="language-javascript">// a search page: results plus counts in one pass
+db.products.aggregate([
+  { $match: { price: { $lt: 100 } } },
+  { $facet: {
+      byCategory: [ { $sortByCount: "$category" } ],
+      byPrice: [ { $bucket: { groupBy: "$price", boundaries: [0, 20, 50, 100],
+                              default: "other", output: { n: { $sum: 1 } } } } ],
+      page: [ { $sort: { price: 1 } }, { $limit: 10 } ]
+  } }
+])
+
+// even-sized buckets chosen by MongoDB
+db.products.aggregate([ { $bucketAuto: { groupBy: "$price", buckets: 4 } } ])
+
+// running total and order number per customer
+db.orders.aggregate([
+  { $setWindowFields: {
+      partitionBy: "$customerId", sortBy: { orderDate: 1 },
+      output: {
+        runningTotal: { $sum: "$total", window: { documents: ["unbounded", "current"] } },
+        orderNo: { $documentNumber: {} } } } }
+])
+
+// daily revenue with no missing days
+db.dailySales.aggregate([
+  { $densify: { field: "day", range: { step: 1, unit: "day", bounds: "full" } } },
+  { $fill: { output: { revenue: { value: 0 } } } }
+])</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>$facet</code> returns one document with a <code>byCategory</code>, <code>byPrice</code> and <code>page</code> array</div><div class="explain-item"><code>$bucket</code> boundaries are inclusive below, exclusive above; <code>default</code> collects the rest</div><div class="explain-item"><code>documents: ["unbounded", "current"]</code> is everything from the first row to this one</div><div class="explain-item"><code>$densify</code> inserts the missing days; <code>$fill</code> gives them a value</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>$facet</code> ↔ several queries or <code>GROUPING SETS</code> · <code>$bucket</code> ↔ <code>CASE</code> + <code>GROUP BY</code> (or <code>width_bucket</code>)</li><li class="note-item"><code>$setWindowFields</code> ↔ <code>OVER (PARTITION BY … ORDER BY …)</code> · <code>$densify</code> ↔ <code>generate_series</code> + <code>LEFT JOIN</code> · <a class="xref" href="../SQL-Sheets/sql-44-window-function-basics.html">See SQL 44</a>, <a class="xref" href="../SQL-Sheets/sql-47-running-totals-moving-averages.html">47</a>, <a class="xref" href="../SQL-Sheets/sql-79-arrays-generated-series.html">79</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> facet counts with <code>FT.AGGREGATE … GROUPBY</code></li><li class="note-item"><strong>DynamoDB</strong> precompute buckets and running totals on write</li><li class="note-item"><strong>Cassandra</strong> no window functions; compute in Spark or the app</li><li class="note-item"><strong>Neo4j</strong> <code>collect</code> plus list functions; the GDS library for graph analytics</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>{ $facet: { byCategory: [{ $sortByCount: "$category" }] } }</code></li><li class="note-item"><strong>Python</strong> <code>{"$facet": {"byCategory": [{"$sortByCount": "$category"}]}}</code></li><li class="note-item"><strong>Java</strong> <code>facet(new Facet("byCategory", sortByCount("$category")))</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Analytics Table | Window Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-analytics"><h2 class="section-title">Analytics Stages</h2><table><thead><tr><th>Stage</th><th>Does</th></tr></thead><tbody><tr><td><code>$facet</code></td><td class="desc">Several pipelines, one pass</td></tr><tr><td><code>$bucket</code> / <code>$bucketAuto</code></td><td class="desc">Range groups</td></tr><tr><td><code>$sortByCount</code></td><td class="desc">Group and sort by count</td></tr><tr><td><code>$setWindowFields</code></td><td class="desc">Window functions</td></tr><tr><td><code>$densify</code> / <code>$fill</code></td><td class="desc">Fill gaps in series</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-window"><h2 class="section-title">Window Operators</h2><table><thead><tr><th>Operator</th><th>Result</th></tr></thead><tbody><tr><td><code>$sum</code> / <code>$avg</code></td><td class="desc">Running or moving totals</td></tr><tr><td><code>$rank</code> / <code>$denseRank</code></td><td class="desc">Rank within partition</td></tr><tr><td><code>$documentNumber</code></td><td class="desc">Row number</td></tr><tr><td><code>$shift</code></td><td class="desc">Value from another row (lag / lead)</td></tr><tr><td><code>$derivative</code> / <code>$integral</code></td><td class="desc">Rate of change / area</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Putting huge result sets inside <code>$facet</code> and hitting 16 MB</li><li class="note-item">Forgetting <code>sortBy</code> in <code>$setWindowFields</code></li><li class="note-item">Bucket boundaries that don't cover all values without a <code>default</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Limit each facet branch</li><li class="note-item">Use time-range windows (<code>range</code> with <code>unit</code>) for time series</li><li class="note-item">Pre-aggregate daily totals, then densify the small result</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>$facet</code> — many results, one pass</li><li class="note-item"><code>$bucket</code> — ranges</li><li class="note-item"><code>$setWindowFields</code> — windows</li><li class="note-item"><code>$densify</code> / <code>$fill</code> — gaps</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-19-lookup-unwind.html">$lookup &amp; $unwind</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-21-expressions-output.html">Expression Operators &amp; Output</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 57: Vector Databases &amp; Embeddings</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s57">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 57</div>
+			<h1>Vector Databases &amp; Embeddings</h1>
+			<div class="sheet-desc">embeddings · similarity (cosine, dot) · ANN / HNSW · metadata filters · pgvector · Atlas / Redis / dedicated stores</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Search by Meaning</h2><div class="description">An <strong>embedding</strong> model turns text, images or audio into a <strong>vector</strong> of numbers, placed so that similar meanings land close together. A vector store finds the <strong>nearest neighbors</strong> of a query vector using <strong>approximate nearest neighbor (ANN)</strong> indexes such as <strong>HNSW</strong>, usually combined with <strong>metadata filters</strong>. This powers semantic search, recommendations and retrieval-augmented generation (RAG). You may not need a new database: PostgreSQL (pgvector), MongoDB, Redis, Cassandra and Neo4j all store vectors.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Use the same model for documents and queries</li><li class="note-item">Normalize vectors to use dot product as cosine</li><li class="note-item">More dimensions cost more memory and time</li><li class="note-item">Store the model name and version with each vector</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Embed, Store, Query (pgvector)</h2><pre><code class="language-python"># 1. turn text into vectors (any embedding model)
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer("all-MiniLM-L6-v2")             # 384 dimensions
+docs = [{"id": 7, "text": "SQL Pocket Guide: a quick SQL reference"},
+        {"id": 3, "text": "USB-C cable, 2 m, fast charging"}]
+vecs = model.encode([d["text"] for d in docs], normalize_embeddings=True)
+
+# 2. store them (pgvector here; same idea in every store)
+import psycopg
+from pgvector.psycopg import register_vector
+conn = psycopg.connect("dbname=shop", autocommit=True)
+conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+register_vector(conn)
+conn.execute("CREATE TABLE IF NOT EXISTS items "
+             "(id int PRIMARY KEY, body text, embedding vector(384))")
+conn.execute("CREATE INDEX IF NOT EXISTS items_embedding_idx ON items "
+             "USING hnsw (embedding vector_cosine_ops)")
+for d, v in zip(docs, vecs):
+    conn.execute("INSERT INTO items VALUES (%s, %s, %s)", (d["id"], d["text"], v))
+
+# 3. query: embed the question, take the nearest neighbors
+q = model.encode("cable to charge my laptop", normalize_embeddings=True)
+rows = conn.execute("SELECT id, body, 1 - (embedding &lt;=&gt; %s) AS score "
+                    "FROM items ORDER BY embedding &lt;=&gt; %s LIMIT 5", (q, q)).fetchall()</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>normalize_embeddings=True</code> scales vectors to length 1</div><div class="explain-item"><code>register_vector</code> lets psycopg send NumPy arrays as <code>vector</code> values</div><div class="explain-item">The HNSW index makes nearest-neighbor search approximate but fast</div><div class="explain-item"><code>&lt;=&gt;</code> is cosine distance, so <code>1 - distance</code> is similarity</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">pgvector keeps vectors in SQL: <code>ORDER BY embedding &lt;=&gt; $1 LIMIT 5</code> with an HNSW index</li><li class="note-item">Metadata filters are ordinary <code>WHERE</code> clauses · <a class="xref" href="../SQL-Sheets/sql-72-index-types-strategies.html">See SQL 72</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> <code>$vectorSearch</code> with pre-filters (sheet 24)</li><li class="note-item"><strong>Redis</strong> VECTOR fields in <code>FT.CREATE</code>; Redis 8 also adds vector sets</li><li class="note-item"><strong>DynamoDB</strong> no native vector index; pair it with OpenSearch</li><li class="note-item"><strong>Cassandra</strong> <code>vector&lt;float, 384&gt;</code> columns with SAI and <code>ORDER BY … ANN OF</code></li><li class="note-item"><strong>Neo4j</strong> vector indexes, combined with graph traversals</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await coll.aggregate([{ $vectorSearch: { index, path: "embedding", queryVector: q, numCandidates: 100, limit: 5 } }]).toArray()</code></li><li class="note-item"><strong>Python</strong> <code>conn.execute("SELECT id FROM items ORDER BY embedding &lt;=&gt; %s LIMIT 5", (q,))</code></li><li class="note-item"><strong>Java</strong> Spring AI: <code>vectorStore.similaritySearch(SearchRequest.builder().query("cable").topK(5).build())</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Metric Table | Ann Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-metric"><h2 class="section-title">Similarity Metrics</h2><table><thead><tr><th>Metric</th><th>Notes</th></tr></thead><tbody><tr><td>Cosine</td><td class="desc">Angle only; the usual choice for text</td></tr><tr><td>Dot product</td><td class="desc">Same as cosine when normalized; fastest</td></tr><tr><td>Euclidean (L2)</td><td class="desc">Straight-line distance</td></tr><tr><td>Hamming</td><td class="desc">Binary vectors</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ann"><h2 class="section-title">Index Algorithms</h2><table><thead><tr><th>Algorithm</th><th>Trade-off</th></tr></thead><tbody><tr><td>Flat (exact)</td><td class="desc">Perfect recall, slow at scale</td></tr><tr><td>HNSW</td><td class="desc">Fast and accurate; uses memory</td></tr><tr><td>IVF</td><td class="desc">Clusters vectors; less memory</td></tr><tr><td>DiskANN</td><td class="desc">Large sets on SSD</td></tr><tr><td>Quantization</td><td class="desc">Smaller vectors, a little less accuracy</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mixing vectors from different models in one index</li><li class="note-item">No metadata filters, so results ignore stock or permissions</li><li class="note-item">Judging quality without a set of test questions</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with the database you already run</li><li class="note-item">Combine vector and keyword search (hybrid) for better results</li><li class="note-item">Re-embed everything when you change models</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Embeddings place meaning in space</li><li class="note-item">ANN indexes (HNSW) find neighbors</li><li class="note-item">Filter by metadata</li><li class="note-item">Often no new database needed</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-56-search-engines.html" title="Search Engines: Elasticsearch &amp; OpenSearch">Search Engines</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-58-polyglot-persistence.html">Polyglot Persistence</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 15: Updating Documents</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>Updating Documents</h1>
+			<div class="sheet-desc"><code>updateOne</code> · <code>updateMany</code> · <code>$set</code> · <code>$inc</code> · <code>$unset</code> · <code>$push</code> / <code>$pull</code> · <code>$[]</code> / <code>$[elem]</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Change Fields, Not Whole Documents</h2><div class="description"><strong><code>updateOne(filter, update, options)</code></strong> changes the first matching document and <strong><code>updateMany</code></strong> changes every match. The update document is built from <strong>operators</strong>: <code>$set</code> writes fields, <code>$inc</code> adds to numbers, <code>$unset</code> removes fields, and <code>$push</code> / <code>$pull</code> edit arrays, so only the named fields change. A change to one document is <strong>atomic</strong>, including all of its nested fields and arrays. The <strong>positional operators</strong> reach into arrays: <code>$</code> for the element the filter matched, <code>$[]</code> for every element and <code>$[name]</code> with <code>arrayFilters</code> for the ones that match a condition.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">An update without operators is rejected; use <code>replaceOne</code> to swap the whole document (sheet 16)</li><li class="note-item"><code>$set</code> creates missing fields and nested paths (<code>"shipping.carrier"</code>)</li><li class="note-item">An aggregation pipeline <code>[ { $set: … } ]</code> can compute from other fields</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item"><code>updateMany</code> isn't all-or-nothing: a failure partway leaves some documents changed. Wrap it in a transaction (sheet 27) when that matters</li><li class="note-item"><code>$inc</code> and <code>$push</code> double-apply if your code retries after a timeout; retryable writes cover driver retries, but app-level retries need an idempotency check</li><li class="note-item">Filter on indexed fields: an unindexed <code>updateMany</code> scans the whole collection</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + In Your Code | Explain + SQL Equivalent + Across Engines -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Field, Array &amp; Positional Updates</h2><pre><code class="language-javascript">// $set and $currentDate on one order
+db.orders.updateOne(
+  { _id: 1001 },
+  { $set: { status: "shipped", "shipping.carrier": "UPS" },
+    $currentDate: { updatedAt: true } }
+)
+// { acknowledged: true, matchedCount: 1, modifiedCount: 1, ... }
+db.products.updateOne({ _id: 7 }, { $inc: { stock: -2 } })
+
+// arrays: add a line item, tag once, remove a line
+db.orders.updateOne({ _id: 1001 }, {
+  $push: { items: { productId: 7, qty: 2, unitPrice: 19.99 } },
+  $addToSet: { tags: "gift" }
+})
+db.orders.updateOne({ _id: 1001 }, { $pull: { items: { productId: 3 } } })
+
+// positional: the matched element, then filtered elements
+db.orders.updateOne(
+  { _id: 1001, "items.productId": 7 },
+  { $set: { "items.$.qty": 3 } }
+)
+db.orders.updateMany(
+  { status: "pending" },
+  { $set: { "items.$[big].backordered": true } },
+  { arrayFilters: [ { "big.qty": { $gt: 5 } } ] }
+)</code></pre></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await orders.updateOne({ _id: 1001 }, { $set: { status: "shipped" } })</code></li><li class="note-item"><strong>Python</strong> <code>orders.update_one({"_id": 1001}, {"$set": {"status": "shipped"}})</code></li><li class="note-item"><strong>Java</strong> <code>orders.updateOne(eq("_id", 1001), set("status", "shipped"))</code></li></ul></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Several operators can share one update as long as they touch different fields</div><div class="explain-item"><code>matchedCount</code> is how many matched the filter; <code>modifiedCount</code> is how many actually changed (setting a value to itself counts as matched only)</div><div class="explain-item"><code>$addToSet</code> adds only if the value isn't already in the array; <code>$pull</code> removes every element matching the condition</div><div class="explain-item"><code>items.$</code> needs the array in the filter (<code>"items.productId": 7</code>) and updates the first element that matched</div><div class="explain-item"><code>$[big]</code> names a placeholder; <code>arrayFilters</code> says which elements it stands for</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>$set</code> ↔ <code>UPDATE orders SET status = 'shipped' WHERE order_id = 1001</code></li><li class="note-item"><code>$inc</code> ↔ <code>SET stock = stock - 2</code> · <code>$mul</code> ↔ <code>SET price = price * 0.9</code></li><li class="note-item">Arrays have no SQL form: <code>items</code> is the <code>order_items</code> table, so <code>$push</code> ↔ <code>INSERT INTO order_items …</code> · <a class="xref" href="../SQL-Sheets/sql-51-update.html">See SQL 51</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> <code>HSET order:1001 status shipped</code> · <code>HINCRBY product:7 stock -2</code>; nested arrays need RedisJSON (<code>JSON.ARRAPPEND</code>)</li><li class="note-item"><strong>DynamoDB</strong> <code>UpdateItem</code> with <code>SET #s = :s, stock = stock - :n</code>; <code>status</code> is reserved, so alias it with <code>#s</code></li><li class="note-item"><strong>Cassandra</strong> <code>UPDATE orders SET status = 'shipped' WHERE order_id = 1001</code> — every write is an upsert; lists use <code>items = items + [...]</code></li><li class="note-item"><strong>Neo4j</strong> <code>MATCH (o:Order {id: 1001}) SET o.status = 'shipped'</code> · <code>SET p.stock = p.stock - 2</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Field Ops Table | Array Ops Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-field-ops"><h2 class="section-title">Field Operators</h2><table><thead><tr><th>Operator</th><th>Does</th></tr></thead><tbody><tr><td><code>$set</code></td><td class="desc">Write a field (creates it if missing)</td></tr><tr><td><code>$unset</code></td><td class="desc">Remove a field</td></tr><tr><td><code>$inc</code> / <code>$mul</code></td><td class="desc">Add to / multiply a number</td></tr><tr><td><code>$min</code> / <code>$max</code></td><td class="desc">Write only if lower / higher</td></tr><tr><td><code>$currentDate</code></td><td class="desc">Set to the current date</td></tr><tr><td><code>$setOnInsert</code></td><td class="desc">Write only when an upsert inserts</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-array-ops"><h2 class="section-title">Array Operators</h2><table><thead><tr><th>Operator</th><th>Does</th></tr></thead><tbody><tr><td><code>$push</code></td><td class="desc">Append (<code>$each</code>, <code>$slice</code>, <code>$sort</code>, <code>$position</code>)</td></tr><tr><td><code>$addToSet</code></td><td class="desc">Append if not present</td></tr><tr><td><code>$pull</code> / <code>$pullAll</code></td><td class="desc">Remove matching / listed values</td></tr><tr><td><code>$</code></td><td class="desc">First element the filter matched</td></tr><tr><td><code>$[]</code></td><td class="desc">Every element</td></tr><tr><td><code>$[name]</code></td><td class="desc">Elements matching <code>arrayFilters</code></td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Passing <code>{ status: "shipped" }</code> without <code>$set</code>; the update is rejected (or, with <code>replaceOne</code>, the rest of the document is lost)</li><li class="note-item">Using <code>updateOne</code> when the filter matches many; only the first document changes</li><li class="note-item"><code>$push</code> onto a field that isn't an array, which fails the whole update</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Check <code>matchedCount</code> vs <code>modifiedCount</code> to tell "not found" from "already set"</li><li class="note-item">Cap growing arrays with <code>$push</code> + <code>$each</code> + <code>$slice</code> to stay far from the 16 MB limit</li><li class="note-item">Use <code>findOneAndUpdate</code> when you need the updated document back (sheet 16)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>$set</code> / <code>$unset</code> — fields</li><li class="note-item"><code>$inc</code> / <code>$mul</code> — numbers</li><li class="note-item"><code>$push</code> / <code>$pull</code> — arrays</li><li class="note-item"><code>$</code> · <code>$[]</code> · <code>$[name]</code> — array elements</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-14-arrays-nested-queries.html">Querying Arrays &amp; Nested Fields</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-16-delete-replace-bulk.html">Delete, Replace, Upsert &amp; Bulk</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
