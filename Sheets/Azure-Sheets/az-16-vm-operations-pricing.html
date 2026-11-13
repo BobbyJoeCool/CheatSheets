@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 16: VM Operations &amp; Pricing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>VM Operations &amp; Pricing</h1>
+			<div class="sheet-desc">managed disks &amp; snapshots · stop vs deallocate · public IPs · Spot VMs · Reservations &amp; savings plans · Azure Hybrid Benefit</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Running VMs Cheaply and Safely</h2><div class="description">VMs keep their <strong>managed disks</strong> (Premium SSD v2, Premium SSD, Standard SSD, Ultra) across restarts; <strong>snapshots</strong> copy a disk at a point in time. Stopping from inside the OS keeps billing compute: you must <strong>deallocate</strong> to stop paying. Discounts come from <strong>Spot VMs</strong> (evictable), <strong>Reservations</strong> and the <strong>savings plan for compute</strong>, and <strong>Azure Hybrid Benefit</strong> for existing Windows / SQL licenses.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>az vm stop</code> powers off but still bills compute; <code>az vm deallocate</code> stops it</li><li class="note-item">Deallocated VMs still pay for disks and static public IPs</li><li class="note-item">Spot VMs can be evicted with 30 seconds notice</li><li class="note-item">Auto-shutdown schedules stop dev VMs every evening</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Operate and Save</h2><pre><code class="language-bash">az vm deallocate -g rg-app -n vm-web-1          # stop paying for compute
+az vm start -g rg-app -n vm-web-1
+az vm resize -g rg-app -n vm-web-1 --size Standard_D4ps_v6
+az vm auto-shutdown -g rg-app -n vm-dev-1 --time 1900   # UTC, daily
+
+# Disks and snapshots
+az disk create -g rg-app -n disk-data --size-gb 256 --sku PremiumV2_LRS --zone 1
+az vm disk attach -g rg-app --vm-name vm-web-1 --name disk-data
+az snapshot create -g rg-app -n snap-data-20261112 --source disk-data \
+    --incremental true
+
+# Spot VM that deallocates on eviction, pay up to on-demand price
+az vm create -g rg-batch -n vm-spot-1 --image Ubuntu2404 \
+    --size Standard_D4ps_v6 --priority Spot --max-price -1 \
+    --eviction-policy Deallocate --generate-ssh-keys
+
+# Windows license you already own
+az vm update -g rg-app -n vm-win-1 --license-type Windows_Server
+
+az disk list --query "[?diskState=='Unattached'].name" -o tsv  # waste</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Deallocate releases the host; the VM keeps its disks and config</div><div class="explain-item">Incremental snapshots store only changed blocks</div><div class="explain-item"><code>--max-price -1</code> means never evict on price, only on capacity</div><div class="explain-item">Unattached disks are a common forgotten cost</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> EBS, snapshots, Spot, Savings Plans / RIs (aws-16)</li><li class="note-item"><strong>GCP</strong> Persistent Disk / Hyperdisk, Spot VMs, CUDs / SUDs (gcp-16)</li><li class="note-item">AWS "stop" stops billing compute; Azure needs deallocate</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Reservations: up to ~72% off for 1 or 3 years on a fixed size</li><li class="note-item">Savings plan for compute: flexible across sizes and regions, lower discount</li><li class="note-item">Spot: up to ~90% off, eviction at any time</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Disk Types Table | Power States Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-disk-types"><h2 class="section-title">Disk Types</h2><table><thead><tr><th>Type</th><th>Use</th></tr></thead><tbody><tr><td>Ultra Disk</td><td class="desc">Highest IOPS, tunable</td></tr><tr><td>Premium SSD v2</td><td class="desc">Tunable IOPS/throughput, good default for prod</td></tr><tr><td>Premium SSD</td><td class="desc">Production, fixed tiers</td></tr><tr><td>Standard SSD</td><td class="desc">Dev, light prod</td></tr><tr><td>Standard HDD</td><td class="desc">Backup, infrequent</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-power-states"><h2 class="section-title">Power States</h2><table><thead><tr><th>State</th><th>Compute Billed</th><th>Disk Billed</th></tr></thead><tbody><tr><td>Running</td><td class="kw">Yes</td><td class="kw">Yes</td></tr><tr><td>Stopped (in OS / az vm stop)</td><td class="kw">Yes</td><td class="kw">Yes</td></tr><tr><td>Deallocated</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>Deleted</td><td class="kw">No</td><td class="kw">Only if disks kept</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Deallocate (or auto-shutdown) dev VMs outside working hours</li><li class="note-item note-do"><strong>Do</strong> Rightsize with Advisor before buying Reservations</li><li class="note-item note-dont"><strong>Don’t</strong> Shut down from inside the OS and assume billing stopped</li><li class="note-item note-dont"><strong>Don’t</strong> Run stateful, uninterruptible workloads on Spot</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Simulate Spot eviction with <code>az vm simulate-eviction</code> in a sandbox</li><li class="note-item">Compare prices in the Azure Pricing Calculator</li><li class="note-item">Test snapshot restores into a scratch resource group</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Backups or snapshot schedules for data disks</li><li class="note-item">Reservations / savings plan cover the steady baseline</li><li class="note-item">Alerts for unattached disks and unused public IPs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-15-virtual-machines.html">Virtual Machines</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-17-load-balancing.html">Load Balancing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

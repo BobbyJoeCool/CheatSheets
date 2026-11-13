@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 15: const, lateinit &amp; lazy</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>const, lateinit &amp; lazy</h1>
+			<div class="sheet-desc"><code>const val</code> · <code>lateinit var</code> · <code>::x.isInitialized</code> · <code>by lazy { }</code> · <code>companion object</code> constants · initialization order</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the JVM -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Constants and Delayed Initialization</h2><div class="description"><code>const val</code> makes a <strong>compile-time constant</strong> that is inlined at use sites. <code>lateinit var</code> declares a non-null property that is set later, such as by dependency injection or a test setup. <code>by lazy</code> computes a value the first time it is read and caches it.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>const</code> works only for primitives and String, at top level or in objects</li><li class="note-item"><code>lateinit</code> needs a <code>var</code> of a non-null, non-primitive type</li><li class="note-item">Reading an unset <code>lateinit</code> throws UninitializedPropertyAccessException</li><li class="note-item"><code>lazy</code> is thread-safe by default</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-jvm" id="jvm"><h2 class="section-title">Under the JVM</h2><ul class="note-list"><li class="note-item"><code>const val</code> values are copied into calling code as literals</li><li class="note-item"><code>lateinit</code> compiles to a nullable field plus a check on every read</li><li class="note-item"><code>by lazy</code> creates a hidden <code>Lazy</code> object and a <code>getValue</code> call</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Three Ways to Initialize</h2><pre><code class="language-kotlin">const val MAX_USERS = 100                 // top-level constant
+
+class Config {
+    companion object {
+        const val VERSION = "2.1"         // Config.VERSION
+    }
+}
+
+class UserService {
+    lateinit var repo: UserRepository     // set by DI or tests
+
+    fun isReady() = ::repo.isInitialized
+
+    val report: String by lazy {          // computed on first read
+        println("building report...")
+        repo.findAll().joinToString()
+    }
+}
+
+fun main() {
+    val svc = UserService()
+    println(svc.isReady())                // false
+    // svc.repo.findAll()  // UninitializedPropertyAccessException
+    svc.repo = UserRepository()
+    println(svc.report)                   // building report... then data
+    println(svc.report)                   // cached, no second build
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>MAX_USERS</code> and <code>VERSION</code> are inlined wherever they are used</div><div class="explain-item"><code>::repo.isInitialized</code> checks a lateinit property safely</div><div class="explain-item">The lazy block runs once; later reads return the cached value</div><div class="explain-item">Lazy values must be <code>val</code></div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item"><code>public static final int MAX_USERS = 100;</code></li><li class="note-item">Fields set later are just nullable fields with no check</li><li class="note-item">Lazy init: double-checked locking or a holder class</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item">nullable <code>var repo: Repo? = null</code> + <code>!!</code> → <code>lateinit var repo: Repo</code></li><li class="note-item">expensive work in <code>init</code> → <code>by lazy</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Comparison Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-comparison"><h2 class="section-title">Comparison</h2><table><thead><tr><th>Feature</th><th>const val</th><th>lateinit var</th><th>by lazy</th></tr></thead><tbody><tr><td>Mutable</td><td class="kw">No</td><td class="kw">Yes</td><td class="kw">No</td></tr><tr><td>When set</td><td class="kw">Compile time</td><td class="kw">Any time later</td><td class="kw">First read</td></tr><tr><td>Types</td><td class="kw">Primitives, String</td><td class="kw">Non-null objects</td><td class="kw">Any</td></tr><tr><td>Where</td><td class="kw">Top level, object</td><td class="kw">Class / top level</td><td class="kw">Properties</td></tr><tr><td>Unset read</td><td class="kw">—</td><td class="kw">Exception</td><td class="kw">Computes it</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item"><code>lateinit</code> on an <code>Int</code> (not allowed; use <code>Delegates.notNull()</code>)</li><li class="note-item">Changing a <code>const</code> in a library without recompiling users (old value stays inlined)</li><li class="note-item">Using <code>lazy</code> for values that depend on state that changes</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>lateinit</code> for DI-injected and test-setup fields</li><li class="note-item">Use <code>lazy(LazyThreadSafetyMode.NONE)</code> on single-threaded hot paths</li><li class="note-item">Group related constants in an <code>object</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>const val</code> — compile-time</li><li class="note-item"><code>lateinit var</code> — set later</li><li class="note-item"><code>by lazy</code> — first read</li><li class="note-item"><code>::x.isInitialized</code> — check</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-14-type-checks-smart-casts.html">Type Checks &amp; Smart Casts</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-16-string-basics.html">String Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

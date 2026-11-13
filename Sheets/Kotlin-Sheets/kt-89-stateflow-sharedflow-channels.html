@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 89: StateFlow, SharedFlow &amp; Channels</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s89">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 89</div>
+			<h1>StateFlow, SharedFlow &amp; Channels</h1>
+			<div class="sheet-desc"><code>MutableStateFlow</code> · <code>SharedFlow</code> · <code>stateIn</code> / <code>shareIn</code> · <code>Channel</code> · <code>produce</code> · hot vs cold</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Hot Streams and Messaging</h2><div class="description"><code>StateFlow</code> holds a single <strong>current value</strong> and emits each change to collectors, which makes it ideal for UI or service state. <code>SharedFlow</code> broadcasts events to all collectors. Both are <strong>hot</strong>: they exist whether or not anyone collects. A <code>Channel</code> passes each value to exactly <strong>one</strong> receiver, like a queue between coroutines.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>StateFlow</code> always has a value and skips equal repeats</li><li class="note-item"><code>SharedFlow</code> can replay recent values to new collectors</li><li class="note-item"><code>stateIn</code> / <code>shareIn</code> turn a cold flow into a hot one</li><li class="note-item">Channels must be closed when the producer finishes</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">State, Events and Channels</h2><pre><code class="language-kotlin">import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.*
+import kotlinx.coroutines.flow.*
+
+class CartViewModel(scope: CoroutineScope) {
+    private val _count = MutableStateFlow(0)        // state
+    val count: StateFlow&lt;Int&gt; = _count.asStateFlow()
+
+    private val _events = MutableSharedFlow&lt;String&gt;()   // one-off events
+    val events: SharedFlow&lt;String&gt; = _events
+
+    fun add() { _count.update { it + 1 } }
+    suspend fun checkout() { _events.emit("Checked out ${_count.value} items") }
+
+    val total: StateFlow&lt;Double&gt; = count
+        .map { it * 9.99 }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), 0.0)
+}
+
+fun main() = runBlocking {
+    val vm = CartViewModel(this)
+    val watcher = launch {
+        vm.count.collect { println("count = $it") }    // count = 0
+    }
+    vm.add(); vm.add()                                // count = 1, count = 2
+    delay(100); watcher.cancel()
+
+    val jobs = Channel&lt;Int&gt;(capacity = 10)            // work queue
+    repeat(3) { w -&gt;
+        launch { for (j in jobs) println("worker $w got job $j") }
+    }
+    for (j in 1..6) jobs.send(j)
+    jobs.close()                                      // workers' loops end
+
+    val numbers = produce { for (i in 1..3) send(i * i) }
+    println(numbers.toList())                         // [1, 4, 9]
+    coroutineContext.cancelChildren()
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Private mutable state, public read-only <code>StateFlow</code></div><div class="explain-item"><code>update { }</code> changes the value atomically</div><div class="explain-item"><code>stateIn</code> keeps <code>total</code> hot while someone is watching (plus 5 s)</div><div class="explain-item">Each job in the channel goes to only one worker</div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item">Observable state: <code>PropertyChangeSupport</code> or Reactor <code>Sinks.many()</code></li><li class="note-item">Event bus libraries for SharedFlow-style broadcasts</li><li class="note-item"><code>BlockingQueue</code> between threads ≈ Channel (but blocking)</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item"><code>MutableStateFlow</code> exposed publicly → private <code>_state</code> + <code>asStateFlow()</code></li><li class="note-item">SharedFlow for one consumer queues → Channel</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Compare Table | Sharingstarted Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-compare"><h2 class="section-title">Compare</h2><table><thead><tr><th>Type</th><th>Hot?</th><th>Delivers To</th><th>Has Value</th></tr></thead><tbody><tr><td>Flow</td><td class="kw">Cold</td><td class="kw">Each collector separately</td><td class="kw">No</td></tr><tr><td>StateFlow</td><td class="kw">Hot</td><td class="kw">All collectors</td><td class="kw">Yes, current</td></tr><tr><td>SharedFlow</td><td class="kw">Hot</td><td class="kw">All collectors</td><td class="kw">Optional replay</td></tr><tr><td>Channel</td><td class="kw">Hot</td><td class="kw">One receiver per value</td><td class="kw">No</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-sharingstarted"><h2 class="section-title">SharingStarted</h2><table><thead><tr><th>Policy</th><th>Upstream Runs</th></tr></thead><tbody><tr><td>Eagerly</td><td class="desc">Immediately, forever</td></tr><tr><td>Lazily</td><td class="desc">From first collector, forever</td></tr><tr><td>WhileSubscribed(ms)</td><td class="desc">While collected (+ timeout)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using StateFlow for one-time events (they replay as state)</li><li class="note-item">Forgetting to close channels, so receivers wait forever</li><li class="note-item">Exposing mutable flows publicly</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">StateFlow for state, SharedFlow for events, Channel for work queues</li><li class="note-item">Use <code>WhileSubscribed(5_000)</code> for UI-driven flows</li><li class="note-item">Use <code>update { }</code> instead of read-modify-write on <code>value</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">StateFlow — current state</li><li class="note-item">SharedFlow — broadcast events</li><li class="note-item"><code>stateIn</code> / <code>shareIn</code> — make hot</li><li class="note-item">Channel — one receiver per value</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-88-flow.html">Flow</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-90-annotations-reflection.html">Annotations &amp; Reflection</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

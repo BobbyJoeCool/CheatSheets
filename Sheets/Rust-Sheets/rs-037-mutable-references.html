@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 037: Mutable References</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s037">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 037</div>
+			<h1>Mutable References</h1>
+			<div class="sheet-desc"><code>&amp;mut T</code> · one mutable OR many shared · E0499 / E0502 · non-lexical lifetimes (NLL) · reborrowing · <code>mem::swap</code> / <code>take</code> / <code>replace</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Exclusive Access</h2><div class="description">A <code>&amp;mut T</code> lets you change a value you do not own. While it exists, it is the <strong>only</strong> way to reach that value: no other <code>&amp;mut</code> (E0499) and no <code>&amp;</code> (E0502). This rule prevents data races and iterator invalidation at compile time. Borrows end at their <strong>last use</strong> (non-lexical lifetimes), not at the closing brace.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">The variable itself must be <code>let mut</code> to take <code>&amp;mut</code></li><li class="note-item"><code>&amp;mut</code> is not Copy; it is moved or reborrowed</li><li class="note-item">Passing <code>&amp;mut *r</code> or just <code>r</code> to a function reborrows</li><li class="note-item"><code>mem::take</code> moves a value out, leaving <code>Default</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">&amp;mut and the Rules</h2><pre><code class="language-rust">fn add_suffix(s: &amp;mut String) { s.push_str("!"); }
+
+let mut msg = String::from("hi");
+add_suffix(&amp;mut msg);
+println!("{msg}");                          // hi!
+
+let r1 = &amp;mut msg;
+// let r2 = &amp;mut msg;                       // E0499: second mutable borrow
+r1.push('?');
+
+let mut v = vec![1, 2, 3];
+let first = &amp;v[0];
+// v.push(4);                               // E0502: v borrowed as immutable
+println!("{first}");                        // last use of `first`
+v.push(4);                                  // OK now (NLL)
+
+for x in v.iter_mut() { *x *= 10; }         // [10, 20, 30, 40]
+
+fn bump(n: &amp;mut i32) { *n += 1; }
+let mut count = 0;
+let r = &amp;mut count;
+bump(r);                                    // implicit reborrow
+bump(r);                                    // r still usable
+println!("{count}");                        // 2
+
+use std::mem;
+let mut a = String::from("a");
+let mut b = String::from("b");
+mem::swap(&amp;mut a, &amp;mut b);                  // a = "b", b = "a"
+let old = mem::take(&amp;mut a);                // a = "", old = "b"
+let prev = mem::replace(&amp;mut b, "z".into()); // b = "z", prev = "a"
+
+let (left, right) = v.split_at_mut(2);      // two &amp;mut to disjoint parts
+left[0] += right[0];</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>&amp;mut msg</code> lets <code>add_suffix</code> modify the caller's String</div><div class="explain-item">A second <code>&amp;mut</code> while <code>r1</code> is live is rejected</div><div class="explain-item">After <code>first</code>'s last use, <code>v</code> can be mutated again</div><div class="explain-item"><code>split_at_mut</code> gives two non-overlapping mutable slices</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> any number of non-const references may alias</li><li class="note-item"><strong>Go / Java</strong> shared mutable objects; data races are possible</li><li class="note-item"><strong>Python</strong> everything is mutable through any reference</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>let tmp = x.clone(); x = y; y = tmp;</code> → <code>mem::swap(&amp;mut x, &amp;mut y)</code></li><li class="note-item"><code>Option</code> field move-out errors → <code>field.take()</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Errors Table | Std Mem Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-errors"><h2 class="section-title">Errors</h2><table><thead><tr><th>Code</th><th>Meaning</th></tr></thead><tbody><tr><td>E0499</td><td class="desc">Two &amp;mut at once</td></tr><tr><td>E0502</td><td class="desc">&amp; and &amp;mut overlap</td></tr><tr><td>E0506</td><td class="desc">Assign while borrowed</td></tr><tr><td>E0596</td><td class="desc">&amp;mut of non-mut binding</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-std-mem"><h2 class="section-title">std::mem</h2><table><thead><tr><th>Function</th><th>Does</th></tr></thead><tbody><tr><td>swap(&amp;mut a, &amp;mut b)</td><td class="desc">Exchange</td></tr><tr><td>take(&amp;mut a)</td><td class="desc">Move out, leave Default</td></tr><tr><td>replace(&amp;mut a, v)</td><td class="desc">Move out, put v</td></tr><tr><td>drop(x)</td><td class="desc">Drop now</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Holding a reference into a Vec while pushing to it</li><li class="note-item">Forgetting <code>let mut</code> on the owner</li><li class="note-item">Calling <code>self.a()</code> (&amp;mut self) while holding <code>&amp;self.b</code> across it</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Shorten borrows: copy out the value you need, then mutate</li><li class="note-item">Borrow disjoint struct fields separately: <code>&amp;mut s.a</code>, <code>&amp;mut s.b</code></li><li class="note-item">Use <code>split_at_mut</code> / <code>chunks_mut</code> for parallel slice edits</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>&amp;mut T</code> — exclusive</li><li class="note-item">E0499 / E0502</li><li class="note-item">borrows end at last use</li><li class="note-item"><code>mem::swap</code> / <code>take</code> / <code>replace</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-036-references-borrowing.html">References &amp; Borrowing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-038-slices.html">Slices</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

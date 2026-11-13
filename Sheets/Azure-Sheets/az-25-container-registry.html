@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 25: Azure Container Registry</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Azure Container Registry</h1>
+			<div class="sheet-desc"><code>az acr create</code> · <code>az acr login</code> · tag &amp; push · ACR Tasks (<code>az acr build</code>) · retention &amp; purge · geo-replication · pull with managed identity</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Private Container Images</h2><div class="description"><strong>Azure Container Registry (ACR)</strong> stores container images and OCI artifacts (Helm charts, signatures). <code>az acr login</code> connects Docker, and <strong>ACR Tasks</strong> build images in Azure (<code>az acr build</code>) without a local Docker daemon. Pull with a managed identity holding <strong>AcrPull</strong>; Premium adds geo-replication, private endpoints and higher throughput.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Login server: <code>&lt;name&gt;.azurecr.io</code></li><li class="note-item">Tags are mutable; deploy by digest or use immutable tags (tag locking)</li><li class="note-item">Purge old images on a schedule with <code>acr purge</code></li><li class="note-item">Defender for Containers scans images for vulnerabilities</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Disable the admin user; use Entra ID and AcrPull / AcrPush roles</li><li class="note-item">Private endpoint + public access disabled (Premium)</li><li class="note-item">Scan images and block deploys with critical vulnerabilities</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Included storage: 10 GiB (Basic), 100 GiB (Standard), 500 GiB (Premium)</li><li class="note-item">Geo-replication and private endpoints need Premium</li><li class="note-item">Read / write throughput and webhooks scale with tier</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create, Build, Push, Pull</h2><pre><code class="language-bash">az acr create -g rg-app -n shopacr --sku Standard --admin-enabled false
+az acr login -n shopacr
+
+docker build -t shopacr.azurecr.io/api:1.4.0 .
+docker push shopacr.azurecr.io/api:1.4.0
+
+# Build in Azure from the current folder (no local Docker needed)
+az acr build -r shopacr -t api:{{.Run.ID}} -t api:latest .
+
+az acr repository list -n shopacr -o table
+az acr repository show-tags -n shopacr --repository api --orderby time_desc
+
+# Lock a release tag against overwrite
+az acr repository update -n shopacr --image api:1.4.0 --write-enabled false
+
+# Purge untagged and old images every day
+az acr task create -r shopacr -n purge --schedule "0 3 * * *" \
+    --cmd "acr purge --filter 'api:.*' --ago 30d --untagged" --context /dev/null
+
+# Let a Container App / AKS pull with managed identity
+az role assignment create --assignee-object-id $MI \
+    --assignee-principal-type ServicePrincipal --role AcrPull \
+    --scope $(az acr show -n shopacr --query id -o tsv)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>az acr login</code> fetches a token and configures Docker</div><div class="explain-item"><code>{{.Run.ID}}</code> gives each ACR Tasks build a unique tag</div><div class="explain-item">Disabling writes makes a tag effectively immutable</div><div class="explain-item">The purge task deletes untagged and month-old images daily</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> ECR, lifecycle policies, image scanning (aws-25)</li><li class="note-item"><strong>GCP</strong> Artifact Registry, cleanup policies (gcp-25)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Fixed daily price per tier plus extra storage per GB</li><li class="note-item">ACR Tasks bill per build-second</li><li class="note-item">Purging old images keeps storage within the included amount</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Tiers Table | Roles Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-tiers"><h2 class="section-title">Tiers</h2><table><thead><tr><th>Feature</th><th>Basic</th><th>Standard</th><th>Premium</th></tr></thead><tbody><tr><td>Included storage</td><td class="kw">10 GiB</td><td class="kw">100 GiB</td><td class="kw">500 GiB</td></tr><tr><td>Geo-replication</td><td class="kw">No</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>Private endpoint</td><td class="kw">No</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>Content trust / tokens</td><td class="kw">Limited</td><td class="kw">Limited</td><td class="kw">Yes</td></tr><tr><td>Best for</td><td class="kw">Dev</td><td class="kw">Most prod</td><td class="kw">Multi-region, private</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-roles"><h2 class="section-title">Roles</h2><table><thead><tr><th>Role</th><th>Can</th></tr></thead><tbody><tr><td>AcrPull</td><td class="desc">Pull images</td></tr><tr><td>AcrPush</td><td class="desc">Push and pull</td></tr><tr><td>AcrDelete</td><td class="desc">Delete images</td></tr><tr><td>Owner / Contributor</td><td class="desc">Manage registry</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Tag with version or commit SHA; deploy by digest</li><li class="note-item note-do"><strong>Do</strong> Schedule purge tasks</li><li class="note-item note-dont"><strong>Don’t</strong> Enable the admin user for convenience</li><li class="note-item note-dont"><strong>Don’t</strong> Deploy <code>latest</code> to production</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Run a local registry: <code>docker run -d -p 5000:5000 registry:2</code></li><li class="note-item">Build with BuildKit locally; push to ACR only from CI</li><li class="note-item">Trivy scans images locally before push</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Admin user disabled; AcrPull via managed identity</li><li class="note-item">Vulnerability scanning with deploy gates</li><li class="note-item">Premium with private endpoint and geo-replication where needed</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-24-service-bus-queues.html">Service Bus &amp; Storage Queues</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-26-container-apps.html">Azure Container Apps</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

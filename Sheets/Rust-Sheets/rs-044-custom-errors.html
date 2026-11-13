@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 044: Custom Error Types</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s044">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 044</div>
+			<h1>Custom Error Types</h1>
+			<div class="sheet-desc">error enums · <code>impl Display</code> · <code>impl std::error::Error</code> · <code>source()</code> · <code>From</code> for <code>?</code> conversion · <code>#[non_exhaustive]</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Designing Your Own Errors</h2><div class="description">Libraries usually define an <strong>error enum</strong> with one variant per failure kind, so callers can <code>match</code> on it. Implement <code>Display</code> for a human message, <code>std::error::Error</code> for interoperability, and <code>From&lt;OtherError&gt;</code> so <code>?</code> converts underlying errors automatically. <code>source()</code> exposes the wrapped cause.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Variants can carry data: <code>NotFound(String)</code></li><li class="note-item"><code>Error</code> requires <code>Debug + Display</code></li><li class="note-item"><code>From</code> impls make <code>?</code> work across error types</li><li class="note-item"><code>#[non_exhaustive]</code> lets you add variants later</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">An Error Enum</h2><pre><code class="language-rust">use std::{error::Error, fmt, fs, io, num::ParseIntError};
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ConfigError {
+    Io(io::Error),
+    BadPort(ParseIntError),
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        match self {
+            Self::Io(e) =&gt; write!(f, "could not read config: {e}"),
+            Self::BadPort(e) =&gt; write!(f, "invalid port: {e}"),
+        }
+    }
+}
+impl Error for ConfigError {
+    fn source(&amp;self) -&gt; Option&lt;&amp;(dyn Error + 'static)&gt; {
+        match self { Self::Io(e) =&gt; Some(e), Self::BadPort(e) =&gt; Some(e) }
+    }
+}
+impl From&lt;io::Error&gt; for ConfigError {
+    fn from(e: io::Error) -&gt; Self { Self::Io(e) }
+}
+impl From&lt;ParseIntError&gt; for ConfigError {
+    fn from(e: ParseIntError) -&gt; Self { Self::BadPort(e) }
+}
+
+fn load_port(path: &amp;str) -&gt; Result&lt;u16, ConfigError&gt; {
+    let text = fs::read_to_string(path)?;   // io::Error → ConfigError
+    Ok(text.trim().parse()?)                // ParseIntError → ConfigError
+}
+
+match load_port("port.txt") {
+    Err(ConfigError::BadPort(e)) =&gt; eprintln!("fix the port: {e}"),
+    Err(e) =&gt; eprintln!("{e}"),
+    Ok(p) =&gt; println!("port {p}"),
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Each variant names one way loading can fail</div><div class="explain-item"><code>Display</code> gives the message users see</div><div class="explain-item"><code>source()</code> lets reporters print the cause chain</div><div class="explain-item"><code>From</code> impls let <code>?</code> convert io and parse errors</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Java</strong> custom exception classes with a cause</li><li class="note-item"><strong>Python</strong> exception subclasses; <code>raise … from e</code> sets the cause</li><li class="note-item"><strong>Go</strong> sentinel errors + <code>errors.Is</code> / <code>errors.As</code>, <code>%w</code> wrapping</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item">writing Display/From by hand → <code>thiserror</code> (sheet 045)</li><li class="note-item"><code>String</code> errors in a library → an enum callers can match</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Pieces Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-pieces"><h2 class="section-title">Pieces</h2><table><thead><tr><th>Impl</th><th>Purpose</th></tr></thead><tbody><tr><td>#[derive(Debug)]</td><td class="desc">Required by Error</td></tr><tr><td>Display</td><td class="desc">User-facing message</td></tr><tr><td>Error</td><td class="desc">Standard interface</td></tr><tr><td>source()</td><td class="desc">Underlying cause</td></tr><tr><td>From&lt;E&gt;</td><td class="desc">Enables ?</td></tr><tr><td>#[non_exhaustive]</td><td class="desc">Future variants</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Display messages that repeat the source message (shown twice in chains)</li><li class="note-item">One giant error enum for the whole crate</li><li class="note-item">Forgetting <code>From</code>, then writing <code>map_err</code> everywhere</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Keep messages lowercase without trailing periods (std style)</li><li class="note-item">Group errors by module or operation</li><li class="note-item">Expose the source instead of formatting it into the message</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">error enum per failure kind</li><li class="note-item"><code>Display</code> + <code>Error</code></li><li class="note-item"><code>source()</code> — cause chain</li><li class="note-item"><code>From</code> — powers <code>?</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-043-result-question-mark.html">Result&lt;T, E&gt; &amp; the ? Operator</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-045-thiserror-anyhow.html">thiserror &amp; anyhow</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 22: Class &amp; Sub-Dependencies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Class &amp; Sub-Dependencies</h1>
+			<div class="sheet-desc">classes as dependencies · __call__ · dependency chains · use_cache=False · parameterized</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">A class works as a dependency because calling it creates an instance: its <code>__init__</code> parameters become request parameters. Dependencies can depend on other dependencies, forming <strong>chains</strong> such as session → current user → admin check. An <strong>instance with <code>__call__</code></strong> lets you parameterize a dependency, like <code>RoleChecker("admin")</code>.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>Depends()</code> with no arg reuses the annotated type</li><li class="note-item">Sub-dependency results are cached per request too</li><li class="note-item"><code>use_cache=False</code> forces a fresh call</li><li class="note-item">Chains keep each dependency small and testable</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Chain + Parameterized Check</h2><pre><code class="language-python">from dataclasses import dataclass
+from typing import Annotated
+from fastapi import Depends, HTTPException
+
+@dataclass
+class Pager:                                  # class dependency
+    skip: int = 0
+    limit: int = 20
+
+def get_current_user(token: Annotated[str, Depends(oauth2)]) -&gt; User:
+    return decode_user(token)                  # sheet 33
+
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
+class RoleChecker:
+    def __init__(self, role: str):
+        self.role = role
+    def __call__(self, user: CurrentUser) -&gt; User:
+        if self.role not in user.roles:
+            raise HTTPException(403, "Forbidden")
+        return user
+
+@app.get("/admin/users")
+def admin_users(pager: Annotated[Pager, Depends()],
+                admin: Annotated[User, Depends(RoleChecker("admin"))]):
+    ...</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>Pager</code> dataclass — fields become query params</div><div class="explain-item"><code>Depends()</code> empty — uses the annotated class</div><div class="explain-item"><code>RoleChecker("admin")</code> — configured instance</div><div class="explain-item"><code>__call__(user: CurrentUser)</code> — sub-dependency chain</div><div class="explain-item">403 raised before the route body runs</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — decorators like <code>@roles_required("admin")</code> (Flask-Security)</li><li class="note-item">Django — <code>PermissionRequiredMixin</code>, <code>@permission_required</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid copying role checks inside route bodies · Prefer a dependency</li><li class="note-item">Avoid one giant <code>get_everything</code> dependency · Prefer small chained ones</li></ul></section></div>
+			</div>
+			<!-- Row 3: Patterns Table | Order Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-patterns"><h2 class="section-title">Dependency Patterns</h2><table><thead><tr><th>Pattern</th><th>Use</th></tr></thead><tbody><tr><td>class with __init__</td><td class="desc">group params</td></tr><tr><td>instance __call__</td><td class="desc">configurable check</td></tr><tr><td>chain A → B → C</td><td class="desc">build on results</td></tr><tr><td>Depends(use_cache=False)</td><td class="desc">fresh value each time</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-order"><h2 class="section-title">Resolution Order</h2><table><thead><tr><th>Step</th><th>What happens</th></tr></thead><tbody><tr><td>1</td><td class="desc">sub-dependencies resolved first</td></tr><tr><td>2</td><td class="desc">results cached by callable</td></tr><tr><td>3</td><td class="desc">dependency called</td></tr><tr><td>4</td><td class="desc">route called with all results</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mutable class-level defaults on dependency classes shared across requests</li><li class="note-item">Expecting <code>use_cache</code> to cache across requests: it is per request only</li><li class="note-item">Raising 401 for a logged-in user who lacks a role: use 403</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Name aliases after what they give: <code>CurrentUser</code>, <code>AdminUser</code>, <code>DbSession</code></li><li class="note-item">Use dataclasses for parameter-group dependencies</li><li class="note-item">Put role checks on routers with <code>dependencies=[...]</code> (sheet 24)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">class — <code>__init__</code> params become inputs</li><li class="note-item">chain — dependencies using dependencies</li><li class="note-item"><code>__call__</code> instance — parameterized dependency</li><li class="note-item"><code>Depends()</code> — infer from the annotation</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-21-depends-basics.html" class="nav-link prev">Depends Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-23-yield-dependencies.html" class="nav-link next" title="Dependencies with yield">yield Dependencies</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 28: S3 Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>S3 Basics</h1>
+			<div class="sheet-desc">buckets &amp; keys · <code>aws s3 cp</code> / <code>sync</code> / <code>ls</code> / <code>rm</code> · <code>aws s3api</code> · storage classes · prefixes · multipart upload</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Object Storage on AWS</h2><div class="description"><strong>Amazon S3</strong> stores objects under <strong>keys</strong> in <strong>buckets</strong>. Bucket names are globally unique; a bucket lives in one Region. The high-level <code>aws s3</code> commands copy and sync files (with automatic multipart upload); <code>aws s3api</code> exposes every API. <strong>Storage classes</strong> trade storage price for retrieval price and speed, and <strong>Intelligent-Tiering</strong> moves objects automatically.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">"Folders" are key prefixes (<code>2026/11/photo.jpg</code>)</li><li class="note-item">Strong read-after-write consistency for all operations</li><li class="note-item">New buckets block public access and use bucket-owner-enforced ownership by default</li><li class="note-item">S3 Express One Zone offers single-digit millisecond access in one AZ</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Keep Block Public Access on at account and bucket level</li><li class="note-item">Require TLS with a bucket policy (<code>aws:SecureTransport</code>)</li><li class="note-item">Use SSE-KMS with a customer managed key for sensitive data</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Objects up to 5 TB; single PUT up to 5 GB (use multipart beyond)</li><li class="note-item">Buckets per account: 10,000 by default (adjustable)</li><li class="note-item">At least 3,500 writes / 5,500 reads per second per prefix</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Everyday S3</h2><pre><code class="language-bash">aws s3 mb s3://acme-media-prod --region us-east-1
+aws s3 cp photo.jpg s3://acme-media-prod/2026/11/photo.jpg
+aws s3 cp ./images s3://acme-media-prod/images/ --recursive \
+    --exclude "*" --include "*.jpg"
+aws s3 sync ./site s3://acme-site --delete
+aws s3 ls s3://acme-media-prod/2026/ --recursive --human-readable --summarize
+aws s3 rm s3://acme-media-prod/tmp/ --recursive
+
+aws s3 cp backup.tar s3://acme-backup/ --storage-class GLACIER_IR
+aws s3api head-object --bucket acme-media-prod --key 2026/11/photo.jpg
+aws s3api put-object-tagging --bucket acme-media-prod \
+    --key 2026/11/photo.jpg --tagging 'TagSet=[{Key=team,Value=web}]'
+aws s3api list-objects-v2 --bucket acme-media-prod --prefix 2026/ \
+    --query "Contents[?Size&gt;\`1000000\`].Key"</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Python</h2><pre><code class="language-python">import boto3
+s3 = boto3.client("s3")
+s3.upload_file("big.zip", "acme-backup", "2026/big.zip")   # multipart if large
+obj = s3.get_object(Bucket="acme-media-prod", Key="2026/11/photo.jpg")
+data = obj["Body"].read()</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>cp --recursive</code> with include / exclude filters copies by pattern</div><div class="explain-item"><code>sync --delete</code> mirrors a folder exactly</div><div class="explain-item">GLACIER_IR keeps millisecond access at archive-like storage prices</div><div class="explain-item">JMESPath filters objects larger than 1 MB</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Blob Storage: storage accounts, containers, tiers (az-28)</li><li class="note-item"><strong>GCP</strong> Cloud Storage: buckets, classes, Autoclass (gcp-28)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Storage per GB-month by class, plus requests, retrieval and egress</li><li class="note-item">Minimum storage durations and retrieval fees on IA / Glacier classes</li><li class="note-item">Incomplete multipart uploads bill until aborted (add a lifecycle rule)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Storage Classes Table | S3 Vs S3Api Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-storage-classes"><h2 class="section-title">Storage Classes</h2><table><thead><tr><th>Class</th><th>Use</th><th>Min Days</th></tr></thead><tbody><tr><td>Standard</td><td class="kw">Frequent</td><td class="kw">—</td></tr><tr><td>Intelligent-Tiering</td><td class="kw">Unknown patterns</td><td class="kw">—</td></tr><tr><td>Standard-IA / One Zone-IA</td><td class="kw">Monthly access</td><td class="kw">30</td></tr><tr><td>Glacier Instant Retrieval</td><td class="kw">Quarterly, ms access</td><td class="kw">90</td></tr><tr><td>Glacier Flexible Retrieval</td><td class="kw">Minutes–hours</td><td class="kw">90</td></tr><tr><td>Glacier Deep Archive</td><td class="kw">Hours, cheapest</td><td class="kw">180</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-s3-vs-s3api"><h2 class="section-title">s3 vs s3api</h2><table><thead><tr><th>Command</th><th>Use</th></tr></thead><tbody><tr><td>aws s3 cp / sync / mv / rm</td><td class="desc">Files and folders</td></tr><tr><td>aws s3 presign</td><td class="desc">Temporary URLs</td></tr><tr><td>aws s3api put-bucket-*</td><td class="desc">Bucket settings</td></tr><tr><td>aws s3api get / put-object</td><td class="desc">Single-object control</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use prefixes that group data by lifecycle (logs/, tmp/)</li><li class="note-item note-do"><strong>Do</strong> Add a lifecycle rule to abort incomplete multipart uploads</li><li class="note-item note-dont"><strong>Don’t</strong> Make buckets public to serve websites (use CloudFront + OAC)</li><li class="note-item note-dont"><strong>Don’t</strong> List huge buckets repeatedly (use S3 Inventory)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">LocalStack and MinIO emulate S3 APIs</li><li class="note-item">moto mocks S3 in Python tests</li><li class="note-item">S3 Mountpoint mounts a bucket as a file system for experiments</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Block Public Access, TLS-only policy, SSE-KMS where needed</li><li class="note-item">Versioning and lifecycle rules (sheet 29)</li><li class="note-item">Server access logs or CloudTrail data events for audit</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-27-eks.html">EKS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-29-s3-security-features.html">S3 Security &amp; Features</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

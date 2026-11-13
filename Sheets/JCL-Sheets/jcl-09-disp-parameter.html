@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 09: The DISP Parameter</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s09">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 09</div>
+			<h1>The DISP Parameter</h1>
+			<div class="sheet-desc"><code>NEW</code> / <code>OLD</code> / <code>SHR</code> / <code>MOD</code> · normal disposition · abnormal disposition · <code>CATLG</code> / <code>DELETE</code> / <code>KEEP</code> / <code>PASS</code> / <code>UNCATLG</code> · defaults · <code>(NEW,CATLG,DELETE)</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Status and What Happens After</h2><div class="description"><code>DISP=(status,normal,abnormal)</code> says whether the dataset exists and is shared, then what to do with it when the step ends <strong>normally</strong> and when it <strong>abends</strong>. The classic create pattern is <code>(NEW,CATLG,DELETE)</code>: create it, keep and catalog it if the step works, delete it if the step fails.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Status: NEW (create), OLD (exclusive), SHR (shared), MOD (append / create)</li><li class="note-item">Normal and abnormal default to "keep as it was" for existing datasets</li><li class="note-item">For NEW, the default is DELETE at step end</li><li class="note-item"><code>PASS</code> hands a dataset to a later step in the same job</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">DISP Patterns</h2><pre><code class="language-jcl">//* Read, shared with other jobs
+//IN       DD DSN=PROD.SALES,DISP=SHR
+//* Update in place, nobody else may use it
+//MASTER   DD DSN=PROD.ACCT.MASTER,DISP=OLD
+//* Create; catalog if OK, delete on abend
+//NEWOUT   DD DSN=USER.REPORT.DATA,
+//            DISP=(NEW,CATLG,DELETE),
+//            SPACE=(TRK,(10,5)),RECFM=FB,LRECL=133
+//* Append to the end (creates it if it does not exist)
+//LOG      DD DSN=USER.RUN.LOG,DISP=MOD
+//* Delete an existing dataset
+//OLDFILE  DD DSN=USER.OLD.DATA,DISP=(OLD,DELETE)
+//* Keep on success, but keep for debugging on abend too
+//WORK     DD DSN=USER.WORK.DATA,DISP=(NEW,CATLG,CATLG),
+//            SPACE=(CYL,(1,1))</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">SHR lets other jobs read the same dataset at the same time</div><div class="explain-item">OLD enqueues the dataset so only this job can use it</div><div class="explain-item">MOD positions writes after the last record</div><div class="explain-item"><code>(NEW,CATLG,CATLG)</code> keeps output from a failed run for inspection</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>open(path, "r")</code> / <code>"w"</code> / <code>"a"</code>; <code>os.remove</code> on failure in <code>except</code></li><li class="note-item"><strong>Java</strong> <code>StandardOpenOption.READ</code> / <code>CREATE_NEW</code> / <code>APPEND</code>; cleanup in <code>finally</code></li><li class="note-item"><strong>JavaScript</strong> <code>fs.open(path, "r" | "wx" | "a")</code>; delete in a <code>catch</code> block</li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item"><code>IEF287I … NOT CATLGD 2</code>: a dataset with that name is already cataloged</li><li class="note-item">Job waits with "DATASET RESERVATION UNSUCCESSFUL": another job holds it with DISP=OLD</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Status Table | Dispositions Table | Defaults Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-status"><h2 class="section-title">Status</h2><table><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>NEW</td><td class="desc">Create now</td></tr><tr><td>OLD</td><td class="desc">Exists, exclusive</td></tr><tr><td>SHR</td><td class="desc">Exists, shared read</td></tr><tr><td>MOD</td><td class="desc">Append (or create)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-dispositions"><h2 class="section-title">Dispositions</h2><table><thead><tr><th>Value</th><th>At Step End</th></tr></thead><tbody><tr><td>CATLG</td><td class="desc">Keep + add to catalog</td></tr><tr><td>KEEP</td><td class="desc">Keep, catalog unchanged</td></tr><tr><td>DELETE</td><td class="desc">Delete (+ uncatalog)</td></tr><tr><td>PASS</td><td class="desc">Hand to later step</td></tr><tr><td>UNCATLG</td><td class="desc">Keep, remove from catalog</td></tr></tbody></table></section></div><div class="col" id="col-3-3"><section id="tbl-defaults"><h2 class="section-title">Defaults</h2><table><thead><tr><th>You Code</th><th>Means</th></tr></thead><tbody><tr><td>DISP=SHR</td><td class="desc">(SHR,KEEP,KEEP)</td></tr><tr><td>DISP=NEW</td><td class="desc">(NEW,DELETE,DELETE)</td></tr><tr><td>DISP=(NEW,CATLG)</td><td class="desc">abnormal = CATLG</td></tr><tr><td>no DISP</td><td class="desc">(NEW,DELETE,DELETE)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">DISP=NEW alone, so the dataset is deleted when the step ends</li><li class="note-item">DISP=OLD on read-only input, blocking other jobs</li><li class="note-item">Creating a dataset whose name is already cataloged (NOT CATLGD 2)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Default to <code>(NEW,CATLG,DELETE)</code> for outputs</li><li class="note-item">Delete-then-create in a prior IEFBR14 step makes jobs rerunnable</li><li class="note-item">Use SHR for anything you only read</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>SHR</code> / <code>OLD</code> — read / exclusive</li><li class="note-item"><code>NEW</code> — create</li><li class="note-item"><code>(NEW,CATLG,DELETE)</code> — standard</li><li class="note-item"><code>MOD</code> — append</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-08-dd-statement-basics.html">DD Statement Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-10-space-unit-volume.html">SPACE, UNIT &amp; Volumes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

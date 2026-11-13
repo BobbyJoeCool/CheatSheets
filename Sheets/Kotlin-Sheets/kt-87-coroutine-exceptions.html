@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 87: Exceptions in Coroutines</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s87">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 87</div>
+			<h1>Exceptions in Coroutines</h1>
+			<div class="sheet-desc">propagation in <code>launch</code> vs <code>async</code> · <code>CoroutineExceptionHandler</code> · <code>supervisorScope</code> · <code>SupervisorJob</code> · rethrowing cancellation</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">When a Coroutine Fails</h2><div class="description">An exception in <code>launch</code> propagates <strong>up</strong> to the parent, cancelling it and its other children. An exception in <code>async</code> is stored and rethrown when you call <code>await()</code>, but it still cancels the parent scope. <code>supervisorScope</code> and <code>SupervisorJob</code> stop failures from spreading to siblings, and a <code>CoroutineExceptionHandler</code> logs uncaught ones.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Wrap <code>await()</code> in try/catch to handle async failures</li><li class="note-item">Handlers only work on root coroutines (and <code>launch</code>)</li><li class="note-item">In a supervisor, each child must handle its own errors</li><li class="note-item">Cancellation exceptions are not treated as failures</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Handling Failures</h2><pre><code class="language-kotlin">import kotlinx.coroutines.*
+
+val handler = CoroutineExceptionHandler { ctx, e -&gt;
+    println("Uncaught in ${ctx[CoroutineName]}: ${e.message}")
+}
+
+fun main() = runBlocking {
+    // try/catch around await
+    val result = runCatching {
+        coroutineScope { async { error("price API down") }.await() }
+    }
+    println(result.exceptionOrNull()?.message)        // price API down
+
+    // supervisor: one failure does not cancel the others
+    supervisorScope {
+        val a = launch(handler + CoroutineName("a")) { error("A failed") }
+        val b = launch { delay(100); println("B still finished") }
+        joinAll(a, b)
+    }
+    // Uncaught in CoroutineName(a): A failed
+    // B still finished
+
+    // long-lived scope with a supervisor job and a handler
+    val ctx = SupervisorJob() + Dispatchers.Default + handler
+    val appScope = CoroutineScope(ctx)
+    appScope.launch { error("task failed") }  // logged, scope survives
+    delay(100)
+}
+
+suspend fun safeLoad(id: Int): User? = try {
+    api.user(id)
+} catch (e: CancellationException) {
+    throw e                                               // keep cancellation
+} catch (e: IOException) {
+    null
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The failed async is caught where <code>await</code> is called</div><div class="explain-item">In <code>supervisorScope</code>, coroutine b finishes even though a failed</div><div class="explain-item">The handler logs the uncaught exception from coroutine a</div><div class="explain-item">A <code>SupervisorJob</code> keeps the app scope alive after one task fails</div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item"><code>future.exceptionally(e -&gt; …)</code> / <code>handle(…)</code> on CompletableFuture</li><li class="note-item">Uncaught thread exceptions: <code>Thread.setDefaultUncaughtExceptionHandler</code></li><li class="note-item">ExecutorService tasks swallow exceptions until <code>future.get()</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item">try/catch around <code>launch</code> (does not catch child failures) → catch inside the coroutine or use a handler</li><li class="note-item">one failing child killing a whole service scope → <code>SupervisorJob</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Propagation Table | Tools Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-propagation"><h2 class="section-title">Propagation</h2><table><thead><tr><th>Builder</th><th>Exception Goes</th><th>Catch With</th></tr></thead><tbody><tr><td>launch</td><td class="kw">Up to parent</td><td class="kw">try inside / handler</td></tr><tr><td>async</td><td class="kw">Stored, rethrown on await</td><td class="kw">try around await</td></tr><tr><td>coroutineScope</td><td class="kw">Rethrown to caller</td><td class="kw">try around scope</td></tr><tr><td>supervisorScope</td><td class="kw">Child only</td><td class="kw">Child handles it</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-tools"><h2 class="section-title">Tools</h2><table><thead><tr><th>Tool</th><th>Effect</th></tr></thead><tbody><tr><td>SupervisorJob()</td><td class="desc">Children fail independently</td></tr><tr><td>supervisorScope { }</td><td class="desc">Same, as a block</td></tr><tr><td>CoroutineExceptionHandler</td><td class="desc">Last-resort logging</td></tr><tr><td>runCatching / try</td><td class="desc">Handle locally</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Wrapping <code>launch { }</code> in try/catch and expecting to catch its failure</li><li class="note-item">Installing a handler on a child coroutine (ignored)</li><li class="note-item">Swallowing CancellationException in catch-all blocks</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Handle errors where you can act on them (inside the coroutine)</li><li class="note-item">Use SupervisorJob for long-lived service scopes</li><li class="note-item">Always log with a handler at the root of app scopes</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">launch — propagates up</li><li class="note-item">async — rethrows on await</li><li class="note-item"><code>supervisorScope</code> — isolate failures</li><li class="note-item">handler — log uncaught</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-86-cancellation-timeouts.html">Cancellation &amp; Timeouts</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-88-flow.html">Flow</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

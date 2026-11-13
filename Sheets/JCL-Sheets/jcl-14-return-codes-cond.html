@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 14: Return Codes &amp; COND</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>Return Codes &amp; COND</h1>
+			<div class="sheet-desc">RC 0 / 4 / 8 / 12 / 16 · <code>COND=(4,LT)</code> reads backwards · <code>COND=EVEN</code> / <code>ONLY</code> · step vs job <code>COND</code> · <code>MAXCC</code> · flushed steps</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | In COBOL -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Skipping Steps on Errors</h2><div class="description">Each step ends with a <strong>return code</strong> (condition code). The old <code>COND</code> parameter tells z/OS when to <strong>skip</strong> a step: <code>COND=(4,LT)</code> means "skip this step if 4 is less than any earlier RC". It reads backwards, which is why most new JCL uses IF/THEN/ELSE (sheet 15).</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">RC convention: 0 OK, 4 warning, 8 error, 12 severe, 16 fatal</li><li class="note-item">COND tests are true → step is <strong>bypassed</strong></li><li class="note-item">An abend normally bypasses later steps unless EVEN or ONLY</li><li class="note-item">COND on the JOB statement applies to every step</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-cobol" id="cobol"><h2 class="section-title">In COBOL</h2><ul class="note-list"><li class="note-item"><code>MOVE 8 TO RETURN-CODE</code> in COBOL becomes the step's RC 8</li><li class="note-item">An abended COBOL step has no RC; COND=EVEN steps still run</li><li class="note-item">Utilities set RCs too: SORT 16 = failure, IDCAMS 8 = errors</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">COND Examples</h2><pre><code class="language-jcl">//STEP010  EXEC PGM=VALIDATE
+//* Skip if 4 &lt; any previous RC  (run only if all RCs &lt;= 4)
+//STEP020  EXEC PGM=UPDATE,COND=(4,LT)
+//* Skip if any previous RC = 0  (run only after an error)
+//STEP030  EXEC PGM=ERRMAIL,COND=(0,EQ)
+//* Test one specific step
+//STEP040  EXEC PGM=REPORT,COND=(8,LE,STEP020)
+//* Always run, even after an abend (cleanup)
+//STEP050  EXEC PGM=CLEANUP,COND=EVEN
+//* Run ONLY if an earlier step abended
+//STEP060  EXEC PGM=ALERT,COND=ONLY</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Read <code>(4,LT)</code> as "if 4 is less than the RC, skip"</div><div class="explain-item">STEP020 runs when VALIDATE ends with RC 0 or 4</div><div class="explain-item">STEP040 is skipped if 8 ≤ STEP020's RC</div><div class="explain-item">EVEN runs after abends; ONLY runs only after abends</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>sys.exit(4)</code>; a wrapper checks <code>result.returncode &lt;= 4</code> before the next step</li><li class="note-item"><strong>Java</strong> <code>System.exit(4)</code>; the scheduler checks the exit code</li><li class="note-item"><strong>JavaScript</strong> <code>process.exitCode = 4</code>; <code>step1 &amp;&amp; step2</code> in npm scripts skips on non-zero</li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item"><code>IEF202I STEP020 - STEP WAS NOT RUN BECAUSE OF COND</code>: the COND test was true</li><li class="note-item"><code>FLUSH</code> in the step summary: bypassed because an earlier step abended</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Operators Table | Common Patterns Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-operators"><h2 class="section-title">Operators</h2><table><thead><tr><th>Code</th><th>Skip When</th></tr></thead><tbody><tr><td>GT</td><td class="desc">value &gt; RC</td></tr><tr><td>GE</td><td class="desc">value ≥ RC</td></tr><tr><td>EQ</td><td class="desc">value = RC</td></tr><tr><td>LT</td><td class="desc">value &lt; RC</td></tr><tr><td>LE</td><td class="desc">value ≤ RC</td></tr><tr><td>NE</td><td class="desc">value ≠ RC</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-common-patterns"><h2 class="section-title">Common Patterns</h2><table><thead><tr><th>COND</th><th>Runs When</th></tr></thead><tbody><tr><td>(4,LT)</td><td class="desc">All RCs ≤ 4</td></tr><tr><td>(0,NE)</td><td class="desc">All RCs = 0</td></tr><tr><td>(8,LE)</td><td class="desc">All RCs &lt; 8</td></tr><tr><td>(0,EQ)</td><td class="desc">No earlier RC = 0</td></tr><tr><td>EVEN</td><td class="desc">Always, even after abend</td></tr><tr><td>ONLY</td><td class="desc">Only after an abend</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Reading COND forwards and skipping exactly the wrong steps</li><li class="note-item">COND=(0,NE) on a step after a utility that returns 4 for warnings</li><li class="note-item">Expecting COND to catch abends without EVEN or ONLY</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Translate every COND into words in a comment</li><li class="note-item">Prefer IF/THEN/ELSE in new JCL</li><li class="note-item">Make programs set RETURN-CODE deliberately (0, 4, 8, 16)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">RC 0 / 4 / 8 / 16</li><li class="note-item"><code>COND</code> true → step skipped</li><li class="note-item"><code>(4,LT)</code> — run if RCs ≤ 4</li><li class="note-item"><code>EVEN</code> / <code>ONLY</code> — abend handling</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-13-concatenation-temp-backrefs.html">Concatenation &amp; Temp Datasets</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-15-if-then-else-restart.html">IF / THEN / ELSE &amp; Restart</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

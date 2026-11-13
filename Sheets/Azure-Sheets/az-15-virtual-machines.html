@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 15: Virtual Machines</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>Virtual Machines</h1>
+			<div class="sheet-desc">VM series &amp; sizes · images · <code>az vm create</code> · SSH keys · cloud-init custom data · Azure Bastion · Arm-based (Cobalt) VMs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Azure Virtual Machines</h2><div class="description">A VM is a size (vCPUs, memory), an image, managed disks and a network interface in a subnet. Size names encode the family and features: <code>Standard_D2s_v5</code> is general purpose, 2 vCPUs, premium-storage capable, version 5; <code>Dpsv6</code> sizes run on Microsoft's Arm-based <strong>Cobalt</strong> CPUs. <strong>cloud-init</strong> configures Linux on first boot, and <strong>Azure Bastion</strong> gives browser or native SSH without public IPs.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Images: <code>Ubuntu2404</code>, <code>Debian12</code>, <code>Win2022Datacenter</code>, or a Compute Gallery image</li><li class="note-item">Trusted Launch (Secure Boot, vTPM) is the default for supported Gen2 images</li><li class="note-item">Zones: pass <code>--zone 1</code> to pin a VM to a zone</li><li class="note-item">B-series burstable sizes suit dev and light workloads</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">No public IP: use Bastion or Entra ID login through Bastion</li><li class="note-item">Enable encryption at host for temp disk and cache encryption</li><li class="note-item">Patch with Azure Update Manager, not by hand</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">vCPU quotas per region and per VM family (new subscriptions start low)</li><li class="note-item">Check with <code>az vm list-usage -l &lt;region&gt;</code>; request increases in Quotas</li><li class="note-item">Not every size exists in every region or zone</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create a Private Linux VM</h2><pre><code class="language-bash">az vm create -g rg-app -n vm-web-1 -l eastus2 --zone 1 \
+    --image Ubuntu2404 --size Standard_D2ps_v6 \
+    --admin-username azureuser --generate-ssh-keys \
+    --vnet-name vnet-shop-prod --subnet snet-app \
+    --public-ip-address "" --nsg "" \
+    --custom-data cloud-init.yaml --assign-identity
+
+az vm list-sizes -l eastus2 --query "[?contains(name,'pds_v6')].name" -o tsv
+az vm image list --publisher Canonical --offer ubuntu-24_04-lts --all -o table
+
+# SSH through Bastion with your Entra ID account
+az network bastion ssh -g rg-net -n bas-shop --auth-type AAD \
+    --target-resource-id $(az vm show -g rg-app -n vm-web-1 --query id -o tsv)
+az vm run-command invoke -g rg-app -n vm-web-1 \
+    --command-id RunShellScript --scripts "systemctl status nginx"</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">cloud-init.yaml</h2><pre><code class="language-yaml">#cloud-config
+package_upgrade: true
+packages: [nginx]
+runcmd:
+  - systemctl enable --now nginx</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>--public-ip-address ""</code> and <code>--nsg ""</code> skip the public IP and NIC NSG (subnet NSG applies)</div><div class="explain-item">D2ps_v6 is a 2-vCPU Arm (Cobalt) general-purpose size</div><div class="explain-item"><code>--assign-identity</code> adds a system-assigned managed identity</div><div class="explain-item"><code>run-command</code> executes a script without SSH</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> EC2, AMIs, user data, Session Manager (aws-15)</li><li class="note-item"><strong>GCP</strong> Compute Engine, images, startup scripts, OS Login / IAP (gcp-15)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Billed per minute while running, plus disks and IPs always</li><li class="note-item">Arm (Cobalt) and B-series sizes are cheapest for many Linux workloads</li><li class="note-item">Bastion has an hourly cost: share one per hub</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Size Name Decoder Table | Access Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-size-name-decoder"><h2 class="section-title">Size Name Decoder</h2><table><thead><tr><th>Part</th><th>Meaning</th></tr></thead><tbody><tr><td>D / E / F / B / N</td><td class="desc">General / memory / compute / burstable / GPU</td></tr><tr><td>2</td><td class="desc">vCPUs</td></tr><tr><td>p</td><td class="desc">Arm-based processor</td></tr><tr><td>d</td><td class="desc">Local temp disk</td></tr><tr><td>s</td><td class="desc">Premium storage capable</td></tr><tr><td>v6</td><td class="desc">Generation</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-access-options"><h2 class="section-title">Access Options</h2><table><thead><tr><th>Option</th><th>Use</th></tr></thead><tbody><tr><td>Bastion (Entra ID)</td><td class="desc">Production admin access</td></tr><tr><td>run-command</td><td class="desc">One-off scripts</td></tr><tr><td>Serial console</td><td class="desc">Boot problems</td></tr><tr><td>Public IP + SSH</td><td class="desc">Never in production</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Bake golden images in Azure Compute Gallery for faster, consistent boots</li><li class="note-item note-do"><strong>Do</strong> Put VMs in scale sets even for one instance</li><li class="note-item note-dont"><strong>Don’t</strong> Open SSH to the internet with a public IP</li><li class="note-item note-dont"><strong>Don’t</strong> Resize production VMs by hand during business hours</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Multipass or Vagrant runs the same cloud-init file locally</li><li class="note-item"><code>cloud-init schema --config-file cloud-init.yaml</code> validates the file</li><li class="note-item">Packer builds Azure images from a local template</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">No public IPs; Bastion or private access only</li><li class="note-item">Update Manager patch schedules and Azure Monitor agent installed</li><li class="note-item">Zones or scale sets for redundancy; backups enabled</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-14-front-door.html">Front Door &amp; Certificates</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-16-vm-operations-pricing.html">VM Operations &amp; Pricing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

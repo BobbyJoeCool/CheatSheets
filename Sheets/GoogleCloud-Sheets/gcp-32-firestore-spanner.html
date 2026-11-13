@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 32: Firestore, Spanner &amp; Bigtable</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s32">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 32</div>
+			<h1>Firestore, Spanner &amp; Bigtable</h1>
+			<div class="sheet-desc">Firestore documents &amp; collections · queries &amp; composite indexes · security rules · Spanner (global SQL) · Bigtable (wide-column) · choosing a NoSQL store</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Non-Relational and Global Databases</h2><div class="description"><strong>Firestore</strong> is a serverless document database: <strong>documents</strong> in <strong>collections</strong>, real-time listeners, offline mobile sync and <strong>security rules</strong> for client access. <strong>Spanner</strong> is a horizontally scaling, strongly consistent relational database with SQL, available regionally or globally. <strong>Bigtable</strong> is a wide-column store for huge, low-latency key-range workloads like time series.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Firestore queries need indexes; composite indexes are defined in <code>firestore.indexes.json</code></li><li class="note-item">Firestore with MongoDB compatibility accepts MongoDB drivers</li><li class="note-item">Spanner capacity is set in processing units (100 PU minimum)</li><li class="note-item">Bigtable row-key design decides performance</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / Azure Equivalent + Cost Check + Security Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Firestore (Python)</h2><pre><code class="language-python">from google.cloud import firestore
+db = firestore.Client(database="(default)")
+db.collection("orders").document("o-1001").set(
+    {"customer": "c-42", "status": "open", "total": 59.9,
+     "created": firestore.SERVER_TIMESTAMP})
+
+q = (db.collection("orders")
+       .where(filter=firestore.FieldFilter("customer", "==", "c-42"))
+       .where(filter=firestore.FieldFilter("status", "==", "open"))
+       .order_by("created", direction=firestore.Query.DESCENDING)
+       .limit(20))
+for doc in q.stream():
+    print(doc.id, doc.to_dict())
+
+@firestore.transactional
+def close(tx, ref):
+    tx.update(ref, {"status": "closed"})
+close(db.transaction(), db.collection("orders").document("o-1001"))</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Create Databases</h2><pre><code class="language-bash">gcloud firestore databases create --location=nam5 \
+    --delete-protection --enable-pitr
+gcloud spanner instances create shop-span --config=regional-us-central1 \
+    --processing-units=100 --description="shop"
+gcloud spanner databases create shop --instance=shop-span \
+    --ddl="CREATE TABLE Orders (Id STRING(36), Total NUMERIC) PRIMARY KEY (Id)"
+gcloud bigtable instances create metrics --display-name=metrics \
+    --cluster-config=id=metrics-c1,zone=us-central1-b,nodes=1</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>SERVER_TIMESTAMP</code> is set by the server at write time</div><div class="explain-item">Two equality filters plus <code>order_by</code> need a composite index</div><div class="explain-item">The transaction retries automatically on contention</div><div class="explain-item">Spanner starts at 100 processing units (a tenth of a node)</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> DynamoDB (aws-32)</li><li class="note-item"><strong>Azure</strong> Cosmos DB (az-32)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Firestore: per document read / write / delete + storage (free daily quota)</li><li class="note-item">Spanner: per processing-unit hour + storage (no scale to zero)</li><li class="note-item">Bigtable: per node-hour + storage</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Never ship Firestore rules that allow <code>read, write: if true</code></li><li class="note-item">Server code uses IAM (service accounts); clients use security rules + Firebase Auth</li><li class="note-item">Turn on point-in-time recovery and delete protection</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Firestore document up to 1 MiB</li><li class="note-item">About 1 sustained write per second per Firestore document</li><li class="note-item">Spanner storage scales with compute: about 1 TB per 100 processing units</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Pick A Store Table | Firestore Modes Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-pick-a-store"><h2 class="section-title">Pick a Store</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Mobile / web app data, real time</td><td class="desc">Firestore</td></tr><tr><td>MongoDB drivers, serverless</td><td class="desc">Firestore (MongoDB compatibility)</td></tr><tr><td>Global relational, strong consistency</td><td class="desc">Spanner</td></tr><tr><td>Huge time series / IoT</td><td class="desc">Bigtable</td></tr><tr><td>Analytics</td><td class="desc">BigQuery (sheet 33)</td></tr><tr><td>Classic relational</td><td class="desc">Cloud SQL / AlloyDB (sheet 31)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-firestore-modes"><h2 class="section-title">Firestore Modes</h2><table><thead><tr><th>Item</th><th>Note</th></tr></thead><tbody><tr><td>Native mode</td><td class="desc">Real time, mobile SDKs</td></tr><tr><td>Datastore mode</td><td class="desc">Legacy Datastore apps</td></tr><tr><td>Named databases</td><td class="desc">Several per project</td></tr><tr><td>Security rules</td><td class="desc">Client access control</td></tr><tr><td>TTL policies</td><td class="desc">Auto-delete old docs</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Design Firestore documents around your queries</li><li class="note-item note-do"><strong>Do</strong> Spread Spanner primary keys (avoid monotonically increasing keys)</li><li class="note-item note-dont"><strong>Don’t</strong> Write one Firestore document from many clients per second (counter hot spot)</li><li class="note-item note-dont"><strong>Don’t</strong> Choose Spanner for a small app that fits Cloud SQL</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>gcloud emulators firestore start</code> + <code>FIRESTORE_EMULATOR_HOST</code></li><li class="note-item">Spanner and Bigtable emulators via <code>gcloud emulators</code></li><li class="note-item">Firebase emulator suite tests security rules</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">PITR and delete protection on</li><li class="note-item">Security rules tested in CI</li><li class="note-item">Indexes and schema managed as code</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-31-cloud-sql-alloydb.html">Cloud SQL &amp; AlloyDB</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-33-bigquery-memorystore.html">BigQuery &amp; Memorystore</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

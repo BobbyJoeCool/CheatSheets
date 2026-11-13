@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>COBOL — Sheet 54: CALL &amp; Subprograms</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cbl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s54">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 54</div>
+			<h1>CALL &amp; Subprograms</h1>
+			<div class="sheet-desc"><code>CALL 'PROG' USING</code> · <code>BY REFERENCE</code> / <code>BY CONTENT</code> / <code>BY VALUE</code> · static vs dynamic calls · <code>CANCEL</code> · <code>ON EXCEPTION</code> · <code>DYNAM</code> option</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Calling Other Programs</h2><div class="description"><code>CALL</code> runs another compiled program and passes data with <code>USING</code>. <strong>BY REFERENCE</strong> (the default) shares the caller's storage, <strong>BY CONTENT</strong> passes a copy, and <strong>BY VALUE</strong> passes the value itself (for C-style APIs). Calls are <strong>static</strong> (linked in) or <strong>dynamic</strong> (loaded at run time).</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">A literal name with <code>NODYNAM</code> is a static call</li><li class="note-item">A data name (<code>CALL WS-PGM</code>) is always dynamic</li><li class="note-item">The subprogram stays in memory, keeping WORKING-STORAGE, until <code>CANCEL</code></li><li class="note-item"><code>ON EXCEPTION</code> runs if the program cannot be found</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Static calls link the subprogram into the caller's load module (binder resolves it)</li><li class="note-item">Dynamic calls load the module from STEPLIB/JOBLIB at the first CALL</li><li class="note-item">Missing module on a dynamic call without ON EXCEPTION = S806 abend</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Caller and Subprogram</h2><pre><code class="language-cobol">      *&gt; Caller
+       01  WS-PGM            PIC X(8) VALUE "CALCTAX".
+       01  WS-TAX-PARMS.
+           05 TP-AMOUNT      PIC S9(7)V99 COMP-3.
+           05 TP-STATE       PIC XX.
+           05 TP-TAX         PIC S9(7)V99 COMP-3.
+           05 TP-RC          PIC 99.
+
+           MOVE 1250.00 TO TP-AMOUNT
+           MOVE "IA"    TO TP-STATE
+           CALL WS-PGM USING BY REFERENCE WS-TAX-PARMS
+              ON EXCEPTION
+                 DISPLAY "CALCTAX NOT FOUND"
+           END-CALL
+           IF TP-RC NOT = 0 DISPLAY "TAX ERROR " TP-RC END-IF
+           CALL "LOGIT" USING BY CONTENT "TAX DONE"
+           CANCEL WS-PGM                    *&gt; fresh state next call
+
+      *&gt; Subprogram CALCTAX
+       LINKAGE SECTION.
+           COPY TAXPARMS.                   *&gt; same layout
+       PROCEDURE DIVISION USING TAX-PARMS.
+           COMPUTE TP-TAX ROUNDED = TP-AMOUNT * .06
+           MOVE 0 TO TP-RC
+           GOBACK.</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Calling through WS-PGM makes the call dynamic</div><div class="explain-item">BY REFERENCE: CALCTAX writes TP-TAX straight into the caller's field</div><div class="explain-item">BY CONTENT: LOGIT gets a copy and cannot change the caller's data</div><div class="explain-item">Caller and callee share the TAXPARMS copybook so layouts match</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>tax = calc_tax(amount, state)</code>; mutable objects act like BY REFERENCE</li><li class="note-item"><strong>Java</strong> <code>calcTax(params)</code>; objects are passed by reference to the value</li><li class="note-item"><strong>JavaScript</strong> <code>calcTax(params)</code>; objects shared, primitives copied</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">many loose parameters → one parameter group in a copybook</li><li class="note-item">STOP RUN in subprograms → <code>GOBACK</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Passing Modes Table | Static Vs Dynamic Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-passing-modes"><h2 class="section-title">Passing Modes</h2><table><thead><tr><th>Mode</th><th>Callee Sees</th></tr></thead><tbody><tr><td>BY REFERENCE</td><td class="desc">Caller's storage (default)</td></tr><tr><td>BY CONTENT</td><td class="desc">A copy</td></tr><tr><td>BY VALUE</td><td class="desc">The value (C interop)</td></tr><tr><td>RETURNING x</td><td class="desc">Function-style result</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-static-vs-dynamic"><h2 class="section-title">Static vs Dynamic</h2><table><thead><tr><th></th><th>Static</th><th>Dynamic</th></tr></thead><tbody><tr><td>Written as</td><td class="kw">CALL "LIT" + NODYNAM</td><td class="kw">CALL ws-name / DYNAM</td></tr><tr><td>Resolved</td><td class="kw">Link time</td><td class="kw">Run time</td></tr><tr><td>Change sub</td><td class="kw">Relink caller</td><td class="kw">Replace module only</td></tr><tr><td>Missing module</td><td class="kw">Link error</td><td class="kw">S806 / ON EXCEPTION</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Caller and callee layouts out of sync, shifting every field</li><li class="note-item">Passing fewer parameters than the callee's USING expects (storage overlay)</li><li class="note-item">Expecting a subprogram's WORKING-STORAGE to reset each call without CANCEL</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Put every parameter in one group defined in a shared copybook</li><li class="note-item">Add a return-code field to every parameter area</li><li class="note-item">Use dynamic calls when the subprogram changes often</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>CALL … USING</code> — run subprogram</li><li class="note-item">BY REFERENCE / CONTENT / VALUE</li><li class="note-item">static vs dynamic</li><li class="note-item"><code>CANCEL</code> — reset state</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cbl-53-copy-copybooks.html">COPY &amp; Copybooks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">COBOL Reference · 64 Sheets</a>
+				<a class="nav-link next" href="cbl-55-linkage-section.html">LINKAGE SECTION &amp; Parameters</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cobol.min.js"></script>
+	</body>
+</html>

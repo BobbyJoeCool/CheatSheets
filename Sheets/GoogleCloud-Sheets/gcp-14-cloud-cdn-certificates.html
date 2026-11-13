@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 14: Cloud CDN &amp; Certificates</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>Cloud CDN &amp; Certificates</h1>
+			<div class="sheet-desc">Cloud CDN on an external Application Load Balancer · backend buckets · cache modes &amp; invalidation · Certificate Manager · Google-managed certificates · Media CDN pointer</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Edge Caching and TLS</h2><div class="description"><strong>Cloud CDN</strong> caches responses at Google's edge for <strong>external Application Load Balancers</strong>, from <strong>backend buckets</strong> (Cloud Storage) or backend services (VMs, GKE, Cloud Run via serverless NEGs). <strong>Cache modes</strong> decide what is cached. <strong>Certificate Manager</strong> issues and renews <strong>Google-managed certificates</strong> (DNS authorization works before cut-over) and maps them to load balancers.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">CACHE_ALL_STATIC caches common static types automatically</li><li class="note-item">Signed URLs / cookies protect private cached content</li><li class="note-item">Invalidations are rate-limited: prefer versioned file names</li><li class="note-item">Media CDN targets large video and download workloads</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Keep the bucket private; serve through the load balancer</li><li class="note-item">Use an SSL policy with TLS 1.2+ (MODERN or RESTRICTED profile)</li><li class="note-item">Attach Cloud Armor to the backend</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Static Site Behind a Global ALB With CDN</h2><pre><code class="language-bash">gcloud compute backend-buckets create site-be --gcs-bucket-name=acme-site \
+    --enable-cdn --cache-mode=CACHE_ALL_STATIC --default-ttl=3600
+gcloud compute url-maps create site-map --default-backend-bucket=site-be
+
+gcloud certificate-manager dns-authorizations create shop-auth \
+    --domain=shop.acme.com
+gcloud certificate-manager certificates create shop-cert \
+    --domains=shop.acme.com --dns-authorizations=shop-auth
+gcloud certificate-manager maps create shop-map
+gcloud certificate-manager maps entries create shop-entry --map=shop-map \
+    --certificates=shop-cert --hostname=shop.acme.com
+
+gcloud compute ssl-policies create modern-tls --profile=MODERN \
+    --min-tls-version=1.2
+gcloud compute target-https-proxies create site-proxy --url-map=site-map \
+    --certificate-map=shop-map --ssl-policy=modern-tls
+gcloud compute addresses create site-ip --global
+gcloud compute forwarding-rules create site-https --global \
+    --target-https-proxy=site-proxy --address=site-ip --ports=443
+
+gcloud compute url-maps invalidate-cdn-cache site-map --path="/index.html"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The backend bucket serves the Cloud Storage site with CDN on</div><div class="explain-item">DNS authorization lets the certificate issue before DNS points at the LB</div><div class="explain-item">The certificate map attaches certificates by hostname</div><div class="explain-item">The forwarding rule exposes one global anycast IP on 443</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> CloudFront + ACM (aws-14)</li><li class="note-item"><strong>Azure</strong> Front Door + managed certificates (az-14)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Cache egress and cache fill per GB, plus lookups</li><li class="note-item">Forwarding rules bill hourly</li><li class="note-item">Google-managed certificates through Certificate Manager have a small per-certificate fee beyond a free tier</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Cache Modes Table | Alb Pieces Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-cache-modes"><h2 class="section-title">Cache Modes</h2><table><thead><tr><th>Mode</th><th>Caches</th></tr></thead><tbody><tr><td>CACHE_ALL_STATIC</td><td class="desc">Static types + Cache-Control</td></tr><tr><td>USE_ORIGIN_HEADERS</td><td class="desc">Only what origin marks cacheable</td></tr><tr><td>FORCE_CACHE_ALL</td><td class="desc">Everything (careful with private data)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-alb-pieces"><h2 class="section-title">ALB Pieces</h2><table><thead><tr><th>Piece</th><th>Role</th></tr></thead><tbody><tr><td>Forwarding rule</td><td class="desc">IP + port</td></tr><tr><td>Target HTTPS proxy</td><td class="desc">TLS, certificates</td></tr><tr><td>URL map</td><td class="desc">Host / path routing</td></tr><tr><td>Backend service / bucket</td><td class="desc">Where traffic goes</td></tr><tr><td>Health check</td><td class="desc">Backend health</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Version asset file names; invalidate only entry points</li><li class="note-item note-do"><strong>Do</strong> Use Certificate Manager with DNS authorization for zero-downtime cut-overs</li><li class="note-item note-dont"><strong>Don’t</strong> Make the site bucket public</li><li class="note-item note-dont"><strong>Don’t</strong> Use FORCE_CACHE_ALL on pages with user data</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Preview the site locally with <code>npx serve</code></li><li class="note-item"><code>curl -I</code> shows <code>age</code> and cache headers after deploy</li><li class="note-item">Test URL maps with <code>gcloud compute url-maps validate</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Private bucket behind the ALB</li><li class="note-item">Cloud Armor and modern SSL policy attached</li><li class="note-item">HTTP → HTTPS redirect URL map</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-13-cloud-dns.html">Cloud DNS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-15-compute-engine-basics.html">Compute Engine Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

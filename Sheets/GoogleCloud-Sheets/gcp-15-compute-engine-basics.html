@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 15: Compute Engine Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>Compute Engine Basics</h1>
+			<div class="sheet-desc">machine families (E2, N4, C4, T2D…) · images &amp; boot disks · <code>gcloud compute instances create</code> · startup scripts &amp; metadata · OS Login · Shielded VM</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Virtual Machines</h2><div class="description"><strong>Compute Engine</strong> runs VMs in a <strong>zone</strong> from a public or custom <strong>image</strong>. Pick a <strong>machine type</strong> from a family (general purpose E2 / N4 / C4, compute-optimized, memory-optimized, Arm-based C4A / T2A), attach Persistent or Hyperdisk volumes, a service account and network tags. <strong>Metadata</strong> carries startup scripts and config; <strong>OS Login</strong> ties SSH access to IAM.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Custom machine types choose exact vCPU and memory on many families</li><li class="note-item">Startup scripts run as root on every boot</li><li class="note-item">Spot VMs are cheap but can be preempted any time</li><li class="note-item">Shielded VM (Secure Boot, vTPM, integrity monitoring) is on by default for supported images</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">No external IP: use IAP for SSH and Cloud NAT for egress</li><li class="note-item">Attach a dedicated service account (not the default compute SA)</li><li class="note-item">Enable OS Login and block project-wide SSH keys</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">vCPU quotas per region and per family (often small on new projects)</li><li class="note-item">External IP address quota per region</li><li class="note-item">GPU quotas start at 0: request ahead</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create and Connect</h2><pre><code class="language-bash">gcloud compute instances create web-1 --zone=us-central1-a \
+    --machine-type=e2-standard-2 \
+    --image-family=debian-12 --image-project=debian-cloud \
+    --boot-disk-size=20GB --boot-disk-type=pd-balanced \
+    --subnet=app-usc1 --no-address \
+    --service-account=web@shop-prod-4821.iam.gserviceaccount.com \
+    --scopes=cloud-platform --tags=web --labels=env=prod,app=shop \
+    --metadata=enable-oslogin=TRUE,block-project-ssh-keys=TRUE \
+    --metadata-from-file=startup-script=startup.sh \
+    --shielded-secure-boot
+
+gcloud compute ssh web-1 --zone=us-central1-a --tunnel-through-iap
+gcloud compute instances list --filter="labels.app=shop" \
+    --format="table(name,zone.basename(),status,networkInterfaces[0].networkIP)"
+gcloud compute instances stop web-1 --zone=us-central1-a
+gcloud compute instances set-machine-type web-1 --zone=us-central1-a \
+    --machine-type=e2-standard-4
+gcloud compute instances start web-1 --zone=us-central1-a</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">startup.sh</h2><pre><code class="language-bash">#!/bin/bash
+apt-get update &amp;&amp; apt-get install -y nginx
+systemctl enable --now nginx</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>--no-address</code> keeps the VM private</div><div class="explain-item"><code>cloud-platform</code> scope + IAM roles is the modern pattern</div><div class="explain-item">OS Login grants SSH via IAM roles (<code>roles/compute.osLogin</code>)</div><div class="explain-item">Machine type changes need a stopped VM</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> EC2 instances, AMIs, user data (aws-15)</li><li class="note-item"><strong>Azure</strong> Azure VMs, images, cloud-init (az-15)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Billed per second (1-minute minimum) for vCPU and memory</li><li class="note-item">Stopped VMs still pay for disks and reserved IPs</li><li class="note-item">Sustained use discounts apply automatically to N1 / N2 and some other families</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Machine Families Table | Disk Types Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-machine-families"><h2 class="section-title">Machine Families</h2><table><thead><tr><th>Family</th><th>Use</th></tr></thead><tbody><tr><td>E2</td><td class="desc">Cost-optimized general purpose</td></tr><tr><td>N4 / N2 / N2D</td><td class="desc">Balanced general purpose</td></tr><tr><td>C4 / C4A / C3</td><td class="desc">High performance (C4A is Arm)</td></tr><tr><td>T2D / T2A</td><td class="desc">Scale-out (T2A is Arm)</td></tr><tr><td>M3 / X4</td><td class="desc">Memory-optimized</td></tr><tr><td>A3 / A4 / G2</td><td class="desc">GPUs</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-disk-types"><h2 class="section-title">Disk Types</h2><table><thead><tr><th>Type</th><th>Use</th></tr></thead><tbody><tr><td>pd-balanced</td><td class="desc">Default SSD-backed</td></tr><tr><td>pd-ssd</td><td class="desc">Higher IOPS</td></tr><tr><td>pd-standard</td><td class="desc">Cheap HDD</td></tr><tr><td>Hyperdisk Balanced / Extreme</td><td class="desc">Tunable IOPS / throughput</td></tr><tr><td>Local SSD</td><td class="desc">Ephemeral scratch</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use instance templates and MIGs for anything that should scale</li><li class="note-item note-do"><strong>Do</strong> Prefer image families for current OS images</li><li class="note-item note-dont"><strong>Don’t</strong> Give VMs external IPs by default</li><li class="note-item note-dont"><strong>Don’t</strong> Use the default compute service account with Editor</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Test startup scripts in a local VM or container first</li><li class="note-item"><code>gcloud compute instances get-serial-port-output</code> debugs boot</li><li class="note-item">Packer builds custom images reproducibly</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Private VMs, IAP SSH, OS Login</li><li class="note-item">Dedicated SA with least privilege</li><li class="note-item">Built from a template in IaC, not by hand</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-14-cloud-cdn-certificates.html">Cloud CDN &amp; Certificates</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-16-compute-engine-operations-pricing.html">CE Operations &amp; Pricing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

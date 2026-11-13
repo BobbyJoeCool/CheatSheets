@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 15: IF / THEN / ELSE &amp; Restart</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>IF / THEN / ELSE &amp; Restart</h1>
+			<div class="sheet-desc"><code>// IF (RC &gt; 4) THEN</code> · <code>ELSE</code> / <code>ENDIF</code> · <code>STEP.RC</code> · <code>ABEND</code> / <code>ABENDCC</code> · <code>RUN</code> · <code>RESTART=stepname</code> · idempotent steps</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Readable Conditional Steps</h2><div class="description"><code>IF/THEN/ELSE/ENDIF</code> statements wrap steps in conditions that read forwards: <code>IF (RC &lt;= 4) THEN</code> runs the steps when the condition is true. You can test the highest RC so far, a specific step's RC, abends and abend codes. <code>RESTART=</code> reruns a failed job from a chosen step.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>RC</code> alone = highest RC of all earlier steps</li><li class="note-item"><code>STEP1.RC</code> tests one step; <code>STEP1.PSTEP.RC</code> a proc step</li><li class="note-item"><code>ABEND</code> is true if any earlier step abended</li><li class="note-item">IF blocks can nest up to 15 levels</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">IF Blocks and Restart</h2><pre><code class="language-jcl">//STEP010  EXEC PGM=VALIDATE
+//         IF (STEP010.RC &lt;= 4) THEN
+//STEP020  EXEC PGM=UPDATE
+//         IF (STEP020.RC = 0) THEN
+//STEP030  EXEC PGM=REPORT
+//         ENDIF
+//         ELSE
+//STEP040  EXEC PGM=ERRMAIL,PARM='VALIDATION FAILED'
+//         ENDIF
+//*
+//         IF (ABEND | STEP020.ABENDCC = S0C7) THEN
+//STEP090  EXEC PGM=ALERT
+//         ENDIF
+//*
+//* Rerun from STEP020 after fixing the data:
+//* //USER01P JOB (ACCT),'RERUN',CLASS=A,RESTART=STEP020</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">STEP020 runs only if VALIDATE ended with RC 0–4</div><div class="explain-item">REPORT runs only if UPDATE returned 0</div><div class="explain-item">STEP040 runs when validation failed</div><div class="explain-item"><code>RESTART=STEP020</code> skips STEP010 on the rerun</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>if result.returncode &lt;= 4: run("update")</code> in a Python driver</li><li class="note-item"><strong>Java</strong> <code>if (exitCode &lt;= 4) { … }</code> in a launcher, or Spring Batch flow decisions</li><li class="note-item"><strong>JavaScript</strong> GitHub Actions <code>if: steps.validate.outcome == 'success'</code></li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item"><code>JCL ERROR</code> on an IF block: an IF without a matching ENDIF (or the reverse)</li><li class="note-item">Restart fails because STEP010 created a temp dataset STEP020 needs: restart earlier or catalog it</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Expressions Table | Restart Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-expressions"><h2 class="section-title">Expressions</h2><table><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody><tr><td>RC</td><td class="desc">Highest RC so far</td></tr><tr><td>step.RC</td><td class="desc">One step's RC</td></tr><tr><td>ABEND / ¬ABEND</td><td class="desc">Any abend / none</td></tr><tr><td>step.ABEND</td><td class="desc">That step abended</td></tr><tr><td>step.ABENDCC=S0C7</td><td class="desc">Specific abend</td></tr><tr><td>step.RUN</td><td class="desc">That step ran</td></tr><tr><td>&amp; | ¬ (AND OR NOT)</td><td class="desc">Combine</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-restart"><h2 class="section-title">Restart</h2><table><thead><tr><th>Form</th><th>Effect</th></tr></thead><tbody><tr><td>RESTART=STEP020</td><td class="desc">Start at that step</td></tr><tr><td>RESTART=PROC.STEP</td><td class="desc">Start in a proc step</td></tr><tr><td>TYPRUN=HOLD</td><td class="desc">Submit held, release later</td></tr><tr><td>GDG (+1) on restart</td><td class="desc">Watch generation numbers</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Comparing <code>RC &gt; 4</code> when you meant <code>&lt;=</code> (logic inverted from COND habits)</li><li class="note-item">Forgetting ENDIF</li><li class="note-item">Restarting at a step that depends on temp datasets from skipped steps</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use IF/THEN/ELSE for all new conditional logic</li><li class="note-item">Design steps to be rerunnable: delete outputs first, then create</li><li class="note-item">Comment each IF with the business reason</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>IF (cond) THEN … ENDIF</code></li><li class="note-item"><code>RC</code> / <code>step.RC</code> — return codes</li><li class="note-item"><code>ABEND</code> / <code>ABENDCC</code> — failures</li><li class="note-item"><code>RESTART=</code> — rerun from a step</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-14-return-codes-cond.html">Return Codes &amp; COND</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-16-procedures.html">In-Stream &amp; Cataloged Procedures</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

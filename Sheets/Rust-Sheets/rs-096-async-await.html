@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 096: async / await &amp; Futures</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s096">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 096</div>
+			<h1>async / await &amp; Futures</h1>
+			<div class="sheet-desc"><code>async fn</code> · <code>.await</code> · <code>Future</code> trait · futures are lazy · async blocks · executors · async closures · async fn in traits</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Asynchronous Rust</h2><div class="description">An <code>async fn</code> returns a <strong>Future</strong>, a value representing work that has not run yet. Futures are <strong>lazy</strong>: nothing happens until something <code>.await</code>s them or an executor polls them. Rust has no built-in runtime; crates like Tokio provide the executor. Async suits many concurrent I/O tasks; threads suit CPU work.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>.await</code> only works inside async code</li><li class="note-item">Async closures <code>async || {}</code> are stable since Rust 1.85</li><li class="note-item"><code>async fn</code> in traits is stable since 1.75</li><li class="note-item">Blocking calls inside async code stall the executor</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">The compiler turns each <code>async fn</code> into a <strong>state machine</strong> enum: one variant per <code>.await</code> point</li><li class="note-item">Locals that live across <code>.await</code> are stored in that enum (its size can grow large)</li><li class="note-item"><code>Future::poll</code> returns <code>Ready(v)</code> or <code>Pending</code>; a <code>Waker</code> tells the executor when to poll again</li><li class="note-item">Futures may be self-referential, so polling requires <code>Pin&lt;&amp;mut Self&gt;</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">async Basics</h2><pre><code class="language-rust">use std::time::Duration;
+
+async fn fetch_user(id: u32) -&gt; String {
+    tokio::time::sleep(Duration::from_millis(50)).await;   // yields, no block
+    format!("user{id}")
+}
+
+#[tokio::main]
+async fn main() {
+    let fut = fetch_user(1);                // nothing runs yet (lazy)
+    println!("created");
+    let name = fut.await;                   // runs now
+    println!("{name}");                     // user1
+
+    let (a, b) = tokio::join!(fetch_user(2), fetch_user(3));   // concurrent
+    println!("{a} {b}");                    // ~50ms total, not 100ms
+
+    let block = async { fetch_user(4).await.len() };   // async block
+    println!("{}", block.await);            // 5
+
+    let greet = async |n: &amp;str| format!("hi {n}");   // async closure (1.85)
+    println!("{}", greet("Ada").await);
+}
+
+trait Store {
+    async fn get(&amp;self, key: &amp;str) -&gt; Option&lt;String&gt;;   // async fn in traits
+}
+
+// The Future trait (simplified):
+// trait Future {
+//     type Output;
+//     fn poll(self: Pin&lt;&amp;mut Self&gt;, cx: &amp;mut Context&lt;'_&gt;)
+//         -&gt; Poll&lt;Self::Output&gt;;
+// }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Calling <code>fetch_user(1)</code> only builds a future</div><div class="explain-item"><code>.await</code> drives the future to completion</div><div class="explain-item"><code>join!</code> runs futures concurrently on one task</div><div class="explain-item">Async blocks and closures create futures inline</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>JavaScript</strong> <code>async</code>/<code>await</code> with Promises, but Promises start eagerly</li><li class="note-item"><strong>Python</strong> <code>asyncio</code> coroutines are lazy like Rust futures</li><li class="note-item"><strong>C#</strong> <code>async Task&lt;T&gt;</code>; <strong>Go</strong> uses goroutines instead of async</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>std::thread::sleep</code> in async code → <code>tokio::time::sleep(...).await</code></li><li class="note-item">awaiting independent futures one by one → <code>join!</code> / <code>try_join!</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Pieces Table | Threads Vs Async Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-pieces"><h2 class="section-title">Pieces</h2><table><thead><tr><th>Item</th><th>Meaning</th></tr></thead><tbody><tr><td>async fn f() -&gt; T</td><td class="desc">Returns impl Future&lt;Output = T&gt;</td></tr><tr><td>f().await</td><td class="desc">Run and wait</td></tr><tr><td>async { … }</td><td class="desc">Future block</td></tr><tr><td>async move { … }</td><td class="desc">Owns captures</td></tr><tr><td>async |x| …</td><td class="desc">Async closure</td></tr><tr><td>Future::poll</td><td class="desc">Executor API</td></tr><tr><td>Pin</td><td class="desc">No moving after poll</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-threads-vs-async"><h2 class="section-title">Threads vs Async</h2><table><thead><tr><th>Item</th><th>Threads</th><th>Async</th></tr></thead><tbody><tr><td>Best for</td><td class="kw">CPU work</td><td class="kw">Many I/O waits</td></tr><tr><td>Cost per task</td><td class="kw">MBs of stack</td><td class="kw">Bytes (state machine)</td></tr><tr><td>Scheduling</td><td class="kw">OS</td><td class="kw">Runtime (cooperative)</td></tr><tr><td>Blocking calls</td><td class="kw">Fine</td><td class="kw">Stall others</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling an async fn and forgetting <code>.await</code> (warning: unused future)</li><li class="note-item">Blocking I/O or heavy CPU loops inside async tasks</li><li class="note-item">Holding a std <code>MutexGuard</code> across <code>.await</code> (future not Send)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>spawn_blocking</code> for blocking work (sheet 097)</li><li class="note-item">Keep large locals out of futures that live across awaits</li><li class="note-item">Pick one runtime (usually Tokio) per application</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>async fn</code> returns a Future</li><li class="note-item">futures are lazy</li><li class="note-item"><code>.await</code> drives them</li><li class="note-item">runtime (Tokio) executes</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-095-send-sync.html">Send &amp; Sync</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-097-tokio.html">Tokio</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

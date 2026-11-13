@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 17: Cloud Load Balancing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Cloud Load Balancing</h1>
+			<div class="sheet-desc">Application vs Network Load Balancers · external vs internal · global vs regional · backend services &amp; NEGs · health checks · serverless NEGs for Cloud Run</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Choosing a Load Balancer</h2><div class="description">Cloud Load Balancing is a family: <strong>Application Load Balancers</strong> (HTTP/S, L7) and <strong>Network Load Balancers</strong> (TCP/UDP, L4, proxy or passthrough), each <strong>external</strong> or <strong>internal</strong>, <strong>global</strong> or <strong>regional</strong>. They share building blocks: a <strong>forwarding rule</strong> (IP + port), a <strong>target proxy</strong>, a <strong>URL map</strong>, <strong>backend services</strong> with <strong>health checks</strong>, and backends such as MIGs or <strong>NEGs</strong> (including serverless NEGs for Cloud Run).</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Global external ALB gives one anycast IP worldwide</li><li class="note-item">Health check traffic comes from 35.191.0.0/16 and 130.211.0.0/22</li><li class="note-item">Serverless NEGs front Cloud Run, Functions and App Engine</li><li class="note-item">Cloud Armor and Cloud CDN attach to backend services</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Global External ALB for a MIG and Cloud Run</h2><pre><code class="language-bash">gcloud compute health-checks create http hc-web --port=8080 \
+    --request-path=/healthz
+gcloud compute backend-services create web-be --global \
+    --protocol=HTTP --port-name=http --health-checks=hc-web \
+    --load-balancing-scheme=EXTERNAL_MANAGED
+gcloud compute backend-services add-backend web-be --global \
+    --instance-group=web-mig --instance-group-region=us-central1
+
+gcloud compute network-endpoint-groups create api-neg \
+    --region=us-central1 --network-endpoint-type=serverless \
+    --cloud-run-service=api
+gcloud compute backend-services create api-be --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED
+gcloud compute backend-services add-backend api-be --global \
+    --network-endpoint-group=api-neg --network-endpoint-group-region=us-central1
+
+gcloud compute url-maps create shop-map --default-service=web-be
+gcloud compute url-maps add-path-matcher shop-map --path-matcher-name=api \
+    --default-service=web-be --path-rules="/api/*=api-be" \
+    --new-hosts=shop.acme.com
+gcloud compute target-https-proxies create shop-proxy --url-map=shop-map \
+    --certificate-map=shop-map
+gcloud compute forwarding-rules create shop-https --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --target-https-proxy=shop-proxy --ports=443</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The health check probes <code>/healthz</code> on port 8080</div><div class="explain-item">The MIG backend serves the website</div><div class="explain-item">The serverless NEG routes <code>/api/*</code> to Cloud Run</div><div class="explain-item">The forwarding rule exposes the global IP on 443</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> ALB, NLB, target groups (aws-17)</li><li class="note-item"><strong>Azure</strong> Application Gateway, Load Balancer, Front Door (az-17)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Forwarding rules bill hourly (first 5 rules priced together)</li><li class="note-item">Data processed by the LB bills per GB</li><li class="note-item">Global ALB + CDN can cut egress cost for cacheable content</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Which Load Balancer Table | Pieces Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-which-load-balancer"><h2 class="section-title">Which Load Balancer</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Public website / API, global</td><td class="desc">Global external ALB</td></tr><tr><td>Public, one region</td><td class="desc">Regional external ALB</td></tr><tr><td>Internal HTTP between services</td><td class="desc">Internal ALB</td></tr><tr><td>TCP/UDP, preserve client IP</td><td class="desc">Passthrough NLB</td></tr><tr><td>TCP proxy, TLS offload</td><td class="desc">Proxy NLB</td></tr><tr><td>Front Cloud Run</td><td class="desc">ALB + serverless NEG</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-pieces"><h2 class="section-title">Pieces</h2><table><thead><tr><th>Piece</th><th>Role</th></tr></thead><tbody><tr><td>Forwarding rule</td><td class="desc">IP, port, scheme</td></tr><tr><td>Target proxy</td><td class="desc">HTTP(S) / TCP / SSL</td></tr><tr><td>URL map</td><td class="desc">Host / path rules</td></tr><tr><td>Backend service</td><td class="desc">Balancing, health, Armor, CDN</td></tr><tr><td>Backend</td><td class="desc">MIG, NEG, bucket</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use EXTERNAL_MANAGED (the modern ALB scheme)</li><li class="note-item note-do"><strong>Do</strong> Point health checks at a cheap <code>/healthz</code> endpoint</li><li class="note-item note-dont"><strong>Don’t</strong> Forget firewall rules for health check ranges</li><li class="note-item note-dont"><strong>Don’t</strong> Expose Cloud Run publicly when it should only take LB traffic (set ingress)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Test URL maps with <code>gcloud compute url-maps validate</code></li><li class="note-item">Check backend health: <code>gcloud compute backend-services get-health</code></li><li class="note-item">Run the app behind a local reverse proxy (Caddy / nginx) to test paths</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">HTTPS only with a modern SSL policy</li><li class="note-item">Cloud Armor attached to public backends</li><li class="note-item">Health checks, logging and alerting on 5xx</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-16-compute-engine-operations-pricing.html">CE Operations &amp; Pricing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-18-managed-instance-groups.html">Managed Instance Groups</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

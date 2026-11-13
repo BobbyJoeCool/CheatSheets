@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 34: Custom Exceptions &amp; No Checked Exceptions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>Custom Exceptions &amp; No Checked Exceptions</h1>
+			<div class="sheet-desc"><code>class MyException : Exception()</code> · no checked exceptions · <code>@Throws</code> for Java callers · exception chaining <code>cause</code> · sealed error types</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the JVM -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Your Own Exception Types</h2><div class="description">Custom exceptions are ordinary classes extending <code>Exception</code> or <code>RuntimeException</code>. Kotlin has <strong>no checked exceptions</strong>: you never declare <code>throws</code> and callers are never forced to catch. For expected failures, many Kotlin codebases return a <strong>sealed result type</strong> instead of throwing.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Pass <code>message</code> and <code>cause</code> to the superclass</li><li class="note-item">Add <code>@Throws(IOException::class)</code> if Java code must catch it</li><li class="note-item">Checked Java exceptions can be thrown and caught freely</li><li class="note-item">Sealed types make failures part of the return type</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-jvm" id="jvm"><h2 class="section-title">Under the JVM</h2><ul class="note-list"><li class="note-item">Checked exceptions are a Java compiler rule; the JVM does not enforce them</li><li class="note-item">Without <code>@Throws</code>, Java callers cannot write <code>catch (IOException e)</code> around the call</li><li class="note-item">Kotlin <code>Exception</code> is a typealias for <code>java.lang.Exception</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Exceptions vs a Sealed Result</h2><pre><code class="language-kotlin">class InsufficientFundsException(
+    val needed: Double,
+    cause: Throwable? = null
+) : RuntimeException("Need $needed more", cause)
+
+class Account(var balance: Double) {
+    @Throws(InsufficientFundsException::class)   // for Java callers
+    fun withdraw(amount: Double) {
+        if (amount &gt; balance) throw InsufficientFundsException(amount - balance)
+        balance -= amount
+    }
+}
+
+// No throws clause needed, no forced catch:
+fun load(path: String): String = File(path).readText()  // may throw IOException
+
+// Expected failure as a value instead:
+sealed interface Withdrawal {
+    data class Ok(val newBalance: Double) : Withdrawal
+    data class Declined(val shortBy: Double) : Withdrawal
+}
+
+fun tryWithdraw(acct: Account, amt: Double): Withdrawal =
+    if (amt &lt;= acct.balance) Withdrawal.Ok(acct.balance - amt)
+    else Withdrawal.Declined(amt - acct.balance)
+
+when (val r = tryWithdraw(Account(50.0), 80.0)) {
+    is Withdrawal.Ok       -&gt; println("Left: ${r.newBalance}")
+    is Withdrawal.Declined -&gt; println("Short by ${r.shortBy}")  // Short by 30.0
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The custom exception carries data (<code>needed</code>) and an optional cause</div><div class="explain-item"><code>@Throws</code> only affects how Java sees the method</div><div class="explain-item"><code>load</code> can throw IOException without declaring it</div><div class="explain-item">The sealed result forces callers to handle both outcomes</div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item"><code>class InsufficientFundsException extends RuntimeException</code></li><li class="note-item"><code>void load() throws IOException</code> is required for checked exceptions</li><li class="note-item">Sealed interfaces + records (Java 17) for result types</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item">exceptions for normal control flow → sealed result types</li><li class="note-item">catching and rethrowing to satisfy "throws" → just let it propagate</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Kotlin Vs Java Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-kotlin-vs-java"><h2 class="section-title">Kotlin vs Java</h2><table><thead><tr><th>Topic</th><th>Kotlin</th><th>Java</th></tr></thead><tbody><tr><td>Checked exceptions</td><td class="kw">None</td><td class="kw">Must declare / catch</td></tr><tr><td>throws clause</td><td class="kw">@Throws (interop)</td><td class="kw">throws IOException</td></tr><tr><td>Multi-catch</td><td class="kw">when inside catch</td><td class="kw">A | B</td></tr><tr><td>Resources</td><td class="kw">use { }</td><td class="kw">try-with-resources</td></tr><tr><td>Results</td><td class="kw">Result / sealed types</td><td class="kw">Optional / exceptions</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting <code>@Throws</code> so Java callers cannot catch a checked exception</li><li class="note-item">Swallowing exceptions because the compiler no longer forces handling</li><li class="note-item">Losing the original cause when wrapping</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Throw for programmer errors; return sealed results for expected outcomes</li><li class="note-item">Document thrown exceptions in KDoc <code>@throws</code></li><li class="note-item">Keep custom exceptions few and meaningful</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">extend <code>Exception</code></li><li class="note-item">no checked exceptions</li><li class="note-item"><code>@Throws</code> — Java interop</li><li class="note-item">sealed results — expected failures</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-33-throw-nothing-preconditions.html">throw, Nothing &amp; Preconditions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-35-runcatching-result.html">runCatching &amp; Result</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

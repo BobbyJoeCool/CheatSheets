@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 37: Background Tasks</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>Background Tasks</h1>
+			<div class="sheet-desc">BackgroundTasks · add_task() · tasks in dependencies · Celery / ARQ / RQ · fire-and-forget limits</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong><code>BackgroundTasks</code></strong> runs small jobs <strong>after the response is sent</strong>, in the same process: sending a welcome email, writing an audit log, warming a cache. Declare a <code>BackgroundTasks</code> parameter and call <code>add_task()</code>. For anything slow, retryable or important, use a real <strong>task queue</strong> instead.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Tasks run after the response, in order added</li><li class="note-item"><code>def</code> tasks run in the threadpool; <code>async def</code> on the loop</li><li class="note-item">No retries, no persistence: a crash loses the task</li><li class="note-item">Dependencies can add tasks too</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">After-Response Work</h2><pre><code class="language-python">from fastapi import BackgroundTasks
+
+def send_welcome(email: str, name: str):
+    mailer.send(to=email, subject="Welcome!",
+                body=f"Hi {name}, thanks for signing up.")
+
+def write_audit(event: str, user_id: int):
+    audit_log.append(event=event, user_id=user_id)
+
+@app.post("/users", status_code=201)
+def register(data: UserCreate, tasks: BackgroundTasks,
+             db: DbSession) -&gt; UserOut:
+    user = create_user(db, data)
+    tasks.add_task(send_welcome, user.email, name=user.name)
+    tasks.add_task(write_audit, "register", user.id)
+    return user                          # client gets this right away
+
+def audit_dep(tasks: BackgroundTasks, request: Request):
+    tasks.add_task(write_audit, f"hit {request.url.path}", 0)</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>tasks: BackgroundTasks</code> — injected per request</div><div class="explain-item"><code>add_task(fn, *args, **kwargs)</code> — schedule work</div><div class="explain-item">Response is sent before tasks run</div><div class="explain-item"><code>audit_dep</code> — a dependency can add tasks as well</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — no built-in; use Celery, RQ or a thread</li><li class="note-item">Django — <code>django.tasks</code> (6.0+) or Celery</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid long jobs in <code>BackgroundTasks</code> · Prefer Celery, ARQ, RQ or Dramatiq</li><li class="note-item">Avoid passing ORM objects to tasks · Prefer IDs and reload</li></ul></section></div>
+			</div>
+			<!-- Row 3: When Table | Queues Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-when"><h2 class="section-title">When to Use What</h2><table><thead><tr><th>Job</th><th>Tool</th></tr></thead><tbody><tr><td>email, log, &lt; 1 s</td><td class="desc">BackgroundTasks</td></tr><tr><td>must not be lost</td><td class="desc">task queue</td></tr><tr><td>needs retries</td><td class="desc">task queue</td></tr><tr><td>scheduled (cron)</td><td class="desc">Celery beat / APScheduler</td></tr><tr><td>CPU heavy</td><td class="desc">worker processes</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-queues"><h2 class="section-title">Task Queues</h2><table><thead><tr><th>Library</th><th>Notes</th></tr></thead><tbody><tr><td>Celery</td><td class="desc">mature, Redis/RabbitMQ</td></tr><tr><td>ARQ</td><td class="desc">asyncio + Redis</td></tr><tr><td>RQ</td><td class="desc">simple, Redis</td></tr><tr><td>Dramatiq</td><td class="desc">simple, reliable</td></tr><tr><td>Taskiq</td><td class="desc">async-first</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using the request's DB session inside a task: it's closed by then</li><li class="note-item">Expecting task errors to reach the client: the response is already sent</li><li class="note-item">Running minutes-long work: holds a worker and dies on deploy</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Open a fresh session inside the task</li><li class="note-item">Log task failures; nobody else will see them</li><li class="note-item">Move to a queue as soon as you need retries</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>BackgroundTasks</code> — run after response</li><li class="note-item"><code>add_task(fn, ...)</code> — schedule</li><li class="note-item">same process — no retries, no persistence</li><li class="note-item">task queue — for anything important</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-36-async-vs-def.html" class="nav-link prev">async def vs def</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-38-websockets.html" class="nav-link next">WebSockets</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

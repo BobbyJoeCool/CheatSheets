@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 14: Front Door &amp; Certificates</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s14">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 14</div>
+			<h1>Front Door &amp; Certificates</h1>
+			<div class="sheet-desc">Azure Front Door Standard / Premium · origins &amp; routes · rules engine · caching &amp; purge · managed certificates · WAF policies</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Global Entry Point</h2><div class="description"><strong>Azure Front Door</strong> is Microsoft's global layer-7 entry point: CDN caching, TLS termination with <strong>managed certificates</strong>, routing to <strong>origins</strong> in any region, health probes and failover, and a <strong>WAF</strong>. A profile holds endpoints; <strong>routes</strong> map domains and paths to <strong>origin groups</strong>. Premium adds Private Link origins and managed WAF rule sets with bot protection.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Front Door (classic) retires on March 31, 2027: use Standard or Premium</li><li class="note-item">Origins can be App Service, Container Apps, Storage, load balancers or any public host</li><li class="note-item">Rules engine rewrites headers, redirects and changes cache behavior</li><li class="note-item">Purge clears cached paths after a deploy</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Lock origins to Front Door only (Private Link or the <code>X-Azure-FDID</code> header + service tag)</li><li class="note-item">Enable WAF in Prevention mode after tuning</li><li class="note-item">Redirect HTTP to HTTPS on every route</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Profile, Origin, Route, WAF</h2><pre><code class="language-bash">az afd profile create -g rg-web --profile-name afd-shop \
+    --sku Premium_AzureFrontDoor
+az afd endpoint create -g rg-web --profile-name afd-shop --endpoint-name shop
+
+az afd origin-group create -g rg-web --profile-name afd-shop \
+    --origin-group-name og-app --probe-path /health \
+    --probe-protocol Https --probe-request-type GET \
+    --probe-interval-in-seconds 30 --sample-size 4 \
+    --successful-samples-required 3 \
+    --additional-latency-in-milliseconds 50
+az afd origin create -g rg-web --profile-name afd-shop \
+    --origin-group-name og-app --origin-name eus2 \
+    --host-name app-shop-eus2.azurewebsites.net \
+    --origin-host-header app-shop-eus2.azurewebsites.net \
+    --priority 1 --weight 1000 --enabled-state Enabled
+
+az afd route create -g rg-web --profile-name afd-shop --endpoint-name shop \
+    --route-name default --origin-group og-app \
+    --supported-protocols Https Http --https-redirect Enabled \
+    --forwarding-protocol HttpsOnly --link-to-default-domain Enabled
+
+az afd endpoint purge -g rg-web --profile-name afd-shop \
+    --endpoint-name shop --content-paths "/index.html"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Premium is needed for Private Link origins and managed WAF rules</div><div class="explain-item">The origin group health probe decides which origins get traffic</div><div class="explain-item">Origin host header must match what the back end expects</div><div class="explain-item">Routes tie the endpoint to the origin group and enforce HTTPS</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> CloudFront + ACM + AWS WAF; Global Accelerator (aws-14)</li><li class="note-item"><strong>GCP</strong> Global external Application LB + Cloud CDN + Cloud Armor (gcp-14)</li><li class="note-item">Front Door combines CDN, global L7 load balancing and WAF</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Base fee per profile per month plus requests and data transfer</li><li class="note-item">Premium costs much more than Standard: use it when you need Private Link or managed rules</li><li class="note-item">Caching static content cuts origin compute and egress</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Standard Vs Premium Table | Pieces Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-standard-vs-premium"><h2 class="section-title">Standard vs Premium</h2><table><thead><tr><th>Feature</th><th>Standard</th><th>Premium</th></tr></thead><tbody><tr><td>CDN + L7 routing</td><td class="kw">Yes</td><td class="kw">Yes</td></tr><tr><td>Managed certificates</td><td class="kw">Yes</td><td class="kw">Yes</td></tr><tr><td>Custom WAF rules</td><td class="kw">Yes</td><td class="kw">Yes</td></tr><tr><td>Managed WAF rule sets / bot</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>Private Link origins</td><td class="kw">No</td><td class="kw">Yes</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-pieces"><h2 class="section-title">Pieces</h2><table><thead><tr><th>Piece</th><th>Holds</th></tr></thead><tbody><tr><td>Profile</td><td class="desc">Endpoints, WAF, rules</td></tr><tr><td>Endpoint</td><td class="desc">*.azurefd.net hostname</td></tr><tr><td>Origin group</td><td class="desc">Origins + health probe</td></tr><tr><td>Route</td><td class="desc">Domain/path → origin group</td></tr><tr><td>Rule set</td><td class="desc">Rewrites, redirects, caching</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Cache static assets with long TTLs and versioned names</li><li class="note-item note-do"><strong>Do</strong> Use custom domains with managed certificates</li><li class="note-item note-dont"><strong>Don’t</strong> Leave origins reachable directly from the internet</li><li class="note-item note-dont"><strong>Don’t</strong> Purge <code>/*</code> on every release</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Test origins locally first; Front Door has no emulator</li><li class="note-item"><code>curl -I https://shop.azurefd.net/app.js</code> shows cache headers (<code>x-cache</code>)</li><li class="note-item">Use a Standard profile in a sandbox to try routing rules cheaply</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Origins locked to Front Door (Private Link or FDID header check)</li><li class="note-item">WAF policy in Prevention mode with logging</li><li class="note-item">Two origins in different regions with health probes</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-13-azure-dns.html">Azure DNS &amp; Traffic Manager</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-15-virtual-machines.html">Virtual Machines</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

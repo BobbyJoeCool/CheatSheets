@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 37: CloudWatch Metrics &amp; Alarms</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>CloudWatch Metrics &amp; Alarms</h1>
+			<div class="sheet-desc">namespaces &amp; dimensions · <code>put-metric-data</code> · alarms &amp; SNS actions · dashboards · composite alarms · anomaly detection</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Watching AWS Resources</h2><div class="description"><strong>CloudWatch</strong> collects metrics from AWS services in <strong>namespaces</strong> (<code>AWS/EC2</code>, <code>AWS/Lambda</code>) with <strong>dimensions</strong> (InstanceId, FunctionName). Publish your own with <code>put-metric-data</code> or embedded metric format (EMF) logs. <strong>Alarms</strong> watch a metric or expression and notify SNS, scale ASGs or run actions. <strong>Composite alarms</strong> combine alarms; <strong>anomaly detection</strong> learns normal bands.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Basic monitoring: 5-minute EC2 metrics; detailed: 1-minute</li><li class="note-item">Metric math builds error rates from counts</li><li class="note-item">Alarms have OK / ALARM / INSUFFICIENT_DATA states</li><li class="note-item">Application Signals adds SLOs and service maps</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Custom Metric, Alarm, Dashboard</h2><pre><code class="language-bash">aws cloudwatch put-metric-data --namespace Shop \
+    --metric-name OrdersPlaced --dimensions Env=prod --value 1 --unit Count
+
+aws sns create-topic --name oncall
+aws cloudwatch put-metric-alarm --alarm-name api-5xx \
+    --namespace AWS/ApplicationELB --metric-name HTTPCode_Target_5XX_Count \
+    --dimensions Name=LoadBalancer,Value=app/shop-alb/abc123 \
+    --statistic Sum --period 60 --evaluation-periods 5 --datapoints-to-alarm 3 \
+    --threshold 10 --comparison-operator GreaterThanThreshold \
+    --treat-missing-data notBreaching --alarm-actions $ONCALL_TOPIC
+
+aws cloudwatch put-metric-alarm --alarm-name lambda-errors \
+    --namespace AWS/Lambda --metric-name Errors \
+    --dimensions Name=FunctionName,Value=orders --statistic Sum \
+    --period 300 --evaluation-periods 1 --threshold 1 \
+    --comparison-operator GreaterThanOrEqualToThreshold \
+    --alarm-actions $ONCALL_TOPIC
+
+aws cloudwatch get-metric-statistics --namespace AWS/Lambda \
+    --metric-name Duration --dimensions Name=FunctionName,Value=orders \
+    --start-time 2026-11-12T00:00:00Z --end-time 2026-11-12T12:00:00Z \
+    --period 3600 --statistics Average Maximum
+aws cloudwatch put-dashboard --dashboard-name shop \
+    --dashboard-body file://dash.json</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Custom metrics live in your own namespace</div><div class="explain-item">3 of 5 one-minute periods over 10 errors trigger the alarm</div><div class="explain-item">Missing data is treated as OK for sparse metrics</div><div class="explain-item">Dashboards are JSON documents you can keep in IaC</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure Monitor metrics, alert rules, action groups (az-37)</li><li class="note-item"><strong>GCP</strong> Cloud Monitoring, alerting policies (gcp-37)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Basic AWS service metrics are free; custom metrics bill per metric per month</li><li class="note-item">Alarms bill per alarm metric; high-resolution costs more</li><li class="note-item">High-cardinality dimensions multiply custom metric costs</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Key Metrics Table | Alarm Actions Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-key-metrics"><h2 class="section-title">Key Metrics</h2><table><thead><tr><th>Service</th><th>Watch</th></tr></thead><tbody><tr><td>ALB</td><td class="desc">HTTPCode_Target_5XX_Count, TargetResponseTime</td></tr><tr><td>Lambda</td><td class="desc">Errors, Throttles, Duration</td></tr><tr><td>SQS</td><td class="desc">ApproximateAgeOfOldestMessage</td></tr><tr><td>RDS</td><td class="desc">CPUUtilization, FreeStorageSpace</td></tr><tr><td>DynamoDB</td><td class="desc">ThrottledRequests</td></tr><tr><td>EC2</td><td class="desc">StatusCheckFailed</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-alarm-actions"><h2 class="section-title">Alarm Actions</h2><table><thead><tr><th>Action</th><th>Does</th></tr></thead><tbody><tr><td>SNS</td><td class="desc">Notify people / systems</td></tr><tr><td>Auto Scaling</td><td class="desc">Scale a group</td></tr><tr><td>EC2 action</td><td class="desc">Stop / reboot / recover</td></tr><tr><td>Systems Manager</td><td class="desc">OpsItem / incident</td></tr><tr><td>Lambda (via SNS / EventBridge)</td><td class="desc">Automation</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Alarm on user-facing symptoms (errors, latency, queue age)</li><li class="note-item note-do"><strong>Do</strong> Keep alarms and dashboards in IaC</li><li class="note-item note-dont"><strong>Don’t</strong> Create custom metrics with user IDs as dimensions</li><li class="note-item note-dont"><strong>Don’t</strong> Page on single noisy data points</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Emit EMF logs locally and inspect the JSON</li><li class="note-item">LocalStack emulates CloudWatch APIs for tests</li><li class="note-item">Test alarm thresholds against historical data with <code>get-metric-statistics</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Alarms with runbooks routed to on-call</li><li class="note-item">Composite alarms to cut noise</li><li class="note-item">Dashboards per service with golden signals</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-36-sam-terraform.html">SAM &amp; Terraform on AWS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-38-cloudwatch-logs-xray.html">CloudWatch Logs &amp; Tracing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 19: Messaging &amp; Events</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Messaging &amp; Events</h1>
+			<div class="sheet-desc">queues vs topics vs event buses · at-least-once delivery · idempotency · dead-letter queues · SQS / SNS / EventBridge · Service Bus / Event Grid · Pub/Sub / Eventarc</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Decoupling Services</h2><div class="description">Messaging lets one service hand work to another without waiting. A <strong>queue</strong> holds messages for one consumer group to process. A <strong>topic</strong> fans each message out to many subscribers. An <strong>event bus</strong> routes events by content to targets. Almost every cloud messaging service delivers <strong>at least once</strong>, so consumers must be <strong>idempotent</strong>: processing the same message twice must be safe.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Messages that keep failing go to a dead-letter queue for inspection</li><li class="note-item">Visibility timeout / lock duration: how long a consumer has before redelivery</li><li class="note-item">FIFO / sessions / ordering keys give ordering, at lower throughput</li><li class="note-item">Events describe what happened; commands ask for work</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Send and Receive</h2><pre><code class="language-bash"># AWS SQS queue
+aws sqs create-queue --queue-name orders
+aws sqs send-message --queue-url $Q --message-body '{"id": 42}'
+aws sqs receive-message --queue-url $Q --wait-time-seconds 20
+
+# Azure Service Bus queue
+az servicebus queue create -g rg-msg --namespace-name sb-shop -n orders
+# (send / receive go through the SDK; the CLI manages entities)
+
+# Google Cloud Pub/Sub topic + subscription
+gcloud pubsub topics create orders
+gcloud pubsub subscriptions create orders-worker --topic=orders \
+    --ack-deadline=60
+gcloud pubsub topics publish orders --message='{"id": 42}'
+gcloud pubsub subscriptions pull orders-worker --auto-ack --limit=5</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Idempotent Consumer (pseudocode)</h2><pre><code class="language-python">def handle(msg):
+    if store.seen(msg.id):        # already processed: just ack
+        return ack(msg)
+    with db.transaction():
+        apply_order(msg.body)
+        store.mark_seen(msg.id)   # same transaction as the change
+    ack(msg)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">SQS long polling (<code>--wait-time-seconds 20</code>) cuts empty receives</div><div class="explain-item">The Azure CLI creates Service Bus entities; apps send and receive with the SDK</div><div class="explain-item">Pub/Sub separates topics (publish) from subscriptions (receive)</div><div class="explain-item">Recording the message ID with the change makes retries harmless</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> SQS, SNS, EventBridge (aws-23, aws-24)</li><li class="note-item"><strong>Azure</strong> Service Bus, Event Grid, Event Hubs (az-23, az-24)</li><li class="note-item"><strong>Google Cloud</strong> Pub/Sub, Eventarc, Cloud Tasks (gcp-23, gcp-24)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Queue for work distribution, topic for fan-out, event bus for routing by content</li><li class="note-item">Always configure a dead-letter queue and alert on it</li><li class="note-item">Assume duplicates and out-of-order delivery unless you pay for ordering</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Services Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-services"><h2 class="section-title">Services</h2><table><thead><tr><th>Pattern</th><th>AWS</th><th>Azure</th><th>Google Cloud</th></tr></thead><tbody><tr><td>Queue</td><td class="kw">SQS</td><td class="kw">Service Bus queue / Storage Queue</td><td class="kw">Pub/Sub subscription / Cloud Tasks</td></tr><tr><td>Pub/sub topic</td><td class="kw">SNS</td><td class="kw">Service Bus topic</td><td class="kw">Pub/Sub topic</td></tr><tr><td>Event routing</td><td class="kw">EventBridge</td><td class="kw">Event Grid</td><td class="kw">Eventarc</td></tr><tr><td>Streaming</td><td class="kw">Kinesis / MSK</td><td class="kw">Event Hubs</td><td class="kw">Pub/Sub, Managed Kafka</td></tr><tr><td>Workflow</td><td class="kw">Step Functions</td><td class="kw">Logic Apps / Durable Functions</td><td class="kw">Workflows</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Put a message ID in every message and dedupe on it</li><li class="note-item note-do"><strong>Do</strong> Keep messages small; store large payloads in object storage and send a link</li><li class="note-item note-dont"><strong>Don’t</strong> Process a message, crash before acking, and assume it will not come back</li><li class="note-item note-dont"><strong>Don’t</strong> Use a queue as a database to query later</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">LocalStack emulates SQS, SNS and EventBridge</li><li class="note-item">The Pub/Sub emulator: <code>gcloud beta emulators pubsub start</code></li><li class="note-item">The Service Bus emulator runs in Docker for local development</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Dead-letter queues with alerts on depth</li><li class="note-item">Alarms on queue age / backlog</li><li class="note-item">Consumers idempotent and scaled on queue depth</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-18-managed-databases.html">Managed Databases</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-20-infrastructure-as-code.html">Infrastructure as Code</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

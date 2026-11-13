@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>COBOL — Sheet 52: Data Validation &amp; Error Handling</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cbl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s52">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 52</div>
+			<h1>Data Validation &amp; Error Handling</h1>
+			<div class="sheet-desc"><code>NUMERIC</code> checks · range checks with 88s · error / reject files · <code>RETURN-CODE</code> special register · <code>ON EXCEPTION</code> · control totals</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Rejecting Bad Data Without Abending</h2><div class="description">Batch programs validate every input field before using it. Bad records go to a <strong>reject file</strong> with a reason code instead of stopping the run. At the end, <strong>control totals</strong> prove nothing was lost, and <code>RETURN-CODE</code> tells the JCL whether the step was clean, had warnings or failed.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Check NUMERIC before any arithmetic on input fields</li><li class="note-item">Use 88-levels for valid code lists and ranges</li><li class="note-item">Write rejects with the original record plus a reason</li><li class="note-item">Set RETURN-CODE: 0 clean, 4 rejects, 16 fatal</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Validate, Reject, Report</h2><pre><code class="language-cobol">       01  WS-REASON            PIC X(30).
+       01  WS-COUNTS.
+           05 WS-READ           PIC 9(7) VALUE 0.
+           05 WS-GOOD           PIC 9(7) VALUE 0.
+           05 WS-BAD            PIC 9(7) VALUE 0.
+
+       2100-VALIDATE.
+           MOVE SPACES TO WS-REASON
+           EVALUATE TRUE
+              WHEN IN-ACCT NOT NUMERIC
+                 MOVE "ACCOUNT NOT NUMERIC" TO WS-REASON
+              WHEN IN-AMT NOT NUMERIC
+                 MOVE "AMOUNT NOT NUMERIC"  TO WS-REASON
+              WHEN NOT VALID-TRAN-CODE
+                 MOVE "BAD TRAN CODE"       TO WS-REASON
+              WHEN IN-AMT &gt; 50000
+                 MOVE "AMOUNT OVER LIMIT"   TO WS-REASON
+           END-EVALUATE
+           IF WS-REASON = SPACES
+              ADD 1 TO WS-GOOD
+           ELSE
+              ADD 1 TO WS-BAD
+              STRING WS-REASON DELIMITED BY SIZE
+                     IN-REC    DELIMITED BY SIZE
+                INTO REJECT-REC
+              WRITE REJECT-REC
+           END-IF.
+
+       9000-TERM.
+           DISPLAY "READ " WS-READ " GOOD " WS-GOOD " BAD " WS-BAD
+           EVALUATE TRUE
+              WHEN WS-READ NOT = WS-GOOD + WS-BAD
+                 MOVE 16 TO RETURN-CODE
+              WHEN WS-BAD &gt; 0
+                 MOVE 4 TO RETURN-CODE
+           END-EVALUATE.</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">EVALUATE stops at the first failing check: one reason per record</div><div class="explain-item">The reject record keeps the reason and the original data</div><div class="explain-item">Read = good + bad proves every record was handled</div><div class="explain-item">RC 4 lets the next step run but flags the rejects</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> Pydantic or manual checks; append bad rows to a rejects list or file</li><li class="note-item"><strong>Java</strong> Bean Validation (<code>@NotNull</code>, <code>@Max</code>) and a reject writer</li><li class="note-item"><strong>JavaScript</strong> Zod or Joi schemas; <code>safeParse</code> and log failures</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">abending on the first bad record → reject file + RC 4</li><li class="note-item">no control totals → print counts and check they balance</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Checks Table | Return Codes Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-checks"><h2 class="section-title">Checks</h2><table><thead><tr><th>Check</th><th>COBOL</th></tr></thead><tbody><tr><td>Is a number</td><td class="desc">IS NUMERIC</td></tr><tr><td>In a code list</td><td class="desc">88 VALUE "A" "C" "D"</td></tr><tr><td>In a range</td><td class="desc">88 VALUE 1 THRU 12</td></tr><tr><td>Not blank</td><td class="desc">NOT = SPACES</td></tr><tr><td>Valid date</td><td class="desc">FUNCTION TEST-DATE-YYYYMMDD</td></tr><tr><td>Cross-field</td><td class="desc">IF END-DT &lt; START-DT</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-return-codes"><h2 class="section-title">Return Codes</h2><table><thead><tr><th>RC</th><th>Meaning</th></tr></thead><tbody><tr><td>0</td><td class="desc">All records good</td></tr><tr><td>4</td><td class="desc">Some rejects</td></tr><tr><td>8</td><td class="desc">Many rejects / threshold</td></tr><tr><td>16</td><td class="desc">Totals off or fatal error</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Doing arithmetic before validation and abending with S0C7</li><li class="note-item">Rejects with no reason, so nobody can fix the data</li><li class="note-item">Never comparing record counts at the end</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>FUNCTION TEST-DATE-YYYYMMDD</code> (returns 0 if valid) for dates</li><li class="note-item">Add a reject threshold that fails the run if too many records are bad</li><li class="note-item">Display control totals so they show in the job log</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">validate before use</li><li class="note-item">reject file — record + reason</li><li class="note-item">control totals — read = good + bad</li><li class="note-item"><code>RETURN-CODE</code> — 0 / 4 / 16</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cbl-51-master-transaction-update.html">Master / Transaction File Update</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">COBOL Reference · 64 Sheets</a>
+				<a class="nav-link next" href="cbl-53-copy-copybooks.html">COPY &amp; Copybooks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cobol.min.js"></script>
+	</body>
+</html>

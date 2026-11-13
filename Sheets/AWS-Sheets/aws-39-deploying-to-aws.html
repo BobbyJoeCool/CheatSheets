@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 39: Deploying to AWS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s39">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 39</div>
+			<h1>Deploying to AWS</h1>
+			<div class="sheet-desc">GitHub Actions + <code>configure-aws-credentials</code> (OIDC) · CodeBuild / CodePipeline · blue/green &amp; canary · CodeDeploy · tagging strategy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">CI/CD Into AWS</h2><div class="description">Pipelines should assume an IAM role through <strong>OIDC</strong>: GitHub Actions uses <code>aws-actions/configure-aws-credentials</code> with a role whose trust policy pins the repo and environment. Build images and push to ECR, then deploy with CloudFormation / CDK / SAM / Terraform or service commands. <strong>CodeDeploy</strong> runs blue/green and canary rollouts for ECS, Lambda and EC2.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">No access keys in CI secrets</li><li class="note-item">Separate deploy roles per environment and account</li><li class="note-item">CodePipeline / CodeBuild are AWS-native alternatives to GitHub Actions</li><li class="note-item">Tag resources with repo, commit and owner</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check + Security Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">GitHub Actions: Build, Push, Deploy to ECS</h2><pre><code class="language-yaml">on: { push: { branches: [main] } }
+permissions: { id-token: write, contents: read }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::111122223333:role/gh-deploy-prod
+          aws-region: us-east-1
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - run: |
+          IMG=${{ steps.ecr.outputs.registry }}/shop-api:${{ github.sha }}
+          docker build -t $IMG . &amp;&amp; docker push $IMG
+          echo "IMG=$IMG" &gt;&gt; $GITHUB_ENV
+      - run: |
+          aws ecs describe-task-definition --task-definition shop-api \
+            --query taskDefinition &gt; td.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: td
+        with:
+          task-definition: td.json
+          container-name: api
+          image: ${{ env.IMG }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with: { task-definition: "${{ steps.td.outputs.task-definition }}",
+                service: api, cluster: shop, wait-for-service-stability: true }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>id-token: write</code> lets the job request the OIDC token</div><div class="explain-item">The role is assumed with no stored secret</div><div class="explain-item">The image tag is the commit SHA for traceability</div><div class="explain-item">Render + deploy updates the ECS service and waits for stability</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> azure/login OIDC, Azure Pipelines, slot swaps (az-39)</li><li class="note-item"><strong>GCP</strong> google-github-actions/auth WIF, Cloud Build, Cloud Deploy (gcp-39)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">GitHub-hosted runner minutes / CodeBuild per build-minute</li><li class="note-item">CodeDeploy is free for ECS / Lambda / EC2 (on-premises costs extra)</li><li class="note-item">Blue/green briefly runs double capacity</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Trust policy <code>sub</code> pinned to <code>repo:org/app:environment:production</code></li><li class="note-item">Deploy role scoped to the services and resources it changes</li><li class="note-item">Pin third-party actions to a commit SHA</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Deployment Strategie Table | Pipeline Pieces Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-deployment-strategie"><h2 class="section-title">Deployment Strategies</h2><table><thead><tr><th>Target</th><th>Strategy</th></tr></thead><tbody><tr><td>ECS</td><td class="desc">Rolling, blue/green (CodeDeploy or native)</td></tr><tr><td>Lambda</td><td class="desc">Alias canary / linear via CodeDeploy</td></tr><tr><td>EC2 / ASG</td><td class="desc">Instance refresh, CodeDeploy</td></tr><tr><td>Infra</td><td class="desc">CloudFormation change sets / Terraform plans</td></tr><tr><td>Static sites</td><td class="desc">S3 sync + CloudFront invalidation</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-pipeline-pieces"><h2 class="section-title">Pipeline Pieces</h2><table><thead><tr><th>Piece</th><th>AWS Native</th><th>Common Alternative</th></tr></thead><tbody><tr><td>Source</td><td class="kw">CodeConnections</td><td class="kw">GitHub</td></tr><tr><td>Build</td><td class="kw">CodeBuild</td><td class="kw">GitHub Actions</td></tr><tr><td>Deploy</td><td class="kw">CodeDeploy / CloudFormation</td><td class="kw">Actions + CLI</td></tr><tr><td>Orchestrate</td><td class="kw">CodePipeline</td><td class="kw">Workflow YAML</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Require environment approvals for production</li><li class="note-item note-do"><strong>Do</strong> Wait for service stability and fail the job on rollback</li><li class="note-item note-dont"><strong>Don’t</strong> Store AWS keys in GitHub secrets</li><li class="note-item note-dont"><strong>Don’t</strong> Use the same role for every environment</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>act</code> runs workflows locally (OIDC needs real GitHub)</li><li class="note-item">actionlint validates workflow files</li><li class="note-item">Run the same CLI steps from a laptop against dev first</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">OIDC role per environment with least privilege</li><li class="note-item">Approval gates and deployment alarms with auto-rollback</li><li class="note-item">Every deploy traceable to a commit (tags, image SHA)</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-38-cloudwatch-logs-xray.html">CloudWatch Logs &amp; Tracing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-40-bedrock.html">Amazon Bedrock</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

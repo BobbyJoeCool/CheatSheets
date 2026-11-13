@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 55: Sessions &amp; Flask-Login</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s55">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 55</div>
+			<h1>Sessions &amp; Flask-Login</h1>
+			<div class="sheet-desc">session[...] · signed cookies · LoginManager · UserMixin · @login_required · login_user / logout_user · current_user</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Flask's <strong><code>session</code></strong> stores small data in a <strong>signed cookie</strong>: users can read it but can't change it without the <code>SECRET_KEY</code>. <strong>Flask-Login</strong> builds user logins on top: it remembers the user ID in the session, loads the user each request into <strong><code>current_user</code></strong>, and protects views with <strong><code>@login_required</code></strong>.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Session cookie is signed, <strong>not encrypted</strong>: no secrets inside</li><li class="note-item">Flask-Login doesn't hash passwords or render forms</li><li class="note-item"><code>user_loader</code> turns the stored ID back into a user</li><li class="note-item"><code>remember=True</code> sets a long-lived remember cookie</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Login Flow</h2><pre><code class="language-python">from flask_login import (LoginManager, UserMixin, current_user,
+                         login_required, login_user)
+from werkzeug.security import check_password_hash as check_pw
+
+login_manager = LoginManager()
+login_manager.login_view = "auth.login"     # redirect target
+class User(UserMixin, db.Model): ...         # is_authenticated, get_id
+
+@login_manager.user_loader
+def load_user(user_id: str):
+    return db.session.get(User, int(user_id))
+
+@bp.post("/login")
+def login():
+    f = request.form
+    user = db.session.scalar(db.select(User).filter_by(email=f["email"]))
+    if user and check_pw(user.password_hash, f["password"]):
+        login_user(user, remember=True)
+        return redirect(url_for("todos.index"))
+    flash("Invalid credentials")
+    return redirect(url_for("auth.login"))
+
+@bp.get("/dashboard")
+@login_required
+def dashboard():
+    session["visits"] = session.get("visits", 0) + 1
+    return f"Hi {current_user.email} (#{session['visits']})"</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>login_view</code> — where anonymous users get sent</div><div class="explain-item"><code>UserMixin</code> — default user properties</div><div class="explain-item"><code>user_loader</code> — ID from session → user</div><div class="explain-item"><code>login_user()</code> / <code>logout_user()</code> — start/end</div><div class="explain-item"><code>session[...]</code> — small signed per-user data</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">FastAPI — OAuth2 + JWT dependencies (sheets 32–33)</li><li class="note-item">Django — built-in <code>login()</code>, <code>@login_required</code>, <code>request.user</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid redirecting to <code>next</code> blindly · Prefer checking it is a local URL</li><li class="note-item">Avoid storing user objects in <code>session</code> · Prefer the user ID only</li></ul></section></div>
+			</div>
+			<!-- Row 3: Api Table | Cookie Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-api"><h2 class="section-title">Flask-Login API</h2><table><thead><tr><th>Name</th><th>Does</th></tr></thead><tbody><tr><td>login_user(u)</td><td class="desc">log in</td></tr><tr><td>logout_user()</td><td class="desc">log out</td></tr><tr><td>current_user</td><td class="desc">user or anonymous</td></tr><tr><td>@login_required</td><td class="desc">protect view</td></tr><tr><td>current_user.is_authenticated</td><td class="desc">check in templates</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-cookie"><h2 class="section-title">Session Cookie Config</h2><table><thead><tr><th>Key</th><th>Set to</th></tr></thead><tbody><tr><td>SECRET_KEY</td><td class="desc">long random value</td></tr><tr><td>SESSION_COOKIE_SECURE</td><td class="desc">True (HTTPS)</td></tr><tr><td>SESSION_COOKIE_HTTPONLY</td><td class="desc">True (default)</td></tr><tr><td>SESSION_COOKIE_SAMESITE</td><td class="desc">"Lax"</td></tr><tr><td>PERMANENT_SESSION_LIFETIME</td><td class="desc">timedelta(days=7)</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Open redirect via <code>?next=https://evil.com</code></li><li class="note-item">Rotating <code>SECRET_KEY</code> and wondering why everyone is logged out</li><li class="note-item">Putting large data in <code>session</code>: browsers cap cookies near 4 KB</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Hash with <code>generate_password_hash()</code> (scrypt by default)</li><li class="note-item">Use Flask-Session for server-side sessions (Redis) if you need more space</li><li class="note-item">Add <code>@login_required</code> at blueprint level with <code>before_request</code></li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>session</code> — signed cookie storage</li><li class="note-item"><code>LoginManager</code> + <code>user_loader</code> — load users</li><li class="note-item"><code>@login_required</code> — protect views</li><li class="note-item"><code>current_user</code> — the logged-in user</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-54-flask-sqlalchemy-migrate.html" class="nav-link prev" title="Flask-SQLAlchemy &amp; Flask-Migrate">Flask-SQLAlchemy</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-56-flask-rest-async.html" class="nav-link next" title="REST APIs &amp; Async in Flask">REST &amp; Async in Flask</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

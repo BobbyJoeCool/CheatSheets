@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 12: Security Groups &amp; NACLs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Security Groups &amp; NACLs</h1>
+			<div class="sheet-desc">stateful security groups · SG-to-SG references · stateless NACLs · inbound / outbound rules · ephemeral ports · VPC Flow Logs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Filtering Traffic</h2><div class="description"><strong>Security groups</strong> are stateful firewalls attached to ENIs (instances, load balancers, RDS, Lambda in a VPC). They only allow; replies are automatic. Rules can reference other security groups, so "the app tier may reach the database" needs no IPs. <strong>Network ACLs</strong> are stateless allow / deny lists on subnets, evaluated in rule-number order, and must allow return traffic on ephemeral ports.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">New security groups deny all inbound and allow all outbound</li><li class="note-item">SG references follow instances as they scale</li><li class="note-item">NACLs are a coarse second layer; most designs leave the default allow-all NACL</li><li class="note-item">Flow Logs show ACCEPT / REJECT decisions</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Never allow 22 / 3389 from 0.0.0.0/0; use Session Manager</li><li class="note-item">Restrict outbound on data-tier security groups</li><li class="note-item">Alert on security group changes that open ports to the world</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">60 inbound and 60 outbound rules per security group (adjustable)</li><li class="note-item">5 security groups per network interface (up to 16)</li><li class="note-item">20 rules per NACL direction by default</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Tiered Security Groups</h2><pre><code class="language-bash">ALB_SG=$(aws ec2 create-security-group --vpc-id $VPC --group-name alb \
+  --description "public ALB" --query GroupId --output text)
+APP_SG=$(aws ec2 create-security-group --vpc-id $VPC --group-name app \
+  --description "app tier" --query GroupId --output text)
+DB_SG=$(aws ec2 create-security-group --vpc-id $VPC --group-name db \
+  --description "database" --query GroupId --output text)
+
+aws ec2 authorize-security-group-ingress --group-id $ALB_SG \
+    --protocol tcp --port 443 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $APP_SG \
+    --protocol tcp --port 8080 --source-group $ALB_SG
+aws ec2 authorize-security-group-ingress --group-id $DB_SG \
+    --protocol tcp --port 5432 --source-group $APP_SG
+aws ec2 revoke-security-group-egress --group-id $DB_SG \
+    --ip-permissions '[{"IpProtocol":"-1","IpRanges":[{"CidrIp":"0.0.0.0/0"}]}]'
+
+aws ec2 describe-security-group-rules \
+    --filters Name=group-id,Values=$APP_SG --output table</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Only the ALB is open to the internet</div><div class="explain-item">The app tier accepts traffic only from the ALB's group</div><div class="explain-item">The database accepts only the app tier on 5432</div><div class="explain-item">Removing default egress stops the database from calling out</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> NSGs with service tags and ASGs (az-12)</li><li class="note-item"><strong>GCP</strong> VPC firewall rules / policies with tags and service accounts (gcp-12)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Security groups and NACLs are free</li><li class="note-item">Flow Logs bill for log ingestion / storage</li><li class="note-item">AWS Network Firewall (central inspection) bills hourly + per GB</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Sg Vs Nacl Table | Common Ports Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-sg-vs-nacl"><h2 class="section-title">SG vs NACL</h2><table><thead><tr><th>Feature</th><th>Security Group</th><th>NACL</th></tr></thead><tbody><tr><td>Attached to</td><td class="kw">ENI</td><td class="kw">Subnet</td></tr><tr><td>State</td><td class="kw">Stateful</td><td class="kw">Stateless</td></tr><tr><td>Rules</td><td class="kw">Allow only</td><td class="kw">Allow and deny</td></tr><tr><td>Order</td><td class="kw">All evaluated</td><td class="kw">Lowest number first</td></tr><tr><td>References</td><td class="kw">Other SGs</td><td class="kw">CIDRs only</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-common-ports"><h2 class="section-title">Common Ports</h2><table><thead><tr><th>Port</th><th>Service</th></tr></thead><tbody><tr><td>443</td><td class="desc">HTTPS</td></tr><tr><td>80</td><td class="desc">HTTP (redirect)</td></tr><tr><td>5432 / 3306</td><td class="desc">PostgreSQL / MySQL</td></tr><tr><td>6379</td><td class="desc">Redis / Valkey</td></tr><tr><td>1024–65535</td><td class="desc">Ephemeral (NACL return)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Reference security groups instead of IP ranges inside the VPC</li><li class="note-item note-do"><strong>Do</strong> Name and describe every group clearly</li><li class="note-item note-dont"><strong>Don’t</strong> Open 0.0.0.0/0 on anything but public load balancers</li><li class="note-item note-dont"><strong>Don’t</strong> Add deny rules to NACLs without allowing ephemeral return ports</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Reachability Analyzer shows which rule blocks a path</li><li class="note-item">Flow Logs + Logs Insights find rejected connections</li><li class="note-item"><code>nc -zv host port</code> from inside the VPC tests rules</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">No admin ports open to the internet</li><li class="note-item">Data-tier egress restricted</li><li class="note-item">Config rule / Security Hub control for open security groups</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-11-nat-endpoints-peering.html">NAT, Endpoints &amp; Connectivity</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-13-route-53.html">Route 53</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

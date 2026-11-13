@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 010: Constants &amp; Statics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s010">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 010</div>
+			<h1>Constants &amp; Statics</h1>
+			<div class="sheet-desc"><code>const</code> · <code>static</code> · <code>static mut</code> (unsafe) · SCREAMING_CASE · compile-time evaluation · <code>LazyLock</code> / <code>OnceLock</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Global Values</h2><div class="description"><code>const</code> defines a compile-time value that is copied into every place it is used. <code>static</code> defines a single value with a fixed memory address for the whole program. Mutable statics require <code>unsafe</code>; for global state computed at runtime, use <code>LazyLock</code> or <code>OnceLock</code> from the standard library.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Both need explicit types</li><li class="note-item"><code>const</code> can be used in array lengths and generics</li><li class="note-item"><code>static</code> values must be <code>Sync</code> (safe to share across threads)</li><li class="note-item"><code>LazyLock</code> (Rust 1.80) computes on first access</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">const, static, LazyLock</h2><pre><code class="language-rust">use std::sync::{LazyLock, Mutex, OnceLock};
+use std::collections::HashMap;
+
+const MAX_USERS: u32 = 1_000;
+const BUFFER: usize = 4 * 1024;
+static APP_NAME: &amp;str = "cheatsheets";
+
+const fn square(x: u32) -&gt; u32 { x * x }
+const AREA: u32 = square(12);          // computed at compile time
+
+static CODES: LazyLock&lt;HashMap&lt;&amp;str, u16&gt;&gt; = LazyLock::new(|| {
+    HashMap::from([("ok", 200), ("not_found", 404)])
+});
+
+static COUNTER: Mutex&lt;u64&gt; = Mutex::new(0);   // safe mutable global
+
+static CONFIG: OnceLock&lt;String&gt; = OnceLock::new();
+
+fn main() {
+    let buf = [0u8; BUFFER];              // const as array length
+    println!("{} {}", MAX_USERS, AREA);   // 1000 144
+    println!("{}", CODES["not_found"]);   // 404
+    *COUNTER.lock().unwrap() += 1;
+    CONFIG.set("prod".into()).unwrap();   // set once
+    println!("{}", CONFIG.get().unwrap());
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>const fn</code> can run at compile time</div><div class="explain-item"><code>LazyLock</code> builds the HashMap on first use, once</div><div class="explain-item">A <code>Mutex</code> makes a static safely mutable</div><div class="explain-item"><code>OnceLock</code> is set once at runtime, then read many times</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> <code>constexpr</code> ≈ <code>const</code>; globals ≈ <code>static</code></li><li class="note-item"><strong>Java</strong> <code>static final</code> fields; lazy holder idiom</li><li class="note-item"><strong>Python</strong> module-level constants (by convention only)</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>static mut</code> → <code>Mutex</code>, atomics, or <code>OnceLock</code></li><li class="note-item"><code>lazy_static!</code> / <code>once_cell</code> crates → std <code>LazyLock</code> / <code>OnceLock</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Compare Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-compare"><h2 class="section-title">Compare</h2><table><thead><tr><th>Item</th><th>const</th><th>static</th></tr></thead><tbody><tr><td>Evaluated</td><td class="kw">Compile time</td><td class="kw">Compile time (or lazy wrapper)</td></tr><tr><td>Address</td><td class="kw">None (inlined)</td><td class="kw">One fixed address</td></tr><tr><td>Mutable</td><td class="kw">Never</td><td class="kw">With Mutex/atomic/unsafe</td></tr><tr><td>Use in types</td><td class="kw">Array length, generics</td><td class="kw">No</td></tr><tr><td>Typical</td><td class="kw">Limits, sizes</td><td class="kw">Global state</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using <code>static mut</code> and needing unsafe everywhere</li><li class="note-item">Expecting <code>const</code> to have one address (each use is a copy)</li><li class="note-item">Heavy runtime work in a constant (not allowed: use LazyLock)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Prefer <code>const</code> for plain values</li><li class="note-item">Use <code>LazyLock</code> for regexes and lookup tables</li><li class="note-item">Keep global mutable state rare; pass values instead</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>const</code> — inlined value</li><li class="note-item"><code>static</code> — one address</li><li class="note-item"><code>const fn</code> — compile-time code</li><li class="note-item"><code>LazyLock</code> / <code>OnceLock</code> — runtime init</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-009-variables-mutability-shadowing.html">Variables, Mutability &amp; Shadowing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-011-integers.html">Integers</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

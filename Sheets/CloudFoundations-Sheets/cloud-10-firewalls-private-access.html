@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 10: Firewalls &amp; Private Access</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s10">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>Firewalls &amp; Private Access</h1>
+			<div class="sheet-desc">security groups · NSGs · VPC firewall rules · stateful vs stateless · private endpoints / PrivateLink / Private Service Connect · bastions &amp; identity-aware access</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Controlling Traffic In and Out</h2><div class="description">Each cloud filters traffic with stateful rules: <strong>security groups</strong> on AWS, <strong>network security groups (NSGs)</strong> on Azure, <strong>VPC firewall rules / policies</strong> on Google Cloud. To reach managed services without the public internet, use <strong>private endpoints</strong> (PrivateLink, Azure Private Endpoint, Private Service Connect). For admin access, use identity-aware tunnels instead of open SSH ports.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Stateful: replies to allowed traffic are allowed automatically</li><li class="note-item">Reference groups / tags / service accounts instead of IP addresses</li><li class="note-item">Private endpoints give a service a private IP inside your network</li><li class="note-item">Session Manager, Azure Bastion and IAP replace public SSH / RDP</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Allow HTTPS In, Nothing Else</h2><pre><code class="language-bash"># AWS security group: 443 from anywhere
+aws ec2 create-security-group --group-name web-sg \
+    --description "web" --vpc-id vpc-0abc
+aws ec2 authorize-security-group-ingress --group-id sg-0123 \
+    --protocol tcp --port 443 --cidr 0.0.0.0/0
+
+# Azure NSG rule on the web subnet
+az network nsg create -g rg-net -n nsg-web
+az network nsg rule create -g rg-net --nsg-name nsg-web \
+    -n allow-https --priority 100 --direction Inbound \
+    --access Allow --protocol Tcp --destination-port-ranges 443
+
+# Google Cloud firewall rule targeting tagged VMs
+gcloud compute firewall-rules create allow-https --network=vpc-app \
+    --direction=INGRESS --allow=tcp:443 \
+    --source-ranges=0.0.0.0/0 --target-tags=web
+
+# Admin access without opening port 22
+aws ssm start-session --target i-0abc123
+az network bastion ssh -n bas-app -g rg-net --target-resource-id &lt;vm-id&gt; \
+    --auth-type AAD
+gcloud compute ssh web-1 --zone=us-central1-a --tunnel-through-iap</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">All three deny inbound by default, so you add only what you need</div><div class="explain-item">Azure rules run in priority order (lower number first)</div><div class="explain-item">Google Cloud rules apply to VMs by network tag or service account</div><div class="explain-item">The last three lines open admin sessions through identity, not open ports</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> security groups, NACLs, PrivateLink (aws-11, aws-12)</li><li class="note-item"><strong>Azure</strong> NSGs, Azure Firewall, Private Endpoints (az-11, az-12)</li><li class="note-item"><strong>Google Cloud</strong> firewall rules &amp; policies, Private Service Connect, IAP (gcp-11, gcp-12)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Only load balancers face the internet; everything else is private</li><li class="note-item">Use private endpoints for databases, storage and secret stores in production</li><li class="note-item">Never open 22 / 3389 to 0.0.0.0/0</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Comparison Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-comparison"><h2 class="section-title">Comparison</h2><table><thead><tr><th>Feature</th><th>AWS</th><th>Azure</th><th>Google Cloud</th></tr></thead><tbody><tr><td>Instance firewall</td><td class="kw">Security group</td><td class="kw">NSG (subnet or NIC)</td><td class="kw">Firewall rule (tag / SA)</td></tr><tr><td>Subnet filter</td><td class="kw">NACL (stateless)</td><td class="kw">NSG on subnet</td><td class="kw">Firewall policy</td></tr><tr><td>Central firewall</td><td class="kw">Network Firewall</td><td class="kw">Azure Firewall</td><td class="kw">Cloud NGFW</td></tr><tr><td>Private service access</td><td class="kw">PrivateLink / endpoints</td><td class="kw">Private Endpoint</td><td class="kw">Private Service Connect</td></tr><tr><td>Admin access</td><td class="kw">Session Manager</td><td class="kw">Bastion</td><td class="kw">IAP TCP forwarding</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Reference security groups / ASGs / tags rather than IP lists</li><li class="note-item note-do"><strong>Do</strong> Log denied traffic while you tune rules</li><li class="note-item note-dont"><strong>Don’t</strong> Allow all outbound and inbound "for now"</li><li class="note-item note-dont"><strong>Don’t</strong> Expose a database on a public IP, even with a password</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Test rules in a sandbox with <code>nc -zv host 443</code> or <code>curl -v</code> from inside and outside</li><li class="note-item">Reachability Analyzer (AWS), Network Watcher (Azure) and Connectivity Tests (Google Cloud) explain blocked paths</li><li class="note-item">Docker Compose networks mimic tiered isolation locally</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">No public IPs on app servers or databases</li><li class="note-item">Private endpoints plus private DNS for PaaS services</li><li class="note-item">Flow logs and firewall logs sent to the central log store</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-09-virtual-networks.html">Virtual Networks &amp; Subnets</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-11-load-balancing-dns.html">Load Balancing &amp; DNS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

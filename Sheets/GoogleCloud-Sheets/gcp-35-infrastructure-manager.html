@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 35: Infrastructure Manager</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>Infrastructure Manager</h1>
+			<div class="sheet-desc">managed Terraform runs · <code>gcloud infra-manager deployments apply</code> · revisions &amp; previews · service account per deployment · Git or Cloud Storage sources · replacing Deployment Manager</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Google-Managed Terraform</h2><div class="description"><strong>Infrastructure Manager (Infra Manager)</strong> runs Terraform on Google Cloud: you point a <strong>deployment</strong> at Terraform config (local, Cloud Storage or a Git repo) and a <strong>service account</strong>, and it runs plan / apply with Cloud Build, stores state, and keeps <strong>revisions</strong>. <strong>Previews</strong> show changes first. It replaces <strong>Deployment Manager</strong>, which reached end of support on March 31, 2026.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">State is managed for you (no backend block needed)</li><li class="note-item">Pin the Terraform version with <code>--tf-version-constraint</code></li><li class="note-item">Logs from each run land in Cloud Build / Cloud Storage</li><li class="note-item">Supported Terraform versions are limited: check the docs before upgrading</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Deploy, Preview, Inspect</h2><pre><code class="language-bash">gcloud services enable config.googleapis.com
+DEP=projects/shop-prod-4821/locations/us-central1/deployments/shop-prod
+SA_EMAIL=infra@shop-prod-4821.iam.gserviceaccount.com
+SA=projects/shop-prod-4821/serviceAccounts/$SA_EMAIL
+
+gcloud infra-manager previews create \
+    projects/shop-prod-4821/locations/us-central1/previews/shop-pr-42 \
+    --service-account=$SA --local-source=./infra \
+    --input-values=project=shop-prod-4821,image=api:1.5.0
+gcloud infra-manager previews export \
+    projects/shop-prod-4821/locations/us-central1/previews/shop-pr-42
+
+gcloud infra-manager deployments apply $DEP \
+    --service-account=$SA \
+    --git-source-repo=https://github.com/acme/shop-infra \
+    --git-source-directory=envs/prod --git-source-ref=main \
+    --input-values=project=shop-prod-4821,image=api:1.5.0
+
+gcloud infra-manager deployments describe $DEP
+gcloud infra-manager revisions list --deployment=$DEP
+gcloud infra-manager resources list --revision=$DEP/revisions/r-3
+gcloud infra-manager deployments delete $DEP</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The Config API powers Infrastructure Manager</div><div class="explain-item">The preview produces a plan you can review</div><div class="explain-item">The deployment pulls Terraform from a Git path and ref</div><div class="explain-item">Each apply creates a revision with its resources</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> CloudFormation stacks, change sets (aws-34)</li><li class="note-item"><strong>Azure</strong> Deployment stacks, what-if (az-34)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Infra Manager bills for the Cloud Build minutes and storage it uses</li><li class="note-item">No separate fee for state storage beyond that</li><li class="note-item">Previews are cheap insurance before large changes</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Concepts Table | Deployment Manager I Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-concepts"><h2 class="section-title">Concepts</h2><table><thead><tr><th>Concept</th><th>Meaning</th></tr></thead><tbody><tr><td>Deployment</td><td class="desc">One Terraform root + state</td></tr><tr><td>Revision</td><td class="desc">Result of one apply</td></tr><tr><td>Preview</td><td class="desc">Plan without applying</td></tr><tr><td>Service account</td><td class="desc">Identity that creates resources</td></tr><tr><td>Source</td><td class="desc">Local, GCS or Git</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-deployment-manager-i"><h2 class="section-title">Deployment Manager → Infra Manager</h2><table><thead><tr><th>Deployment Manager</th><th>Infra Manager</th></tr></thead><tbody><tr><td>YAML / Jinja / Python templates</td><td class="desc">Terraform HCL</td></tr><tr><td>gcloud deployment-manager</td><td class="desc">gcloud infra-manager</td></tr><tr><td>End of support Mar 31, 2026</td><td class="desc">Supported</td></tr><tr><td>DM convert tool</td><td class="desc">Migrate configs to Terraform</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Give each deployment its own least-privilege service account</li><li class="note-item note-do"><strong>Do</strong> Preview before every apply in production</li><li class="note-item note-dont"><strong>Don’t</strong> Keep running new work on Deployment Manager</li><li class="note-item note-dont"><strong>Don’t</strong> Upgrade Terraform syntax past the versions Infra Manager supports</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>terraform plan</code> locally against the same config</li><li class="note-item">tflint and Checkov on the module</li><li class="note-item">Previews from pull requests in CI</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Deployments sourced from Git refs</li><li class="note-item">Previews reviewed before applies</li><li class="note-item">Revisions retained for audit and rollback</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-34-terraform-on-google-cloud.html">Terraform on Google Cloud</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-36-config-connector-choosing-iac.html">Config Connector &amp; Choosing IaC</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

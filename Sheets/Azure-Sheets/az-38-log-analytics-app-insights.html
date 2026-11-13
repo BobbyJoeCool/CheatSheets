@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 38: Log Analytics &amp; Application Insights</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>Log Analytics &amp; Application Insights</h1>
+			<div class="sheet-desc">workspaces · KQL queries · retention &amp; table plans · Application Insights with the OpenTelemetry distro · distributed tracing · <code>az monitor log-analytics query</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Logs, Traces and KQL</h2><div class="description">A <strong>Log Analytics workspace</strong> stores logs in tables queried with <strong>KQL</strong> (Kusto Query Language). <strong>Application Insights</strong> (workspace-based) collects app requests, dependencies, exceptions and traces; instrument with the <strong>Azure Monitor OpenTelemetry distro</strong>. Table plans (Analytics, Basic, Auxiliary) and retention settings control cost.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">App Insights tables: <code>AppRequests</code>, <code>AppDependencies</code>, <code>AppExceptions</code>, <code>AppTraces</code></li><li class="note-item">Operation IDs join a request with its dependencies across services</li><li class="note-item">Interactive retention up to 2 years; long-term retention up to 12 years</li><li class="note-item">One workspace per environment or region is a common pattern</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code + Code | Explain + AWS / GCP Equivalent + Cost Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Instrument a Python App</h2><pre><code class="language-python">from azure.monitor.opentelemetry import configure_azure_monitor
+from opentelemetry import trace
+configure_azure_monitor()   # reads APPLICATIONINSIGHTS_CONNECTION_STRING
+tracer = trace.get_tracer(__name__)
+
+def checkout(cart):
+    with tracer.start_as_current_span("checkout") as span:
+        span.set_attribute("cart.items", len(cart))
+        return charge(cart)</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">KQL Queries</h2><pre><code class="language-kusto">AppRequests
+| where TimeGenerated &gt; ago(1h)
+| summarize count(), p95 = percentile(DurationMs, 95) by Name, ResultCode
+| order by p95 desc
+
+AppExceptions
+| where TimeGenerated &gt; ago(24h)
+| summarize n = count() by ProblemId
+| top 10 by n</code></pre></section><section class="section-code" id="code-3"><h2 class="section-title">Create and Query</h2><pre><code class="language-bash">az monitor log-analytics workspace create -g rg-ops -n law-shop-prod \
+    --retention-time 90
+az monitor app-insights component create -g rg-ops -a ai-shop-prod \
+    -l eastus2 --workspace law-shop-prod
+az monitor log-analytics query -w &lt;workspace-guid&gt; \
+    --analytics-query "AppRequests | take 5" -o table</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">One call wires traces, metrics and logs to Application Insights</div><div class="explain-item">Custom spans and attributes become searchable</div><div class="explain-item"><code>summarize</code> with <code>percentile</code> gives p95 latency per operation</div><div class="explain-item">The App Insights component points at a workspace</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> CloudWatch Logs, Logs Insights, X-Ray / ADOT (aws-38)</li><li class="note-item"><strong>GCP</strong> Cloud Logging, Log Analytics (SQL), Cloud Trace (gcp-38)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Analytics logs bill per GB ingested; Basic and Auxiliary plans are cheaper but limited</li><li class="note-item">Commitment tiers discount high daily volumes</li><li class="note-item">Sampling in App Insights cuts telemetry volume and cost</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Query results up to 500,000 rows or 64 MB</li><li class="note-item">Query timeout 10 minutes</li><li class="note-item">Daily cap optional; ingestion stops when reached</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Kql Basics Table | Table Plans Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-kql-basics"><h2 class="section-title">KQL Basics</h2><table><thead><tr><th>Operator</th><th>Does</th></tr></thead><tbody><tr><td>where</td><td class="desc">Filter rows</td></tr><tr><td>project</td><td class="desc">Pick columns</td></tr><tr><td>summarize … by</td><td class="desc">Aggregate</td></tr><tr><td>extend</td><td class="desc">Add a column</td></tr><tr><td>join</td><td class="desc">Combine tables</td></tr><tr><td>render timechart</td><td class="desc">Chart in portal</td></tr><tr><td>ago(1h)</td><td class="desc">Relative time</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-table-plans"><h2 class="section-title">Table Plans</h2><table><thead><tr><th>Plan</th><th>Use</th></tr></thead><tbody><tr><td>Analytics</td><td class="desc">Full KQL, alerts, default</td></tr><tr><td>Basic</td><td class="desc">Cheaper, limited queries</td></tr><tr><td>Auxiliary</td><td class="desc">Low-cost verbose / audit logs</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use workspace-based App Insights with the OpenTelemetry distro</li><li class="note-item note-do"><strong>Do</strong> Set retention per table to match need</li><li class="note-item note-dont"><strong>Don’t</strong> Log at debug level in production without sampling</li><li class="note-item note-dont"><strong>Don’t</strong> Create a workspace per resource</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">The OpenTelemetry console exporter prints spans during development</li><li class="note-item">Run queries in the portal's Logs blade or Azure Data Explorer web UI against the workspace</li><li class="note-item">Use the Kusto VS Code extension for KQL authoring</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Sampling and daily cap tuned</li><li class="note-item">Alerts on failures and p95 latency from log queries</li><li class="note-item">Retention and table plans set for cost and compliance</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-37-monitor-metrics-alerts.html">Azure Monitor Metrics &amp; Alerts</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-39-deploying-to-azure.html">Deploying to Azure</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kusto.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

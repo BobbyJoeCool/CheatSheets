@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 11: Load Balancing &amp; DNS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Load Balancing &amp; DNS</h1>
+			<div class="sheet-desc">L4 vs L7 · health checks · global vs regional load balancers · managed DNS zones · routing policies · TLS certificates</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Getting Users to Healthy Servers</h2><div class="description">A <strong>load balancer</strong> spreads requests across healthy back ends and gives users one address. <strong>Layer 4</strong> balancers forward TCP/UDP; <strong>layer 7</strong> balancers understand HTTP and route by host or path, terminate TLS and add a WAF. <strong>Managed DNS</strong> maps names to those addresses and can route by latency, weight or health.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Health checks remove failed instances automatically</li><li class="note-item">Google Cloud's external Application Load Balancer is global: one anycast IP worldwide</li><li class="note-item">AWS and Azure L7 balancers are regional; global front doors are separate services</li><li class="note-item">Managed certificates renew automatically</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">An HTTP Load Balancer, Sketched</h2><pre><code class="language-bash"># AWS Application Load Balancer + target group
+aws elbv2 create-load-balancer --name web-alb \
+    --subnets subnet-a subnet-b --security-groups sg-0123
+aws elbv2 create-target-group --name web-tg --protocol HTTP \
+    --port 8080 --vpc-id vpc-0abc --health-check-path /health
+
+# Azure Application Gateway (L7) in its own subnet
+az network application-gateway create -g rg-net -n agw-web \
+    --sku Standard_v2 --capacity 2 --vnet-name vnet-app \
+    --subnet snet-agw --public-ip-address pip-agw --priority 100
+
+# Google Cloud: health check + backend service (global ALB)
+gcloud compute health-checks create http web-hc --port=8080 \
+    --request-path=/health
+gcloud compute backend-services create web-be --global \
+    --protocol=HTTP --health-checks=web-hc
+
+# DNS record pointing a name at the balancer
+aws route53 change-resource-record-sets --hosted-zone-id Z123 \
+    --change-batch file://alias-record.json
+az network dns record-set a add-record -g rg-dns -z example.com \
+    -n www -a 20.42.0.10
+gcloud dns record-sets create www.example.com. --zone=example \
+    --type=A --ttl=300 --rrdatas=34.120.0.10</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Every balancer needs a health check path that returns 200 when healthy</div><div class="explain-item">Azure Application Gateway needs a dedicated subnet</div><div class="explain-item">Google Cloud builds an ALB from parts: health check, backend service, URL map, proxy, forwarding rule</div><div class="explain-item">AWS alias records point at AWS resources without a fixed IP</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> ALB / NLB, Route 53 (aws-13, aws-17)</li><li class="note-item"><strong>Azure</strong> Load Balancer, Application Gateway, Azure DNS, Traffic Manager (az-13, az-17)</li><li class="note-item"><strong>Google Cloud</strong> Cloud Load Balancing, Cloud DNS (gcp-13, gcp-17)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Use L7 for web apps and APIs, L4 for raw TCP / UDP and extreme throughput</li><li class="note-item">Keep DNS TTLs low (60–300 s) on records you may fail over</li><li class="note-item">Terminate TLS at the balancer with managed certificates</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Load Balancer Types Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-load-balancer-types"><h2 class="section-title">Load Balancer Types</h2><table><thead><tr><th>Type</th><th>AWS</th><th>Azure</th><th>Google Cloud</th></tr></thead><tbody><tr><td>L7 regional</td><td class="kw">ALB</td><td class="kw">Application Gateway</td><td class="kw">Regional Application LB</td></tr><tr><td>L7 global</td><td class="kw">CloudFront + ALB / Global Accelerator</td><td class="kw">Front Door</td><td class="kw">Global external Application LB</td></tr><tr><td>L4</td><td class="kw">NLB</td><td class="kw">Azure Load Balancer</td><td class="kw">Network LB (proxy / passthrough)</td></tr><tr><td>DNS routing</td><td class="kw">Route 53 policies</td><td class="kw">Traffic Manager</td><td class="kw">Cloud DNS routing policies</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Make health checks test real dependencies lightly (not just "process alive")</li><li class="note-item note-do"><strong>Do</strong> Redirect HTTP to HTTPS at the balancer</li><li class="note-item note-dont"><strong>Don’t</strong> Point DNS straight at single VM IPs in production</li><li class="note-item note-dont"><strong>Don’t</strong> Set a 24-hour TTL on a record you might need to change quickly</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Run nginx, HAProxy or Traefik in Docker Compose to practice routing and health checks</li><li class="note-item"><code>dig +short www.example.com</code> and <code>curl -v --resolve</code> test DNS and TLS</li><li class="note-item">kind / minikube Ingress controllers mimic L7 routing</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Balancer across at least two zones with health checks tuned</li><li class="note-item">Managed TLS certificates with monitored expiry</li><li class="note-item">WAF on public HTTP endpoints</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-10-firewalls-private-access.html">Firewalls &amp; Private Access</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-12-cdn-edge.html">CDN &amp; Edge</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

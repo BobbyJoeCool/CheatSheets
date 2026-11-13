@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 31: Cloud SQL &amp; AlloyDB</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s31">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 31</div>
+			<h1>Cloud SQL &amp; AlloyDB</h1>
+			<div class="sheet-desc">MySQL, PostgreSQL &amp; SQL Server · Enterprise vs Enterprise Plus editions · high availability &amp; read replicas · point-in-time recovery · Cloud SQL Auth Proxy &amp; connectors · IAM database auth · AlloyDB</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Managed Relational Databases</h2><div class="description"><strong>Cloud SQL</strong> runs managed MySQL, PostgreSQL and SQL Server with backups, patching, <strong>regional HA</strong> (standby in another zone) and <strong>read replicas</strong>. <strong>Enterprise Plus</strong> adds faster failover and data cache. Connect with <strong>private IP</strong> and the <strong>Cloud SQL Auth Proxy</strong> or language <strong>connectors</strong> (IAM-authorized, TLS). <strong>AlloyDB</strong> is a PostgreSQL-compatible engine for higher performance and analytics.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">IAM database authentication lets service accounts log in without passwords</li><li class="note-item">PITR uses transaction logs (binary logs / WAL)</li><li class="note-item">Maintenance windows and deny periods control patching</li><li class="note-item">Cross-region replicas support DR and promotion</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Private IP only; no authorized networks of 0.0.0.0/0</li><li class="note-item">Use IAM database auth or Secret Manager passwords, never hard-coded</li><li class="note-item">Require SSL / connectors (<code>--ssl-mode=ENCRYPTED_ONLY</code>)</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Storage up to 64 TB per instance</li><li class="note-item">Max connections depend on the tier and engine flags</li><li class="note-item">Custom machine shapes need the Enterprise edition</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create, Connect, Recover</h2><pre><code class="language-bash">gcloud sql instances create shop-pg --database-version=POSTGRES_16 \
+    --edition=ENTERPRISE --tier=db-custom-2-8192 --region=us-central1 \
+    --availability-type=REGIONAL --storage-auto-increase \
+    --network=projects/shop-prod-4821/global/networks/vpc-shop \
+    --no-assign-ip --enable-point-in-time-recovery \
+    --backup-start-time=03:00 --ssl-mode=ENCRYPTED_ONLY \
+    --database-flags=cloudsql.iam_authentication=on
+gcloud sql databases create shop --instance=shop-pg
+gcloud sql users create api@shop-prod-4821.iam --instance=shop-pg \
+    --type=CLOUD_IAM_SERVICE_ACCOUNT
+gcloud sql instances create shop-pg-r1 --master-instance-name=shop-pg \
+    --region=us-east1
+
+./cloud-sql-proxy --auto-iam-authn --private-ip \
+    shop-prod-4821:us-central1:shop-pg &amp;
+psql "host=127.0.0.1 user=api@shop-prod-4821.iam dbname=shop"
+
+gcloud sql instances clone shop-pg shop-pg-restore \
+    --point-in-time=2026-11-12T09:30:00Z</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Regional availability keeps a standby in a second zone</div><div class="explain-item">The IAM user logs in with its service account token</div><div class="explain-item">The proxy handles TLS and IAM auth on localhost</div><div class="explain-item">Cloning to a point in time restores into a new instance</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> RDS, Aurora, RDS Proxy (aws-31)</li><li class="note-item"><strong>Azure</strong> Azure SQL Database, PostgreSQL Flexible Server (az-31)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Billed per vCPU, memory, storage and backups; HA roughly doubles compute</li><li class="note-item">CUDs discount steady Cloud SQL usage</li><li class="note-item">Read replicas and cross-region replicas each bill as instances</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Editions Table | Connecting Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-editions"><h2 class="section-title">Editions</h2><table><thead><tr><th>Feature</th><th>Enterprise</th><th>Enterprise Plus</th></tr></thead><tbody><tr><td>Machine shapes</td><td class="kw">Custom / shared core</td><td class="kw">Performance-optimized</td></tr><tr><td>Failover</td><td class="kw">Under 60 s</td><td class="kw">Under 10 s (near-zero downtime maintenance)</td></tr><tr><td>Data cache</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>Log retention for PITR</td><td class="kw">Up to 7 days</td><td class="kw">Up to 35 days</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-connecting"><h2 class="section-title">Connecting</h2><table><thead><tr><th>Method</th><th>Use</th></tr></thead><tbody><tr><td>Auth Proxy</td><td class="desc">Local tools, VMs, GKE sidecar</td></tr><tr><td>Language connectors</td><td class="desc">Python, Java, Go, Node apps</td></tr><tr><td>Cloud Run integration</td><td class="desc"><code>--add-cloudsql-instances</code></td></tr><tr><td>Private IP direct</td><td class="desc">Same VPC with SSL</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Turn on PITR and test restores</li><li class="note-item note-do"><strong>Do</strong> Use connectors so credentials never cross the wire</li><li class="note-item note-dont"><strong>Don’t</strong> Open public IP with broad authorized networks</li><li class="note-item note-dont"><strong>Don’t</strong> Size max connections without a pooler for serverless clients</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">PostgreSQL / MySQL in Docker for development</li><li class="note-item">Auth Proxy to reach a dev instance from your laptop</li><li class="note-item">Run migrations in CI against a container first</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Private IP, regional HA, PITR</li><li class="note-item">IAM DB auth; deletion protection on</li><li class="note-item">Maintenance window set; replica for DR</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-30-disks-filestore-backup.html">Disks, Filestore &amp; Backup</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-32-firestore-spanner.html">Firestore, Spanner &amp; Bigtable</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

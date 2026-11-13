@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 15: EC2 Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>EC2 Basics</h1>
+			<div class="sheet-desc">instance families &amp; sizes · AMIs · key pairs · <code>aws ec2 run-instances</code> · user data · IMDSv2 · Graviton</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Virtual Servers on AWS</h2><div class="description">An EC2 instance combines an <strong>instance type</strong> (family, generation, size), an <strong>AMI</strong> (machine image), EBS volumes, a subnet and security groups. Type names encode the details: <code>m7g.large</code> is general purpose (m), generation 7, Graviton Arm (g), large. <strong>User data</strong> runs a script at first boot. <strong>IMDSv2</strong> protects the metadata service that hands out role credentials.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Graviton (Arm) types usually give the best price-performance for Linux</li><li class="note-item">Get current Amazon Linux AMIs from public SSM parameters</li><li class="note-item">Use Session Manager instead of SSH keys where possible</li><li class="note-item">Burstable T types earn and spend CPU credits</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Require IMDSv2 (<code>HttpTokens=required</code>) on every instance</li><li class="note-item">No public IP and no port 22: use Session Manager</li><li class="note-item">Encrypt EBS volumes by default (account setting)</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">On-Demand vCPU quotas per instance family group and Region</li><li class="note-item">New accounts start low: check <code>aws service-quotas list-service-quotas --service-code ec2</code></li><li class="note-item">5 Elastic IPs per Region by default</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Launch a Private Graviton Instance</h2><pre><code class="language-bash">P=/aws/service/ami-amazon-linux-latest
+AMI=resolve:ssm:$P/al2023-ami-kernel-default-arm64
+aws ec2 run-instances --image-id $AMI --instance-type t4g.small \
+    --subnet-id $APP_A --security-group-ids $APP_SG \
+    --iam-instance-profile Name=app-instance-profile \
+    --metadata-options HttpTokens=required,HttpEndpoint=enabled \
+    --user-data file://init.sh --no-associate-public-ip-address \
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=web-1}]'
+
+aws ec2 describe-instances --filters Name=tag:Name,Values=web-1 \
+    --query "Reservations[].Instances[].[InstanceId,State.Name]"
+aws ssm start-session --target i-0abc1234                # shell, no SSH
+aws ec2 enable-ebs-encryption-by-default
+aws service-quotas get-service-quota --service-code ec2 \
+    --quota-code L-1216C47A    # Running On-Demand Standard instances (vCPUs)</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">init.sh (user data)</h2><pre><code class="language-bash">#!/bin/bash
+dnf install -y nginx &amp;&amp; systemctl enable --now nginx</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The <code>resolve:ssm:</code> prefix looks up the latest Amazon Linux 2023 Arm AMI</div><div class="explain-item">The instance profile gives the instance its IAM role (and Session Manager access)</div><div class="explain-item">IMDSv2 required blocks token-less metadata requests</div><div class="explain-item">L-1216C47A is the vCPU quota for standard families</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Virtual Machines, cloud-init, Bastion (az-15)</li><li class="note-item"><strong>GCP</strong> Compute Engine, startup scripts, OS Login / IAP (gcp-15)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Billed per second (Linux) while running, plus EBS and public IPv4</li><li class="note-item">Graviton types cost less per hour than comparable x86</li><li class="note-item">Stopped instances still pay for EBS volumes and Elastic IPs</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Type Name Decoder Table | Access Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-type-name-decoder"><h2 class="section-title">Type Name Decoder</h2><table><thead><tr><th>Part</th><th>Meaning</th></tr></thead><tbody><tr><td>m / c / r / t / g / p</td><td class="desc">General / compute / memory / burstable / GPU</td></tr><tr><td>7</td><td class="desc">Generation</td></tr><tr><td>g</td><td class="desc">Graviton (Arm)</td></tr><tr><td>i / a</td><td class="desc">Intel / AMD</td></tr><tr><td>d</td><td class="desc">Local NVMe</td></tr><tr><td>n</td><td class="desc">Enhanced networking</td></tr><tr><td>.large</td><td class="desc">Size</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-access-options"><h2 class="section-title">Access Options</h2><table><thead><tr><th>Option</th><th>Use</th></tr></thead><tbody><tr><td>Session Manager</td><td class="desc">Default; audited, no ports</td></tr><tr><td>EC2 Instance Connect</td><td class="desc">Short-lived SSH keys</td></tr><tr><td>SSH key pair</td><td class="desc">Legacy</td></tr><tr><td>Serial console</td><td class="desc">Boot problems</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Bake AMIs with EC2 Image Builder or Packer</li><li class="note-item note-do"><strong>Do</strong> Use launch templates for every instance</li><li class="note-item note-dont"><strong>Don’t</strong> Assign public IPs to app servers</li><li class="note-item note-dont"><strong>Don’t</strong> Hand-patch long-lived pets</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Test user data in a local VM or container first</li><li class="note-item">LocalStack EC2 emulation for IaC flows (no real VMs)</li><li class="note-item">Packer builds and tests AMIs from your laptop</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">IMDSv2, EBS encryption, no public IPs</li><li class="note-item">SSM Agent + Patch Manager baselines</li><li class="note-item">Instances in Auto Scaling groups across AZs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-14-cloudfront-acm.html">CloudFront &amp; ACM</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-16-ec2-operations-pricing.html">EC2 Operations &amp; Pricing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

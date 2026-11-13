@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 27: JES2 &amp; Job Output</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>JES2 &amp; Job Output</h1>
+			<div class="sheet-desc">job lifecycle · job &amp; output classes · SDSF / Zowe job views · <code>JESMSGLG</code> / <code>JESJCL</code> / <code>JESYSMSG</code> · held output · purging jobs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Where Jobs and Output Go</h2><div class="description"><strong>JES2</strong> reads submitted jobs, queues them by <strong>class</strong>, starts them on an initiator and stores their output on the <strong>spool</strong>. Each job has three system files: <strong>JESMSGLG</strong> (job log and step summary), <strong>JESJCL</strong> (the expanded JCL) and <strong>JESYSMSG</strong> (allocation messages and condition codes), followed by your SYSOUT DDs.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Job IDs look like <code>JOB04711</code></li><li class="note-item">Phases: input → conversion → execution → output → purge</li><li class="note-item">MSGCLASS decides whether output is held or printed</li><li class="note-item">Held output stays until you purge it or it ages off</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Reading Output with Zowe and SDSF</h2><pre><code class="language-bash"># List my jobs
+zowe jobs list jobs --owner USER01
+# JOB04711  PAYROLL  OUTPUT  CC 0008
+
+# List the job's spool files
+zowe jobs list sfbi JOB04711
+# 1 JESMSGLG  2 JESJCL  3 JESYSMSG  101 SYSOUT  102 RPTOUT
+
+zowe jobs view sfbi JOB04711 3     # condition codes per step
+zowe jobs view sfbi JOB04711 101   # program DISPLAY output
+
+# SDSF equivalents (ISPF)
+#   =SD ; ST         status panel
+#   ?  next to job   list spool files
+#   S  next to file  view it
+#   P  next to job   purge</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">CC 0008 is the highest step return code in the job</div><div class="explain-item">JESYSMSG lists each step with its condition code</div><div class="explain-item">Your program's DISPLAY output is in its SYSOUT DD file</div><div class="explain-item">Purge output you no longer need to free spool space</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> CI job logs per step (GitHub Actions run page)</li><li class="note-item"><strong>Java</strong> Spring Batch job repository and logs</li><li class="note-item"><strong>JavaScript</strong> Process stdout/stderr captured by a job runner or PM2</li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item">No output at all: MSGCLASS sends it to a printer or discards it; use a held class</li><li class="note-item"><code>$HASP…</code> messages in JESMSGLG: JES2 problems such as spool full or job held</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Spool Files Table | Job Status Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-spool-files"><h2 class="section-title">Spool Files</h2><table><thead><tr><th>File</th><th>Contains</th></tr></thead><tbody><tr><td>JESMSGLG</td><td class="desc">Job log, step summary</td></tr><tr><td>JESJCL</td><td class="desc">Expanded JCL, procs</td></tr><tr><td>JESYSMSG</td><td class="desc">Allocation, CCs, IEF messages</td></tr><tr><td>SYSOUT / SYSPRINT</td><td class="desc">Program / utility output</td></tr><tr><td>CEEDUMP</td><td class="desc">LE dump on abend</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-job-status"><h2 class="section-title">Job Status</h2><table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody><tr><td>INPUT</td><td class="desc">Queued or held</td></tr><tr><td>ACTIVE</td><td class="desc">Running</td></tr><tr><td>OUTPUT</td><td class="desc">Done, output on spool</td></tr><tr><td>CC nnnn</td><td class="desc">Highest RC</td></tr><tr><td>ABEND Sxxx / Unnnn</td><td class="desc">Abnormal end</td></tr><tr><td>JCL ERROR</td><td class="desc">Never ran</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Purging output before reading why the job failed</li><li class="note-item">Looking only at the last file instead of JESYSMSG's step codes</li><li class="note-item">Submitting to a class that is not started, so the job waits forever</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Check JESYSMSG first: it shows every step's RC or abend</li><li class="note-item">Download output with Zowe to attach it to tickets</li><li class="note-item">Ask which classes your site uses for test jobs and held output</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">JES2 — queue, run, spool</li><li class="note-item">JESMSGLG / JESJCL / JESYSMSG</li><li class="note-item">CC — highest RC</li><li class="note-item">SDSF / Zowe — view output</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-26-generation-data-groups.html">Generation Data Groups (GDGs)</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-28-reading-job-logs-jcl-errors.html">Reading Job Logs &amp; JCL Errors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

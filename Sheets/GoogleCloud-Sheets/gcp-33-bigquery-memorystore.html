@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 33: BigQuery &amp; Memorystore</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s33">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 33</div>
+			<h1>BigQuery &amp; Memorystore</h1>
+			<div class="sheet-desc">datasets &amp; tables · <code>bq query</code> · partitioning &amp; clustering · on-demand vs editions pricing · Memorystore for Valkey / Redis · choosing a database</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Analytics and Caching</h2><div class="description"><strong>BigQuery</strong> is a serverless data warehouse: load or stream data into <strong>tables</strong> in <strong>datasets</strong> and query with GoogleSQL. <strong>Partition</strong> tables by date and <strong>cluster</strong> by common filters to scan less. Pay <strong>on-demand</strong> per TiB scanned or buy <strong>editions</strong> capacity (slots). <strong>Memorystore</strong> provides managed in-memory caches: <strong>Memorystore for Valkey</strong>, Redis Cluster and Redis, plus Memcached.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Use <code>--dry_run</code> to see bytes scanned before running a query</li><li class="note-item">External tables / BigLake query files in Cloud Storage</li><li class="note-item">Streaming via the Storage Write API</li><li class="note-item">Memorystore uses private IP (PSC for Valkey / Redis Cluster)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">BigQuery</h2><pre><code class="language-bash">bq mk --dataset --location=US shop-prod-4821:sales
+bq mk --table --time_partitioning_field=order_date \
+    --clustering_fields=customer_id sales.orders schema.json
+bq load --source_format=NEWLINE_DELIMITED_JSON sales.orders \
+    gs://acme-exports/orders/*.json
+
+bq query --use_legacy_sql=false --dry_run \
+  'SELECT customer_id, SUM(total) AS spend
+   FROM sales.orders
+   WHERE order_date &gt;= "2026-11-01"
+   GROUP BY customer_id ORDER BY spend DESC LIMIT 10'</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Memorystore for Valkey and a Cache-Aside Read</h2><pre><code class="language-python"># gcloud memorystore instances create cache --location=us-central1 \
+#   --engine-version=VALKEY_8_0 --shard-count=1 \
+#   --node-type=shared-core-nano \
+#   --psc-auto-connections=network=$VPC_PATH,projectId=shop-prod-4821
+import json, redis
+r = redis.Redis(host="10.10.0.30", port=6379)
+
+def get_product(pid):
+    if (hit := r.get(f"product:{pid}")):
+        return json.loads(hit)
+    product = load_from_db(pid)
+    r.setex(f"product:{pid}", 300, json.dumps(product))
+    return product</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Partitioning by date prunes old data from scans</div><div class="explain-item"><code>--dry_run</code> reports bytes processed without charging</div><div class="explain-item">Valkey speaks the Redis protocol, so <code>redis</code> clients work</div><div class="explain-item">Cache entries expire after 5 minutes</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Redshift / Athena, ElastiCache (aws-33)</li><li class="note-item"><strong>Azure</strong> Synapse / Fabric, Azure Managed Redis (az-33)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">BigQuery on-demand: per TiB scanned (first 1 TiB per month free) + storage</li><li class="note-item">Editions: slot-hours with autoscaling; commitments discount</li><li class="note-item">Memorystore: per GB / node-hour, billed while running</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Bigquery Cost Contro Table | Memorystore Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-bigquery-cost-contro"><h2 class="section-title">BigQuery Cost Controls</h2><table><thead><tr><th>Control</th><th>Effect</th></tr></thead><tbody><tr><td>Partition + cluster</td><td class="desc">Scan less</td></tr><tr><td>SELECT only needed columns</td><td class="desc">Columnar: fewer bytes</td></tr><tr><td>--maximum_bytes_billed</td><td class="desc">Fail expensive queries</td></tr><tr><td>Custom quotas</td><td class="desc">Cap per user / project per day</td></tr><tr><td>Long-term storage</td><td class="desc">Auto discount after 90 days unchanged</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-memorystore-options"><h2 class="section-title">Memorystore Options</h2><table><thead><tr><th>Engine</th><th>Use</th></tr></thead><tbody><tr><td>Valkey</td><td class="desc">Default choice, open source</td></tr><tr><td>Redis Cluster</td><td class="desc">Sharded Redis</td></tr><tr><td>Redis (instance)</td><td class="desc">Simple Redis, legacy apps</td></tr><tr><td>Memcached</td><td class="desc">Simple key-value cache</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Dry-run new queries and set maximum bytes billed</li><li class="note-item note-do"><strong>Do</strong> Put TTLs on every cache entry</li><li class="note-item note-dont"><strong>Don’t</strong> <code>SELECT *</code> on large tables</li><li class="note-item note-dont"><strong>Don’t</strong> Use Memorystore as the only copy of important data</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">BigQuery has no local emulator: use a dev dataset with small samples</li><li class="note-item">Valkey / Redis in Docker for cache code</li><li class="note-item">Unit test SQL with <code>bq query --dry_run</code> in CI</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Partitioned, clustered tables with expiration where suitable</li><li class="note-item">Byte limits and quotas per user</li><li class="note-item">Cache sized and monitored for evictions</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-32-firestore-spanner.html">Firestore, Spanner &amp; Bigtable</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-34-terraform-on-google-cloud.html">Terraform on Google Cloud</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

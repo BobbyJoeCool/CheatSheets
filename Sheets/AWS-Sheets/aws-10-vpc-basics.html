@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 10: VPC Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s10">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 10</div>
+			<h1>VPC Basics</h1>
+			<div class="sheet-desc">CIDR blocks · public vs private subnets · route tables · Internet Gateway · default VPC · subnet per AZ</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Private Networking on AWS</h2><div class="description">A <strong>VPC</strong> is a regional private network with one or more IPv4 CIDR blocks (and optional IPv6). Each <strong>subnet</strong> lives in one AZ. A subnet is public when its <strong>route table</strong> sends <code>0.0.0.0/0</code> to an <strong>Internet Gateway</strong>; private subnets reach the internet through a NAT gateway (sheet 11) or not at all. Every Region has a <strong>default VPC</strong> for quick tests; build your own for real work.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">AWS reserves 5 addresses in each subnet</li><li class="note-item">Use at least two AZs (three for production)</li><li class="note-item">Public IPv4 addresses are billed hourly; consider IPv6 or private designs</li><li class="note-item">VPC Flow Logs capture accepted / rejected traffic</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Keep databases and app servers in private subnets</li><li class="note-item">Disable auto-assign public IP on private subnets</li><li class="note-item">Enable VPC Flow Logs</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">5 VPCs per Region by default (adjustable)</li><li class="note-item">200 subnets per VPC</li><li class="note-item">5 IPv4 CIDR blocks per VPC by default (up to 50)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">VPC, Subnets, Internet Route</h2><pre><code class="language-bash">VPC=$(aws ec2 create-vpc --cidr-block 10.30.0.0/16 \
+  --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=shop-prod}]' \
+  --query Vpc.VpcId --output text)
+PUB_A=$(aws ec2 create-subnet --vpc-id $VPC --cidr-block 10.30.0.0/24 \
+  --availability-zone us-east-1a --query Subnet.SubnetId --output text)
+APP_A=$(aws ec2 create-subnet --vpc-id $VPC --cidr-block 10.30.10.0/24 \
+  --availability-zone us-east-1a --query Subnet.SubnetId --output text)
+
+IGW=$(aws ec2 create-internet-gateway \
+  --query InternetGateway.InternetGatewayId \
+  --output text)
+aws ec2 attach-internet-gateway --vpc-id $VPC --internet-gateway-id $IGW
+RT=$(aws ec2 create-route-table --vpc-id $VPC --query RouteTable.RouteTableId \
+  --output text)
+aws ec2 create-route --route-table-id $RT --destination-cidr-block 0.0.0.0/0 \
+    --gateway-id $IGW
+aws ec2 associate-route-table --route-table-id $RT --subnet-id $PUB_A
+
+aws ec2 create-flow-logs --resource-type VPC --resource-ids $VPC \
+    --traffic-type ALL --log-destination-type cloud-watch-logs \
+    --log-group-name /vpc/shop-prod --deliver-logs-permission-arn &lt;role-arn&gt;</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Each subnet is pinned to one AZ</div><div class="explain-item">Only the public subnet's route table points at the Internet Gateway</div><div class="explain-item">Private subnets keep the main route table (local only) until NAT is added</div><div class="explain-item">Flow logs go to CloudWatch Logs through an IAM role</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> VNet with zone-spanning subnets (az-10)</li><li class="note-item"><strong>GCP</strong> global VPC with regional subnets (gcp-10)</li><li class="note-item">AWS subnets are per-AZ; Azure and GCP subnets span zones</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">VPCs, subnets and route tables are free</li><li class="note-item">Public IPv4 addresses bill hourly, even on running instances</li><li class="note-item">Cross-AZ traffic bills per GB in each direction</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Pieces Table | Typical Layout Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-pieces"><h2 class="section-title">Pieces</h2><table><thead><tr><th>Piece</th><th>Role</th></tr></thead><tbody><tr><td>VPC</td><td class="desc">Regional network + CIDR</td></tr><tr><td>Subnet</td><td class="desc">One AZ, a slice of the CIDR</td></tr><tr><td>Route table</td><td class="desc">Where traffic goes</td></tr><tr><td>Internet Gateway</td><td class="desc">Public internet path</td></tr><tr><td>NAT Gateway</td><td class="desc">Private outbound (sheet 11)</td></tr><tr><td>VPC endpoint</td><td class="desc">Private AWS service access (sheet 11)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-typical-layout"><h2 class="section-title">Typical Layout</h2><table><thead><tr><th>Tier</th><th>Subnets</th></tr></thead><tbody><tr><td>Public</td><td class="desc">Load balancers, NAT</td></tr><tr><td>App (private)</td><td class="desc">EC2 / ECS / Lambda ENIs</td></tr><tr><td>Data (private)</td><td class="desc">RDS, ElastiCache</td></tr><tr><td>Per AZ</td><td class="desc">Repeat each tier in 2–3 AZs</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Plan CIDRs that never overlap with other VPCs or on-premises</li><li class="note-item note-do"><strong>Do</strong> Build VPCs with IaC (VPC module / CDK construct)</li><li class="note-item note-dont"><strong>Don’t</strong> Run production in the default VPC</li><li class="note-item note-dont"><strong>Don’t</strong> Make every subnet public "to keep it simple"</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Reachability Analyzer explains why traffic can or cannot flow</li><li class="note-item">Docker networks mimic tiers locally</li><li class="note-item">LocalStack supports EC2 / VPC API calls for IaC tests</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Three AZs, public / private / data tiers</li><li class="note-item">Flow logs enabled and retained</li><li class="note-item">No public IPs on private tiers</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-09-security-services.html">Security &amp; Audit Services</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-11-nat-endpoints-peering.html">NAT, Endpoints &amp; Connectivity</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

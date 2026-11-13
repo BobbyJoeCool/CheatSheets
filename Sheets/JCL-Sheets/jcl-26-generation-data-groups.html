@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 26: Generation Data Groups (GDGs)</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Generation Data Groups (GDGs)</h1>
+			<div class="sheet-desc"><code>DEFINE GDG</code> · <code>LIMIT</code> / <code>SCRATCH</code> / <code>NOEMPTY</code> · relative generations <code>(+1)</code> / <code>(0)</code> / <code>(-1)</code> · <code>G0001V00</code> names · daily-file pattern</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Versioned Datasets</h2><div class="description">A <strong>GDG</strong> is a group of datasets with one base name, each run adding a new <strong>generation</strong>. Programs refer to generations by relative number: <code>(0)</code> is the newest, <code>(-1)</code> the one before, <code>(+1)</code> a new one created in this job. The base keeps only the last LIMIT generations, rolling older ones off automatically.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Real names end in <code>.GnnnnV00</code> (e.g. <code>.G0042V00</code>)</li><li class="note-item">Relative numbers are fixed for the whole job</li><li class="note-item">The base is defined once with IDCAMS</li><li class="note-item">Giving the base name alone reads all generations, newest first</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Define and Use a GDG</h2><pre><code class="language-jcl">//* One-time setup: keep the last 7 generations
+//DEFGDG   EXEC PGM=IDCAMS
+//SYSPRINT DD SYSOUT=*
+//SYSIN    DD *
+  DEFINE GDG (NAME(PROD.SALES.DAILY) -
+         LIMIT(7) NOEMPTY SCRATCH)
+/*
+//*
+//* Daily job: read yesterday, write today
+//DAILY    EXEC PGM=SALESUPD
+//PREVDAY  DD DSN=PROD.SALES.DAILY(0),DISP=SHR
+//NEWDAY   DD DSN=PROD.SALES.DAILY(+1),
+//            DISP=(NEW,CATLG,DELETE),
+//            SPACE=(CYL,(5,5),RLSE),RECFM=FB,LRECL=100
+//*
+//* Later step in the SAME job sees the new one as (+1)
+//REPORT   EXEC PGM=SALESRPT
+//SALESIN  DD DSN=PROD.SALES.DAILY(+1),DISP=SHR
+//*
+//* Read every generation at once
+//ALLDAYS  DD DSN=PROD.SALES.DAILY,DISP=SHR</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">LIMIT(7): the eighth generation pushes the oldest out</div><div class="explain-item">SCRATCH deletes rolled-off generations; NOEMPTY rolls off one at a time</div><div class="explain-item">(0) at job start is yesterday's file; (+1) is today's</div><div class="explain-item">Inside the same job the new generation stays (+1)</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> Date-stamped files <code>sales_2026-11-12.csv</code> plus a cleanup that keeps 7</li><li class="note-item"><strong>Java</strong> Rolling files (Logback <code>maxHistory=7</code>)</li><li class="note-item"><strong>JavaScript</strong> Rotating logs (<code>rotating-file-stream</code> with <code>maxFiles: 7</code>)</li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item">Allocation fails on (+1): the GDG base was never defined; run the IDCAMS DEFINE GDG first</li><li class="note-item">Rerun creates another (+1) and shifts (0): restart carefully or use absolute names</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Relative References Table | Define Gdg Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-relative-references"><h2 class="section-title">Relative References</h2><table><thead><tr><th>Reference</th><th>Means</th></tr></thead><tbody><tr><td>(+1)</td><td class="desc">New generation (this job)</td></tr><tr><td>(0)</td><td class="desc">Newest existing</td></tr><tr><td>(-1)</td><td class="desc">One before newest</td></tr><tr><td>(-n)</td><td class="desc">n before newest</td></tr><tr><td>base name only</td><td class="desc">All generations</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-define-gdg-options"><h2 class="section-title">DEFINE GDG Options</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td>LIMIT(n)</td><td class="desc">Generations kept (max 255; 999 extended)</td></tr><tr><td>SCRATCH / NOSCRATCH</td><td class="desc">Delete / keep rolled-off</td></tr><tr><td>EMPTY / NOEMPTY</td><td class="desc">Roll all / one at limit</td></tr><tr><td>PURGE</td><td class="desc">Allow delete before expiry</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Expecting (0) to mean the generation created earlier in the same job (it is still +1)</li><li class="note-item">Rerunning a failed job and creating an extra generation</li><li class="note-item">Using EMPTY, which uncatalogs all generations when the limit is hit</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use NOEMPTY SCRATCH unless you have a reason not to</li><li class="note-item">Note in run books how to rerun safely (delete the bad +1 first)</li><li class="note-item">Use GDGs for daily, weekly and monthly files instead of date-named datasets</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">GDG — versioned dataset</li><li class="note-item"><code>(+1)</code> new · <code>(0)</code> newest · <code>(-1)</code> previous</li><li class="note-item"><code>LIMIT</code> — generations kept</li><li class="note-item">relative numbers — fixed per job</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-25-running-cobol-batch.html">Running a COBOL Batch Program</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-27-jes2-job-output.html">JES2 &amp; Job Output</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

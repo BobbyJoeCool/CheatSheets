@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 12: CDN &amp; Edge</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>CDN &amp; Edge</h1>
+			<div class="sheet-desc">caching &amp; TTLs · origins · invalidation · WAF at the edge · CloudFront / Front Door / Cloud CDN · static site hosting pattern</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Serving Content Close to Users</h2><div class="description">A <strong>content delivery network</strong> caches responses at hundreds of edge locations so users get static files (and cacheable API responses) from nearby. You configure <strong>origins</strong> (a bucket, load balancer or app), cache rules and TTLs, and optionally a WAF. The classic pattern is a static site in object storage behind the CDN with a managed certificate.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Cache keys decide what counts as the same object (path, query, headers)</li><li class="note-item">Use versioned file names (<code>app.3f9a.js</code>) instead of frequent invalidations</li><li class="note-item">Keep the origin private: only the CDN can read it</li><li class="note-item">Edge services also absorb DDoS traffic</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Static Site Behind a CDN</h2><pre><code class="language-bash"># AWS: upload, then invalidate after a deploy
+aws s3 sync ./dist s3://site-bucket --delete
+aws cloudfront create-invalidation --distribution-id E1ABC \
+    --paths "/index.html"
+
+# Azure: Front Door profile + endpoint, then purge after deploy
+az afd profile create -g rg-web --profile-name afd-site \
+    --sku Standard_AzureFrontDoor
+az afd endpoint create -g rg-web --profile-name afd-site \
+    --endpoint-name site
+az afd endpoint purge -g rg-web --profile-name afd-site \
+    --endpoint-name site --content-paths "/index.html"
+
+# Google Cloud: backend bucket with CDN, invalidate a path
+gcloud compute backend-buckets create site-be \
+    --gcs-bucket-name=site-bucket --enable-cdn
+gcloud compute url-maps invalidate-cdn-cache site-map \
+    --path="/index.html"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>sync --delete</code> mirrors the build folder into the bucket</div><div class="explain-item">Invalidate only the entry HTML when asset names are versioned</div><div class="explain-item">Azure Front Door is the CDN and global L7 balancer in one</div><div class="explain-item">Google Cloud CDN attaches to a load balancer backend bucket or service</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> CloudFront, ACM, Origin Access Control (aws-14)</li><li class="note-item"><strong>Azure</strong> Front Door Standard / Premium (az-14)</li><li class="note-item"><strong>Google Cloud</strong> Cloud CDN, Certificate Manager (gcp-14)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Long TTLs on hashed assets, short TTL on <code>index.html</code></li><li class="note-item">Lock the origin so it only accepts CDN traffic</li><li class="note-item">Put a WAF on the edge for public apps</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Cdn Services Table | Cache Control Header Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-cdn-services"><h2 class="section-title">CDN Services</h2><table><thead><tr><th>Feature</th><th>AWS</th><th>Azure</th><th>Google Cloud</th></tr></thead><tbody><tr><td>CDN</td><td class="kw">CloudFront</td><td class="kw">Front Door</td><td class="kw">Cloud CDN</td></tr><tr><td>Private origin</td><td class="kw">Origin Access Control</td><td class="kw">Private Link origin</td><td class="kw">Private bucket + signed requests</td></tr><tr><td>Edge compute</td><td class="kw">CloudFront Functions / Lambda@Edge</td><td class="kw">Rules engine</td><td class="kw">Service extensions</td></tr><tr><td>WAF</td><td class="kw">AWS WAF</td><td class="kw">Front Door WAF</td><td class="kw">Cloud Armor</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-cache-control-header"><h2 class="section-title">Cache-Control Headers</h2><table><thead><tr><th>Header</th><th>Use</th></tr></thead><tbody><tr><td>max-age=31536000, immutable</td><td class="desc">Hashed assets</td></tr><tr><td>no-cache</td><td class="desc">Revalidate every time (HTML)</td></tr><tr><td>private</td><td class="desc">Never cache at CDN</td></tr><tr><td>s-maxage=60</td><td class="desc">CDN-only TTL</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Fingerprint asset file names in the build</li><li class="note-item note-do"><strong>Do</strong> Set Cache-Control on upload, not only in CDN rules</li><li class="note-item note-dont"><strong>Don’t</strong> Invalidate <code>/*</code> on every deploy (slow and sometimes billed)</li><li class="note-item note-dont"><strong>Don’t</strong> Leave the storage bucket publicly readable behind the CDN</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>npx serve</code> or <code>python -m http.server</code> previews the static site</li><li class="note-item">Check headers with <code>curl -I https://site/app.js</code></li><li class="note-item">Use the HTTP set's caching sheet for header details</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Managed certificate and HTTPS redirect at the edge</li><li class="note-item">Origin locked to the CDN only</li><li class="note-item">Cache hit ratio monitored; WAF rules in prevention mode</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-11-load-balancing-dns.html">Load Balancing &amp; DNS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-13-virtual-machines.html">Virtual Machines &amp; Autoscaling</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

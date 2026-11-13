@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 36: async def vs def</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>async def vs def</h1>
+			<div class="sheet-desc">event loop · threadpool for def · blocking in async def · await I/O · run_in_threadpool · httpx.AsyncClient</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">FastAPI runs <strong><code>async def</code></strong> routes on the event loop and <strong>plain <code>def</code></strong> routes in a <strong>threadpool</strong>. Both are fast when used right. The one real mistake is calling <strong>blocking</strong> code (<code>requests</code>, <code>time.sleep</code>, sync DB drivers) inside <code>async def</code>: that freezes every other request on that worker.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Rule: <code>async def</code> only if everything inside is awaitable</li><li class="note-item">Not sure? Use <code>def</code>; it's safe</li><li class="note-item">Same rules apply to dependencies</li><li class="note-item">CPU-heavy work belongs in a process pool or task queue</li></ul></section></div>
+				<div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">The threadpool comes from AnyIO, default 40 threads</li><li class="note-item"><code>def</code> routes are run with <code>run_in_threadpool</code></li><li class="note-item">One blocking call in <code>async def</code> stalls the whole event loop</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Right and Wrong</h2><pre><code class="language-python">import time, asyncio, httpx, requests
+from fastapi.concurrency import run_in_threadpool
+
+@app.get("/bad")
+async def bad():
+    time.sleep(2)                          # blocks the event loop!
+    return requests.get(URL).json()        # also blocking
+
+@app.get("/good-sync")
+def good_sync():
+    time.sleep(2)                          # fine: runs in a thread
+    return requests.get(URL).json()
+
+@app.get("/good-async")
+async def good_async(request: Request):
+    await asyncio.sleep(2)                 # yields to other requests
+    client: httpx.AsyncClient = request.state.client
+    r1, r2 = await asyncio.gather(client.get(URL_A), client.get(URL_B))
+    return {"a": r1.json(), "b": r2.json()}
+
+@app.get("/mixed")
+async def mixed():
+    data = await run_in_threadpool(legacy_sync_call, 42)
+    return data</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>/bad</code> — <code>time.sleep</code> and <code>requests</code> freeze the worker</div><div class="explain-item"><code>/good-sync</code> — plain <code>def</code> runs in the threadpool</div><div class="explain-item"><code>asyncio.gather</code> — run two calls at once</div><div class="explain-item"><code>run_in_threadpool</code> — call sync code from async</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — WSGI: one request per thread; <code>async def</code> views run in a loop per request</li><li class="note-item">Django — async views + <code>sync_to_async()</code> for sync code</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid <code>requests</code> in <code>async def</code> · Prefer <code>httpx.AsyncClient</code></li><li class="note-item">Avoid <code>async def</code> by default · Prefer it only when you <code>await</code> something</li></ul></section></div>
+			</div>
+			<!-- Row 3: Which Table | Map Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-which"><h2 class="section-title">Which to Use</h2><table><thead><tr><th>Inside the route</th><th>Declare as</th></tr></thead><tbody><tr><td>async DB/HTTP calls</td><td class="desc">async def</td></tr><tr><td>sync DB driver / requests</td><td class="desc">def</td></tr><tr><td>pure CPU, quick</td><td class="desc">either</td></tr><tr><td>CPU heavy (seconds)</td><td class="desc">task queue / process pool</td></tr><tr><td>mix of both</td><td class="desc">async def + run_in_threadpool</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-map"><h2 class="section-title">Blocking → Async</h2><table><thead><tr><th>Blocking</th><th>Async</th></tr></thead><tbody><tr><td>time.sleep</td><td class="desc">asyncio.sleep</td></tr><tr><td>requests</td><td class="desc">httpx.AsyncClient</td></tr><tr><td>psycopg2</td><td class="desc">asyncpg / psycopg async</td></tr><tr><td>open().read()</td><td class="desc">aiofiles / anyio.Path</td></tr><tr><td>redis</td><td class="desc">redis.asyncio</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Declaring everything <code>async def</code> out of habit while using sync libraries</li><li class="note-item">Running CPU-heavy model inference in <code>async def</code>: blocks all requests</li><li class="note-item">Creating a new <code>httpx.AsyncClient</code> per request</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Load-test with <code>hey</code> or <code>locust</code> before deciding async helps</li><li class="note-item">Use <code>asyncio.timeout()</code> around slow calls</li><li class="note-item">Raise the threadpool size only after measuring</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>async def</code> — event loop; never block</li><li class="note-item"><code>def</code> — threadpool; safe default</li><li class="note-item"><code>gather</code> — parallel awaits</li><li class="note-item"><code>run_in_threadpool</code> — sync from async</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-35-scopes-api-keys.html" class="nav-link prev" title="Scopes, API Keys &amp; HTTP Basic">Scopes &amp; API Keys</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-37-background-tasks.html" class="nav-link next">Background Tasks</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

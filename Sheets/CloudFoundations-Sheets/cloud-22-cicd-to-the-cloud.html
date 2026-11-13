@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 22: CI/CD to the Cloud</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>CI/CD to the Cloud</h1>
+			<div class="sheet-desc">GitHub Actions OIDC to AWS, Azure &amp; Google Cloud · build → push → deploy · blue/green &amp; canary · environments &amp; approvals · pointer to GitHub set</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Shipping From a Pipeline</h2><div class="description">A deployment pipeline builds and tests the code, pushes an artifact (usually a container image), then deploys it with infrastructure as code or a deploy command. Pipelines should log in to the cloud with <strong>OIDC federation</strong>, not stored keys. Gradual rollouts (<strong>blue/green</strong>, <strong>canary</strong>) let you shift traffic slowly and roll back fast.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">GitHub Actions, GitLab CI, Azure Pipelines, Cloud Build and CodePipeline all work</li><li class="note-item">Protected environments add approvals before production</li><li class="note-item">Deploy immutable artifacts: the image tested is the image shipped</li><li class="note-item">Roll back by moving traffic, not by rebuilding</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">GitHub Actions: Build and Deploy to Cloud Run</h2><pre><code class="language-yaml">on: { push: { branches: [main] } }
+permissions: { contents: read, id-token: write }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production          # approval gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: |
+          IMG=us-central1-docker.pkg.dev/app-prod/web/api:${{ github.sha }}
+          gcloud auth configure-docker us-central1-docker.pkg.dev -q
+          docker build -t $IMG . &amp;&amp; docker push $IMG
+          gcloud run deploy api --image $IMG --region us-central1</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Swap the Login Step for Other Clouds</h2><pre><code class="language-yaml">- uses: aws-actions/configure-aws-credentials@v4
+  with: { role-to-assume: ${{ vars.AWS_ROLE }}, aws-region: us-east-1 }
+- uses: azure/login@v2
+  with: { client-id: ${{ vars.AZ_CLIENT }}, tenant-id: ${{ vars.AZ_TENANT }},
+          subscription-id: ${{ vars.AZ_SUB }} }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>id-token: write</code> lets the job request an OIDC token</div><div class="explain-item">The <code>environment</code> gate can require a reviewer before deploy</div><div class="explain-item">Tagging the image with the commit SHA makes every deploy traceable</div><div class="explain-item">Only the login step changes per cloud</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> GitHub OIDC + CodeDeploy / CodePipeline (aws-39)</li><li class="note-item"><strong>Azure</strong> GitHub OIDC + Azure Pipelines, slot swaps (az-39)</li><li class="note-item"><strong>Google Cloud</strong> GitHub OIDC + Cloud Build / Cloud Deploy (gcp-39)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">OIDC everywhere; delete any cloud keys stored in CI secrets</li><li class="note-item">Same artifact through dev, staging and prod</li><li class="note-item">Automate rollback triggers on error-rate alerts</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Rollout Strategies Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-rollout-strategies"><h2 class="section-title">Rollout Strategies</h2><table><thead><tr><th>Strategy</th><th>How</th><th>Native Support</th></tr></thead><tbody><tr><td>Rolling</td><td class="kw">Replace instances in batches</td><td class="kw">ASG / VMSS / MIG, Kubernetes</td></tr><tr><td>Blue/green</td><td class="kw">Two environments, switch traffic</td><td class="kw">CodeDeploy, App Service slots, Cloud Deploy</td></tr><tr><td>Canary</td><td class="kw">Send a small % first</td><td class="kw">Lambda aliases, Container Apps revisions, Cloud Run traffic</td></tr><tr><td>Feature flags</td><td class="kw">Ship dark, enable later</td><td class="kw">AppConfig, App Configuration, Firebase Remote Config</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Pin third-party actions to a version or commit SHA</li><li class="note-item note-do"><strong>Do</strong> Scope the cloud role to deploy-only permissions</li><li class="note-item note-dont"><strong>Don’t</strong> Give the pipeline Owner / Administrator access</li><li class="note-item note-dont"><strong>Don’t</strong> Rebuild images per environment</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>act</code> runs GitHub workflows locally (cloud login steps need the real runner)</li><li class="note-item">actionlint catches workflow syntax errors</li><li class="note-item">Build and run the image locally exactly as the pipeline does</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">OIDC trust restricted to the repo, branch and environment</li><li class="note-item">Approval gate and change record for production</li><li class="note-item">Automated rollback or one-command traffic shift</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-21-observability.html">Observability</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-23-reliability-architecture.html">Reliability</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

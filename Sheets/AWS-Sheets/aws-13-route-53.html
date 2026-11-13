@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 13: Route 53</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Route 53</h1>
+			<div class="sheet-desc">hosted zones · A / AAAA / CNAME / MX / TXT records · alias records · routing policies (weighted, latency, failover) · health checks · domain registration</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">DNS on AWS</h2><div class="description"><strong>Route 53</strong> hosts public and private <strong>hosted zones</strong>, registers domains, and routes with policies: <strong>simple</strong>, <strong>weighted</strong>, <strong>latency</strong>, <strong>failover</strong>, <strong>geolocation</strong> and more, often combined with <strong>health checks</strong>. <strong>Alias records</strong> point names (even the zone apex) at AWS resources like CloudFront, load balancers and S3 websites, and follow their IP changes for free.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Private hosted zones resolve only inside associated VPCs</li><li class="note-item">Alias queries to AWS resources are free</li><li class="note-item">Route 53 Resolver handles hybrid DNS (inbound / outbound endpoints)</li><li class="note-item">Route 53 has a 100% availability SLA</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code + Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Zone, Alias Record, Failover</h2><pre><code class="language-bash">aws route53 create-hosted-zone --name acme-shop.com \
+    --caller-reference $(date +%s)
+aws route53 list-hosted-zones --query "HostedZones[].[Name,Id]" --output table</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Change Batch: Alias to an ALB (alias.json)</h2><pre><code class="language-json">{ "Changes": [{ "Action": "UPSERT",
+  "ResourceRecordSet": { "Name": "shop.acme-shop.com", "Type": "A",
+    "SetIdentifier": "primary", "Failover": "PRIMARY",
+    "HealthCheckId": "11111111-2222-3333-4444-555555555555",
+    "AliasTarget": { "HostedZoneId": "Z35SXDOTRQ7X7K",
+      "DNSName": "web-alb-123.us-east-1.elb.amazonaws.com",
+      "EvaluateTargetHealth": true } } }] }</code></pre></section><section class="section-code" id="code-3"><h2 class="section-title">Apply and Check</h2><pre><code class="language-bash">aws route53 create-health-check --caller-reference hc-$(date +%s) \
+    --health-check-config file://health-check.json
+aws route53 change-resource-record-sets --hosted-zone-id Z0123 \
+    --change-batch file://alias.json
+dig +short shop.acme-shop.com</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>caller-reference</code> must be unique per request</div><div class="explain-item">The alias target uses the load balancer's own hosted zone ID</div><div class="explain-item">A matching SECONDARY record completes failover routing</div><div class="explain-item">Health checks decide when to fail over</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure DNS + Traffic Manager (az-13)</li><li class="note-item"><strong>GCP</strong> Cloud DNS + routing policies (gcp-13)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Hosted zone per month + per million queries</li><li class="note-item">Alias queries to AWS resources are free</li><li class="note-item">Health checks bill per check per month</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Routing Policies Table | Record Types Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-routing-policies"><h2 class="section-title">Routing Policies</h2><table><thead><tr><th>Policy</th><th>Routes By</th></tr></thead><tbody><tr><td>Simple</td><td class="desc">One answer</td></tr><tr><td>Weighted</td><td class="desc">Percentages</td></tr><tr><td>Latency</td><td class="desc">Lowest latency Region</td></tr><tr><td>Failover</td><td class="desc">Primary / secondary with health</td></tr><tr><td>Geolocation</td><td class="desc">User location</td></tr><tr><td>Geoproximity</td><td class="desc">Distance + bias</td></tr><tr><td>Multivalue</td><td class="desc">Several healthy IPs</td></tr><tr><td>IP-based</td><td class="desc">Client CIDR</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-record-types"><h2 class="section-title">Record Types</h2><table><thead><tr><th>Type</th><th>Use</th></tr></thead><tbody><tr><td>A / AAAA</td><td class="desc">IPv4 / IPv6</td></tr><tr><td>CNAME</td><td class="desc">Alias name (not apex)</td></tr><tr><td>Alias</td><td class="desc">AWS resource, apex OK</td></tr><tr><td>MX / TXT</td><td class="desc">Mail, verification</td></tr><tr><td>CAA</td><td class="desc">Allowed CAs</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use alias records for AWS targets</li><li class="note-item note-do"><strong>Do</strong> Keep TTLs short on failover records</li><li class="note-item note-dont"><strong>Don’t</strong> Point a CNAME at the zone apex</li><li class="note-item note-dont"><strong>Don’t</strong> Delete a hosted zone still delegated at the registrar</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>dig @ns-123.awsdns-45.com shop.acme-shop.com</code> tests before delegation</li><li class="note-item">Route 53 "test record" in the console simulates answers</li><li class="note-item">CoreDNS locally for split-horizon experiments</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Records managed in IaC</li><li class="note-item">Health-checked failover for critical names</li><li class="note-item">DNSSEC signing considered; registrar lock on</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-12-security-groups-nacls.html">Security Groups &amp; NACLs</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-14-cloudfront-acm.html">CloudFront &amp; ACM</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 28: Blob Storage Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>Blob Storage Basics</h1>
+			<div class="sheet-desc">storage accounts · containers &amp; blobs · <code>az storage blob upload</code> / <code>download</code> / <code>sync</code> · AzCopy · access tiers (hot, cool, cold, archive) · redundancy (LRS, ZRS, GRS)</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Object Storage on Azure</h2><div class="description">Blob Storage keeps objects (<strong>blobs</strong>) in <strong>containers</strong> inside a <strong>storage account</strong>, the unit that sets the name, region, redundancy and network rules. Access tiers trade storage price for read price: <strong>Hot</strong>, <strong>Cool</strong>, <strong>Cold</strong> and <strong>Archive</strong>. Redundancy ranges from three copies in one datacenter (LRS) to zone (ZRS) and cross-region (GRS / GZRS) replication.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Endpoint: <code>https://&lt;account&gt;.blob.core.windows.net/&lt;container&gt;/&lt;blob&gt;</code></li><li class="note-item">Use <code>--auth-mode login</code> so the CLI uses Entra ID, not account keys</li><li class="note-item">AzCopy is the fast tool for bulk copy and sync</li><li class="note-item">Archive blobs must be rehydrated (hours) before reading</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Create accounts with anonymous access and shared keys disabled</li><li class="note-item">Require TLS 1.2+ and HTTPS only</li><li class="note-item">Use private endpoints or network rules for production accounts</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Default max capacity 5 PiB per account</li><li class="note-item">250 storage accounts per region per subscription (can be raised)</li><li class="note-item">Single block blob up to about 190.7 TiB</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Account, Container, Copy</h2><pre><code class="language-bash">az storage account create -g rg-data -n stshopdata -l eastus2 \
+    --sku Standard_ZRS --kind StorageV2 --min-tls-version TLS1_2 \
+    --allow-blob-public-access false --allow-shared-key-access false
+az role assignment create --assignee $ME \
+    --role "Storage Blob Data Contributor" \
+    --scope $(az storage account show -n stshopdata --query id -o tsv)
+
+az storage container create --account-name stshopdata -n uploads \
+    --auth-mode login
+az storage blob upload --account-name stshopdata -c uploads \
+    -f photo.jpg -n 2026/11/photo.jpg --auth-mode login
+az storage blob upload-batch --account-name stshopdata -d uploads \
+    -s ./images --pattern "*.jpg" --auth-mode login
+az storage blob list --account-name stshopdata -c uploads \
+    --prefix 2026/ --auth-mode login -o table
+az storage blob set-tier --account-name stshopdata -c uploads \
+    -n 2026/11/photo.jpg --tier Cool --auth-mode login
+
+azcopy login
+azcopy sync ./site "https://stshopdata.blob.core.windows.net/site" \
+    --delete-destination=true</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">ZRS keeps copies in three zones of the region</div><div class="explain-item">With shared keys off, you need a data role (Blob Data Contributor)</div><div class="explain-item"><code>upload-batch</code> uploads a folder by pattern</div><div class="explain-item">AzCopy <code>sync</code> mirrors a folder and can delete extra blobs</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> S3 buckets and storage classes (aws-28)</li><li class="note-item"><strong>GCP</strong> Cloud Storage buckets and classes (gcp-28)</li><li class="note-item">Azure adds the storage account layer above containers</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Billed for capacity per tier, operations, retrieval (cool / cold / archive) and egress</li><li class="note-item">Early deletion fees: Cool 30, Cold 90, Archive 180 days</li><li class="note-item">GRS roughly doubles storage price versus LRS</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Tiers Table | Redundancy Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-tiers"><h2 class="section-title">Tiers</h2><table><thead><tr><th>Tier</th><th>Use</th><th>Min Days</th></tr></thead><tbody><tr><td>Hot</td><td class="kw">Frequent access</td><td class="kw">—</td></tr><tr><td>Cool</td><td class="kw">Monthly access</td><td class="kw">30</td></tr><tr><td>Cold</td><td class="kw">Quarterly access</td><td class="kw">90</td></tr><tr><td>Archive</td><td class="kw">Rare, offline</td><td class="kw">180</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-redundancy"><h2 class="section-title">Redundancy</h2><table><thead><tr><th>SKU</th><th>Copies</th></tr></thead><tbody><tr><td>LRS</td><td class="desc">3 in one datacenter</td></tr><tr><td>ZRS</td><td class="desc">3 across zones</td></tr><tr><td>GRS</td><td class="desc">LRS + async copy to paired region</td></tr><tr><td>GZRS</td><td class="desc">ZRS + async copy to paired region</td></tr><tr><td>RA-GRS / RA-GZRS</td><td class="desc">Plus read access in secondary</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> One account per app / environment with clear names</li><li class="note-item note-do"><strong>Do</strong> Use lifecycle rules to move old data to colder tiers (sheet 29)</li><li class="note-item note-dont"><strong>Don’t</strong> Hand out account keys or connection strings</li><li class="note-item note-dont"><strong>Don’t</strong> Read archive data frequently (rehydration fees and delays)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Azurite emulates Blob, Queue and Table storage: <code>docker run -p 10000:10000 mcr.microsoft.com/azure-storage/azurite</code></li><li class="note-item">Azure Storage Explorer browses Azurite and real accounts</li><li class="note-item">Connection string <code>UseDevelopmentStorage=true</code> targets Azurite</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Anonymous access and shared keys disabled</li><li class="note-item">ZRS or GZRS for production data</li><li class="note-item">Private endpoint, soft delete and versioning enabled</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-27-aks.html">AKS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-29-storage-security-features.html">Storage Security &amp; Features</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

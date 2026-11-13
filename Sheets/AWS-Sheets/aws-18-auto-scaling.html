@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 18: Auto Scaling</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Auto Scaling</h1>
+			<div class="sheet-desc">launch templates · Auto Scaling groups · desired / min / max · target tracking · scheduled scaling · instance refresh</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Groups That Heal and Scale</h2><div class="description">An <strong>Auto Scaling group (ASG)</strong> keeps a number of instances running from a <strong>launch template</strong>, across AZs, replacing unhealthy ones. <strong>Target tracking</strong> policies keep a metric (CPU, requests per target) near a value; <strong>scheduled</strong> actions scale for known peaks; <strong>predictive</strong> scaling forecasts. <strong>Instance refresh</strong> rolls out a new template gradually.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Desired capacity floats between min and max</li><li class="note-item">Use ELB health checks so failed apps (not just failed VMs) are replaced</li><li class="note-item">Mixed instances policies combine On-Demand and Spot across types</li><li class="note-item">Warm pools cut scale-out time</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">500 Auto Scaling groups per Region by default</li><li class="note-item">50 scaling policies per group</li><li class="note-item">5,000 launch templates per Region</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Launch Template, ASG, Policies</h2><pre><code class="language-bash">aws ec2 create-launch-template --launch-template-name web \
+    --launch-template-data file://lt.json
+aws autoscaling create-auto-scaling-group --auto-scaling-group-name web \
+    --launch-template LaunchTemplateName=web,Version='$Latest' \
+    --min-size 2 --max-size 10 --desired-capacity 2 \
+    --vpc-zone-identifier "$APP_A,$APP_B,$APP_C" \
+    --target-group-arns $TG --health-check-type ELB \
+    --health-check-grace-period 120
+
+aws autoscaling put-scaling-policy --auto-scaling-group-name web \
+    --policy-name cpu50 --policy-type TargetTrackingScaling \
+    --target-tracking-configuration '{"PredefinedMetricSpecification":
+      {"PredefinedMetricType":"ASGAverageCPUUtilization"},"TargetValue":50}'
+aws autoscaling put-scheduled-update-group-action \
+    --auto-scaling-group-name web --scheduled-action-name morning \
+    --recurrence "0 12 * * MON-FRI" --min-size 4
+
+aws autoscaling start-instance-refresh --auto-scaling-group-name web \
+    --preferences '{"MinHealthyPercentage":90,"InstanceWarmup":120}'</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The ASG spans three private subnets (three AZs)</div><div class="explain-item">ELB health checks replace instances whose app fails</div><div class="explain-item">Target tracking adds or removes instances to keep CPU near 50%</div><div class="explain-item">Instance refresh replaces instances in batches with the new template</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> VM Scale Sets + autoscale rules (az-18)</li><li class="note-item"><strong>GCP</strong> Managed instance groups + autoscaler (gcp-18)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Auto Scaling itself is free; you pay for instances</li><li class="note-item">Mixed On-Demand + Spot cuts cost for stateless fleets</li><li class="note-item">Scheduled scale-in overnight saves on predictable load</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Scaling Policies Table | Capacity Settings Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-scaling-policies"><h2 class="section-title">Scaling Policies</h2><table><thead><tr><th>Policy</th><th>Use</th></tr></thead><tbody><tr><td>Target tracking</td><td class="desc">Keep a metric at a target</td></tr><tr><td>Step scaling</td><td class="desc">Bigger jumps for bigger breaches</td></tr><tr><td>Scheduled</td><td class="desc">Known daily / weekly peaks</td></tr><tr><td>Predictive</td><td class="desc">Forecast from history</td></tr><tr><td>Manual</td><td class="desc">Set desired capacity</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-capacity-settings"><h2 class="section-title">Capacity Settings</h2><table><thead><tr><th>Setting</th><th>Meaning</th></tr></thead><tbody><tr><td>min</td><td class="desc">Never fewer</td></tr><tr><td>max</td><td class="desc">Never more (cost cap)</td></tr><tr><td>desired</td><td class="desc">Current target</td></tr><tr><td>warm pool</td><td class="desc">Pre-initialized instances</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use ELB health checks and a realistic grace period</li><li class="note-item note-do"><strong>Do</strong> Scale on requests per target for web tiers</li><li class="note-item note-dont"><strong>Don’t</strong> Set min = max and lose self-healing benefits of scaling</li><li class="note-item note-dont"><strong>Don’t</strong> Store state on instances that may be terminated</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Load-test with k6 / Locust against a staging ASG</li><li class="note-item">Test launch template user data locally first</li><li class="note-item">Review scaling activity with <code>aws autoscaling describe-scaling-activities</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Min 2+ across 3 AZs, ELB health checks</li><li class="note-item">Instance refresh for deployments</li><li class="note-item">Alarms on failed launches and max capacity reached</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-17-load-balancers.html">Elastic Load Balancing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-19-choosing-compute.html">Choosing Compute</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

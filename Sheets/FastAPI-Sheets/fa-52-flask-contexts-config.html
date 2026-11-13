@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 52: Contexts, g &amp; Configuration</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s52">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 52</div>
+			<h1>Contexts, g &amp; Configuration</h1>
+			<div class="sheet-desc">app context · request context · current_app · g · config.from_object / from_prefixed_env · SECRET_KEY · .flaskenv</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Flask makes <code>request</code>, <code>session</code>, <code>current_app</code> and <code>g</code> act like globals by pushing <strong>contexts</strong>: an <strong>app context</strong> (which app is active) and a <strong>request context</strong> (which request). <strong><code>g</code></strong> is scratch space for one request, like the current user or a DB connection. Configuration lives in <code>app.config</code>, loaded from objects, files or environment variables.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Contexts are pushed automatically during requests and CLI commands</li><li class="note-item">Outside them, use <code>with app.app_context():</code></li><li class="note-item"><code>g</code> is reset for every request</li><li class="note-item"><code>FLASK_</code> env vars load via <code>from_prefixed_env()</code></li></ul></section></div>
+				<div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Contexts are stored in Python <code>contextvars</code>, safe across threads and async</li><li class="note-item"><code>request</code>, <code>g</code>, <code>current_app</code> are <code>LocalProxy</code> objects that look up the active context</li><li class="note-item">Teardown functions run when the app context is popped</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Contexts &amp; Config</h2><pre><code class="language-python">from flask import Flask, current_app, g, request
+
+class Default:
+    SECRET_KEY = "dev"                     # override in prod!
+    ITEMS_PER_PAGE = 20
+
+app = Flask(__name__)
+app.config.from_object(Default)
+app.config.from_prefixed_env()        # FLASK_SECRET_KEY → SECRET_KEY
+
+@app.before_request
+def load_user():
+    g.user = users.from_session()          # per-request scratch space
+
+@app.get("/todos")
+def todos():
+    per_page = current_app.config["ITEMS_PER_PAGE"]
+    return repo.for_user(g.user, per_page)
+
+with app.app_context():                    # scripts / shell
+    db.create_all()</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>from_object(Default)</code> — load UPPERCASE attributes</div><div class="explain-item"><code>from_prefixed_env()</code> — read <code>FLASK_*</code> env vars</div><div class="explain-item"><code>g.user</code> — data for this request only</div><div class="explain-item"><code>current_app</code> — the active app (use in blueprints)</div><div class="explain-item"><code>app.app_context()</code> — run code outside requests</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">FastAPI — dependencies replace <code>g</code>; settings via pydantic-settings (sheet 16)</li><li class="note-item">Django — <code>request.user</code> from middleware; <code>django.conf.settings</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid importing <code>app</code> in blueprints for config · Prefer <code>current_app.config</code></li><li class="note-item">Avoid storing request data in module globals · Prefer <code>g</code></li></ul></section></div>
+			</div>
+			<!-- Row 3: Ctx Table | Config Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-ctx"><h2 class="section-title">Context Objects</h2><table><thead><tr><th>Name</th><th>Scope</th></tr></thead><tbody><tr><td>current_app</td><td class="desc">app context</td></tr><tr><td>g</td><td class="desc">app context (one per request)</td></tr><tr><td>request</td><td class="desc">request context</td></tr><tr><td>session</td><td class="desc">request context</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-config"><h2 class="section-title">Config Loaders</h2><table><thead><tr><th>Method</th><th>Source</th></tr></thead><tbody><tr><td>from_object(obj)</td><td class="desc">class or module</td></tr><tr><td>from_pyfile("x.py")</td><td class="desc">Python file</td></tr><tr><td>from_file("x.json", load=json.load)</td><td class="desc">JSON/TOML</td></tr><tr><td>from_prefixed_env()</td><td class="desc">FLASK_* env vars</td></tr><tr><td>config.update(...)</td><td class="desc">dict</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">"Working outside of application context" in scripts: wrap in <code>app.app_context()</code></li><li class="note-item">Shipping <code>SECRET_KEY = "dev"</code> to production</li><li class="note-item">Lowercase config keys: only UPPERCASE names are loaded</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>.flaskenv</code> for <code>FLASK_APP</code>/<code>FLASK_DEBUG</code> and <code>.env</code> for secrets</li><li class="note-item">Generate keys with <code>python -c "import secrets; print(secrets.token_hex())"</code></li><li class="note-item">Use <code>flask shell</code>; it pushes an app context for you</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">app + request contexts — make globals safe</li><li class="note-item"><code>g</code> — per-request storage</li><li class="note-item"><code>current_app</code> — active app in blueprints</li><li class="note-item"><code>app.config</code> — objects, files, env vars</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-51-flask-blueprints-factory.html" class="nav-link prev" title="Blueprints &amp; the App Factory">Blueprints &amp; Factory</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-53-flask-hooks-errors.html" class="nav-link next" title="Request Hooks &amp; Error Handling">Hooks &amp; Errors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

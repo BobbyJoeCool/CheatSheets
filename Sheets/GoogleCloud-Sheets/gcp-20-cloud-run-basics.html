@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 20: Cloud Run Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Cloud Run Basics</h1>
+			<div class="sheet-desc">services &amp; revisions · <code>gcloud run deploy</code> · concurrency · min / max instances · ingress &amp; authentication · traffic splitting</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Serverless Containers</h2><div class="description"><strong>Cloud Run</strong> runs any container that listens on <code>$PORT</code>. Each deploy creates an immutable <strong>revision</strong>; <strong>traffic</strong> can be split between revisions for canaries. Instances scale from zero (or a <strong>min instances</strong> floor) up to <strong>max instances</strong>, each handling up to <strong>concurrency</strong> requests at once. <strong>Ingress</strong> and IAM <strong>authentication</strong> decide who can call it.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Default concurrency is 80 requests per instance</li><li class="note-item">Request-based billing charges CPU only during requests; instance-based keeps CPU always allocated</li><li class="note-item">Revisions can be tagged for test URLs</li><li class="note-item">Direct VPC egress connects to private VPC resources</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Use <code>--no-allow-unauthenticated</code> unless the service is public</li><li class="note-item">Set ingress to <code>internal-and-cloud-load-balancing</code> behind an ALB</li><li class="note-item">Run as a dedicated service account, not the default compute SA</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Request timeout up to 60 minutes (default 5)</li><li class="note-item">Max concurrency 1,000 per instance</li><li class="note-item">Memory up to 32 GiB, CPU up to 8 vCPU per instance; max instances limited by regional quota</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Deploy, Configure, Split Traffic</h2><pre><code class="language-bash">REPO=us-central1-docker.pkg.dev/shop-prod-4821/apps
+gcloud run deploy api --image=$REPO/api:1.4.2 --region=us-central1 \
+    --service-account=api@shop-prod-4821.iam.gserviceaccount.com \
+    --no-allow-unauthenticated --ingress=internal-and-cloud-load-balancing \
+    --cpu=1 --memory=512Mi --concurrency=80 --timeout=60s \
+    --min-instances=1 --max-instances=50 \
+    --set-env-vars=APP_ENV=prod --set-secrets=DB_PASSWORD=db-password:latest \
+    --network=vpc-shop --subnet=app-usc1 --vpc-egress=private-ranges-only
+
+# Canary: deploy without traffic, test the tag URL, then shift
+gcloud run deploy api --image=$REPO/api:1.5.0 --region=us-central1 \
+    --no-traffic --tag=canary
+gcloud run services update-traffic api --region=us-central1 \
+    --to-tags=canary=10
+gcloud run services update-traffic api --region=us-central1 --to-latest
+
+gcloud run services add-iam-policy-binding api --region=us-central1 \
+    --member="serviceAccount:web@shop-prod-4821.iam.gserviceaccount.com" \
+    --role="roles/run.invoker"
+gcloud run revisions list --service=api --region=us-central1</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Only the load balancer and internal traffic reach the service</div><div class="explain-item">Min 1 instance avoids cold starts for the first request</div><div class="explain-item"><code>--no-traffic --tag</code> creates a test URL for the new revision</div><div class="explain-item"><code>run.invoker</code> lets the web service call the API</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Lambda / App Runner / ECS Fargate (aws-20)</li><li class="note-item"><strong>Azure</strong> Azure Container Apps (az-20)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Per vCPU-second, GiB-second and per million requests, with a monthly free tier</li><li class="note-item">Min instances bill while idle (at a lower idle rate)</li><li class="note-item">Higher concurrency means fewer instances and lower cost</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Key Settings Table | Who Can Call Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-key-settings"><h2 class="section-title">Key Settings</h2><table><thead><tr><th>Flag</th><th>Controls</th></tr></thead><tbody><tr><td>--concurrency</td><td class="desc">Requests per instance</td></tr><tr><td>--min / --max-instances</td><td class="desc">Scaling floor / ceiling</td></tr><tr><td>--cpu-boost</td><td class="desc">Faster cold starts</td></tr><tr><td>--no-cpu-throttling</td><td class="desc">Instance-based billing</td></tr><tr><td>--ingress</td><td class="desc">all / internal / internal-and-cloud-load-balancing</td></tr><tr><td>--execution-environment</td><td class="desc">gen1 / gen2</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-who-can-call"><h2 class="section-title">Who Can Call</h2><table><thead><tr><th>Setting</th><th>Effect</th></tr></thead><tbody><tr><td>--allow-unauthenticated</td><td class="desc">Public (allUsers invoker)</td></tr><tr><td>--no-allow-unauthenticated</td><td class="desc">IAM ID token required</td></tr><tr><td>IAP on the service</td><td class="desc">User sign-in</td></tr><tr><td>Ingress internal</td><td class="desc">VPC / same-project sources only</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Keep containers stateless and fast to start</li><li class="note-item note-do"><strong>Do</strong> Use tags + traffic splitting for canaries</li><li class="note-item note-dont"><strong>Don’t</strong> Do background work after returning a response with request-based billing</li><li class="note-item note-dont"><strong>Don’t</strong> Make internal APIs public</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>docker run -p 8080:8080 -e PORT=8080 api</code></li><li class="note-item"><code>gcloud run services proxy api</code> tunnels to a private service with your identity</li><li class="note-item">Cloud Code runs a local Cloud Run emulator</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Dedicated SA, private ingress, IAM auth</li><li class="note-item">Min instances for latency-sensitive services</li><li class="note-item">Revisions deployed by CI with canary + rollback</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-19-choosing-compute.html">Choosing Compute</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-21-cloud-run-functions-jobs.html">Cloud Run Functions &amp; Jobs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

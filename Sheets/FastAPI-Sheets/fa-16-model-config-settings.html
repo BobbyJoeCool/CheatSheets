@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 16: model_config &amp; Settings</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>model_config &amp; Settings</h1>
+			<div class="sheet-desc">ConfigDict · extra=forbid · populate_by_name · pydantic-settings · BaseSettings · .env · lru_cache</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><code>model_config = ConfigDict(...)</code> changes how a model behaves: reject unknown keys, use camelCase aliases, freeze instances. <strong><code>pydantic-settings</code></strong> applies the same idea to configuration: a <code>BaseSettings</code> class reads <strong>environment variables</strong> and <code>.env</code> files, validates them, and fails fast at startup if something is missing.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>pip install pydantic-settings</code> (separate package)</li><li class="note-item">Env var names are case-insensitive by default</li><li class="note-item">Real env vars override <code>.env</code> file values</li><li class="note-item">Never commit <code>.env</code>; commit <code>.env.example</code></li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Config + Settings</h2><pre><code class="language-python">from functools import lru_cache
+from typing import Annotated
+from fastapi import Depends
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class ApiModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel,
+                              populate_by_name=True, extra="forbid")
+    due_date: str                    # JSON key "dueDate"
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="APP_")
+    database_url: str                # APP_DATABASE_URL (required)
+    debug: bool = False
+    secret_key: str
+
+@lru_cache
+def get_settings() -&gt; Settings:
+    return Settings()
+
+SettingsDep = Annotated[Settings, Depends(get_settings)]</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>alias_generator=to_camel</code> — snake in Python, camel in JSON</div><div class="explain-item"><code>populate_by_name</code> — accept either name on input</div><div class="explain-item"><code>extra="forbid"</code> — unknown keys → 422</div><div class="explain-item"><code>env_prefix="APP_"</code> — read <code>APP_DEBUG</code>, etc.</div><div class="explain-item"><code>@lru_cache</code> — build settings once, reuse</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — <code>app.config.from_prefixed_env()</code> (sheet 52)</li><li class="note-item">Django — <code>settings.py</code> + <code>os.environ</code> or <code>django-environ</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid <code>os.getenv()</code> scattered in code · Prefer one <code>Settings</code> class</li><li class="note-item">Avoid a global <code>settings = Settings()</code> in tests · Prefer <code>get_settings</code> + override</li></ul></section></div>
+			</div>
+			<!-- Row 3: Config Table | Settings Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-config"><h2 class="section-title">ConfigDict Options</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td>extra="forbid"/"ignore"/"allow"</td><td class="desc">unknown keys</td></tr><tr><td>frozen=True</td><td class="desc">immutable, hashable</td></tr><tr><td>strict=True</td><td class="desc">no coercion</td></tr><tr><td>validate_assignment</td><td class="desc">check on set</td></tr><tr><td>str_strip_whitespace</td><td class="desc">trim strings</td></tr><tr><td>from_attributes</td><td class="desc">read objects</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-settings"><h2 class="section-title">SettingsConfigDict</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td>env_file</td><td class="desc">load .env</td></tr><tr><td>env_prefix</td><td class="desc">name prefix</td></tr><tr><td>env_nested_delimiter="__"</td><td class="desc">DB__HOST → db.host</td></tr><tr><td>case_sensitive</td><td class="desc">exact env names</td></tr><tr><td>secrets_dir</td><td class="desc">Docker secrets files</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling <code>Settings()</code> in many places: rereads env each time</li><li class="note-item">Committing <code>.env</code> with real secrets</li><li class="note-item"><code>extra="forbid"</code> on settings, then crashing on unrelated env vars from <code>.env</code></li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Override <code>get_settings</code> in tests with <code>app.dependency_overrides</code></li><li class="note-item">Use <code>SecretStr</code> for keys so they don't print</li><li class="note-item">Validate settings at startup in the lifespan (sheet 26)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>ConfigDict</code> — model behavior switches</li><li class="note-item">aliases — camelCase JSON, snake_case Python</li><li class="note-item"><code>BaseSettings</code> — typed env config</li><li class="note-item"><code>@lru_cache</code> — one settings instance</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-15-response-model.html" class="nav-link prev" title="Response Models &amp; Filtering">Response Models</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-17-response-types.html" class="nav-link next">Response Types</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

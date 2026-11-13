@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 91: Type-Safe Builders &amp; DSLs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s91">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 91</div>
+			<h1>Type-Safe Builders &amp; DSLs</h1>
+			<div class="sheet-desc">lambdas with receiver · <code>@DslMarker</code> · <code>buildList</code> / <code>buildString</code> · HTML builder example · Gradle Kotlin DSL as a DSL</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Building Your Own Mini-Languages</h2><div class="description">Kotlin DSLs combine <strong>lambdas with receivers</strong> (<code>T.() -&gt; Unit</code>), extension functions, infix calls and trailing lambdas, so nested blocks read like configuration. The Gradle Kotlin DSL, Ktor routing and kotlinx.html are all built this way. <code>@DslMarker</code> stops inner blocks from accidentally calling outer builders.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Inside <code>T.() -&gt; Unit</code>, <code>this</code> is a T</li><li class="note-item">Each nesting level is a builder class</li><li class="note-item"><code>@DslMarker</code> restricts implicit receivers to the nearest one</li><li class="note-item">Standard builders: <code>buildList</code>, <code>buildString</code>, <code>buildMap</code>, <code>sequence</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Small HTML DSL</h2><pre><code class="language-kotlin">@DslMarker annotation class HtmlDsl
+
+@HtmlDsl
+abstract class Tag(val name: String) {
+    protected val children = mutableListOf&lt;Tag&gt;()
+    private val attrs = mutableMapOf&lt;String, String&gt;()
+    var text = ""
+    fun attr(key: String, value: String) { attrs[key] = value }
+    protected fun &lt;T : Tag&gt; add(tag: T, init: T.() -&gt; Unit): T =
+        tag.apply(init).also { children += it }
+    override fun toString(): String {
+        val a = attrs.entries.joinToString("") { " ${it.key}=\"${it.value}\"" }
+        return "&lt;$name$a&gt;$text${children.joinToString("")}&lt;/$name&gt;"
+    }
+}
+class Html : Tag("html") { fun body(init: Body.() -&gt; Unit) = add(Body(), init) }
+class Body : Tag("body") {
+    fun h1(t: String) = add(H1()) { text = t }
+    fun a(href: String, t: String) = add(A()) { attr("href", href); text = t }
+}
+class H1 : Tag("h1"); class A : Tag("a")
+
+fun html(init: Html.() -&gt; Unit) = Html().apply(init)
+
+val page = html {
+    body {
+        h1("Cheat Sheets")
+        a("/kotlin", "Kotlin set")
+    }
+}
+println(page)
+// &lt;html&gt;&lt;body&gt;&lt;h1&gt;Cheat Sheets&lt;/h1&gt;
+//   &lt;a href="/kotlin"&gt;Kotlin set&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;
+
+val names = buildList { add("Ada"); if (true) add("Bob") }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>html { }</code> takes an <code>Html.() -&gt; Unit</code> lambda</div><div class="explain-item">Inside <code>body { }</code>, calls like <code>h1(...)</code> go to the Body builder</div><div class="explain-item"><code>@HtmlDsl</code> prevents calling <code>body { }</code> inside another <code>body</code></div><div class="explain-item">The same pattern drives Gradle's <code>dependencies { }</code> blocks</div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item">Builder classes with chained methods: <code>Html.builder().body(…).build()</code></li><li class="note-item">Java has no lambdas with receivers</li><li class="note-item">Fluent APIs (jOOQ, AssertJ) are Java's closest equivalent</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item">long fluent builder chains → a receiver-lambda DSL</li><li class="note-item">deeply nested DSL scopes without <code>@DslMarker</code> → add a marker</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Dsl Ingredients Table | Real Dsls Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-dsl-ingredients"><h2 class="section-title">DSL Ingredients</h2><table><thead><tr><th>Feature</th><th>Role</th></tr></thead><tbody><tr><td>T.() -&gt; Unit</td><td class="desc">Block with receiver</td></tr><tr><td>Trailing lambda</td><td class="desc">Block syntax</td></tr><tr><td>Extension functions</td><td class="desc">Add keywords</td></tr><tr><td>infix functions</td><td class="desc">Readable phrases</td></tr><tr><td>Operator overloading</td><td class="desc">+, [], invoke</td></tr><tr><td>@DslMarker</td><td class="desc">Scope control</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-real-dsls"><h2 class="section-title">Real DSLs</h2><table><thead><tr><th>DSL</th><th>Example</th></tr></thead><tbody><tr><td>Gradle</td><td class="desc">dependencies { implementation(…) }</td></tr><tr><td>Ktor</td><td class="desc">routing { get("/") { } }</td></tr><tr><td>kotlinx.html</td><td class="desc">body { h1 { +"Hi" } }</td></tr><tr><td>Exposed</td><td class="desc">Users.select { Users.age greater 18 }</td></tr><tr><td>Kotest</td><td class="desc">"x" shouldBe "x"</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling outer-scope builders from inner blocks by accident</li><li class="note-item">Building DSLs where a simple function call would do</li><li class="note-item">Mutable builder state leaking after construction</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with <code>apply</code>-based builders before custom DSL classes</li><li class="note-item">Use <code>@DslMarker</code> on every builder in the hierarchy</li><li class="note-item">Keep DSLs for configuration and structured content</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>T.() -&gt; Unit</code> — receiver lambda</li><li class="note-item">nested builders</li><li class="note-item"><code>@DslMarker</code> — scope safety</li><li class="note-item">Gradle / Ktor — real DSLs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-90-annotations-reflection.html">Annotations &amp; Reflection</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-92-ktor.html">Ktor</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

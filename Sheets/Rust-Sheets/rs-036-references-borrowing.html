@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 036: References &amp; Borrowing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s036">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 036</div>
+			<h1>References &amp; Borrowing</h1>
+			<div class="sheet-desc"><code>&amp;T</code> shared borrow · <code>*</code> deref · auto-deref on method calls · the borrowing rules · references must stay valid · passing <code>&amp;</code> to functions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Using Values Without Taking Them</h2><div class="description">A <strong>reference</strong> <code>&amp;T</code> borrows a value without taking ownership, so the owner can keep using it afterwards. The borrow checker enforces two rules: you can have **many <code>&amp;T</code> or one <code>&amp;mut T</code>** at a time, and a reference can never outlive the value it points to. References are never null.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>&amp;x</code> creates a reference; <code>*r</code> reads through it</li><li class="note-item">Method calls and <code>.</code> field access auto-deref</li><li class="note-item">Comparison operators work through references</li><li class="note-item">Function signatures show borrows clearly: <code>fn len(s: &amp;String)</code></li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item"><code>&amp;T</code> is a plain pointer at runtime (8 bytes); the rules cost nothing at runtime</li><li class="note-item"><code>&amp;[T]</code>, <code>&amp;str</code> and <code>&amp;dyn Trait</code> are fat pointers (16 bytes)</li><li class="note-item">References to Copy data may be optimized into passing the value</li><li class="note-item"><code>Option&lt;&amp;T&gt;</code> is the same size as <code>&amp;T</code> (null is the None niche)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Shared References</h2><pre><code class="language-rust">fn length(s: &amp;String) -&gt; usize { s.len() }  // borrows, doesn't own
+
+let name = String::from("Ferris");
+let n = length(&amp;name);                      // lend it
+println!("{name} has {n} letters");         // name still usable
+
+let x = 5;
+let r = &amp;x;
+println!("{}", *r + 1);                     // 6, explicit deref
+println!("{}", r + 1);                      // 6, arithmetic auto-derefs
+println!("{}", r == &amp;5);                    // true
+
+let words = vec![String::from("a"), String::from("bb")];
+let first: &amp;String = &amp;words[0];             // borrow an element
+println!("{}", first.len());                // auto-deref for methods
+
+let r1 = &amp;words;
+let r2 = &amp;words;                            // many shared borrows OK
+println!("{} {}", r1.len(), r2.len());
+
+fn longest_len(items: &amp;[String]) -&gt; usize {
+    items.iter().map(|s| s.len()).max().unwrap_or(0)
+}
+println!("{}", longest_len(&amp;words));        // 2
+
+// let dangling: &amp;String;
+// { let tmp = String::from("x"); dangling = &amp;tmp; }
+//                                          // E0597: does not live long enough
+// println!("{dangling}");
+
+let rr: &amp;&amp;i32 = &amp;&amp;7;
+println!("{}", **rr);                       // 7</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>length(&amp;name)</code> lends <code>name</code> and gets it back automatically</div><div class="explain-item"><code>*r</code> follows the reference to the value</div><div class="explain-item">Many <code>&amp;</code> borrows can coexist</div><div class="explain-item">A reference to <code>tmp</code> cannot escape <code>tmp</code>'s block (E0597)</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> references and pointers can dangle; Rust proves they cannot</li><li class="note-item"><strong>Go</strong> pointers keep values alive via the GC</li><li class="note-item"><strong>Java / Python</strong> every object variable is already a shared reference</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>fn f(v: Vec&lt;T&gt;)</code> that only reads → <code>fn f(v: &amp;[T])</code></li><li class="note-item">explicit <code>(*r).len()</code> → <code>r.len()</code> (auto-deref)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Borrowing Rules Table | Syntax Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-borrowing-rules"><h2 class="section-title">Borrowing Rules</h2><table><thead><tr><th>Rule</th><th>Meaning</th></tr></thead><tbody><tr><td>Many &amp;T</td><td class="desc">Any number of readers</td></tr><tr><td>One &amp;mut T</td><td class="desc">Exactly one writer</td></tr><tr><td>Not both at once</td><td class="desc">No reading during a write</td></tr><tr><td>Must not dangle</td><td class="desc">Ref ≤ lifetime of value</td></tr><tr><td>Never null</td><td class="desc">Use Option&lt;&amp;T&gt;</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-syntax"><h2 class="section-title">Syntax</h2><table><thead><tr><th>Code</th><th>Meaning</th></tr></thead><tbody><tr><td>&amp;x</td><td class="desc">Borrow x</td></tr><tr><td>&amp;mut x</td><td class="desc">Mutable borrow</td></tr><tr><td>*r</td><td class="desc">Deref</td></tr><tr><td>r.method()</td><td class="desc">Auto-deref</td></tr><tr><td>&amp;T in signature</td><td class="desc">Takes a borrow</td></tr><tr><td>&amp;&amp;T</td><td class="desc">Reference to reference</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Returning a reference to a local variable (E0515/E0106)</li><li class="note-item">Storing references in structs without lifetimes (sheet 040)</li><li class="note-item">Cloning instead of borrowing to make errors go away</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Borrow by default; move only when the callee must own</li><li class="note-item">Prefer <code>&amp;str</code> and <code>&amp;[T]</code> parameters</li><li class="note-item">Let NLL shorten borrows: use the value, then move on</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>&amp;T</code> — shared borrow</li><li class="note-item">many <code>&amp;</code> or one <code>&amp;mut</code></li><li class="note-item">refs never dangle or null</li><li class="note-item"><code>*</code> deref, auto-deref on <code>.</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-035-copy-clone.html">Copy vs Clone</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-037-mutable-references.html">Mutable References</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

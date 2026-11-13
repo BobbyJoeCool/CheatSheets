@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>COBOL — Sheet 51: Master / Transaction File Update</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cbl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>Master / Transaction File Update</h1>
+			<div class="sheet-desc">balanced-line algorithm · matching keys · adds / changes / deletes · <code>HIGH-VALUES</code> sentinel · old master → new master</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Classic Sequential Update</h2><div class="description">The <strong>balanced-line</strong> algorithm updates a sorted master file with a sorted transaction file. Both files are read in key order; compare the keys and act: transaction key lower means an <strong>add</strong>, equal means a <strong>change or delete</strong>, master key lower means copy the master unchanged. Output is a new master file.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Both files sorted on the same key</li><li class="note-item">At end of file, move HIGH-VALUES to that file's key</li><li class="note-item">Loop until both keys are HIGH-VALUES</li><li class="note-item">Unmatched changes and duplicate adds go to an error report</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Balanced-Line Loop</h2><pre><code class="language-cobol">       0000-MAIN.
+           OPEN INPUT OLD-MAST TRANS OUTPUT NEW-MAST ERR-RPT
+           PERFORM 8100-READ-MAST
+           PERFORM 8200-READ-TRAN
+           PERFORM UNTIL WS-MAST-KEY = HIGH-VALUES
+                     AND WS-TRAN-KEY = HIGH-VALUES
+              EVALUATE TRUE
+                 WHEN WS-TRAN-KEY &lt; WS-MAST-KEY
+                    PERFORM 2000-ADD           *&gt; new account
+                    PERFORM 8200-READ-TRAN
+                 WHEN WS-TRAN-KEY = WS-MAST-KEY
+                    PERFORM 3000-CHANGE-OR-DELETE
+                    PERFORM 8200-READ-TRAN
+                 WHEN OTHER
+                    WRITE NEW-REC FROM OM-REC  *&gt; unchanged
+                    PERFORM 8100-READ-MAST
+              END-EVALUATE
+           END-PERFORM
+           CLOSE OLD-MAST TRANS NEW-MAST ERR-RPT
+           GOBACK.
+
+       8100-READ-MAST.
+           READ OLD-MAST
+              AT END     MOVE HIGH-VALUES TO WS-MAST-KEY
+              NOT AT END MOVE OM-ACCT     TO WS-MAST-KEY
+           END-READ.</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">HIGH-VALUES sort after every real key, so the other file drains first</div><div class="explain-item">3000 applies a change to the master in memory, or flags a delete</div><div class="explain-item">Multiple transactions for one account are applied in turn</div><div class="explain-item">The new master is written only when the master record moves on (not shown)</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> A database <code>UPDATE</code>/<code>INSERT</code>/<code>DELETE</code> per transaction, or a merge-join of two sorted iterators</li><li class="note-item"><strong>Java</strong> JDBC batch upserts, or a two-pointer merge over sorted streams</li><li class="note-item"><strong>JavaScript</strong> SQL upserts, or a two-pointer merge over sorted arrays</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">in-place REWRITE of a tape-era master → keep old/new masters for restart</li><li class="note-item">magic <code>999999</code> end keys → <code>HIGH-VALUES</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Key Comparison Table | Transaction Codes Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-key-comparison"><h2 class="section-title">Key Comparison</h2><table><thead><tr><th>Condition</th><th>Action</th></tr></thead><tbody><tr><td>TRAN &lt; MAST</td><td class="desc">Add (or error if not an add)</td></tr><tr><td>TRAN = MAST</td><td class="desc">Change / delete (or error if add)</td></tr><tr><td>TRAN &gt; MAST</td><td class="desc">Copy master to new master</td></tr><tr><td>Both HIGH-VALUES</td><td class="desc">Done</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-transaction-codes"><h2 class="section-title">Transaction Codes</h2><table><thead><tr><th>Code</th><th>Valid When</th></tr></thead><tbody><tr><td>A (add)</td><td class="desc">No matching master</td></tr><tr><td>C (change)</td><td class="desc">Master exists</td></tr><tr><td>D (delete)</td><td class="desc">Master exists</td></tr><tr><td>Invalid</td><td class="desc">Write to error report</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Unsorted transactions, which produce adds for existing accounts</li><li class="note-item">Using numeric keys with HIGH-VALUES (use alphanumeric keys or 9s)</li><li class="note-item">Writing the master once per transaction instead of once per account</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Sort transactions by key, then by transaction type</li><li class="note-item">Keep old and new masters so a failed run can rerun from the old one</li><li class="note-item">Print control totals: masters in/out, adds, changes, deletes, errors</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">sorted master + sorted trans</li><li class="note-item">compare keys — add / change / copy</li><li class="note-item"><code>HIGH-VALUES</code> — end sentinel</li><li class="note-item">new master — restartable output</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cbl-50-control-break.html">Control Break Processing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">COBOL Reference · 64 Sheets</a>
+				<a class="nav-link next" href="cbl-52-validation-error-handling.html">Data Validation &amp; Error Handling</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cobol.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 31: RDS &amp; Aurora</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s31">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 31</div>
+			<h1>RDS &amp; Aurora</h1>
+			<div class="sheet-desc">engines · Multi-AZ · read replicas · snapshots &amp; PITR · parameter groups · RDS Proxy · Aurora Serverless v2</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Managed Relational Databases</h2><div class="description"><strong>Amazon RDS</strong> runs PostgreSQL, MySQL, MariaDB, SQL Server, Oracle and Db2 with automated backups, patching and <strong>Multi-AZ</strong> failover. <strong>Aurora</strong> is AWS's cloud-native PostgreSQL / MySQL with storage replicated across three AZs, fast replicas and <strong>Serverless v2</strong> autoscaling. <strong>RDS Proxy</strong> pools connections for Lambda and spiky apps.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Multi-AZ DB clusters (two readable standbys) are an option for MySQL / PostgreSQL</li><li class="note-item">Point-in-time restore creates a new instance</li><li class="note-item">Parameter groups hold engine settings</li><li class="note-item">IAM database authentication avoids passwords for apps</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">No public accessibility; private subnets only</li><li class="note-item">Store master password in Secrets Manager (<code>--manage-master-user-password</code>)</li><li class="note-item">Encryption at rest with KMS; enforce TLS (<code>rds.force_ssl</code>)</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Backup retention 1–35 days for PITR</li><li class="note-item">Storage up to 64 TiB (most RDS engines); Aurora up to 128 TiB</li><li class="note-item">40 DB instances per Region by default</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">RDS PostgreSQL and Aurora Serverless v2</h2><pre><code class="language-bash">aws rds create-db-subnet-group --db-subnet-group-name shop-db \
+    --db-subnet-group-description shop --subnet-ids $DATA_A $DATA_B $DATA_C
+aws rds create-db-instance --db-instance-identifier shop-pg \
+    --engine postgres --engine-version 17 --db-instance-class db.m7g.large \
+    --allocated-storage 100 --storage-type gp3 --multi-az \
+    --master-username app --manage-master-user-password \
+    --db-subnet-group-name shop-db --vpc-security-group-ids $DB_SG \
+    --no-publicly-accessible --storage-encrypted --backup-retention-period 14 \
+    --enable-iam-database-authentication --deletion-protection
+
+aws rds create-db-cluster --db-cluster-identifier shop-aurora \
+    --engine aurora-postgresql --serverless-v2-scaling-configuration \
+    MinCapacity=0.5,MaxCapacity=16 --master-username app \
+    --manage-master-user-password --db-subnet-group-name shop-db
+aws rds create-db-instance --db-instance-identifier shop-aurora-1 \
+    --db-cluster-identifier shop-aurora --engine aurora-postgresql \
+    --db-instance-class db.serverless
+
+aws rds restore-db-instance-to-point-in-time \
+    --source-db-instance-identifier shop-pg \
+    --target-db-instance-identifier shop-pg-restore \
+    --restore-time 2026-11-12T08:00:00Z</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Subnet groups place the database in private data subnets</div><div class="explain-item">Multi-AZ keeps a synchronous standby in another AZ</div><div class="explain-item">Aurora Serverless v2 scales between 0.5 and 16 ACUs</div><div class="explain-item">PITR restores into a new instance you can inspect</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure SQL, PostgreSQL Flexible Server (az-31)</li><li class="note-item"><strong>GCP</strong> Cloud SQL, AlloyDB (gcp-31)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Instance hours + storage + I/O (Aurora Standard) or Aurora I/O-Optimized</li><li class="note-item">Multi-AZ roughly doubles instance cost</li><li class="note-item">Reserved Instances discount steady databases; Graviton classes cost less</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Choosing Table | Recovery Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-choosing"><h2 class="section-title">Choosing</h2><table><thead><tr><th>Option</th><th>Use</th></tr></thead><tbody><tr><td>RDS (single / Multi-AZ)</td><td class="desc">Standard managed DB</td></tr><tr><td>Multi-AZ DB cluster</td><td class="desc">Faster failover, readable standbys</td></tr><tr><td>Aurora provisioned</td><td class="desc">High throughput, fast replicas</td></tr><tr><td>Aurora Serverless v2</td><td class="desc">Variable load</td></tr><tr><td>Aurora DSQL</td><td class="desc">Distributed, multi-Region SQL</td></tr><tr><td>RDS Proxy</td><td class="desc">Connection pooling</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-recovery"><h2 class="section-title">Recovery</h2><table><thead><tr><th>Feature</th><th>RPO / Use</th></tr></thead><tbody><tr><td>Automated backups + PITR</td><td class="desc">Seconds–minutes</td></tr><tr><td>Manual snapshots</td><td class="desc">Kept until deleted</td></tr><tr><td>Read replica promotion</td><td class="desc">Regional DR</td></tr><tr><td>Aurora Global Database</td><td class="desc">Cross-Region, &lt;1 s lag</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Turn on deletion protection and Multi-AZ for production</li><li class="note-item note-do"><strong>Do</strong> Use RDS Proxy with Lambda</li><li class="note-item note-dont"><strong>Don’t</strong> Expose databases publicly</li><li class="note-item note-dont"><strong>Don’t</strong> Change parameter groups in production without a test</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Run the same engine version in Docker</li><li class="note-item">Testcontainers for integration tests</li><li class="note-item">Restore a snapshot to a scratch instance for realistic testing</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Multi-AZ, encryption, deletion protection</li><li class="note-item">Performance Insights / Database Insights and alarms</li><li class="note-item">Restore tested; backup retention per compliance</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-30-ebs-efs-backup.html">EBS, EFS &amp; AWS Backup</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-32-dynamodb.html">DynamoDB</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

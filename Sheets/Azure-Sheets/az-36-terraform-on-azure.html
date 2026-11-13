@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 36: Terraform on Azure</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>Terraform on Azure</h1>
+			<div class="sheet-desc"><code>azurerm</code> &amp; <code>azapi</code> providers · state in a storage account · OIDC authentication · <code>terraform plan</code> / <code>apply</code> · choosing Bicep vs azd vs Terraform</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Terraform With Azure</h2><div class="description">The <strong>azurerm</strong> provider covers most Azure services with typed resources; <strong>azapi</strong> calls any ARM API version directly, useful for brand-new features. State lives in a storage account container with blob leases for locking. In CI, authenticate with <strong>OIDC</strong> (federated credentials) instead of client secrets.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">azurerm 4.x requires <code>subscription_id</code> in the provider block</li><li class="note-item">Use <code>use_azuread_auth = true</code> for the state backend</li><li class="note-item">Import existing resources with <code>import</code> blocks</li><li class="note-item">Azure Verified Modules also exist for Terraform</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Provider, Backend, Resources</h2><pre><code class="language-hcl">terraform {
+  required_providers {
+    azurerm = { source = "hashicorp/azurerm", version = "~&gt; 4.0" }
+    azapi   = { source = "Azure/azapi", version = "~&gt; 2.0" }
+  }
+  backend "azurerm" {
+    resource_group_name  = "rg-tfstate"
+    storage_account_name = "sttfstateshop"
+    container_name       = "tfstate"
+    key                  = "shop/prod.tfstate"
+    use_azuread_auth     = true
+    use_oidc             = true
+  }
+}
+
+provider "azurerm" {
+  features {}
+  subscription_id = var.subscription_id
+  use_oidc        = true
+}
+
+resource "azurerm_resource_group" "shop" {
+  name     = "rg-shop-prod"
+  location = "eastus2"
+  tags     = { owner = "team-a", env = "prod" }
+}
+
+resource "azurerm_container_app_environment" "cae" {
+  name                = "cae-shop-prod"
+  resource_group_name = azurerm_resource_group.shop.name
+  location            = azurerm_resource_group.shop.location
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Version constraints keep provider upgrades deliberate</div><div class="explain-item">The backend stores state in a blob and locks with leases</div><div class="explain-item"><code>use_oidc</code> reads the GitHub OIDC token in CI</div><div class="explain-item">Resources reference each other to build dependencies</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Terraform AWS provider, S3 state (aws-36)</li><li class="note-item"><strong>GCP</strong> Terraform Google provider, Cloud Storage state (gcp-34)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Terraform CLI is free; HCP Terraform has free and paid tiers</li><li class="note-item">State storage costs pennies</li><li class="note-item"><code>terraform plan</code> in PRs catches costly changes (pair with Infracost)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Choosing An Iac Tool Table | Commands Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-choosing-an-iac-tool"><h2 class="section-title">Choosing an IaC Tool</h2><table><thead><tr><th>Tool</th><th>Best When</th></tr></thead><tbody><tr><td>Bicep</td><td class="desc">Azure only, day-one API support</td></tr><tr><td>azd + Bicep</td><td class="desc">App + infra templates, dev loop</td></tr><tr><td>Terraform azurerm</td><td class="desc">Multi-cloud teams, existing Terraform</td></tr><tr><td>azapi</td><td class="desc">Features azurerm lacks yet</td></tr><tr><td>Pulumi</td><td class="desc">General-purpose languages</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-commands"><h2 class="section-title">Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td>terraform init</td><td class="desc">Providers + backend</td></tr><tr><td>terraform plan -out p</td><td class="desc">Preview</td></tr><tr><td>terraform apply p</td><td class="desc">Apply saved plan</td></tr><tr><td>terraform import / import {}</td><td class="desc">Adopt resources</td></tr><tr><td>terraform state list</td><td class="desc">Managed resources</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Lock provider versions and upgrade on purpose</li><li class="note-item note-do"><strong>Do</strong> One state file per environment and component</li><li class="note-item note-dont"><strong>Don’t</strong> Store state locally or in git</li><li class="note-item note-dont"><strong>Don’t</strong> Mix manual portal changes with Terraform-managed resources</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>terraform validate</code> / <code>fmt</code> / <code>tflint --enable-plugin=azurerm</code> run offline</li><li class="note-item"><code>terraform plan</code> against a sandbox subscription</li><li class="note-item">Checkov / Trivy scan for misconfigurations</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Apply only from CI with OIDC and approvals</li><li class="note-item">State account with versioning, soft delete and private access</li><li class="note-item">Drift detection on a schedule</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-35-azure-developer-cli.html">Azure Developer CLI (azd)</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-37-monitor-metrics-alerts.html">Azure Monitor Metrics &amp; Alerts</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-hcl.min.js"></script>
+	</body>
+</html>

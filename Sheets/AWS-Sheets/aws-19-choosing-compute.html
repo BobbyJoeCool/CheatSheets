@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 19: Choosing Compute</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>Choosing Compute</h1>
+			<div class="sheet-desc">EC2 vs Lambda vs ECS / Fargate vs EKS · App Runner · Elastic Beanstalk · Lightsail · decision table</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Picking the Right AWS Host</h2><div class="description">AWS has a host at every level of control. <strong>Lambda</strong> runs functions on events. <strong>ECS on Fargate</strong> runs containers without servers; <strong>App Runner</strong> deploys a container or repo as a web service with almost no configuration. <strong>EKS</strong> gives Kubernetes. <strong>EC2</strong> gives full control. <strong>Elastic Beanstalk</strong> and <strong>Lightsail</strong> are simpler packaged options.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Fargate removes node management for ECS and EKS</li><li class="note-item">Lambda scales to zero; ECS / EKS services usually do not</li><li class="note-item">App Runner suits small HTTP services with low ops needs</li><li class="note-item">AWS Batch runs batch jobs on EC2 or Fargate</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">One Container, Several Hosts</h2><pre><code class="language-bash">IMG=111122223333.dkr.ecr.us-east-1.amazonaws.com/shop-api:1.4.0
+
+# App Runner: container to HTTPS URL (config in a JSON file)
+aws apprunner create-service --service-name shop-api \
+    --source-configuration file://apprunner.json
+# apprunner.json: {"ImageRepository": {"ImageIdentifier": "&lt;IMG&gt;",
+#   "ImageRepositoryType": "ECR", "ImageConfiguration": {"Port": "8080"}},
+#   "AuthenticationConfiguration": {"AccessRoleArn": "&lt;ecr-access-role&gt;"}}
+
+# ECS on Fargate (sheet 26)
+aws ecs create-service --cluster shop --service-name api \
+    --task-definition shop-api:7 --desired-count 2 --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[$APP_A],\
+securityGroups=[$APP_SG]}"
+
+# Lambda from a container image (sheet 21)
+aws lambda create-function --function-name shop-api --package-type Image \
+    --code ImageUri=$IMG --role $LAMBDA_ROLE</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">App Runner needs a role that can pull from ECR</div><div class="explain-item">ECS services keep a desired number of Fargate tasks running</div><div class="explain-item">Lambda can run container images up to 10 GB</div><div class="explain-item">The same image can target several services</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Choosing Compute: VMs vs App Service vs Functions vs Container Apps vs AKS (az-19)</li><li class="note-item"><strong>GCP</strong> Choosing Compute: Compute Engine vs Cloud Run vs GKE (gcp-19)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Lambda: per request + GB-second, free tier each month</li><li class="note-item">Fargate: per vCPU-hour and GB-hour while tasks run</li><li class="note-item">EC2 / EKS nodes bill while running; EKS adds a cluster-hour fee</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Decision Table Table | Ops Burden Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-decision-table"><h2 class="section-title">Decision Table</h2><table><thead><tr><th>Workload</th><th>Best Fit</th></tr></thead><tbody><tr><td>Events, glue, APIs with bursty traffic</td><td class="desc">Lambda</td></tr><tr><td>Containerized web service, low ops</td><td class="desc">App Runner / ECS on Fargate</td></tr><tr><td>Many services, AWS-native</td><td class="desc">ECS</td></tr><tr><td>Kubernetes ecosystem</td><td class="desc">EKS</td></tr><tr><td>OS control, GPUs, licensing</td><td class="desc">EC2</td></tr><tr><td>Simple VPS / small site</td><td class="desc">Lightsail</td></tr><tr><td>Batch</td><td class="desc">AWS Batch</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ops-burden"><h2 class="section-title">Ops Burden</h2><table><thead><tr><th>Service</th><th>You Manage</th></tr></thead><tbody><tr><td>Lambda</td><td class="desc">Code</td></tr><tr><td>App Runner</td><td class="desc">Container</td></tr><tr><td>ECS on Fargate</td><td class="desc">Task definitions</td></tr><tr><td>EKS</td><td class="desc">Cluster add-ons, nodes (unless Auto Mode)</td></tr><tr><td>EC2</td><td class="desc">Everything above the hypervisor</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Default to Lambda or Fargate for new services</li><li class="note-item note-do"><strong>Do</strong> Containerize to keep options open</li><li class="note-item note-dont"><strong>Don’t</strong> Choose EKS for a single small service</li><li class="note-item note-dont"><strong>Don’t</strong> Run long CPU-heavy jobs on Lambda</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">SAM CLI for Lambda, Docker Compose for containers, kind for Kubernetes</li><li class="note-item">AWS Copilot CLI scaffolds ECS services</li><li class="note-item">Compare costs in the Pricing Calculator</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Host choice documented with expected cost and limits</li><li class="note-item">Autoscaling and health checks on the chosen service</li><li class="note-item">Same image promoted across environments</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-18-auto-scaling.html">Auto Scaling</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-20-lambda-basics.html">Lambda Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

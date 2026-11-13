@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 08: Key Vault</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>Key Vault</h1>
+			<div class="sheet-desc">secrets, keys &amp; certificates · RBAC vs access policies · soft delete &amp; purge protection · <code>az keyvault secret set</code> / <code>show</code> · Key Vault references in App Service · Managed HSM pointer</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Secrets, Keys and Certificates</h2><div class="description"><strong>Azure Key Vault</strong> stores secrets (passwords, connection strings), cryptographic keys and TLS certificates. Access is controlled by <strong>Azure RBAC</strong> (the default for new vaults) or legacy access policies. <strong>Soft delete</strong> keeps deleted items recoverable, and <strong>purge protection</strong> stops anyone from permanently deleting them early. App Service and Functions can read secrets through <strong>Key Vault references</strong> without code.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Vault names are global: <code>https://kv-shop-prod.vault.azure.net</code></li><li class="note-item">Secrets are versioned; reference a version or always the latest</li><li class="note-item">Standard tier uses software keys; Premium adds HSM-backed keys</li><li class="note-item">Managed HSM is a dedicated, single-tenant HSM pool</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check + Security Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Vault, Secret, Reference</h2><pre><code class="language-bash">az keyvault create -n kv-shop-prod -g rg-shop -l eastus2 \
+    --enable-rbac-authorization true --enable-purge-protection true \
+    --public-network-access Disabled
+KV=$(az keyvault show -n kv-shop-prod --query id -o tsv)
+
+ME=$(az ad signed-in-user show --query id -o tsv)
+az role assignment create --assignee $ME \
+    --role "Key Vault Secrets Officer" --scope $KV
+az keyvault secret set --vault-name kv-shop-prod -n db-password \
+    --value '&lt;from-a-file-or-pipeline&gt;'
+az keyvault secret show --vault-name kv-shop-prod -n db-password \
+    --query id -o tsv                       # versioned URI
+
+# App setting that resolves the secret at runtime
+az webapp config appsettings set -g rg-shop -n app-shop-api --settings \
+  "DB_PASS=@Microsoft.KeyVault(VaultName=kv-shop-prod;SecretName=db-password)"
+
+az keyvault secret recover --vault-name kv-shop-prod -n db-password</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Read in Python</h2><pre><code class="language-python">from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+c = SecretClient("https://kv-shop-prod.vault.azure.net",
+                 DefaultAzureCredential())
+print(c.get_secret("db-password").value)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">RBAC authorization and purge protection are set at creation</div><div class="explain-item">Secrets Officer can write; the app only needs Secrets User</div><div class="explain-item">The Key Vault reference syntax pulls the latest secret version</div><div class="explain-item"><code>recover</code> undoes a soft delete</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Secrets Manager, KMS (aws-08)</li><li class="note-item"><strong>GCP</strong> Secret Manager, Cloud KMS (gcp-08)</li><li class="note-item">Key Vault combines secrets, keys and certificates in one service</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Billed per 10,000 operations; HSM keys and Managed HSM cost more</li><li class="note-item">Certificate renewals through partner CAs carry their own fees</li><li class="note-item">Caching secrets in the app cuts both cost and throttling</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Turn on purge protection for production vaults</li><li class="note-item">Disable public network access; use a private endpoint</li><li class="note-item">Use RBAC roles (Key Vault Secrets User) instead of access policies</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Secret value up to 25 KB</li><li class="note-item">Throttled per vault per region (thousands of GETs per 10 s); cache secrets</li><li class="note-item">Soft delete retention 7–90 days (default 90)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Roles Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-roles"><h2 class="section-title">Roles</h2><table><thead><tr><th>Role</th><th>Grants</th></tr></thead><tbody><tr><td>Key Vault Administrator</td><td class="desc">All data actions</td></tr><tr><td>Key Vault Secrets Officer</td><td class="desc">Manage secrets</td></tr><tr><td>Key Vault Secrets User</td><td class="desc">Read secret values</td></tr><tr><td>Key Vault Crypto User</td><td class="desc">Use keys</td></tr><tr><td>Key Vault Certificates Officer</td><td class="desc">Manage certificates</td></tr><tr><td>Key Vault Reader</td><td class="desc">Metadata only</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> One vault per app per environment</li><li class="note-item note-do"><strong>Do</strong> Read secrets with managed identity and cache them briefly</li><li class="note-item note-dont"><strong>Don’t</strong> Put secret values in Bicep parameters files or pipeline logs</li><li class="note-item note-dont"><strong>Don’t</strong> Use access policies on new vaults</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Use a dev vault in a sandbox subscription; there is no official local emulator</li><li class="note-item">Tests can swap in an in-memory secret provider behind an interface</li><li class="note-item"><code>az keyvault secret list</code> checks names without revealing values</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Purge protection and soft delete on</li><li class="note-item">Private endpoint with public access disabled</li><li class="note-item">Diagnostic logs to Log Analytics; alerts on access failures</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-07-managed-identities.html">Managed Identities &amp; Federation</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-09-security-governance.html">Security &amp; Governance</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

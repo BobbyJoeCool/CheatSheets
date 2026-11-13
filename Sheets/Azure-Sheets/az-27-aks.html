@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 27: AKS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>AKS</h1>
+			<div class="sheet-desc"><code>az aks create</code> · <code>az aks get-credentials</code> · node pools · AKS Automatic · workload identity · <code>--attach-acr</code> · add-ons &amp; extensions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Managed Kubernetes on Azure</h2><div class="description"><strong>Azure Kubernetes Service (AKS)</strong> runs the Kubernetes control plane for you; you choose node pools, networking and add-ons. <strong>AKS Automatic</strong> goes further, managing nodes, scaling, upgrades and security defaults. <strong>Workload identity</strong> lets pods use Entra ID identities through federated credentials. Attaching ACR lets nodes pull images without secrets.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">System node pool runs cluster add-ons; user pools run apps</li><li class="note-item">Azure CNI Overlay is the common default network mode</li><li class="note-item">Upgrades: control plane first, then node pools (auto-upgrade channels available)</li><li class="note-item">See the Kubernetes set for kubectl and manifests</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Cluster, Pools, Identity</h2><pre><code class="language-bash">az aks create -g rg-aks -n aks-shop -l eastus2 --tier standard \
+    --node-count 3 --zones 1 2 3 --node-vm-size Standard_D4ps_v6 \
+    --network-plugin azure --network-plugin-mode overlay \
+    --enable-oidc-issuer --enable-workload-identity \
+    --attach-acr shopacr --generate-ssh-keys
+# Or let Azure manage nodes and defaults
+az aks create -g rg-aks -n aks-auto --sku automatic -l eastus2
+
+az aks get-credentials -g rg-aks -n aks-shop
+kubectl get nodes -o wide
+
+az aks nodepool add -g rg-aks --cluster-name aks-shop -n spot \
+    --priority Spot --eviction-policy Delete --spot-max-price -1 \
+    --enable-cluster-autoscaler --min-count 0 --max-count 10
+
+# Workload identity: federate a Kubernetes service account
+ISSUER=$(az aks show -g rg-aks -n aks-shop \
+    --query oidcIssuerProfile.issuerUrl -o tsv)
+az identity federated-credential create -g rg-aks --identity-name id-api \
+    -n api-sa --issuer $ISSUER \
+    --subject system:serviceaccount:shop:api \
+    --audiences api://AzureADTokenExchange
+
+az aks get-upgrades -g rg-aks -n aks-shop -o table
+az aks upgrade -g rg-aks -n aks-shop --kubernetes-version &lt;version&gt;</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Standard tier adds the uptime SLA and larger scale limits</div><div class="explain-item"><code>--attach-acr</code> grants the kubelet identity AcrPull</div><div class="explain-item">A Spot pool scales from zero for cheap batch work</div><div class="explain-item">Pods using service account <code>shop/api</code> get the identity's Entra tokens</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> EKS, eksctl, Pod Identity, EKS Auto Mode (aws-27)</li><li class="note-item"><strong>GCP</strong> GKE Standard / Autopilot, Workload Identity Federation (gcp-26, gcp-27)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Free tier: no cluster fee, no SLA; Standard tier: hourly fee per cluster</li><li class="note-item">You pay for node VMs, disks and load balancers</li><li class="note-item">Spot pools and the cluster autoscaler cut node cost</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Up to 5,000 nodes per cluster (Standard tier)</li><li class="note-item">Up to 100 node pools per cluster</li><li class="note-item">Up to 250 pods per node (set at pool creation)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Tiers Modes Table | Common Add Ons Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-tiers-modes"><h2 class="section-title">Tiers &amp; Modes</h2><table><thead><tr><th>Option</th><th>Use</th></tr></thead><tbody><tr><td>Free tier</td><td class="desc">Dev / test</td></tr><tr><td>Standard tier</td><td class="desc">Production with SLA</td></tr><tr><td>Premium tier</td><td class="desc">Long-term support versions</td></tr><tr><td>AKS Automatic</td><td class="desc">Managed nodes and defaults</td></tr><tr><td>AKS Standard (manual)</td><td class="desc">Full control of pools</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-common-add-ons"><h2 class="section-title">Common Add-ons</h2><table><thead><tr><th>Add-on</th><th>Does</th></tr></thead><tbody><tr><td>Azure Monitor (Container insights)</td><td class="desc">Logs and metrics</td></tr><tr><td>Managed Prometheus / Grafana</td><td class="desc">Metrics stack</td></tr><tr><td>Key Vault CSI driver</td><td class="desc">Mount secrets</td></tr><tr><td>App routing</td><td class="desc">Managed NGINX ingress</td></tr><tr><td>Azure Policy</td><td class="desc">Pod security guardrails</td></tr><tr><td>KEDA</td><td class="desc">Event-driven autoscaling</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use workload identity for pods; never mount cloud secrets as env vars by hand</li><li class="note-item note-do"><strong>Do</strong> Spread node pools across zones</li><li class="note-item note-dont"><strong>Don’t</strong> Run apps on the system node pool</li><li class="note-item note-dont"><strong>Don’t</strong> Fall far behind on Kubernetes versions (support windows are short)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">kind / k3d / minikube test the same manifests locally</li><li class="note-item">Bridge to Kubernetes / mirrord connect local code to a cluster</li><li class="note-item"><code>az aks command invoke</code> runs kubectl against private clusters</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Standard tier, three zones, autoscaler bounds set</li><li class="note-item">Auto-upgrade channel and maintenance windows configured</li><li class="note-item">Workload identity, Key Vault CSI and Azure Policy enabled</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-26-container-apps.html">Azure Container Apps</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-28-blob-storage-basics.html">Blob Storage Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

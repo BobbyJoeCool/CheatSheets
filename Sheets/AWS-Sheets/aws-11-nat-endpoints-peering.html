@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 11: NAT, Endpoints &amp; Connectivity</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>NAT, Endpoints &amp; Connectivity</h1>
+			<div class="sheet-desc">NAT gateway · gateway vs interface VPC endpoints (PrivateLink) · VPC peering · Transit Gateway · Site-to-Site VPN</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Getting Out, Reaching AWS Privately, Connecting Networks</h2><div class="description">A <strong>NAT gateway</strong> in a public subnet gives private subnets outbound internet access. <strong>VPC endpoints</strong> reach AWS services without the internet: <strong>gateway endpoints</strong> for S3 and DynamoDB (free, via route tables) and <strong>interface endpoints</strong> (PrivateLink ENIs) for most other services. <strong>Peering</strong> links two VPCs; <strong>Transit Gateway</strong> is a hub for many VPCs and VPNs.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">One NAT gateway per AZ avoids cross-AZ dependency and charges</li><li class="note-item">Gateway endpoints cut NAT data charges for S3 / DynamoDB traffic</li><li class="note-item">Interface endpoints need private DNS enabled to keep normal service names</li><li class="note-item">Peering is not transitive; Transit Gateway routes between many</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">NAT, Endpoints, Peering</h2><pre><code class="language-bash">EIP=$(aws ec2 allocate-address --query AllocationId --output text)
+NAT=$(aws ec2 create-nat-gateway --subnet-id $PUB_A --allocation-id $EIP \
+  --query NatGateway.NatGatewayId --output text)
+aws ec2 create-route --route-table-id $APP_RT \
+    --destination-cidr-block 0.0.0.0/0 --nat-gateway-id $NAT
+
+# Free gateway endpoint for S3
+aws ec2 create-vpc-endpoint --vpc-id $VPC --vpc-endpoint-type Gateway \
+    --service-name com.amazonaws.us-east-1.s3 --route-table-ids $APP_RT
+
+# Interface endpoint (PrivateLink) for Secrets Manager
+aws ec2 create-vpc-endpoint --vpc-id $VPC --vpc-endpoint-type Interface \
+    --service-name com.amazonaws.us-east-1.secretsmanager \
+    --subnet-ids $APP_A $APP_B --security-group-ids $SG_ENDPOINTS \
+    --private-dns-enabled
+
+# Peer two VPCs
+aws ec2 create-vpc-peering-connection --vpc-id $VPC --peer-vpc-id $VPC2
+aws ec2 accept-vpc-peering-connection --vpc-peering-connection-id pcx-0abc</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The NAT gateway needs an Elastic IP and lives in a public subnet</div><div class="explain-item">Private route table sends internet traffic to the NAT gateway</div><div class="explain-item">The S3 gateway endpoint is a route-table entry, no ENIs</div><div class="explain-item">Interface endpoints create ENIs in your subnets with private DNS</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> NAT Gateway, Private Endpoints, VNet peering, Virtual WAN (az-11)</li><li class="note-item"><strong>GCP</strong> Cloud NAT, Private Service Connect, peering, NCC (gcp-11)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">NAT gateway: hourly + per GB processed, even when idle</li><li class="note-item">Interface endpoints: hourly per AZ + per GB; gateway endpoints are free</li><li class="note-item">Transit Gateway: per attachment-hour + per GB</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Connectivity Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-connectivity-options"><h2 class="section-title">Connectivity Options</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Private subnet → internet</td><td class="desc">NAT gateway</td></tr><tr><td>Private → S3 / DynamoDB</td><td class="desc">Gateway endpoint</td></tr><tr><td>Private → other AWS APIs</td><td class="desc">Interface endpoint</td></tr><tr><td>VPC ↔ VPC (few)</td><td class="desc">Peering</td></tr><tr><td>Many VPCs + on-prem</td><td class="desc">Transit Gateway</td></tr><tr><td>Office ↔ AWS</td><td class="desc">Site-to-Site VPN / Direct Connect</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Add S3 and DynamoDB gateway endpoints to every VPC</li><li class="note-item note-do"><strong>Do</strong> Put a NAT gateway in each AZ for production</li><li class="note-item note-dont"><strong>Don’t</strong> Leave NAT gateways in idle dev VPCs (they bill hourly)</li><li class="note-item note-dont"><strong>Don’t</strong> Forget security groups on interface endpoints</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Reachability Analyzer and Network Access Analyzer test paths</li><li class="note-item">Price NAT vs endpoints in the Pricing Calculator</li><li class="note-item">IaC plans show endpoint and route changes before apply</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">NAT per AZ; gateway endpoints for S3 / DynamoDB</li><li class="note-item">Interface endpoints for sensitive service APIs</li><li class="note-item">Routing documented; non-overlapping CIDRs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-10-vpc-basics.html">VPC Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-12-security-groups-nacls.html">Security Groups &amp; NACLs</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

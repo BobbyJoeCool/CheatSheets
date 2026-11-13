@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 06: Workload Identity &amp; Federation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s06">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 06</div>
+			<h1>Workload Identity &amp; Federation</h1>
+			<div class="sheet-desc">IAM roles · managed identities · service accounts · short-lived credentials · OIDC federation from CI · why long-lived keys are risky</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Credentials for Code, Without Secrets</h2><div class="description">Applications need identities too. Instead of pasting an access key into config, attach an identity to the compute resource: an <strong>IAM role</strong> on AWS, a <strong>managed identity</strong> on Azure, a <strong>service account</strong> on Google Cloud. The platform hands out short-lived tokens automatically. Outside the cloud (CI pipelines, other clouds) use <strong>OIDC federation</strong>: the provider trusts tokens from GitHub or another identity provider.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Tokens expire in about an hour and refresh themselves</li><li class="note-item">SDKs find these credentials automatically (default credential chains)</li><li class="note-item">Federation means no stored secret in GitHub at all</li><li class="note-item">A leaked long-lived key works until someone notices and revokes it</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Same Code, No Keys (SDK default chains)</h2><pre><code class="language-python"># AWS: boto3 picks up the role from the environment / instance profile
+import boto3
+s3 = boto3.client("s3")
+
+# Azure: DefaultAzureCredential uses the managed identity in Azure
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+blobs = BlobServiceClient("https://demostore.blob.core.windows.net",
+                          credential=DefaultAzureCredential())
+
+# Google Cloud: Application Default Credentials use the service account
+from google.cloud import storage
+gcs = storage.Client()</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">GitHub Actions OIDC Logins</h2><pre><code class="language-yaml">permissions: { id-token: write, contents: read }
+steps:
+  - uses: aws-actions/configure-aws-credentials@v4
+    with: { role-to-assume: "arn:aws:iam::111122223333:role/gh-deploy",
+            aws-region: us-east-1 }
+  - uses: azure/login@v2
+    with: { client-id: ..., tenant-id: ..., subscription-id: ... }
+  - uses: google-github-actions/auth@v2
+    with: { workload_identity_provider: "projects/123/locations/global/...",
+            service_account: "deploy@app-prod.iam.gserviceaccount.com" }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">No credentials appear in the code: the default chain finds them</div><div class="explain-item">On a laptop the same code uses your CLI login instead</div><div class="explain-item"><code>id-token: write</code> lets the GitHub job request an OIDC token</div><div class="explain-item">Each cloud trusts that token through a role, app registration or pool</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> IAM roles, instance profiles, OIDC providers (aws-07)</li><li class="note-item"><strong>Azure</strong> managed identities, federated credentials (az-07)</li><li class="note-item"><strong>Google Cloud</strong> service accounts, Workload Identity Federation (gcp-07)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">If you are about to create an access key, look for the identity-based option first</li><li class="note-item">One identity per workload, with only the roles that workload needs</li><li class="note-item">Federate CI; never store cloud keys as repository secrets</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Workload Identity Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-workload-identity"><h2 class="section-title">Workload Identity</h2><table><thead><tr><th>Need</th><th>AWS</th><th>Azure</th><th>Google Cloud</th></tr></thead><tbody><tr><td>VM / container</td><td class="kw">Instance profile, task role</td><td class="kw">Managed identity</td><td class="kw">Attached service account</td></tr><tr><td>Kubernetes pod</td><td class="kw">EKS Pod Identity</td><td class="kw">AKS workload identity</td><td class="kw">GKE Workload Identity Federation</td></tr><tr><td>CI pipeline</td><td class="kw">OIDC provider + role</td><td class="kw">Federated credential</td><td class="kw">Workload Identity Federation</td></tr><tr><td>Local dev</td><td class="kw">SSO profile</td><td class="kw">az login</td><td class="kw">gcloud auth application-default login</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use the SDK default credential chain in all code</li><li class="note-item note-do"><strong>Do</strong> Scope federation trust to one repo and branch / environment</li><li class="note-item note-dont"><strong>Don’t</strong> Commit a key file or <code>.env</code> with cloud secrets</li><li class="note-item note-dont"><strong>Don’t</strong> Reuse one powerful identity for every service</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Laptop: <code>aws sso login</code>, <code>az login</code>, <code>gcloud auth application-default login</code> feed the same default chains</li><li class="note-item">LocalStack and Azurite accept dummy credentials, so no real keys are needed</li><li class="note-item">Use <code>act</code> to dry-run GitHub workflows (OIDC steps need the real runner)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Zero long-lived access keys for workloads (alert on any that appear)</li><li class="note-item">Federation trust conditions pinned to repo, branch and environment</li><li class="note-item">Key creation blocked by policy where the cloud supports it</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-05-identity-access.html">Identity &amp; Access Concepts</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-07-secrets-encryption.html">Secrets &amp; Encryption</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

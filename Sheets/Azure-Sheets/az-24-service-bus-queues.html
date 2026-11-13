@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 24: Service Bus &amp; Storage Queues</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s24">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 24</div>
+			<h1>Service Bus &amp; Storage Queues</h1>
+			<div class="sheet-desc">queues vs topics &amp; subscriptions · peek-lock &amp; settle · sessions · dead-letter queues · Storage Queues · Event Hubs pointer</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Reliable Messaging</h2><div class="description"><strong>Azure Service Bus</strong> is the enterprise message broker: <strong>queues</strong> for one consumer group, <strong>topics</strong> with <strong>subscriptions</strong> (each with filters) for fan-out. Receivers use <strong>peek-lock</strong>: a message is locked, processed, then completed, or returned on failure. <strong>Sessions</strong> give ordered processing per key, and failed messages move to a <strong>dead-letter queue</strong>. <strong>Storage Queues</strong> are a simpler, cheaper option.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Peek-lock + complete gives at-least-once processing</li><li class="note-item">Max delivery count (default 10) before dead-lettering</li><li class="note-item">Duplicate detection drops repeats by message ID within a window</li><li class="note-item">Event Hubs is for high-volume streams, not commands</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Message size: 256 KB (Standard), up to 100 MB (Premium)</li><li class="note-item">Lock duration up to 5 minutes (renew for longer work)</li><li class="note-item">Queue / topic size up to 5 GB on Standard; Premium scales with messaging units</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Namespace, Queue, Topic</h2><pre><code class="language-bash">az servicebus namespace create -g rg-msg -n sb-shop -l eastus2 --sku Standard
+az servicebus queue create -g rg-msg --namespace-name sb-shop -n orders \
+    --max-delivery-count 10 --lock-duration PT1M \
+    --enable-dead-lettering-on-message-expiration true
+az servicebus topic create -g rg-msg --namespace-name sb-shop -n events
+az servicebus topic subscription create -g rg-msg --namespace-name sb-shop \
+    --topic-name events -n eu-only
+az servicebus topic subscription rule create -g rg-msg \
+    --namespace-name sb-shop \
+    --topic-name events --subscription-name eu-only -n region \
+    --filter-sql-expression "region = 'eu'"</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Send and Receive (Python, managed identity)</h2><pre><code class="language-python">from azure.identity import DefaultAzureCredential
+from azure.servicebus import ServiceBusClient, ServiceBusMessage
+sb = ServiceBusClient("sb-shop.servicebus.windows.net",
+                      DefaultAzureCredential())
+with sb.get_queue_sender("orders") as s:
+    s.send_messages(ServiceBusMessage('{"id": 42}', message_id="42"))
+with sb.get_queue_receiver("orders", max_wait_time=5) as r:
+    for m in r:
+        try:
+            process(str(m)); r.complete_message(m)
+        except Exception:
+            r.abandon_message(m)            # retry until max delivery count</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">A subscription rule filters topic messages with SQL-like expressions</div><div class="explain-item">Setting <code>message_id</code> enables duplicate detection when turned on</div><div class="explain-item"><code>complete_message</code> removes it; <code>abandon_message</code> makes it visible again</div><div class="explain-item">Roles: Azure Service Bus Data Sender / Data Receiver</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> SQS (queues), SNS (topics), Amazon MQ (aws-24)</li><li class="note-item"><strong>GCP</strong> Pub/Sub topics and subscriptions, Cloud Tasks (gcp-24)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Basic / Standard: per operation; Standard adds a base monthly charge</li><li class="note-item">Premium: per messaging unit per hour, predictable performance</li><li class="note-item">Storage Queues cost a fraction of Service Bus for simple needs</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Service Bus Vs Stora Table | Tiers Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-service-bus-vs-stora"><h2 class="section-title">Service Bus vs Storage Queues</h2><table><thead><tr><th>Feature</th><th>Service Bus</th><th>Storage Queues</th></tr></thead><tbody><tr><td>Max message</td><td class="kw">256 KB / 100 MB</td><td class="kw">64 KB</td></tr><tr><td>Topics / filters</td><td class="kw">Yes</td><td class="kw">No</td></tr><tr><td>Ordering (sessions)</td><td class="kw">Yes</td><td class="kw">No</td></tr><tr><td>Dead-letter queue</td><td class="kw">Built in</td><td class="kw">DIY (poison queue)</td></tr><tr><td>Transactions</td><td class="kw">Yes</td><td class="kw">No</td></tr><tr><td>Cost</td><td class="kw">Higher</td><td class="kw">Very low</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-tiers"><h2 class="section-title">Tiers</h2><table><thead><tr><th>Tier</th><th>Has</th></tr></thead><tbody><tr><td>Basic</td><td class="desc">Queues only</td></tr><tr><td>Standard</td><td class="desc">Topics, sessions, transactions</td></tr><tr><td>Premium</td><td class="desc">Isolation, large messages, private endpoints</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Make consumers idempotent and set message IDs</li><li class="note-item note-do"><strong>Do</strong> Alert on dead-letter queue depth</li><li class="note-item note-dont"><strong>Don’t</strong> Hold a lock longer than its duration without renewing</li><li class="note-item note-dont"><strong>Don’t</strong> Put large payloads in messages (store in Blob, send a link)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">The Service Bus emulator runs in Docker with a config file of queues and topics</li><li class="note-item">Azurite emulates Storage Queues</li><li class="note-item">Service Bus Explorer (portal) peeks and resubmits messages</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Managed identity with Data Sender / Receiver roles</li><li class="note-item">Dead-letter monitoring and replay process</li><li class="note-item">Premium tier or zone redundancy for critical workloads</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-23-event-grid-logic-apps.html">Event Grid &amp; Logic Apps</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-25-container-registry.html">Azure Container Registry</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 38: Cloud Logging &amp; Trace</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>Cloud Logging &amp; Trace</h1>
+			<div class="sheet-desc">Log Router &amp; sinks · log buckets &amp; retention · Logging query language · log-based metrics · Cloud Trace with OpenTelemetry · Error Reporting</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Logs and Traces</h2><div class="description"><strong>Cloud Logging</strong> ingests logs from services, agents and apps (structured JSON on stdout works on Cloud Run and GKE). The <strong>Log Router</strong> sends entries through <strong>sinks</strong> to <strong>log buckets</strong>, BigQuery, Cloud Storage or Pub/Sub. Query with the <strong>Logging query language</strong> or <strong>Log Analytics</strong> (SQL). <strong>Cloud Trace</strong> receives OpenTelemetry spans, and <strong>Error Reporting</strong> groups exceptions.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>_Required</code> bucket keeps audit logs 400 days; <code>_Default</code> keeps 30 days by default</li><li class="note-item">Exclusion filters drop noisy logs before ingestion charges</li><li class="note-item">Write JSON with <code>severity</code> and <code>message</code> fields for structured logs</li><li class="note-item">Trace context propagates via <code>traceparent</code> headers</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / Azure Equivalent + Cost Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Query, Route, Retain</h2><pre><code class="language-bash">gcloud logging read 'resource.type="cloud_run_revision"
+  AND resource.labels.service_name="api" AND severity&gt;=ERROR' \
+  --freshness=1h --limit=20 --format="value(timestamp,jsonPayload.message)"
+
+gcloud logging buckets update _Default --location=global --retention-days=90
+gcloud logging sinks create audit-to-bq \
+    bigquery.googleapis.com/projects/sec-logs-1111/datasets/audit \
+    --log-filter='logName:"cloudaudit.googleapis.com"' \
+    --organization=123456789012 --include-children
+gcloud logging sinks update _Default \
+    --add-exclusion=name=no-health,filter='httpRequest.requestUrl:"/healthz"'
+gcloud logging metrics create checkout_errors \
+    --log-filter='jsonPayload.event="checkout_failed"'</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Structured Logs and Traces (Python)</h2><pre><code class="language-python">import json, sys
+def log(severity, message, **fields):
+    print(json.dumps({"severity": severity, "message": message, **fields}),
+          file=sys.stdout, flush=True)
+log("ERROR", "checkout failed", event="checkout_failed", order="o-1001")
+
+from opentelemetry import trace
+tracer = trace.get_tracer("shop.api")
+with tracer.start_as_current_span("charge-card") as span:
+    span.set_attribute("order.id", "o-1001")
+    charge()</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The query finds recent errors from one Cloud Run service</div><div class="explain-item">The org-level sink copies all audit logs to BigQuery</div><div class="explain-item">The exclusion drops health-check request logs</div><div class="explain-item">JSON lines become structured entries with severity</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> CloudWatch Logs, Logs Insights, X-Ray (aws-38)</li><li class="note-item"><strong>Azure</strong> Log Analytics, Application Insights (az-38)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Ingestion per GiB after 50 GiB per project per month free</li><li class="note-item">Retention beyond 30 days bills per GiB-month</li><li class="note-item">Exclusions and sampling cut the biggest costs</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Log entry size up to 256 KB</li><li class="note-item">Default <code>_Default</code> retention 30 days (configurable up to 3,650)</li><li class="note-item">Write quotas per project per minute (batch writes)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Sink Destinations Table | Query Language Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-sink-destinations"><h2 class="section-title">Sink Destinations</h2><table><thead><tr><th>Destination</th><th>Use</th></tr></thead><tbody><tr><td>Log bucket</td><td class="desc">Search, Log Analytics</td></tr><tr><td>BigQuery</td><td class="desc">SQL analysis, long retention</td></tr><tr><td>Cloud Storage</td><td class="desc">Cheap archive</td></tr><tr><td>Pub/Sub</td><td class="desc">Stream to SIEM / tools</td></tr><tr><td>Another project</td><td class="desc">Central logging</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-query-language"><h2 class="section-title">Query Language</h2><table><thead><tr><th>Example</th><th>Matches</th></tr></thead><tbody><tr><td>severity&gt;=ERROR</td><td class="desc">Errors and above</td></tr><tr><td>resource.type="k8s_container"</td><td class="desc">GKE containers</td></tr><tr><td>jsonPayload.user="u1"</td><td class="desc">Structured field</td></tr><tr><td>textPayload:"timeout"</td><td class="desc">Substring</td></tr><tr><td>timestamp&gt;="2026-11-12T00:00:00Z"</td><td class="desc">Time range</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Log structured JSON with severity</li><li class="note-item note-do"><strong>Do</strong> Centralize audit logs with an org-level sink</li><li class="note-item note-dont"><strong>Don’t</strong> Log secrets, tokens or full request bodies</li><li class="note-item note-dont"><strong>Don’t</strong> Keep debug logging on in production without exclusions</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Print the same JSON locally; read with <code>jq</code></li><li class="note-item">Jaeger in Docker receives OTLP spans locally</li><li class="note-item"><code>gcloud logging tail</code> streams live logs (beta)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Retention set per bucket; audit logs centralized</li><li class="note-item">Exclusions for noisy logs</li><li class="note-item">Traces sampled and linked to logs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-37-cloud-monitoring.html">Cloud Monitoring</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-39-deploying-to-google-cloud.html">Deploying to Google Cloud</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

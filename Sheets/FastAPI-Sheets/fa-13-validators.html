@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 13: Custom Validators</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Custom Validators</h1>
+			<div class="sheet-desc">@field_validator · @model_validator · mode=before/after · AfterValidator · @computed_field</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">When <code>Field()</code> rules aren't enough, write <strong>validators</strong>. A <code>@field_validator</code> checks or transforms one field; a <code>@model_validator</code> sees the whole model, which is how you compare two fields. Raise <code>ValueError</code> with a clear message and FastAPI turns it into a 422 entry. <code>@computed_field</code> adds read-only values to the output.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Validators are <code>@classmethod</code>s in v2</li><li class="note-item"><code>mode="before"</code> sees raw input; <code>"after"</code> sees typed values</li><li class="note-item">Return the (possibly changed) value from a field validator</li><li class="note-item">Return <code>self</code> from an after model validator</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Field, Model &amp; Computed</h2><pre><code class="language-python">from datetime import date
+from typing import Annotated
+from pydantic import (BaseModel, AfterValidator, computed_field,
+                      field_validator, model_validator)
+
+def no_spaces(v: str) -&gt; str:
+    if " " in v: raise ValueError("no spaces allowed")
+    return v
+
+class Trip(BaseModel):
+    code: Annotated[str, AfterValidator(no_spaces)]
+    city: str
+    start: date; end: date
+
+    @field_validator("city")
+    @classmethod
+    def tidy_city(cls, v: str) -&gt; str:
+        return v.strip().title()      # " ames" → "Ames"
+
+    @model_validator(mode="after")
+    def check_dates(self):
+        if self.end &lt; self.start: raise ValueError("end &lt; start")
+        return self
+
+    @computed_field
+    @property
+    def nights(self) -&gt; int:
+        return (self.end - self.start).days</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>AfterValidator(fn)</code> — reusable validator inside <code>Annotated</code></div><div class="explain-item"><code>@field_validator("city")</code> — runs for that field</div><div class="explain-item"><code>@model_validator(mode="after")</code> — cross-field checks</div><div class="explain-item"><code>ValueError</code> → 422 item with your message</div><div class="explain-item"><code>@computed_field</code> — included in <code>model_dump()</code> and docs</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — WTForms <code>validate_&lt;field&gt;()</code> methods (sheet 50)</li><li class="note-item">Django — <code>clean_&lt;field&gt;()</code> and <code>clean()</code> on forms</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid v1 <code>@validator</code> / <code>@root_validator</code> · Prefer <code>@field_validator</code> / <code>@model_validator</code></li><li class="note-item">Avoid raising <code>HTTPException</code> in validators · Prefer <code>ValueError</code></li></ul></section></div>
+			</div>
+			<!-- Row 3: Modes Table | Ann Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-modes"><h2 class="section-title">Validator Modes</h2><table><thead><tr><th>Mode</th><th>Gets</th><th>Use for</th></tr></thead><tbody><tr><td>before</td><td class="desc">raw input</td><td class="desc">normalize strings, parse odd formats</td></tr><tr><td>after</td><td class="desc">typed value</td><td class="desc">business rules</td></tr><tr><td>wrap</td><td class="desc">value + handler</td><td class="desc">skip or retry validation</td></tr><tr><td>plain</td><td class="desc">raw input</td><td class="desc">replace validation entirely</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-ann"><h2 class="section-title">Annotated Validators</h2><table><thead><tr><th>Name</th><th>Runs</th></tr></thead><tbody><tr><td>BeforeValidator(fn)</td><td class="desc">before type check</td></tr><tr><td>AfterValidator(fn)</td><td class="desc">after type check</td></tr><tr><td>PlainValidator(fn)</td><td class="desc">instead of type check</td></tr><tr><td>WrapValidator(fn)</td><td class="desc">around type check</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting <code>return v</code>: the field becomes <code>None</code></li><li class="note-item">Missing <code>@classmethod</code> under <code>@field_validator</code></li><li class="note-item">Doing DB lookups in validators: slow, and validators can't use dependencies</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Check uniqueness (email taken) in the route or a dependency, not the model</li><li class="note-item">Use <code>mode="before"</code> to accept <code>"a,b,c"</code> and split into a list</li><li class="note-item">Keep messages user-facing; they go straight to API clients</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>@field_validator</code> — one field</li><li class="note-item"><code>@model_validator</code> — whole model, cross-field</li><li class="note-item"><code>AfterValidator</code> — reusable via <code>Annotated</code></li><li class="note-item"><code>@computed_field</code> — derived output value</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-12-field-constraints.html" class="nav-link prev">Field &amp; Constraints</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-14-nested-models-types.html" class="nav-link next" title="Nested Models &amp; Special Types">Nested Models &amp; Types</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

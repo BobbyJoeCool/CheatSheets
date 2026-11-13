@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 15: Response Models &amp; Filtering</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>Response Models &amp; Filtering</h1>
+			<div class="sheet-desc">response_model= · -&gt; return type · ItemIn / ItemOut · response_model_exclude_unset · from_attributes</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">A <strong>response model</strong> controls what leaves your API. FastAPI validates the return value against it and <strong>filters out</strong> fields not in the model, which is how you keep password hashes and internal columns private. Declare it with a return annotation (<code>-&gt; UserOut</code>) or <code>response_model=</code> when the function returns something else, like an ORM object.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Return type annotation is the preferred style</li><li class="note-item"><code>response_model=</code> wins if both are set</li><li class="note-item"><code>from_attributes=True</code> lets models read ORM objects</li><li class="note-item"><code>response_model=None</code> disables validation for that route</li></ul></section></div>
+				<div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">FastAPI serializes the return value through the response model's Pydantic serializer</li><li class="note-item">Extra attributes are dropped during that serialization</li><li class="note-item">Then <code>jsonable_encoder</code> rules make it JSON-safe</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">In / DB / Out Models</h2><pre><code class="language-python">from pydantic import BaseModel, ConfigDict, EmailStr
+
+class UserBase(BaseModel):
+    email: EmailStr
+    name: str
+
+class UserIn(UserBase):
+    password: str                   # in only, never returned
+
+class UserOut(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+@app.post("/users", status_code=201)
+def create_user(user: UserIn) -&gt; UserOut:
+    db_user = save(user)            # ORM obj w/ hashed_password
+    return db_user                  # → id, email, name only
+
+@app.get("/users", response_model=list[UserOut])
+def list_users():
+    return session.scalars(select(User)).all()
+
+@app.patch("/users/{id}", response_model_exclude_unset=True)
+def patch_user(id: int, data: UserPatch) -&gt; UserOut: ...</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>UserIn</code> / <code>UserOut</code> — inherit shared fields from <code>UserBase</code></div><div class="explain-item"><code>-&gt; UserOut</code> — documents and filters the output</div><div class="explain-item"><code>from_attributes=True</code> — read <code>.email</code> from ORM objects</div><div class="explain-item"><code>list[UserOut]</code> — arrays work the same way</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — build the dict yourself or use <code>marshmallow</code> <code>dump()</code></li><li class="note-item">Django — DRF serializer <code>fields = [...]</code> controls output</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid returning DB models directly without a schema · Prefer an <code>Out</code> model</li><li class="note-item">Avoid deleting keys from dicts to hide data · Prefer a model that omits them</li></ul></section></div>
+			</div>
+			<!-- Row 3: Opts Table | Which Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-opts"><h2 class="section-title">Response Model Options</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td>response_model_exclude_unset</td><td class="desc">only fields actually set</td></tr><tr><td>response_model_exclude_none</td><td class="desc">drop None values</td></tr><tr><td>response_model_exclude={...}</td><td class="desc">drop named fields</td></tr><tr><td>response_model_include={...}</td><td class="desc">keep only named fields</td></tr><tr><td>response_model_by_alias</td><td class="desc">use aliases (default True)</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-which"><h2 class="section-title">Which to Use</h2><table><thead><tr><th>Situation</th><th>Use</th></tr></thead><tbody><tr><td>returns the model</td><td class="desc">-&gt; Model</td></tr><tr><td>returns ORM object</td><td class="desc">response_model= + from_attributes</td></tr><tr><td>returns Response</td><td class="desc">response_model=None</td></tr><tr><td>list result</td><td class="desc">-&gt; list[Model]</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Returning a SQLAlchemy object without <code>from_attributes=True</code>: validation error</li><li class="note-item">Annotating <code>-&gt; dict</code> and losing filtering and docs</li><li class="note-item">Using <code>include</code>/<code>exclude</code> everywhere instead of separate models</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Name schemas by role: <code>Create</code>, <code>Update</code>, <code>Read</code></li><li class="note-item">Make all <code>Update</code> fields optional and use <code>exclude_unset</code></li><li class="note-item">Check <code>/docs</code> → Schemas to confirm no secret fields leak</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>-&gt; Out</code> — validate + filter output</li><li class="note-item">In / Out models — never return passwords</li><li class="note-item"><code>from_attributes</code> — accept ORM objects</li><li class="note-item"><code>exclude_unset</code> — partial responses</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-14-nested-models-types.html" class="nav-link prev" title="Nested Models &amp; Special Types">Nested Models &amp; Types</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-16-model-config-settings.html" class="nav-link next">model_config &amp; Settings</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

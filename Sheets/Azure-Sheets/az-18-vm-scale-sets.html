@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 18: Virtual Machine Scale Sets</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Virtual Machine Scale Sets</h1>
+			<div class="sheet-desc">Flexible vs Uniform orchestration · instance count min / max · autoscale rules · scheduled profiles · upgrade policies · automatic instance repairs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Groups of Identical VMs</h2><div class="description">A <strong>Virtual Machine Scale Set (VMSS)</strong> manages a group of VMs from one model and spreads them across zones. <strong>Flexible orchestration</strong> (the default for new sets) uses regular VMs and allows mixing sizes and Spot; Uniform is the older identical-instance mode. <strong>Autoscale</strong> rules add or remove instances on metrics or schedules, and <strong>automatic repairs</strong> replace unhealthy instances.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Upgrade policy decides how model changes roll out: Manual, Automatic or Rolling</li><li class="note-item">Use a health extension or load balancer probe for repairs and rolling upgrades</li><li class="note-item">Scheduled profiles scale up before business hours</li><li class="note-item">Instance protection prevents specific instances from scale-in</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Up to 1,000 instances per scale set</li><li class="note-item">Autoscale settings: up to 20 profiles each</li><li class="note-item">Regional vCPU quotas cap scale-out (sheet 15)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Scale Set With Autoscale</h2><pre><code class="language-bash">az vmss create -g rg-app -n vmss-web --orchestration-mode Flexible \
+    --image Ubuntu2404 --vm-sku Standard_D2ps_v6 --instance-count 2 \
+    --zones 1 2 3 --platform-fault-domain-count 1 \
+    --vnet-name vnet-shop-prod --subnet snet-app \
+    --lb lb-api --backend-pool-name be \
+    --custom-data cloud-init.yaml --generate-ssh-keys \
+    --upgrade-policy-mode Rolling
+
+az monitor autoscale create -g rg-app -n as-web \
+    --resource vmss-web \
+    --resource-type Microsoft.Compute/virtualMachineScaleSets \
+    --min-count 2 --max-count 10 --count 2
+az monitor autoscale rule create -g rg-app --autoscale-name as-web \
+    --condition "Percentage CPU &gt; 70 avg 5m" --scale out 2
+az monitor autoscale rule create -g rg-app --autoscale-name as-web \
+    --condition "Percentage CPU &lt; 30 avg 10m" --scale in 1
+
+az vmss update -g rg-app -n vmss-web --enable-automatic-repairs true \
+    --automatic-repairs-grace-period 30
+az vmss list-instances -g rg-app -n vmss-web -o table</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Flexible mode spreads instances across the three zones</div><div class="explain-item">Rolling upgrades replace instances in batches using health signals</div><div class="explain-item">Scale out fast (2 at a time), scale in slowly</div><div class="explain-item">Automatic repairs wait 30 minutes after boot before judging health</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Launch templates + Auto Scaling groups (aws-18)</li><li class="note-item"><strong>GCP</strong> Instance templates + managed instance groups (gcp-18)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Scale sets are free; you pay for the VMs</li><li class="note-item">Mix Spot and regular instances in Flexible mode for cheap burst capacity</li><li class="note-item">Scheduled scale-in at night saves on predictable workloads</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Flexible Vs Uniform Table | Upgrade Policies Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-flexible-vs-uniform"><h2 class="section-title">Flexible vs Uniform</h2><table><thead><tr><th>Item</th><th>Flexible</th><th>Uniform</th></tr></thead><tbody><tr><td>Instance type</td><td class="kw">Regular VMs</td><td class="kw">Scale-set instances</td></tr><tr><td>Mixed sizes / Spot</td><td class="kw">Yes</td><td class="kw">No</td></tr><tr><td>Zones</td><td class="kw">Spread across zones</td><td class="kw">Zone list</td></tr><tr><td>Recommended for new</td><td class="kw">Yes</td><td class="kw">Legacy / some services</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-upgrade-policies"><h2 class="section-title">Upgrade Policies</h2><table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody><tr><td>Manual</td><td class="desc">You upgrade instances</td></tr><tr><td>Automatic</td><td class="desc">All at once (risky)</td></tr><tr><td>Rolling</td><td class="desc">Batches with health checks</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use Rolling upgrades with a health probe</li><li class="note-item note-do"><strong>Do</strong> Keep instances stateless and replaceable</li><li class="note-item note-dont"><strong>Don’t</strong> Scale on CPU alone when queue depth or latency is the real signal</li><li class="note-item note-dont"><strong>Don’t</strong> Set min-count to 1 for production</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Load-test with k6 or Azure Load Testing in a sandbox to tune rules</li><li class="note-item">Test cloud-init locally (sheet 15) before baking into the model</li><li class="note-item"><code>az monitor autoscale show</code> reviews rules before go-live</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Min 2+ instances across zones</li><li class="note-item">Automatic repairs and rolling upgrades enabled</li><li class="note-item">Autoscale notifications sent to the team</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-17-load-balancing.html">Load Balancing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-19-choosing-compute.html">Choosing Compute</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

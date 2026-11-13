@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 104: Unsafe Rust</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s104">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 104</div>
+			<h1>Unsafe Rust</h1>
+			<div class="sheet-desc"><code>unsafe</code> blocks &amp; fns · the five unsafe superpowers · <code>*const T</code> / <code>*mut T</code> · <code>unsafe impl</code> · <code>unsafe extern</code> (2024) · <code>// SAFETY:</code> comments</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Opting Out of Some Checks</h2><div class="description"><code>unsafe</code> unlocks five extra abilities that the compiler cannot verify, and makes <strong>you</strong> responsible for upholding Rust's rules. It does not turn off the borrow checker. The goal is to build small, well-reviewed unsafe cores wrapped in <strong>safe APIs</strong>, as <code>Vec</code>, <code>String</code> and <code>Mutex</code> do internally.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Undefined behavior anywhere can break code everywhere</li><li class="note-item">Every <code>unsafe</code> block deserves a <code>// SAFETY:</code> comment</li><li class="note-item">Edition 2024: <code>unsafe extern</code> blocks, <code>unsafe_op_in_unsafe_fn</code> warns</li><li class="note-item">Test unsafe code with Miri</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">unsafe in Practice</h2><pre><code class="language-rust">let mut x = 10;
+let r = &amp;x as *const i32;                   // creating raw pointers is safe
+println!("{}", unsafe { *r });              // 10 (SAFETY: x is alive)
+let p = &amp;raw mut x;                         // raw borrow syntax (1.82)
+unsafe {
+    // SAFETY: p points to x, which is alive and not otherwise borrowed.
+    *p += 1;
+    println!("{}", *p);                     // 11
+}
+
+/// # Safety
+/// `idx` must be less than `v.len()`.
+unsafe fn get_fast(v: &amp;[u32], idx: usize) -&gt; u32 {
+    // SAFETY: the caller guarantees idx is in bounds.
+    unsafe { *v.get_unchecked(idx) }
+}
+let v = [1, 2, 3];
+let n = unsafe { get_fast(&amp;v, 2) };         // 3
+
+fn split_halves(s: &amp;mut [i32]) -&gt; (&amp;mut [i32], &amp;mut [i32]) {   // safe wrapper
+    let mid = s.len() / 2;
+    let ptr = s.as_mut_ptr();
+    // SAFETY: the two ranges don't overlap and both lie within `s`.
+    unsafe {
+        (std::slice::from_raw_parts_mut(ptr, mid),
+         std::slice::from_raw_parts_mut(ptr.add(mid), s.len() - mid))
+    }
+}
+
+static mut COUNTER: u32 = 0;
+unsafe { COUNTER += 1; }    // SAFETY: single-threaded, no other access
+
+unsafe extern "C" {                          // 2024 edition syntax
+    safe fn abs(x: i32) -&gt; i32;              // declared safe to call
+    fn strlen(s: *const std::ffi::c_char) -&gt; usize;
+}
+println!("{}", abs(-5));                     // 5, no unsafe block needed</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Raw pointers can be created safely; dereferencing needs unsafe</div><div class="explain-item"><code>unsafe fn</code> documents its contract in a <code># Safety</code> section</div><div class="explain-item"><code>split_halves</code> wraps unsafe code in a safe, sound API</div><div class="explain-item"><code>safe fn</code> inside <code>unsafe extern</code> marks foreign functions safe to call</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C / C++</strong> all code is effectively unsafe; UB is everywhere possible</li><li class="note-item"><strong>Go</strong> <code>unsafe</code> package; <strong>C#</strong> <code>unsafe</code> blocks with pointers</li><li class="note-item"><strong>Java</strong> <code>sun.misc.Unsafe</code> / FFM API; <strong>Python</strong> ctypes</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>unsafe</code> to get around the borrow checker → restructure, or use a safe std API</li><li class="note-item">unsafe spread across a codebase → one small module with a safe API</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: The Five Superpowers Table | Common Ub Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-the-five-superpowers"><h2 class="section-title">The Five Superpowers</h2><table><thead><tr><th>Ability</th><th>Example</th></tr></thead><tbody><tr><td>Deref raw pointer</td><td class="desc">*ptr</td></tr><tr><td>Call unsafe fn</td><td class="desc">get_unchecked(i)</td></tr><tr><td>Access static mut</td><td class="desc">COUNTER += 1</td></tr><tr><td>Implement unsafe trait</td><td class="desc">unsafe impl Send</td></tr><tr><td>Access union fields</td><td class="desc">u.as_int</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-common-ub"><h2 class="section-title">Common UB</h2><table><thead><tr><th>Bug</th><th>Example</th></tr></thead><tbody><tr><td>Dangling pointer</td><td class="desc">Use after free</td></tr><tr><td>Aliasing &amp;mut</td><td class="desc">Two &amp;mut to one value</td></tr><tr><td>Out of bounds</td><td class="desc">get_unchecked(len)</td></tr><tr><td>Invalid value</td><td class="desc">bool from 2</td></tr><tr><td>Data race</td><td class="desc">static mut from threads</td></tr><tr><td>Uninit memory</td><td class="desc">Reading MaybeUninit early</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Thinking <code>unsafe</code> disables the borrow checker (it does not)</li><li class="note-item">Missing <code>// SAFETY:</code> justifications</li><li class="note-item"><code>static mut</code> in multi-threaded code (use atomics or Mutex)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Run <code>cargo +nightly miri test</code> on unsafe code</li><li class="note-item">Enable <code>#![deny(unsafe_op_in_unsafe_fn)]</code></li><li class="note-item">Search crates.io first: someone may have a safe abstraction</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">five superpowers, same borrow rules</li><li class="note-item">you uphold the invariants</li><li class="note-item"><code>// SAFETY:</code> every block</li><li class="note-item">wrap in safe APIs</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-103-procedural-macros.html">Procedural Macros</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-105-ffi-c.html">FFI &amp; Calling C</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

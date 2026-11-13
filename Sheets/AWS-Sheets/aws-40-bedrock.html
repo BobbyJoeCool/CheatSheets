@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 40: Amazon Bedrock</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s40">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 40</div>
+			<h1>Amazon Bedrock</h1>
+			<div class="sheet-desc">model access · <code>InvokeModel</code> vs Converse API · streaming · Knowledge Bases (RAG) · Agents · Guardrails</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Generative AI on AWS</h2><div class="description"><strong>Amazon Bedrock</strong> offers foundation models from Anthropic, Amazon (Nova), Meta, Mistral, Cohere and others behind one API. The <strong>Converse API</strong> gives a uniform chat interface with tools and streaming across models; <code>InvokeModel</code> sends model-specific payloads. <strong>Cross-Region inference profiles</strong> spread load. <strong>Knowledge Bases</strong> add managed RAG, <strong>Agents</strong> add tool use, and <strong>Guardrails</strong> filter content and PII.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Serverless models are enabled automatically on first use (some providers need a one-time use-case form)</li><li class="note-item">Model IDs or inference profile IDs select the model</li><li class="note-item">Data is not used to train the models</li><li class="note-item">Batch inference costs less for offline jobs</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Azure / GCP Equivalent + Cost Check + Security Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Converse API (Python)</h2><pre><code class="language-python">import boto3
+brt = boto3.client("bedrock-runtime", region_name="us-east-1")
+MODEL = "us.amazon.nova-lite-v1:0"        # inference profile ID (example)
+
+resp = brt.converse(
+    modelId=MODEL,
+    system=[{"text": "You are a concise support assistant."}],
+    messages=[{"role": "user", "content": [
+        {"text": "Summarize our return policy in 3 bullets."}]}],
+    inferenceConfig={"maxTokens": 300, "temperature": 0.2})
+print(resp["output"]["message"]["content"][0]["text"])
+print(resp["usage"])                      # input / output tokens
+
+stream = brt.converse_stream(modelId=MODEL, messages=[{"role": "user",
+    "content": [{"text": "Write a haiku about queues."}]}])
+for ev in stream["stream"]:
+    if "contentBlockDelta" in ev:
+        print(ev["contentBlockDelta"]["delta"]["text"], end="")</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">CLI</h2><pre><code class="language-bash">aws bedrock list-foundation-models --by-output-modality TEXT \
+    --query "modelSummaries[].modelId" --output text
+aws bedrock list-inference-profiles \
+    --query "inferenceProfileSummaries[].inferenceProfileId"
+aws bedrock create-guardrail --name support --blocked-input-messaging "Sorry." \
+    --blocked-outputs-messaging "Sorry." --cli-input-json file://guardrail.json</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Converse works the same across model providers</div><div class="explain-item">Inference profile IDs (<code>us.</code> prefix) route across US Regions</div><div class="explain-item"><code>usage</code> reports tokens for cost tracking</div><div class="explain-item">Streaming prints text as it arrives</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Microsoft Foundry / Azure OpenAI (az-40)</li><li class="note-item"><strong>GCP</strong> Agent Platform (Vertex AI) + Gemini (gcp-40)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">On-demand: per input / output token, varies by model</li><li class="note-item">Batch inference is about half the on-demand price for supported models</li><li class="note-item">Smaller models (Nova Micro / Lite, Haiku-class) cost far less for simple tasks</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">IAM policies scoped to specific model / inference profile ARNs</li><li class="note-item">VPC interface endpoint (bedrock-runtime) for private access</li><li class="note-item">Guardrails for PII and harmful content on user-facing apps</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Quotas per model per Region: tokens per minute and requests per minute</li><li class="note-item">Throttling returns ThrottlingException: retry with backoff</li><li class="note-item">Provisioned Throughput reserves capacity for steady high volume</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Building Blocks Table | Throughput Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-building-blocks"><h2 class="section-title">Building Blocks</h2><table><thead><tr><th>Feature</th><th>Does</th></tr></thead><tbody><tr><td>Converse / ConverseStream</td><td class="desc">Unified chat + tools</td></tr><tr><td>InvokeModel</td><td class="desc">Model-native payloads</td></tr><tr><td>Knowledge Bases</td><td class="desc">Managed RAG over S3 and more</td></tr><tr><td>Agents / AgentCore</td><td class="desc">Tool-using agents and runtime</td></tr><tr><td>Guardrails</td><td class="desc">Content, PII, topic filters</td></tr><tr><td>Batch inference</td><td class="desc">Async jobs</td></tr><tr><td>Model evaluation</td><td class="desc">Compare models / prompts</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-throughput-options"><h2 class="section-title">Throughput Options</h2><table><thead><tr><th>Option</th><th>Use</th></tr></thead><tbody><tr><td>On-demand</td><td class="desc">Default pay per token</td></tr><tr><td>Cross-Region inference</td><td class="desc">Higher throughput across Regions</td></tr><tr><td>Provisioned Throughput</td><td class="desc">Reserved model units</td></tr><tr><td>Batch</td><td class="desc">Offline, cheaper</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use the Converse API to keep model switching cheap</li><li class="note-item note-do"><strong>Do</strong> Log token usage per feature for cost tracking</li><li class="note-item note-dont"><strong>Don’t</strong> Send sensitive data without Guardrails / redaction where required</li><li class="note-item note-dont"><strong>Don’t</strong> Retry throttles instantly in a tight loop</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Prototype prompts in the Bedrock console playground</li><li class="note-item">Mock <code>bedrock-runtime</code> responses in unit tests (botocore Stubber)</li><li class="note-item">Run evaluation sets locally against a dev account</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Least-privilege model access and VPC endpoints</li><li class="note-item">Guardrails and logging (model invocation logging) on</li><li class="note-item">Quota monitoring and backoff for throttling</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-39-deploying-to-aws.html">Deploying to AWS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-41-ai-ml-services.html">AI &amp; ML Services</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 30: Disks, Files &amp; Backup</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>Disks, Files &amp; Backup</h1>
+			<div class="sheet-desc">managed disk types (Premium SSD v2, Standard SSD) · snapshots · Azure Files (SMB, NFS) · Blob vs Disks vs Files · Azure Backup &amp; Recovery Services vaults</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Block, File and Backup Storage</h2><div class="description"><strong>Managed disks</strong> are block devices attached to VMs, sized and tiered independently. <strong>Azure Files</strong> provides fully managed SMB and NFS file shares that many VMs, containers or on-premises machines can mount. <strong>Azure Backup</strong> protects VMs, disks, file shares, SQL and blobs with policies stored in <strong>Recovery Services</strong> or <strong>Backup</strong> vaults.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Premium SSD v2 lets you set IOPS and throughput separately from size</li><li class="note-item">Azure Files SMB works from Windows, macOS and Linux; NFS needs Premium</li><li class="note-item">Azure File Sync caches shares on Windows servers</li><li class="note-item">Backup vaults support soft delete and immutability</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">File Share and VM Backup</h2><pre><code class="language-bash"># Azure Files: share and mount (Linux, SMB)
+az storage share-rm create -g rg-data --storage-account stshopfiles \
+    -n shared --quota 100 --enabled-protocols SMB
+sudo mount -t cifs //stshopfiles.file.core.windows.net/shared /mnt/shared \
+    -o vers=3.1.1,credentials=/etc/smbcredentials/stshopfiles.cred,serverino
+
+# Disk snapshot and restore to a new disk
+az snapshot create -g rg-app -n snap-data --source disk-data --incremental true
+az disk create -g rg-app -n disk-data-restored --source snap-data
+
+# Azure Backup for a VM
+az backup vault create -g rg-backup -n rsv-shop -l eastus2
+az backup protection enable-for-vm -g rg-backup --vault-name rsv-shop \
+    --vm $(az vm show -g rg-app -n vm-web-1 --query id -o tsv) \
+    --policy-name DefaultPolicy
+az backup job list -g rg-backup --vault-name rsv-shop -o table</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>share-rm</code> creates the share through Resource Manager</div><div class="explain-item">SMB 3.1.1 with encryption is required over the internet</div><div class="explain-item">A disk can be created straight from a snapshot</div><div class="explain-item">DefaultPolicy backs up daily and keeps 30 days</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> EBS, EFS, AWS Backup (aws-30)</li><li class="note-item"><strong>GCP</strong> Persistent Disk / Hyperdisk, Filestore, Backup and DR (gcp-30)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Disks bill by provisioned size (and IOPS / throughput for v2), not usage</li><li class="note-item">Azure Files: by provisioned or used capacity depending on billing model</li><li class="note-item">Backup: per protected instance plus vault storage</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Which Storage Table | Backup Targets Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-which-storage"><h2 class="section-title">Which Storage</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Objects over HTTPS</td><td class="desc">Blob Storage</td></tr><tr><td>VM boot / data disk</td><td class="desc">Managed disks</td></tr><tr><td>Shared SMB / NFS folder</td><td class="desc">Azure Files</td></tr><tr><td>High-performance NFS</td><td class="desc">Azure NetApp Files</td></tr><tr><td>Large-scale HPC</td><td class="desc">Azure Managed Lustre</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-backup-targets"><h2 class="section-title">Backup Targets</h2><table><thead><tr><th>Workload</th><th>Vault</th></tr></thead><tbody><tr><td>Azure VMs</td><td class="desc">Recovery Services</td></tr><tr><td>Azure Files</td><td class="desc">Recovery Services</td></tr><tr><td>SQL / SAP HANA in VMs</td><td class="desc">Recovery Services</td></tr><tr><td>Disks</td><td class="desc">Backup vault</td></tr><tr><td>Blobs</td><td class="desc">Backup vault</td></tr><tr><td>PostgreSQL Flexible</td><td class="desc">Backup vault (long-term)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use Premium SSD v2 to tune IOPS without oversizing disks</li><li class="note-item note-do"><strong>Do</strong> Enable soft delete and immutability on backup vaults</li><li class="note-item note-dont"><strong>Don’t</strong> Treat snapshots as your only backup</li><li class="note-item note-dont"><strong>Don’t</strong> Mount SMB shares with account keys stored in plain files on many servers</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Practice SMB mounts against a local Samba container</li><li class="note-item">Restore drills: restore a VM backup to a new resource group</li><li class="note-item">fio benchmarks disk IOPS on a test VM</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Backup policies on every production VM and file share</li><li class="note-item">Restore tested on a schedule</li><li class="note-item">Vault soft delete, immutability and cross-region restore where required</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-29-storage-security-features.html">Storage Security &amp; Features</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-31-azure-sql-postgresql.html">Azure SQL &amp; PostgreSQL</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

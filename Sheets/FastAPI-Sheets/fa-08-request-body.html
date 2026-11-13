@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 08: Request Body</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>Request Body</h1>
+			<div class="sheet-desc">Pydantic model param · JSON body · body + path + query · Body(embed=True) · multiple bodies</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Declare a parameter typed as a <strong>Pydantic model</strong> and FastAPI reads the <strong>JSON request body</strong>, validates it, and hands you a model instance. Path, query and body parameters can be mixed freely: FastAPI decides where each comes from by its name and type. Several model params become keys in one JSON object.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Model type → body; path name → path; simple type → query</li><li class="note-item">Wrong JSON or missing fields → 422 with field locations</li><li class="note-item">GET with a body is allowed but poorly supported by clients</li><li class="note-item"><code>Body()</code> marks a simple value as part of the body</li></ul></section></div>
+				<div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Body bytes are read once and parsed with Pydantic's Rust JSON parser</li><li class="note-item">Starlette's <code>Request</code> caches the body for later reads</li><li class="note-item">Validation errors are collected, not raised one by one</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Model in, Model out</h2><pre><code class="language-python">from typing import Annotated
+from pydantic import BaseModel
+from fastapi import FastAPI, Body
+
+class TodoIn(BaseModel):
+    title: str
+    notes: str | None = None
+    priority: int = 3
+
+app = FastAPI()
+
+@app.post("/lists/{list_id}/todos")
+def add_todo(list_id: int, todo: TodoIn, notify: bool = False):
+    return {"list": list_id, **todo.model_dump(), "notify": notify}
+
+@app.put("/todos/{todo_id}")
+def update(todo_id: int, todo: TodoIn, user: User,
+           importance: Annotated[int, Body()]): ...
+# body: {"todo": {...}, "user": {...}, "importance": 5}
+
+@app.post("/todos/embedded")
+def embedded(todo: Annotated[TodoIn, Body(embed=True)]): ...
+# body: {"todo": {"title": "Buy milk"}}</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>todo: TodoIn</code> — parsed from JSON body</div><div class="explain-item"><code>list_id</code> from the path, <code>notify</code> from the query string</div><div class="explain-item"><code>todo.model_dump()</code> — model → dict</div><div class="explain-item">Two models → each keyed by its param name</div><div class="explain-item"><code>Body(embed=True)</code> — wrap a single model under its name</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — <code>data = request.get_json()</code>, validate yourself</li><li class="note-item">Django — <code>json.loads(request.body)</code> or DRF serializers</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid <code>request: Request</code> + <code>await request.json()</code> · Prefer a typed model param</li><li class="note-item">Avoid <code>dict</code> as the body type · Prefer a model so it is validated and documented</li></ul></section></div>
+			</div>
+			<!-- Row 3: Source Table | Shapes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-source"><h2 class="section-title">Where a Param Comes From</h2><table><thead><tr><th>Declared as</th><th>Source</th></tr></thead><tbody><tr><td>name in path</td><td class="desc">path</td></tr><tr><td>int, str, bool...</td><td class="desc">query</td></tr><tr><td>BaseModel subclass</td><td class="desc">body (JSON)</td></tr><tr><td>Annotated[x, Body()]</td><td class="desc">body key</td></tr><tr><td>Annotated[x, Header()]</td><td class="desc">header (10)</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-shapes"><h2 class="section-title">Body Shapes</h2><table><thead><tr><th>Signature</th><th>Expected JSON</th></tr></thead><tbody><tr><td>todo: TodoIn</td><td class="desc">{"title": ...}</td></tr><tr><td>todo: TodoIn, user: User</td><td class="desc">{"todo":..., "user":...}</td></tr><tr><td>Body(embed=True)</td><td class="desc">{"todo": {...}}</td></tr><tr><td>items: list[TodoIn]</td><td class="desc">[{...}, {...}]</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Sending form data to a JSON model endpoint: 422; forms need <code>Form()</code> (sheet 10)</li><li class="note-item">Adding a second model and breaking clients that sent the flat shape</li><li class="note-item">Reading <code>await request.json()</code> after FastAPI already parsed it, then mutating the wrong copy</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use separate <code>In</code> and <code>Out</code> models (sheet 15)</li><li class="note-item">Send <code>Content-Type: application/json</code> from clients</li><li class="note-item">Use <code>list[Model]</code> for bulk create endpoints</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">model param — JSON body</li><li class="note-item">mix path, query and body in one signature</li><li class="note-item">two models — keyed JSON object</li><li class="note-item"><code>Body(embed=True)</code> — force the wrapper key</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-07-query-parameters.html" class="nav-link prev">Query Parameters</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-09-validation-annotated.html" class="nav-link next" title="Validation with Query, Path &amp; Annotated">Query &amp; Path Validation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

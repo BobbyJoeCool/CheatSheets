@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 070: Trait Objects &amp; dyn</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s070">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 070</div>
+			<h1>Trait Objects &amp; dyn</h1>
+			<div class="sheet-desc"><code>dyn Trait</code> · <code>Box&lt;dyn Trait&gt;</code> / <code>&amp;dyn Trait</code> · dynamic dispatch &amp; vtables · dyn compatibility · <code>Vec&lt;Box&lt;dyn Shape&gt;&gt;</code> · generics vs trait objects</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Runtime Polymorphism</h2><div class="description">A <strong>trait object</strong> <code>dyn Trait</code> lets one variable hold any type implementing the trait, chosen at runtime. It must sit behind a pointer: <code>&amp;dyn Trait</code>, <code>Box&lt;dyn Trait&gt;</code> or <code>Arc&lt;dyn Trait&gt;</code>. Method calls go through a <strong>vtable</strong>. Only <strong>dyn-compatible</strong> traits (formerly "object safe") can be used this way.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Use for heterogeneous collections and plugin-style APIs</li><li class="note-item">Not dyn-compatible: generic methods, <code>-&gt; Self</code>, <code>Self: Sized</code> requirements</li><li class="note-item">Add <code>+ Send + Sync</code> for thread-safe objects</li><li class="note-item">Downcasting needs <code>std::any::Any</code></li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item"><code>&amp;dyn Trait</code> is a fat pointer: data pointer + vtable pointer (16 bytes)</li><li class="note-item">The vtable holds drop, size, align and one entry per method</li><li class="note-item">Calls are indirect and usually not inlined</li><li class="note-item">One vtable per (type, trait) pair, stored in read-only data</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">dyn Trait</h2><pre><code class="language-rust">trait Shape {
+    fn area(&amp;self) -&gt; f64;
+    fn name(&amp;self) -&gt; &amp;str { "shape" }
+}
+struct Circle(f64);
+struct Square(f64);
+impl Shape for Circle {
+    fn area(&amp;self) -&gt; f64 { std::f64::consts::PI * self.0 * self.0 }
+    fn name(&amp;self) -&gt; &amp;str { "circle" }
+}
+impl Shape for Square { fn area(&amp;self) -&gt; f64 { self.0 * self.0 } }
+
+let shapes: Vec&lt;Box&lt;dyn Shape&gt;&gt; =
+    vec![Box::new(Circle(1.0)), Box::new(Square(2.0))];
+for s in &amp;shapes {
+    println!("{} {:.2}", s.name(), s.area());   // circle 3.14 / shape 4.00
+}
+let total: f64 = shapes.iter().map(|s| s.area()).sum();
+
+fn print_area(s: &amp;dyn Shape) { println!("{:.1}", s.area()); }   // borrowed
+print_area(&amp;Square(3.0));                   // 9.0
+
+fn make(kind: &amp;str) -&gt; Box&lt;dyn Shape&gt; {     // type chosen at runtime
+    if kind == "c" { Box::new(Circle(2.0)) } else { Box::new(Square(2.0)) }
+}
+
+use std::sync::Arc;
+let shared: Arc&lt;dyn Shape + Send + Sync&gt; = Arc::new(Circle(0.5));
+
+trait Cloner { fn dup(&amp;self) -&gt; Self; }     // returns Self → not dyn compatible
+// let x: Box&lt;dyn Cloner&gt;;                  // E0038
+
+use std::any::Any;
+let items: Vec&lt;Box&lt;dyn Any&gt;&gt; = vec![Box::new(5i32), Box::new("hi")];
+for i in &amp;items {
+    if let Some(n) = i.downcast_ref::&lt;i32&gt;() { println!("int {n}"); }
+}
+println!("{}", std::mem::size_of::&lt;&amp;dyn Shape&gt;());   // 16</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>Vec&lt;Box&lt;dyn Shape&gt;&gt;</code> holds different shape types together</div><div class="explain-item"><code>&amp;dyn Shape</code> borrows a trait object without allocating</div><div class="explain-item"><code>make</code> decides the concrete type at runtime</div><div class="explain-item">Methods returning <code>Self</code> make a trait not dyn-compatible (E0038)</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> virtual functions and <code>std::unique_ptr&lt;Base&gt;</code></li><li class="note-item"><strong>Java</strong> interface references (every call is virtual)</li><li class="note-item"><strong>Go</strong> interface values (also data + itab pointers)</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>Box&lt;dyn Trait&gt;</code> param used with one type → <code>impl Trait</code></li><li class="note-item">an enum is closed and known → enum instead of <code>dyn</code> (faster, matchable)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Generics Vs Dyn Vs E Table | Not Dyn Compatible Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-generics-vs-dyn-vs-e"><h2 class="section-title">Generics vs dyn vs enum</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>One type per call site</td><td class="desc">Generics / impl Trait</td></tr><tr><td>Mixed types, open set</td><td class="desc">Box&lt;dyn Trait&gt;</td></tr><tr><td>Mixed types, closed set</td><td class="desc">enum</td></tr><tr><td>Plugins / callbacks</td><td class="desc">Box&lt;dyn Fn&gt;</td></tr><tr><td>Shared across threads</td><td class="desc">Arc&lt;dyn T + Send + Sync&gt;</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-not-dyn-compatible"><h2 class="section-title">Not dyn Compatible</h2><table><thead><tr><th>Trait Has</th><th>Example</th></tr></thead><tbody><tr><td>Generic method</td><td class="desc">fn f&lt;T&gt;(&amp;self)</td></tr><tr><td>Returns Self</td><td class="desc">fn dup(&amp;self) -&gt; Self</td></tr><tr><td>Static fn without self</td><td class="desc">fn new() -&gt; Self</td></tr><tr><td>Self: Sized supertrait</td><td class="desc">trait T: Sized</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item"><code>Vec&lt;dyn Shape&gt;</code> without a pointer (E0277: size not known)</li><li class="note-item">Trying to clone a <code>Box&lt;dyn Trait&gt;</code> (use <code>dyn-clone</code>)</li><li class="note-item">Defaulting to <code>dyn</code> when generics or enums would be faster</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add <code>where Self: Sized</code> to exclude a method from the vtable</li><li class="note-item">Use enums when you control every variant</li><li class="note-item">Use <code>Box&lt;dyn Error + Send + Sync&gt;</code> for thread-safe errors</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>dyn Trait</code> behind a pointer</li><li class="note-item">vtable = dynamic dispatch</li><li class="note-item">fat pointer: data + vtable</li><li class="note-item">dyn compatibility rules</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-069-trait-bounds-where.html">Trait Bounds &amp; where</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-071-associated-types-consts.html">Associated Types &amp; Consts</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 26: ECS &amp; Fargate</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>ECS &amp; Fargate</h1>
+			<div class="sheet-desc">clusters · task definitions · services · Fargate vs EC2 launch type · <code>awsvpc</code> networking · task roles · ECS Exec</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Containers the AWS Way</h2><div class="description"><strong>Amazon ECS</strong> runs containers from <strong>task definitions</strong> (image, CPU, memory, ports, env, logging, roles). A <strong>service</strong> keeps a desired number of tasks running behind a load balancer with rolling or blue/green deploys. <strong>Fargate</strong> runs tasks without servers; the EC2 launch type uses your instances. Each task gets its own ENI (<code>awsvpc</code>), a <strong>task role</strong> for app permissions and an execution role for pulling images and logs.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Task role = what the app can do; execution role = what ECS needs to start it</li><li class="note-item">Secrets come from Secrets Manager / Parameter Store via <code>secrets</code></li><li class="note-item">Capacity providers mix Fargate and Fargate Spot</li><li class="note-item">ECS Exec opens a shell in a running container</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Azure / GCP Equivalent + Cost Check + Security Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Task Definition (excerpt)</h2><pre><code class="language-json">{ "family": "shop-api", "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"], "cpu": "512", "memory": "1024",
+  "runtimePlatform": { "cpuArchitecture": "ARM64" },
+  "taskRoleArn": "arn:aws:iam::111122223333:role/shop-api-task",
+  "executionRoleArn": "arn:aws:iam::111122223333:role/ecsTaskExecutionRole",
+  "containerDefinitions": [{ "name": "api", "essential": true,
+    "image": "111122223333.dkr.ecr.us-east-1.amazonaws.com/shop-api:1.4.0",
+    "portMappings": [{ "containerPort": 8080 }],
+    "readonlyRootFilesystem": true, "user": "1000",
+    "secrets": [{ "name": "DB_PASSWORD",
+      "valueFrom": "arn:aws:secretsmanager:us-east-1:1111:secret:prod/db" }],
+    "logConfiguration": { "logDriver": "awslogs", "options": {
+      "awslogs-group": "/ecs/shop-api", "awslogs-region": "us-east-1",
+      "awslogs-stream-prefix": "api" } } }] }</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Cluster, Service, Exec</h2><pre><code class="language-bash">aws ecs create-cluster --cluster-name shop \
+    --capacity-providers FARGATE FARGATE_SPOT
+aws ecs register-task-definition --cli-input-json file://taskdef.json
+aws ecs create-service --cluster shop --service-name api \
+    --task-definition shop-api --desired-count 2 --launch-type FARGATE \
+    --network-configuration file://awsvpc.json \
+    --load-balancers targetGroupArn=$TG,containerName=api,containerPort=8080 \
+    --enable-execute-command
+aws ecs execute-command --cluster shop --task &lt;task-id&gt; --container api \
+    --interactive --command "/bin/sh"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Fargate tasks declare CPU and memory at the task level</div><div class="explain-item">ARM64 runs on Graviton for lower cost</div><div class="explain-item">The <code>secrets</code> block injects the value at start using the execution role</div><div class="explain-item">ECS Exec needs <code>--enable-execute-command</code> and SSM permissions</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure Container Apps (az-26)</li><li class="note-item"><strong>GCP</strong> Cloud Run (gcp-20); GKE for Kubernetes (gcp-26)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Fargate: per vCPU-second and GB-second while tasks run</li><li class="note-item">Fargate Spot: up to ~70% off, interruptible</li><li class="note-item">ECS control plane is free; EC2 launch type pays for instances</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Separate task and execution roles with least privilege</li><li class="note-item">Run tasks in private subnets without public IPs</li><li class="note-item">Read-only root file system and non-root user in task definitions</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Fargate On-Demand vCPU quota per Region (adjustable)</li><li class="note-item">Fargate task size up to 16 vCPU / 120 GB</li><li class="note-item">10 containers per task definition</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Launch Types Table | Deployment Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-launch-types"><h2 class="section-title">Launch Types</h2><table><thead><tr><th>Item</th><th>Fargate</th><th>EC2</th></tr></thead><tbody><tr><td>Servers</td><td class="kw">None to manage</td><td class="kw">Your instances</td></tr><tr><td>GPUs / special hardware</td><td class="kw">Limited</td><td class="kw">Yes</td></tr><tr><td>Scale to zero</td><td class="kw">Desired 0</td><td class="kw">ASG to 0</td></tr><tr><td>Price model</td><td class="kw">Per task resources</td><td class="kw">Per instance</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-deployment-options"><h2 class="section-title">Deployment Options</h2><table><thead><tr><th>Option</th><th>Does</th></tr></thead><tbody><tr><td>Rolling update</td><td class="desc">Replace tasks in batches</td></tr><tr><td>Blue/green (built-in or CodeDeploy)</td><td class="desc">Shift traffic between task sets</td></tr><tr><td>Circuit breaker</td><td class="desc">Auto-rollback failed deploys</td></tr><tr><td>Service Connect</td><td class="desc">Service-to-service discovery</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Enable the deployment circuit breaker with rollback</li><li class="note-item note-do"><strong>Do</strong> Use Fargate Spot for workers and dev</li><li class="note-item note-dont"><strong>Don’t</strong> Put secrets in plain environment variables</li><li class="note-item note-dont"><strong>Don’t</strong> Give the task role the execution role's permissions (or vice versa) without need</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>docker run</code> the same image with the same env</li><li class="note-item">Docker Compose mimics multi-container tasks</li><li class="note-item">AWS Copilot CLI and <code>ecs-cli</code> alternatives scaffold services</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Private subnets, circuit breaker, health checks</li><li class="note-item">Container Insights and log retention set</li><li class="note-item">Autoscaling on CPU / requests per target</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-25-ecr.html">Elastic Container Registry</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-27-eks.html">EKS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 06: IAM Policies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s06">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 06</div>
+			<h1>IAM Policies</h1>
+			<div class="sheet-desc"><code>Effect</code> / <code>Action</code> / <code>Resource</code> / <code>Condition</code> · managed vs inline · identity vs resource policies · explicit deny wins · policy simulator · permission boundaries</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Writing Permissions</h2><div class="description">An IAM <strong>policy</strong> is a JSON document of statements with <strong>Effect</strong> (Allow / Deny), <strong>Action</strong> (<code>s3:GetObject</code>), <strong>Resource</strong> (ARNs) and optional <strong>Condition</strong> (IP, tags, MFA, time). Identity policies attach to users, groups and roles; resource policies attach to buckets, queues, keys and more. Requests are denied by default, allowed by any Allow, and blocked by any explicit <strong>Deny</strong>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">AWS managed policies are broad; customer managed policies fit your needs</li><li class="note-item">Permission boundaries cap what a role can ever be granted</li><li class="note-item">SCPs (Organizations) cap entire accounts</li><li class="note-item">Use tags in conditions for attribute-based access control (ABAC)</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Managed policy up to 6,144 characters</li><li class="note-item">10 managed policies per role by default (can raise)</li><li class="note-item">Role trust policy up to 2,048 characters by default</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Least-Privilege Policy</h2><pre><code class="language-json">{ "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "ReadUploads",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject"],
+      "Resource": "arn:aws:s3:::acme-uploads/user/${aws:PrincipalTag/uid}/*" },
+    { "Sid": "TeamTables",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:PutItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:111122223333:table/*",
+      "Condition": { "StringEquals":
+        { "aws:ResourceTag/team": "${aws:PrincipalTag/team}" } } },
+    { "Sid": "DenyNonTLS",
+      "Effect": "Deny", "Action": "s3:*", "Resource": "*",
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } } } ] }</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Create, Attach, Test</h2><pre><code class="language-bash">aws iam create-policy --policy-name app-data --policy-document file://p.json
+aws iam attach-role-policy --role-name app --policy-arn &lt;policy-arn&gt;
+aws iam simulate-principal-policy --policy-source-arn &lt;role-arn&gt; \
+    --action-names s3:GetObject --resource-arns arn:aws:s3:::acme-uploads/x
+aws accessanalyzer validate-policy --policy-type IDENTITY_POLICY \
+    --policy-document file://p.json</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Policy variables scope S3 paths to the caller's tag</div><div class="explain-item">The tag condition lets teams touch only their own tables (ABAC)</div><div class="explain-item">The explicit Deny blocks non-TLS requests even if allowed elsewhere</div><div class="explain-item">Simulate and validate before attaching to production roles</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure RBAC role definitions and assignments (az-06)</li><li class="note-item"><strong>GCP</strong> IAM allow / deny policies and conditions (gcp-06)</li><li class="note-item">AWS evaluates policy documents; Azure and GCP evaluate role bindings</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Policies are free</li><li class="note-item">Overly broad <code>*</code> grants let mistakes create expensive resources</li><li class="note-item">SCPs can deny expensive services or Regions organization-wide</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Evaluation Order Table | Policy Types Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-evaluation-order"><h2 class="section-title">Evaluation Order</h2><table><thead><tr><th>Step</th><th>Result</th></tr></thead><tbody><tr><td>Explicit Deny anywhere</td><td class="desc">Denied</td></tr><tr><td>SCP / RCP does not allow</td><td class="desc">Denied</td></tr><tr><td>Permission boundary does not allow</td><td class="desc">Denied</td></tr><tr><td>Session policy does not allow</td><td class="desc">Denied</td></tr><tr><td>Identity or resource Allow</td><td class="desc">Allowed</td></tr><tr><td>Nothing matches</td><td class="desc">Denied (implicit)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-policy-types"><h2 class="section-title">Policy Types</h2><table><thead><tr><th>Type</th><th>Attached To</th></tr></thead><tbody><tr><td>Identity (managed / inline)</td><td class="desc">User, group, role</td></tr><tr><td>Resource</td><td class="desc">S3, SQS, KMS, Lambda…</td></tr><tr><td>Permission boundary</td><td class="desc">User or role</td></tr><tr><td>SCP / RCP</td><td class="desc">OU or account</td></tr><tr><td>Session</td><td class="desc">AssumeRole call</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Start from AWS managed policies, then narrow with Access Analyzer policy generation</li><li class="note-item note-do"><strong>Do</strong> Use conditions (tags, VPC endpoints, TLS)</li><li class="note-item note-dont"><strong>Don’t</strong> Use <code>"Action": "*"</code> with <code>"Resource": "*"</code> for apps</li><li class="note-item note-dont"><strong>Don’t</strong> Write inline policies you cannot reuse or audit</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>aws accessanalyzer validate-policy</code> lints offline-authored policies</li><li class="note-item">Policy Simulator tests before deploy</li><li class="note-item">cfn-lint / Checkov catch broad IAM in templates</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Least-privilege customer managed policies</li><li class="note-item">Permission boundaries for roles developers create</li><li class="note-item">Access Analyzer external and unused access findings reviewed</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-05-iam-users-groups-roles.html">IAM Users, Groups &amp; Roles</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-07-roles-temporary-credentials.html">Roles &amp; Temporary Credentials</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

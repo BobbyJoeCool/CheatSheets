@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 27: GKE Operations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>GKE Operations</h1>
+			<div class="sheet-desc">Gateway API &amp; Ingress · autoscaling (HPA, VPA, cluster autoscaler, NAP) · maintenance windows · Config Sync &amp; Policy Controller · Backup for GKE · GKE Enterprise / fleets</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Running GKE Day to Day</h2><div class="description">Expose services with the <strong>Gateway API</strong> (GKE controller provisions Google load balancers) or Ingress. Scale Pods with <strong>HPA</strong> / <strong>VPA</strong> and nodes with the <strong>cluster autoscaler</strong> or node auto-provisioning (built in on Autopilot). Control upgrades with <strong>maintenance windows and exclusions</strong>. <strong>Config Sync</strong> applies Git-stored config and <strong>Policy Controller</strong> enforces policies across a <strong>fleet</strong>. <strong>Backup for GKE</strong> protects workloads and volumes.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Gateway classes: <code>gke-l7-global-external-managed</code>, <code>gke-l7-rilb</code>…</li><li class="note-item">PodDisruptionBudgets keep upgrades from taking everything down</li><li class="note-item">Managed Service for Prometheus collects metrics without running Prometheus</li><li class="note-item">Surge upgrades and blue-green node upgrades are configurable</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / Azure Equivalent + Cost Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Gateway, HTTPRoute, HPA</h2><pre><code class="language-yaml">apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata: { name: shop, namespace: api }
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  listeners:
+    - { name: http, protocol: HTTP, port: 80 }
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: { name: api, namespace: api }
+spec:
+  parentRefs: [{ name: shop }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /api } }]
+      backendRefs: [{ name: api, port: 80 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: api, namespace: api }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: api }
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Backup for GKE</h2><pre><code class="language-bash">gcloud beta container backup-restore backup-plans create shop-daily \
+    --location=us-central1 \
+    --cluster=projects/shop-prod-4821/locations/us-central1/clusters/shop \
+    --all-namespaces --include-volume-data --cron-schedule="0 3 * * *" \
+    --backup-retain-days=14</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The Gateway provisions a global external Application Load Balancer</div><div class="explain-item">The HTTPRoute sends <code>/api</code> traffic to the api Service</div><div class="explain-item">HPA keeps average CPU near 60% across 3–20 Pods</div><div class="explain-item">The backup plan protects every namespace nightly for 14 days</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> AWS Load Balancer Controller, Karpenter, EKS add-ons (aws-27)</li><li class="note-item"><strong>Azure</strong> AKS app routing, KEDA, AKS backup (az-27)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Each Gateway / Ingress creates billable load balancer pieces</li><li class="note-item">Backup for GKE: per protected Pod + backup storage</li><li class="note-item">Right-size requests (VPA recommendations) to cut Autopilot bills</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Maintenance exclusions are limited in length and number</li><li class="note-item">HPA needs resource requests to compute utilization</li><li class="note-item">Gateway / Ingress map to load balancer quotas (forwarding rules, backend services)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Scaling Layers Table | Fleet Tools Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-scaling-layers"><h2 class="section-title">Scaling Layers</h2><table><thead><tr><th>Layer</th><th>Scales</th></tr></thead><tbody><tr><td>HPA</td><td class="desc">Pod replicas on metrics</td></tr><tr><td>VPA</td><td class="desc">Pod requests / limits</td></tr><tr><td>Cluster autoscaler</td><td class="desc">Nodes in a pool</td></tr><tr><td>Node auto-provisioning</td><td class="desc">Creates node pools</td></tr><tr><td>Autopilot</td><td class="desc">Nodes handled for you</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-fleet-tools"><h2 class="section-title">Fleet Tools</h2><table><thead><tr><th>Tool</th><th>Does</th></tr></thead><tbody><tr><td>Config Sync</td><td class="desc">GitOps for cluster config</td></tr><tr><td>Policy Controller</td><td class="desc">OPA Gatekeeper policies</td></tr><tr><td>Cloud Service Mesh</td><td class="desc">mTLS, traffic management</td></tr><tr><td>Fleet observability</td><td class="desc">Multi-cluster views</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use PodDisruptionBudgets for critical Deployments</li><li class="note-item note-do"><strong>Do</strong> Set maintenance windows that match low traffic</li><li class="note-item note-dont"><strong>Don’t</strong> Run without requests (HPA and Autopilot both rely on them)</li><li class="note-item note-dont"><strong>Don’t</strong> Upgrade on the Rapid channel in production</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>kubectl apply --dry-run=server -f gateway.yaml</code></li><li class="note-item">kind + Gateway API CRDs for local routing tests</li><li class="note-item">Restore a Backup for GKE plan to a test cluster</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Gateway API with Cloud Armor via GCPBackendPolicy</li><li class="note-item">Maintenance windows + PDBs</li><li class="note-item">Backup for GKE tested by restore drills</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-26-gke-basics.html">GKE Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-28-cloud-storage-basics.html">Cloud Storage Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

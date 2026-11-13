@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>COBOL — Sheet 45: Random &amp; Dynamic Access</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cbl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s45">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 45</div>
+			<h1>Random &amp; Dynamic Access</h1>
+			<div class="sheet-desc"><code>READ … KEY IS</code> · <code>INVALID KEY</code> · <code>START … KEY &gt;=</code> · <code>READ NEXT</code> · <code>WRITE</code> / <code>REWRITE</code> / <code>DELETE</code> · browse pattern</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Reading and Updating by Key</h2><div class="description">With RANDOM or DYNAMIC access, move a key value into the key field and <code>READ</code> to get that record. <code>START</code> positions at the first record matching a key condition, and <code>READ NEXT</code> then browses forward. <code>INVALID KEY</code> runs when the key is missing or duplicated.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Set the key field, then READ: the key is not a READ argument</li><li class="note-item"><code>INVALID KEY</code> or FILE STATUS 23 means not found</li><li class="note-item"><code>WRITE</code> adds; status 22 means the key already exists</li><li class="note-item">REWRITE and DELETE need the file open I-O</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Lookup, Update and Browse</h2><pre><code class="language-cobol">           OPEN I-O ACCT-MAST
+
+      *&gt;   Random read and update
+           MOVE 1000004217 TO AM-ACCT-NO
+           READ ACCT-MAST
+              INVALID KEY     DISPLAY "NO SUCH ACCOUNT"
+              NOT INVALID KEY
+                 ADD WS-DEPOSIT TO AM-BALANCE
+                 REWRITE ACCT-REC
+           END-READ
+
+      *&gt;   Add a new record
+           WRITE ACCT-REC FROM WS-NEW-ACCT
+              INVALID KEY DISPLAY "DUPLICATE " AM-ACCT-NO
+           END-WRITE
+
+      *&gt;   Browse all accounts for one SSN (alternate key)
+           MOVE WS-SSN TO AM-SSN
+           START ACCT-MAST KEY IS = AM-SSN
+              INVALID KEY SET END-OF-BROWSE TO TRUE
+           END-START
+           PERFORM UNTIL END-OF-BROWSE
+              READ ACCT-MAST NEXT RECORD
+                 AT END SET END-OF-BROWSE TO TRUE
+              END-READ
+              IF NOT END-OF-BROWSE AND AM-SSN NOT = WS-SSN
+                 SET END-OF-BROWSE TO TRUE
+              END-IF
+           END-PERFORM</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The key value in AM-ACCT-NO picks the record</div><div class="explain-item">REWRITE replaces the record just read; the key must not change</div><div class="explain-item"><code>START KEY IS = AM-SSN</code> switches the browse to the alternate key</div><div class="explain-item">The browse stops when the SSN changes</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>row = db.execute("SELECT … WHERE acct=?", (n,)).fetchone()</code></li><li class="note-item"><strong>Java</strong> <code>ps.setLong(1, n); ResultSet rs = ps.executeQuery();</code></li><li class="note-item"><strong>JavaScript</strong> <code>await db.get("SELECT … WHERE acct = ?", n)</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">READ then check a field for "not found" → <code>INVALID KEY</code> / status 23</li><li class="note-item">changing the primary key with REWRITE → DELETE + WRITE</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Keyed Statements Table | Start Conditions Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-keyed-statements"><h2 class="section-title">Keyed Statements</h2><table><thead><tr><th>Statement</th><th>Needs</th></tr></thead><tbody><tr><td>READ f [KEY IS k]</td><td class="desc">Key value set</td></tr><tr><td>READ f NEXT</td><td class="desc">Position from START or READ</td></tr><tr><td>START f KEY IS &gt;= k</td><td class="desc">Position for browse</td></tr><tr><td>WRITE rec</td><td class="desc">New unique key</td></tr><tr><td>REWRITE rec</td><td class="desc">Prior READ, I-O</td></tr><tr><td>DELETE f</td><td class="desc">Prior READ (sequential) or key</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-start-conditions"><h2 class="section-title">START Conditions</h2><table><thead><tr><th>Condition</th><th>Positions At</th></tr></thead><tbody><tr><td>KEY IS = k</td><td class="desc">Exact match</td></tr><tr><td>KEY IS &gt;= k</td><td class="desc">First ≥ k</td></tr><tr><td>KEY IS &gt; k</td><td class="desc">First &gt; k</td></tr><tr><td>KEY IS &lt;= k (2002)</td><td class="desc">Last ≤ k</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Changing the key field before REWRITE (status 21 or wrong record)</li><li class="note-item">READ NEXT without a successful START or READ first</li><li class="note-item">Browsing an alternate key without checking when the value changes</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use a generic START (<code>&gt;=</code>) with a partial key to browse a range</li><li class="note-item">Read for update immediately before REWRITE to keep data current</li><li class="note-item">Log the key on every INVALID KEY branch</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">key field + <code>READ</code> — lookup</li><li class="note-item"><code>INVALID KEY</code> — not found / dup</li><li class="note-item"><code>START</code> + <code>READ NEXT</code> — browse</li><li class="note-item"><code>REWRITE</code> / <code>DELETE</code> — I-O mode</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cbl-44-indexed-files.html">Indexed Files (VSAM KSDS)</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">COBOL Reference · 64 Sheets</a>
+				<a class="nav-link next" href="cbl-46-relative-files.html">Relative Files</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cobol.min.js"></script>
+	</body>
+</html>

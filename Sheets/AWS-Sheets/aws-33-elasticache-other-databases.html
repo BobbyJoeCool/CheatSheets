@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 33: ElastiCache &amp; Other Databases</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s33">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 33</div>
+			<h1>ElastiCache &amp; Other Databases</h1>
+			<div class="sheet-desc">ElastiCache (Valkey / Redis OSS, Memcached) · DocumentDB · OpenSearch · Neptune · choosing a database · pointer to SQL &amp; NoSQL sets</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Caches and Purpose-Built Databases</h2><div class="description"><strong>ElastiCache</strong> runs Valkey (recommended, lower cost), Redis OSS or Memcached, as node-based clusters or <strong>Serverless</strong>. <strong>DocumentDB</strong> is MongoDB-compatible, <strong>OpenSearch Service</strong> handles search and log analytics (including vector search), <strong>Neptune</strong> is a graph database, <strong>Timestream</strong> stores time series, and <strong>MemoryDB</strong> is a durable Valkey / Redis-compatible primary database.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Cache-aside: read cache, fall back to the database, then populate</li><li class="note-item">ElastiCache Serverless scales automatically with no node sizing</li><li class="note-item">OpenSearch Serverless removes cluster management</li><li class="note-item">Keep caches in private subnets with TLS and auth</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Valkey Serverless Cache</h2><pre><code class="language-bash">aws elasticache create-serverless-cache --serverless-cache-name shop-cache \
+    --engine valkey --subnet-ids $DATA_A $DATA_B \
+    --security-group-ids $CACHE_SG
+aws elasticache describe-serverless-caches \
+    --query "ServerlessCaches[].Endpoint" --output table
+
+aws opensearchserverless create-collection --name shop-search --type SEARCH</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Cache-Aside in Python</h2><pre><code class="language-python">import json, redis
+r = redis.Redis(host="shop-cache-abc.serverless.use1.cache.amazonaws.com",
+                port=6379, ssl=True)
+
+def get_product(pid):
+    if (hit := r.get(f"product:{pid}")):
+        return json.loads(hit)
+    row = db_fetch_product(pid)                 # slow path
+    r.set(f"product:{pid}", json.dumps(row), ex=300)
+    return row</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Serverless caches need only subnets and security groups</div><div class="explain-item">Valkey is wire-compatible with Redis clients</div><div class="explain-item">An OpenSearch Serverless collection still needs encryption / network / access policies</div><div class="explain-item">Entries expire after 300 seconds</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure Managed Redis, AI Search (az-33)</li><li class="note-item"><strong>GCP</strong> Memorystore, BigQuery, Vertex AI Search (gcp-33)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Valkey pricing is lower than Redis OSS on ElastiCache</li><li class="note-item">Serverless caches bill per GB stored + processing units</li><li class="note-item">OpenSearch bills instances / OCUs plus storage</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Choosing A Database Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-choosing-a-database"><h2 class="section-title">Choosing a Database</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Relational</td><td class="desc">RDS / Aurora (sheet 31)</td></tr><tr><td>Key-value at scale</td><td class="desc">DynamoDB (sheet 32)</td></tr><tr><td>Cache</td><td class="desc">ElastiCache (Valkey)</td></tr><tr><td>Durable in-memory</td><td class="desc">MemoryDB</td></tr><tr><td>Document (MongoDB API)</td><td class="desc">DocumentDB</td></tr><tr><td>Search / logs / vectors</td><td class="desc">OpenSearch</td></tr><tr><td>Graph</td><td class="desc">Neptune</td></tr><tr><td>Time series</td><td class="desc">Timestream</td></tr><tr><td>Analytics</td><td class="desc">Redshift / Athena</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Set TTLs on every cache key</li><li class="note-item note-do"><strong>Do</strong> Choose Valkey for new caches</li><li class="note-item note-dont"><strong>Don’t</strong> Treat a cache as the source of truth</li><li class="note-item note-dont"><strong>Don’t</strong> Pick a niche database before checking if PostgreSQL fits</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Run Valkey / Redis in Docker: <code>docker run -p 6379:6379 valkey/valkey</code></li><li class="note-item">OpenSearch and MongoDB containers for local search / document tests</li><li class="note-item">Mock the cache layer in unit tests</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Encryption in transit + at rest, auth enabled</li><li class="note-item">Multi-AZ / replicas for caches that matter</li><li class="note-item">Hit-rate, memory and eviction alarms</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-32-dynamodb.html">DynamoDB</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-34-cloudformation.html">CloudFormation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

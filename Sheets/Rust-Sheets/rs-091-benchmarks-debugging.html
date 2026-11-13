@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 091: Benchmarks &amp; Debugging</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s091">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 091</div>
+			<h1>Benchmarks &amp; Debugging</h1>
+			<div class="sheet-desc"><code>criterion</code> · <code>cargo bench</code> · <code>dbg!</code> · lldb / gdb · <code>cargo expand</code> · Miri · <code>cargo-nextest</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Measuring and Investigating</h2><div class="description">Use <strong>criterion</strong> for statistically sound benchmarks with <code>cargo bench</code>. Debug with <code>dbg!</code> for quick looks or <code>rust-lldb</code> / <code>rust-gdb</code> (or an IDE) for breakpoints. <strong>cargo expand</strong> shows macro output, <strong>Miri</strong> detects undefined behavior in unsafe code, and <strong>cargo-nextest</strong> runs tests faster with per-test isolation.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Benchmark only <code>--release</code> builds (cargo bench does this)</li><li class="note-item">Use <code>black_box</code> so the optimizer does not delete benchmarked work</li><li class="note-item">Miri runs on nightly: <code>cargo +nightly miri test</code></li><li class="note-item">Profilers: <code>cargo flamegraph</code>, <code>samply</code>, <code>perf</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">criterion and Tools</h2><pre><code class="language-rust">// Cargo.toml
+// [dev-dependencies]
+// criterion = "0.5"
+// [[bench]]
+// name = "fib"
+// harness = false
+
+// benches/fib.rs
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
+
+fn fib(n: u64) -&gt; u64 { if n &lt; 2 { n } else { fib(n - 1) + fib(n - 2) } }
+fn fib_iter(n: u64) -&gt; u64 {
+    let (mut a, mut b) = (0, 1);
+    for _ in 0..n { (a, b) = (b, a + b); }
+    a
+}
+
+fn bench(c: &amp;mut Criterion) {
+    c.bench_function("fib 20 recursive", |b| b.iter(|| fib(black_box(20))));
+    c.bench_function("fib 20 iter", |b| b.iter(|| fib_iter(black_box(20))));
+}
+criterion_group!(benches, bench);
+criterion_main!(benches);
+
+// $ cargo bench
+// fib 20 recursive   time: [15.2 µs 15.3 µs 15.4 µs]
+// fib 20 iter        time: [6.1 ns 6.2 ns 6.2 ns]
+
+// Tools
+// $ cargo install cargo-expand &amp;&amp; cargo expand module::path
+// $ cargo +nightly miri test       UB detector for unsafe code
+// $ cargo install cargo-nextest &amp;&amp; cargo nextest run
+// $ cargo install flamegraph &amp;&amp; cargo flamegraph --bin app</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>harness = false</code> lets criterion provide <code>main</code></div><div class="explain-item"><code>black_box</code> prevents the compiler from precomputing <code>fib(20)</code></div><div class="explain-item">criterion reports a confidence interval for each benchmark</div><div class="explain-item">Command-line debuggers wrap lldb/gdb with Rust pretty-printers</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Go</strong> built-in <code>go test -bench</code> and <code>pprof</code></li><li class="note-item"><strong>Java</strong> JMH for benchmarks; IDE debuggers</li><li class="note-item"><strong>Python</strong> <code>timeit</code>, <code>pytest-benchmark</code>, <code>pdb</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item">timing with <code>Instant</code> in a loop → criterion (or divan)</li><li class="note-item"><code>println!</code> debugging spread everywhere → <code>dbg!</code> or a debugger</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Tools Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-tools"><h2 class="section-title">Tools</h2><table><thead><tr><th>Tool</th><th>Use</th></tr></thead><tbody><tr><td>criterion / divan</td><td class="desc">Benchmarks</td></tr><tr><td>dbg!</td><td class="desc">Quick inspection</td></tr><tr><td>rust-lldb / rust-gdb</td><td class="desc">Breakpoints</td></tr><tr><td>cargo expand</td><td class="desc">Macro output</td></tr><tr><td>Miri</td><td class="desc">Undefined behavior</td></tr><tr><td>cargo-nextest</td><td class="desc">Fast test runner</td></tr><tr><td>cargo flamegraph / samply</td><td class="desc">Profiling</td></tr><tr><td>cargo llvm-cov</td><td class="desc">Coverage</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Benchmarking debug builds</li><li class="note-item">Benchmarks the optimizer folds away (no <code>black_box</code>)</li><li class="note-item">Debugging release builds without debug info</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add <code>debug = true</code> to a profiling profile for symbols</li><li class="note-item">Compare against a baseline with criterion's saved runs</li><li class="note-item">Run Miri on any crate with unsafe code</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">criterion + <code>cargo bench</code></li><li class="note-item"><code>black_box</code></li><li class="note-item">dbg! / lldb / gdb</li><li class="note-item">expand · Miri · nextest</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-090-integration-doc-tests.html">Integration &amp; Doc Tests</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-092-threads.html">Threads</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

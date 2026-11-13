@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 27: Middleware &amp; CORS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>Middleware &amp; CORS</h1>
+			<div class="sheet-desc">@app.middleware(&quot;http&quot;) · call_next · CORSMiddleware · allow_origins · GZipMiddleware · TrustedHostMiddleware</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>Middleware</strong> wraps every request and response: it can time requests, add headers, or reject traffic before routes run. Write one with <code>@app.middleware("http")</code> or add a class with <code>app.add_middleware()</code>. <strong>CORS</strong> middleware is what lets a browser app on another origin call your API.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Last added = outermost = runs first</li><li class="note-item">Middleware sees all routes, including 404s</li><li class="note-item">CORS is enforced by browsers, not servers or curl</li><li class="note-item">Exceptions in routes reach middleware as 500 responses</li></ul></section></div>
+				<div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">Stack: <code>ServerErrorMiddleware</code> outermost, <code>ExceptionMiddleware</code> innermost</li><li class="note-item"><code>@app.middleware</code> uses <code>BaseHTTPMiddleware</code>; pure ASGI middleware is faster</li><li class="note-item">Preflight <code>OPTIONS</code> requests are answered by <code>CORSMiddleware</code> itself</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Timing Header + CORS</h2><pre><code class="language-python">import time
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+@app.middleware("http")
+async def add_timing(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)          # run the route
+    ms = (time.perf_counter() - start) * 1000
+    response.headers["Server-Timing"] = f"app;dur={ms:.1f}"
+    return response
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://app.example.com", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>call_next(request)</code> — passes control inward</div><div class="explain-item">code after <code>call_next</code> — edits the response</div><div class="explain-item"><code>allow_origins</code> — exact origins, scheme + host + port</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — <code>flask-cors</code> and <code>before_request</code> / <code>after_request</code> hooks</li><li class="note-item">Django — <code>MIDDLEWARE</code> list + <code>django-cors-headers</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid <code>allow_origins=["*"]</code> with credentials · Prefer an explicit list</li><li class="note-item">Avoid auth checks in middleware · Prefer dependencies (per route, testable)</li></ul></section></div>
+			</div>
+			<!-- Row 3: Builtin Table | Cors Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-builtin"><h2 class="section-title">Built-in Middleware</h2><table><thead><tr><th>Class</th><th>Does</th></tr></thead><tbody><tr><td>CORSMiddleware</td><td class="desc">cross-origin headers</td></tr><tr><td>GZipMiddleware</td><td class="desc">compress responses</td></tr><tr><td>TrustedHostMiddleware</td><td class="desc">reject bad Host headers</td></tr><tr><td>HTTPSRedirectMiddleware</td><td class="desc">http → https</td></tr><tr><td>SessionMiddleware</td><td class="desc">signed cookie sessions</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-cors"><h2 class="section-title">CORSMiddleware Options</h2><table><thead><tr><th>Option</th><th>Meaning</th></tr></thead><tbody><tr><td>allow_origins</td><td class="desc">allowed origins list</td></tr><tr><td>allow_origin_regex</td><td class="desc">pattern instead</td></tr><tr><td>allow_credentials</td><td class="desc">cookies / auth headers</td></tr><tr><td>allow_methods</td><td class="desc">methods</td></tr><tr><td>expose_headers</td><td class="desc">headers JS can read</td></tr><tr><td>max_age</td><td class="desc">preflight cache secs</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item"><code>allow_origins=["*"]</code> + <code>allow_credentials=True</code>: browsers reject it</li><li class="note-item">Trailing slash in an origin (<code>https://app.com/</code>): never matches</li><li class="note-item">Reading <code>await request.body()</code> in <code>BaseHTTPMiddleware</code> and breaking streaming</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add CORS last so it wraps everything, including errors</li><li class="note-item">Use <code>TrustedHostMiddleware</code> in production</li><li class="note-item">Put request IDs in middleware and in log context</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>@app.middleware("http")</code> — wrap every request</li><li class="note-item"><code>add_middleware()</code> — add built-in classes</li><li class="note-item"><code>CORSMiddleware</code> — browser cross-origin access</li><li class="note-item">last added — runs first</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-26-lifespan.html" class="nav-link prev">Lifespan Events</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-28-sqlmodel.html" class="nav-link next">SQLModel</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

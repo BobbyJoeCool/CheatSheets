@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>COBOL — Sheet 57: Embedded SQL with DB2</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cbl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s57">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 57</div>
+			<h1>Embedded SQL with DB2</h1>
+			<div class="sheet-desc"><code>EXEC SQL … END-EXEC</code> · host variables <code>:WS-NAME</code> · <code>SQLCA</code> / <code>SQLCODE</code> · <code>DECLARE CURSOR</code> / <code>OPEN</code> / <code>FETCH</code> / <code>CLOSE</code> · DCLGEN · precompile &amp; BIND</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Talking to DB2 from COBOL</h2><div class="description">SQL statements sit inside <code>EXEC SQL … END-EXEC</code> blocks and use COBOL fields as <strong>host variables</strong> prefixed with a colon. The DB2 precompiler (or coprocessor) turns them into calls, and after each statement <strong>SQLCODE</strong> reports the result: 0 success, 100 not found, negative an error.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>INCLUDE SQLCA</code> defines SQLCODE and related fields</li><li class="note-item">DCLGEN generates host-variable layouts from a table</li><li class="note-item">Multi-row results need a <strong>cursor</strong></li><li class="note-item">Programs are bound into a package/plan before they run</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">The SQL coprocessor (<code>SQL</code> compiler option) replaces the separate precompile step</li><li class="note-item">BIND stores the access path; the plan/package name is used at run time</li><li class="note-item">Batch DB2 programs run under IKJEFT01 <code>DSN RUN</code> (see the JCL set)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Single Row and Cursor</h2><pre><code class="language-cobol">           EXEC SQL INCLUDE SQLCA END-EXEC.
+           EXEC SQL INCLUDE DCLCUST END-EXEC.     *&gt; DCLGEN output
+       01  WS-STATE           PIC XX VALUE "IA".
+
+      *&gt;   Single-row SELECT
+           MOVE 104217 TO CUST-ID
+           EXEC SQL
+              SELECT NAME, BALANCE
+                INTO :CUST-NAME, :CUST-BALANCE
+                FROM CUSTOMER
+               WHERE ID = :CUST-ID
+           END-EXEC
+           EVALUATE SQLCODE
+              WHEN 0     DISPLAY CUST-NAME
+              WHEN 100   DISPLAY "NOT FOUND"
+              WHEN OTHER DISPLAY "SQL ERROR " SQLCODE
+           END-EVALUATE
+
+      *&gt;   Cursor for many rows
+           EXEC SQL DECLARE C1 CURSOR FOR
+              SELECT ID, NAME FROM CUSTOMER
+               WHERE STATE = :WS-STATE ORDER BY NAME
+           END-EXEC
+           EXEC SQL OPEN C1 END-EXEC
+           PERFORM UNTIL SQLCODE NOT = 0
+              EXEC SQL FETCH C1 INTO :CUST-ID, :CUST-NAME
+              END-EXEC
+              IF SQLCODE = 0 PERFORM 2000-PRINT END-IF
+           END-PERFORM
+           EXEC SQL CLOSE C1 END-EXEC</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>:CUST-ID</code> is a COBOL field used inside SQL</div><div class="explain-item">SQLCODE 100 means no row (or no more rows for FETCH)</div><div class="explain-item">The cursor loop stops at 100 or any error</div><div class="explain-item">A SELECT INTO that finds two rows returns -811</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>cur.execute("SELECT … WHERE id = ?", (cid,)); cur.fetchone()</code></li><li class="note-item"><strong>Java</strong> <code>PreparedStatement ps = conn.prepareStatement("… WHERE id = ?")</code></li><li class="note-item"><strong>JavaScript</strong> <code>await client.query("… WHERE id = $1", [cid])</code> (node-postgres)</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">ignoring negative SQLCODEs → check SQLCODE after every statement</li><li class="note-item"><code>SELECT *</code> → list columns to match host variables</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Common Sqlcodes Table | Build Steps Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-common-sqlcodes"><h2 class="section-title">Common SQLCODEs</h2><table><thead><tr><th>Code</th><th>Meaning</th></tr></thead><tbody><tr><td>0</td><td class="desc">Success</td></tr><tr><td>+100</td><td class="desc">Not found / end of cursor</td></tr><tr><td>-180 / -181</td><td class="desc">Bad date/time value</td></tr><tr><td>-305</td><td class="desc">NULL without indicator</td></tr><tr><td>-803</td><td class="desc">Duplicate key on insert</td></tr><tr><td>-811</td><td class="desc">SELECT INTO returned &gt;1 row</td></tr><tr><td>-911 / -913</td><td class="desc">Deadlock / timeout</td></tr><tr><td>-922</td><td class="desc">Not authorized</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-build-steps"><h2 class="section-title">Build Steps</h2><table><thead><tr><th>Step</th><th>Does</th></tr></thead><tbody><tr><td>DCLGEN</td><td class="desc">Table → copybook</td></tr><tr><td>Precompile / coprocessor</td><td class="desc">SQL → calls + DBRM</td></tr><tr><td>Compile + link</td><td class="desc">Load module</td></tr><tr><td>BIND</td><td class="desc">DBRM → package / plan</td></tr><tr><td>Run</td><td class="desc">IKJEFT01 DSN RUN</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Nullable columns fetched without an indicator variable (-305)</li><li class="note-item">SELECT INTO a query that can return several rows (-811)</li><li class="note-item">Treating +100 as an error in a FETCH loop</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use DCLGEN layouts so host variables match column types</li><li class="note-item">Add indicator variables (<code>:NAME :NAME-IND</code>) for nullable columns</li><li class="note-item">COMMIT at regular intervals in long batch updates</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>EXEC SQL … END-EXEC</code></li><li class="note-item"><code>:host-var</code> — COBOL field in SQL</li><li class="note-item"><code>SQLCODE</code> — 0 / 100 / negative</li><li class="note-item">cursor — many rows</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cbl-56-nested-programs-functions.html">Nested Programs &amp; User-Defined Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">COBOL Reference · 64 Sheets</a>
+				<a class="nav-link next" href="cbl-58-cics-basics.html">CICS Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cobol.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 25: Artifact Registry</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Artifact Registry</h1>
+			<div class="sheet-desc">Docker, npm, Maven, Python, Go… repositories · standard, remote &amp; virtual repos · gcloud auth configure-docker · vulnerability scanning · cleanup policies · Container Registry is shut down</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Storing Images and Packages</h2><div class="description"><strong>Artifact Registry</strong> stores container images and language packages in regional or multi-regional <strong>repositories</strong>. <strong>Remote repositories</strong> cache upstreams (Docker Hub, npm, PyPI, Maven Central), and <strong>virtual repositories</strong> combine several behind one URL. <strong>Artifact Analysis</strong> scans images for vulnerabilities, and <strong>cleanup policies</strong> delete old versions. Container Registry (gcr.io) has been replaced by Artifact Registry.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Image paths: <code>LOCATION-docker.pkg.dev/PROJECT/REPO/IMAGE:TAG</code></li><li class="note-item">gcr.io domains can be served by Artifact Registry repositories</li><li class="note-item">Use digests (<code>@sha256:…</code>) for immutable deploys</li><li class="note-item">Immutable tags can be enforced per repository</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / Azure Equivalent + Cost Check + Security Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Repos, Push, Scan, Clean Up</h2><pre><code class="language-bash">gcloud artifacts repositories create apps --repository-format=docker \
+    --location=us-central1 --immutable-tags \
+    --description="Shop container images"
+gcloud auth configure-docker us-central1-docker.pkg.dev
+
+IMG=us-central1-docker.pkg.dev/shop-prod-4821/apps/api
+docker build -t $IMG:1.4.2 .
+docker push $IMG:1.4.2
+gcloud builds submit --tag=$IMG:1.4.3 .        # or build in the cloud
+
+gcloud artifacts docker images list $IMG
+gcloud artifacts docker images describe $IMG:1.4.2 \
+    --show-package-vulnerability
+
+gcloud artifacts repositories set-cleanup-policies apps \
+    --location=us-central1 --policy=cleanup.json --no-dry-run
+
+gcloud artifacts repositories create pypi-proxy --location=us-central1 \
+    --repository-format=python --mode=remote-repository \
+    --remote-python-repo=PYPI
+gcloud artifacts repositories add-iam-policy-binding apps \
+    --location=us-central1 --role=roles/artifactregistry.reader \
+    --member="serviceAccount:api@shop-prod-4821.iam.gserviceaccount.com"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Immutable tags stop a release tag from being overwritten</div><div class="explain-item"><code>configure-docker</code> adds a credential helper for the registry host</div><div class="explain-item">Scanning results show per-package vulnerabilities</div><div class="explain-item">The remote repo caches PyPI packages for builds</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> ECR + pull-through cache (aws-25)</li><li class="note-item"><strong>Azure</strong> Azure Container Registry (az-25)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Storage per GB per month (first 0.5 GB free)</li><li class="note-item">Egress across regions and to the internet bills per GB</li><li class="note-item">Cleanup policies keep old images from piling up</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Grant <code>artifactregistry.reader</code> to runtimes and <code>writer</code> only to CI</li><li class="note-item">Turn on vulnerability scanning and gate deploys with Binary Authorization</li><li class="note-item">Enable immutable tags for release repositories</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Request quotas per project per region (read / write per minute)</li><li class="note-item">Docker layer size limits apply (very large layers fail)</li><li class="note-item">Cleanup policies run asynchronously (not instant)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Repository Modes Table | Formats Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-repository-modes"><h2 class="section-title">Repository Modes</h2><table><thead><tr><th>Mode</th><th>Use</th></tr></thead><tbody><tr><td>Standard</td><td class="desc">Your images / packages</td></tr><tr><td>Remote</td><td class="desc">Cache Docker Hub, PyPI, npm, Maven</td></tr><tr><td>Virtual</td><td class="desc">One URL over several repos</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-formats"><h2 class="section-title">Formats</h2><table><thead><tr><th>Format</th><th>Client</th></tr></thead><tbody><tr><td>Docker / OCI</td><td class="desc">docker, helm</td></tr><tr><td>npm</td><td class="desc">npm, pnpm, yarn</td></tr><tr><td>Python</td><td class="desc">pip, twine</td></tr><tr><td>Maven / Gradle</td><td class="desc">mvn, gradle</td></tr><tr><td>Go, Apt, Yum, generic</td><td class="desc">Various</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Deploy by digest, not mutable tags</li><li class="note-item note-do"><strong>Do</strong> Put a remote repo in front of Docker Hub to avoid rate limits</li><li class="note-item note-dont"><strong>Don’t</strong> Keep using gcr.io paths without migrating</li><li class="note-item note-dont"><strong>Don’t</strong> Grant <code>writer</code> to runtime service accounts</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>docker build</code> + <code>docker run</code> locally before pushing</li><li class="note-item">Trivy / Grype scan images locally</li><li class="note-item">Point pip / npm at the remote repo to test caching</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Immutable tags + scanning on release repos</li><li class="note-item">Cleanup policies tested in dry-run</li><li class="note-item">Binary Authorization requiring scanned, attested images</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-24-pub-sub.html">Pub/Sub</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-26-gke-basics.html">GKE Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

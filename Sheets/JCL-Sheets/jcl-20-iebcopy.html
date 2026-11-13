@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 20: IEBCOPY</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>IEBCOPY</h1>
+			<div class="sheet-desc">copy PDS / PDSE members · <code>COPY OUTDD=… INDD=…</code> · <code>SELECT MEMBER=</code> · <code>EXCLUDE</code> · compress in place · unload / reload</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Copying Libraries and Members</h2><div class="description"><strong>IEBCOPY</strong> copies whole partitioned datasets or selected members between libraries. It also <strong>compresses</strong> a PDS in place to reclaim space left by deleted and replaced members, and <strong>unloads</strong> a library to a sequential file for transfer or backup.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">INDD and OUTDD name DD statements, not datasets</li><li class="note-item"><code>SELECT</code> copies only listed members; <code>EXCLUDE</code> skips them</li><li class="note-item"><code>R</code> after a member name replaces an existing member</li><li class="note-item">PDSEs reuse space and do not need compressing</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Copy Members and Compress</h2><pre><code class="language-jcl">//COPYMEM  EXEC PGM=IEBCOPY
+//SYSPRINT DD SYSOUT=*
+//FROMLIB  DD DSN=PROD.COBOL.SRC,DISP=SHR
+//TOLIB    DD DSN=USER.COBOL.SRC,DISP=SHR
+//SYSIN    DD *
+  COPY OUTDD=TOLIB,INDD=FROMLIB
+  SELECT MEMBER=(PAYCALC,PAYRPT,(TAXCALC,TAXNEW,R))
+/*
+//*
+//* Compress a PDS in place
+//COMPRESS EXEC PGM=IEBCOPY
+//SYSPRINT DD SYSOUT=*
+//LIB      DD DSN=USER.OLD.PDS,DISP=OLD
+//SYSIN    DD *
+  COPY OUTDD=LIB,INDD=LIB
+/*
+//*
+//* Unload a library to a sequential file
+//UNLOAD   EXEC PGM=IEBCOPY
+//SYSPRINT DD SYSOUT=*
+//IN       DD DSN=USER.COBOL.SRC,DISP=SHR
+//OUT      DD DSN=USER.COBOL.UNLOAD,DISP=(NEW,CATLG,DELETE),
+//            SPACE=(CYL,(5,5))
+//SYSIN    DD *
+  COPY OUTDD=OUT,INDD=IN
+/*</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Only three members are copied; TAXCALC is renamed TAXNEW and replaces an existing one</div><div class="explain-item">INDD = OUTDD on the same library compresses it</div><div class="explain-item">An unload makes a sequential file you can send by FTP</div><div class="explain-item">DISP=OLD prevents others updating the library during compress</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>shutil.copytree(src, dst)</code> or copy chosen files</li><li class="note-item"><strong>Java</strong> <code>Files.walk</code> + <code>Files.copy</code> for selected files</li><li class="note-item"><strong>JavaScript</strong> <code>fs.cpSync(src, dst, { recursive: true, filter })</code></li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item">SYSPRINT reports a member not found: a SELECT name does not exist in INDD</li><li class="note-item">Compressing a PDS that others are using: corruption risk; use DISP=OLD</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Control Statements Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-control-statements"><h2 class="section-title">Control Statements</h2><table><thead><tr><th>Statement</th><th>Does</th></tr></thead><tbody><tr><td>COPY OUTDD=o,INDD=i</td><td class="desc">Copy all members</td></tr><tr><td>INDD=(a,b)</td><td class="desc">Several inputs</td></tr><tr><td>SELECT MEMBER=(m1,m2)</td><td class="desc">Only these</td></tr><tr><td>SELECT MEMBER=((old,new))</td><td class="desc">Rename</td></tr><tr><td>(m,,R) / (old,new,R)</td><td class="desc">Replace existing</td></tr><tr><td>EXCLUDE MEMBER=(m)</td><td class="desc">Skip these</td></tr><tr><td>COPY OUTDD=x,INDD=x</td><td class="desc">Compress</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting <code>R</code>, so existing members are not replaced (and the copy is skipped)</li><li class="note-item">Using SELECT and EXCLUDE in the same COPY group</li><li class="note-item">Compressing a busy production library</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Back up a PDS (unload) before risky changes</li><li class="note-item">Move libraries to PDSE to stop needing compresses</li><li class="note-item">Read SYSPRINT: it lists every member copied or skipped</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">IEBCOPY — library copies</li><li class="note-item"><code>SELECT</code> / <code>EXCLUDE</code> — choose members</li><li class="note-item"><code>R</code> — replace</li><li class="note-item">INDD = OUTDD — compress</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-19-iefbr14-iebgener.html">IEFBR14 &amp; IEBGENER</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-21-idcams.html">IDCAMS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

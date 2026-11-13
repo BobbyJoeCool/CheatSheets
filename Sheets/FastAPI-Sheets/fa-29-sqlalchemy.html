@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 29: SQLAlchemy 2.0</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>SQLAlchemy 2.0</h1>
+			<div class="sheet-desc">DeclarativeBase · Mapped[int] · mapped_column · sessionmaker · session.execute(select()) · relationship()</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>SQLAlchemy 2.0</strong> is the standard Python ORM and works with FastAPI directly. Models use typed <code>Mapped[...]</code> annotations, queries use <code>select()</code>, and sessions come from a <code>sessionmaker</code>. Keep ORM models separate from Pydantic schemas and convert with <code>from_attributes=True</code>.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>pip install sqlalchemy</code> (+ a driver like <code>psycopg</code>)</li><li class="note-item">2.0 style: <code>select()</code> everywhere, no <code>session.query()</code></li><li class="note-item"><code>Mapped[str | None]</code> → nullable column</li><li class="note-item"><code>expire_on_commit=False</code> keeps objects usable after commit</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Models, Session, Query</h2><pre><code class="language-python">from sqlalchemy import ForeignKey, String, create_engine, select
+from sqlalchemy.orm import (DeclarativeBase, Mapped, mapped_column,
+                            relationship, sessionmaker)
+
+class Base(DeclarativeBase): pass
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    todos: Mapped[list["Todo"]] = relationship(back_populates="owner")
+
+class Todo(Base):
+    __tablename__ = "todos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(100))
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    owner: Mapped[User] = relationship(back_populates="todos")
+
+engine = create_engine("postgresql+psycopg://app@localhost/app")
+SessionLocal = sessionmaker(engine, expire_on_commit=False)
+
+def todos_for(db, user_id: int) -&gt; list[Todo]:
+    return db.scalars(select(Todo).where(Todo.owner_id == user_id)).all()</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>DeclarativeBase</code> — base class for models</div><div class="explain-item"><code>Mapped[int]</code> + <code>mapped_column()</code> — typed column</div><div class="explain-item"><code>relationship(back_populates=)</code> — two-way link</div><div class="explain-item"><code>sessionmaker(engine)</code> — session factory</div><div class="explain-item"><code>db.scalars(select(...))</code> — ORM objects, not rows</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — Flask-SQLAlchemy wraps the same models (sheet 54)</li><li class="note-item">Django — Django ORM: <code>Todo.objects.filter(owner_id=...)</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid legacy <code>session.query(Todo)</code> · Prefer <code>select(Todo)</code></li><li class="note-item">Avoid lazy-loading in loops (N+1) · Prefer <code>selectinload(User.todos)</code></li></ul></section></div>
+			</div>
+			<!-- Row 3: Query Table | Drivers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-query"><h2 class="section-title">Query Cheats</h2><table><thead><tr><th>2.0 Code</th><th>Does</th></tr></thead><tbody><tr><td>db.get(Todo, 7)</td><td class="desc">by primary key</td></tr><tr><td>select(Todo).where(...)</td><td class="desc">filter</td></tr><tr><td>.order_by(Todo.id.desc())</td><td class="desc">sort</td></tr><tr><td>.limit(20).offset(40)</td><td class="desc">page</td></tr><tr><td>.options(selectinload(...))</td><td class="desc">eager load</td></tr><tr><td>db.scalar(select(func.count()))</td><td class="desc">count</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-drivers"><h2 class="section-title">Drivers</h2><table><thead><tr><th>Database</th><th>URL prefix</th></tr></thead><tbody><tr><td>PostgreSQL</td><td class="desc">postgresql+psycopg://</td></tr><tr><td>PostgreSQL async</td><td class="desc">postgresql+asyncpg://</td></tr><tr><td>MySQL</td><td class="desc">mysql+pymysql://</td></tr><tr><td>SQLite</td><td class="desc">sqlite:///file.db</td></tr><tr><td>SQLite async</td><td class="desc">sqlite+aiosqlite://</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Returning ORM objects whose lazy relationships load after the session closed</li><li class="note-item">Forgetting <code>String(n)</code> length on MySQL</li><li class="note-item">Creating a new engine per request instead of one per app</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use a yield dependency for sessions (sheet 23)</li><li class="note-item">Turn on <code>echo=True</code> on the engine to see SQL while learning</li><li class="note-item">See the SQL set for joins and indexes</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Mapped[...]</code> — typed ORM columns</li><li class="note-item"><code>select()</code> — 2.0 query style</li><li class="note-item"><code>sessionmaker</code> — session per request</li><li class="note-item"><code>relationship()</code> — linked objects</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-28-sqlmodel.html" class="nav-link prev">SQLModel</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-30-async-database.html" class="nav-link next" title="Async Database Access">Async Database</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

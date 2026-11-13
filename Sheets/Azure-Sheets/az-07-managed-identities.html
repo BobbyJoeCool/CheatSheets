@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 07: Managed Identities &amp; Federation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s07">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 07</div>
+			<h1>Managed Identities &amp; Federation</h1>
+			<div class="sheet-desc">system- vs user-assigned identities · granting roles to an identity · federated credentials (GitHub Actions OIDC) · workload identity for AKS · no secrets in code</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Identities Azure Manages for You</h2><div class="description">A <strong>managed identity</strong> is a service principal Azure creates and rotates automatically. <strong>System-assigned</strong> identities live and die with one resource; <strong>user-assigned</strong> identities are standalone and can be shared and pre-authorized. <strong>Federated credentials</strong> let outside workloads (GitHub Actions, Kubernetes pods, other clouds) exchange their own OIDC tokens for Azure tokens: no secrets anywhere.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Enable on App Service, Functions, Container Apps, VMs, AKS and more</li><li class="note-item">Grant roles to the identity's principal ID</li><li class="note-item">User-assigned identities avoid role-assignment delays on new resources</li><li class="note-item">Federated credential subjects pin exactly which repo / branch / environment may log in</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Scope federated subjects tightly (<code>repo:org/app:environment:production</code>)</li><li class="note-item">Avoid wildcard-like broad subjects and shared identities across apps</li><li class="note-item">Remove client secrets from app registrations once federation works</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create, Attach, Federate</h2><pre><code class="language-bash"># User-assigned identity attached to a web app
+az identity create -g rg-shop -n id-shop-api
+MI=$(az identity show -g rg-shop -n id-shop-api --query principalId -o tsv)
+az webapp identity assign -g rg-shop -n app-shop-api \
+    --identities $(az identity show -g rg-shop -n id-shop-api --query id -o tsv)
+az role assignment create --assignee-object-id $MI \
+    --assignee-principal-type ServicePrincipal \
+    --role "Key Vault Secrets User" --scope $KV
+
+# System-assigned on a VM
+az vm identity assign -g rg-shop -n vm-worker
+
+# Trust GitHub Actions for production deploys (no secret)
+az identity federated-credential create -g rg-shop \
+    --identity-name id-shop-deploy --name gh-prod \
+    --issuer https://token.actions.githubusercontent.com \
+    --subject repo:contoso/shop:environment:production \
+    --audiences api://AzureADTokenExchange</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The identity gets roles like any principal</div><div class="explain-item"><code>--assignee-principal-type ServicePrincipal</code> avoids lookup delays for new identities</div><div class="explain-item">The federated subject must match the GitHub token claim exactly</div><div class="explain-item">GitHub then uses <code>azure/login</code> with the identity's client ID (sheet 39)</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> IAM roles, instance profiles, OIDC providers (aws-07)</li><li class="note-item"><strong>GCP</strong> Service accounts, Workload Identity Federation (gcp-07)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Managed identities and federated credentials are free</li><li class="note-item">They remove the cost of secret rotation work and incidents</li><li class="note-item">Up to 20 federated credentials per identity / app</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: System Vs User Assig Table | Federation Subjects Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-system-vs-user-assig"><h2 class="section-title">System vs User-Assigned</h2><table><thead><tr><th>Item</th><th>System</th><th>User</th></tr></thead><tbody><tr><td>Lifecycle</td><td class="kw">Tied to resource</td><td class="kw">Independent</td></tr><tr><td>Share across resources</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>Pre-assign roles</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>Best for</td><td class="kw">One-off resources</td><td class="kw">Fleets, IaC, scale sets</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-federation-subjects"><h2 class="section-title">Federation Subjects (GitHub)</h2><table><thead><tr><th>Trigger</th><th>Subject</th></tr></thead><tbody><tr><td>Branch</td><td class="desc">repo:org/app:ref:refs/heads/main</td></tr><tr><td>Environment</td><td class="desc">repo:org/app:environment:production</td></tr><tr><td>Pull request</td><td class="desc">repo:org/app:pull_request</td></tr><tr><td>Tag</td><td class="desc">repo:org/app:ref:refs/tags/v1.0</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use user-assigned identities in IaC so roles exist before the app starts</li><li class="note-item note-do"><strong>Do</strong> One identity per app or workload</li><li class="note-item note-dont"><strong>Don’t</strong> Store a service principal secret in GitHub secrets</li><li class="note-item note-dont"><strong>Don’t</strong> Reuse the deploy identity as the runtime identity</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Locally, DefaultAzureCredential falls back to your <code>az login</code></li><li class="note-item">Grant your own user the same data role for local testing</li><li class="note-item">The managed identity endpoint only exists inside Azure; do not try to mock it</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">All apps use managed identities; zero client secrets</li><li class="note-item">Federated credentials limited to protected environments</li><li class="note-item">Identity role assignments reviewed quarterly</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-06-rbac.html">Azure RBAC</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-08-key-vault.html">Key Vault</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

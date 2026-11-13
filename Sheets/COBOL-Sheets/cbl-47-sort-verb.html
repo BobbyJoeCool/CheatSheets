@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>COBOL — Sheet 47: The SORT Verb</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cbl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s47">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 47</div>
+			<h1>The SORT Verb</h1>
+			<div class="sheet-desc"><code>SD</code> sort file · <code>SORT … ON ASCENDING KEY</code> · <code>USING</code> / <code>GIVING</code> · <code>INPUT PROCEDURE</code> / <code>OUTPUT PROCEDURE</code> · <code>RELEASE</code> / <code>RETURN</code> · <code>SORT-RETURN</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Sorting Files Inside a Program</h2><div class="description"><code>SORT</code> orders records by one or more keys using the system sort (DFSORT on z/OS). The simple form sorts one file <code>USING</code> into another <code>GIVING</code>. Input and output <strong>procedures</strong> let you filter or change records on the way in (<code>RELEASE</code>) and process them on the way out (<code>RETURN</code>).</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">The sort work file is declared with <code>SD</code>, not FD</li><li class="note-item">USING/GIVING files must not be open</li><li class="note-item">Keys are fields in the SD record</li><li class="note-item"><code>SORT-RETURN</code> is 0 on success</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">COBOL SORT calls DFSORT on z/OS; sort work space comes from SORTWKnn DDs or dynamic allocation</li><li class="note-item">GnuCOBOL implements SORT itself with temporary files</li><li class="note-item">Filtering in the input procedure means fewer records to sort</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">USING/GIVING and Procedures</h2><pre><code class="language-cobol">       FILE-CONTROL.
+           SELECT SORT-WORK ASSIGN TO SORTWK1.
+       DATA DIVISION.
+       FILE SECTION.
+       SD  SORT-WORK.
+       01  SW-REC.
+           05 SW-STATE         PIC XX.
+           05 SW-CITY          PIC X(20).
+           05 SW-SALES         PIC S9(7)V99 COMP-3.
+           05 FILLER           PIC X(53).
+
+       PROCEDURE DIVISION.
+           SORT SORT-WORK
+                ON ASCENDING  KEY SW-STATE SW-CITY
+                ON DESCENDING KEY SW-SALES
+                USING  SALES-IN
+                GIVING SALES-SORTED
+           IF SORT-RETURN NOT = 0
+              DISPLAY "SORT FAILED " SORT-RETURN
+              MOVE 16 TO RETURN-CODE
+           END-IF
+
+           SORT SORT-WORK ON ASCENDING KEY SW-STATE
+                INPUT PROCEDURE  2000-SELECT-IA-MN
+                GIVING SALES-SORTED.
+       2000-SELECT-IA-MN.
+           PERFORM UNTIL END-OF-SALES
+              READ SALES-IN INTO SW-REC
+                 AT END SET END-OF-SALES TO TRUE
+                 NOT AT END
+                    IF SW-STATE = "IA" OR "MN"
+                       RELEASE SW-REC
+                    END-IF
+              END-READ
+           END-PERFORM.</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Sort by state and city ascending, then sales descending</div><div class="explain-item">USING/GIVING opens and closes the files for you</div><div class="explain-item">The input procedure opens SALES-IN itself (not shown) and RELEASEs only IA and MN</div><div class="explain-item">An output procedure would <code>RETURN</code> sorted records one at a time</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>sorted(rows, key=lambda r: (r.state, r.city, -r.sales))</code></li><li class="note-item"><strong>Java</strong> <code>list.sort(comparing(R::state).thenComparing(R::city).thenComparing(R::sales, reverseOrder()))</code></li><li class="note-item"><strong>JavaScript</strong> <code>rows.sort((a, b) =&gt; a.state.localeCompare(b.state) || b.sales - a.sales)</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">sorting in a COBOL table by hand → SORT verb or a DFSORT step</li><li class="note-item">SORT with no SORT-RETURN check → test it and set RETURN-CODE</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Sort Pieces Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-sort-pieces"><h2 class="section-title">SORT Pieces</h2><table><thead><tr><th>Piece</th><th>Role</th></tr></thead><tbody><tr><td>SD</td><td class="desc">Sort work file</td></tr><tr><td>ON ASCENDING / DESCENDING KEY</td><td class="desc">Sort order</td></tr><tr><td>USING file</td><td class="desc">Input as-is</td></tr><tr><td>INPUT PROCEDURE</td><td class="desc">Filter + RELEASE</td></tr><tr><td>GIVING file</td><td class="desc">Output as-is</td></tr><tr><td>OUTPUT PROCEDURE</td><td class="desc">RETURN + process</td></tr><tr><td>WITH DUPLICATES IN ORDER</td><td class="desc">Stable for equal keys</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Opening the USING or GIVING file yourself (they must be closed)</li><li class="note-item">WRITE instead of RELEASE in an input procedure</li><li class="note-item">No check of SORT-RETURN, so a failed sort looks successful</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Filter early in the input procedure to sort less data</li><li class="note-item">Add <code>WITH DUPLICATES IN ORDER</code> when equal keys must keep input order</li><li class="note-item">For plain sorts with no logic, a DFSORT JCL step is simpler</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>SD</code> — sort file</li><li class="note-item"><code>SORT … KEY</code> — order</li><li class="note-item"><code>USING</code> / <code>GIVING</code> — whole files</li><li class="note-item"><code>RELEASE</code> / <code>RETURN</code> — procedures</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cbl-46-relative-files.html">Relative Files</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">COBOL Reference · 64 Sheets</a>
+				<a class="nav-link next" href="cbl-48-merge-sort-utilities.html">MERGE &amp; Sort Utilities</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cobol.min.js"></script>
+	</body>
+</html>

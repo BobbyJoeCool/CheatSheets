@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 86: Cancellation &amp; Timeouts</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s86">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 86</div>
+			<h1>Cancellation &amp; Timeouts</h1>
+			<div class="sheet-desc"><code>cancel()</code> · <code>isActive</code> / <code>ensureActive()</code> · <code>withTimeout</code> / <code>withTimeoutOrNull</code> · <code>CancellationException</code> · <code>NonCancellable</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Stopping Work Cooperatively</h2><div class="description">Coroutine cancellation is <strong>cooperative</strong>: <code>cancel()</code> marks a job cancelled, and the coroutine stops at its next suspension point or check of <code>isActive</code>. Suspending library functions like <code>delay</code> check automatically. <code>withTimeout</code> cancels a block after a time limit; <code>withTimeoutOrNull</code> returns null instead of throwing.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Cancellation throws <code>CancellationException</code> at suspension points</li><li class="note-item">Tight CPU loops must call <code>ensureActive()</code> or <code>yield()</code></li><li class="note-item">Always rethrow <code>CancellationException</code> if you catch broad exceptions</li><li class="note-item">Cleanup that suspends needs <code>withContext(NonCancellable)</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Cancelling and Timing Out</h2><pre><code class="language-kotlin">import kotlinx.coroutines.*
+import kotlin.time.Duration.Companion.seconds
+
+fun main() = runBlocking {
+    val job = launch {
+        repeat(1000) { i -&gt;
+            println("working $i")
+            delay(100)                     // cancellation point
+        }
+    }
+    delay(350)
+    job.cancelAndJoin()                    // stops after ~4 iterations
+    println("cancelled")
+
+    val cpu = launch(Dispatchers.Default) {
+        var n = 0L
+        while (isActive) { n++ }           // checks cancellation
+    }
+    delay(50); cpu.cancelAndJoin()
+
+    val price = withTimeoutOrNull(2.seconds) { slowPriceApi() }  // null if slow
+    println(price ?: "using cached price")
+
+}
+
+suspend fun download(file: String) {
+    try {
+        transfer(file)
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e   // never swallow cancellation
+        log.error("failed", e)
+    } finally {
+        withContext(NonCancellable) { cleanupTempFiles() }   // may suspend
+    }
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>cancelAndJoin</code> cancels and waits for the coroutine to finish</div><div class="explain-item">The CPU loop exits because it checks <code>isActive</code></div><div class="explain-item"><code>withTimeoutOrNull</code> is the friendly way to bound slow calls</div><div class="explain-item">Rethrowing CancellationException keeps cancellation working</div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item"><code>future.cancel(true)</code> + checking <code>Thread.interrupted()</code></li><li class="note-item"><code>future.get(2, TimeUnit.SECONDS)</code> throws TimeoutException</li><li class="note-item"><code>orTimeout(2, SECONDS)</code> on CompletableFuture</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item"><code>catch (e: Exception)</code> that eats cancellation → rethrow <code>CancellationException</code></li><li class="note-item">manual timers for timeouts → <code>withTimeout</code> / <code>withTimeoutOrNull</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Api Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-api"><h2 class="section-title">API</h2><table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td>job.cancel()</td><td class="desc">Request cancellation</td></tr><tr><td>job.cancelAndJoin()</td><td class="desc">Cancel + wait</td></tr><tr><td>isActive</td><td class="desc">Still running?</td></tr><tr><td>ensureActive()</td><td class="desc">Throw if cancelled</td></tr><tr><td>yield()</td><td class="desc">Check + let others run</td></tr><tr><td>withTimeout(d) { }</td><td class="desc">Throw on timeout</td></tr><tr><td>withTimeoutOrNull(d) { }</td><td class="desc">null on timeout</td></tr><tr><td>NonCancellable</td><td class="desc">Run cleanup anyway</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Busy loops that never check <code>isActive</code> (cannot be cancelled)</li><li class="note-item"><code>runCatching</code> or <code>catch (e: Exception)</code> swallowing cancellation</li><li class="note-item">Suspending in <code>finally</code> without NonCancellable</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>Duration</code> values for timeouts (<code>2.seconds</code>)</li><li class="note-item">Wrap blocking calls with <code>runInterruptible</code> to make them cancellable</li><li class="note-item">Test cancellation paths with <code>runTest</code> and virtual time</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">cooperative cancellation</li><li class="note-item"><code>isActive</code> / <code>ensureActive()</code></li><li class="note-item"><code>withTimeout</code> / <code>…OrNull</code></li><li class="note-item">rethrow CancellationException</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-85-dispatchers-context.html">Dispatchers &amp; Context</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-87-coroutine-exceptions.html">Exceptions in Coroutines</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

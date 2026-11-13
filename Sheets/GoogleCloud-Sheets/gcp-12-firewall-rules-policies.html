@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 12: Firewall Rules &amp; Policies</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Firewall Rules &amp; Policies</h1>
+			<div class="sheet-desc">VPC firewall rules · priorities &amp; implied rules · targets by network tag or service account · hierarchical &amp; network firewall policies · Firewall Rules Logging</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Filtering Traffic</h2><div class="description">Google Cloud firewalls are stateful and distributed: rules apply at each VM, defined at the network. <strong>VPC firewall rules</strong> have a priority (0–65535, lower wins), direction, action and <strong>targets</strong> (all instances, network tags or service accounts). <strong>Implied rules</strong> deny all ingress and allow all egress. <strong>Hierarchical firewall policies</strong> (org / folder) and <strong>network firewall policies</strong> manage rules centrally.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Target by service account for stronger identity than tags</li><li class="note-item">Health check ranges: 35.191.0.0/16 and 130.211.0.0/22</li><li class="note-item">IAP TCP forwarding range: 35.235.240.0/20</li><li class="note-item">Cloud NGFW adds L7 inspection, FQDN and geo rules</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Never allow 22 / 3389 from 0.0.0.0/0; allow only the IAP range</li><li class="note-item">Use service-account targets instead of free-form tags</li><li class="note-item">Enable firewall logging on deny rules</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Firewall rules per project: default quota 100 (adjustable)</li><li class="note-item">Network tags: up to 64 per instance</li><li class="note-item">Priority range 0–65535 (implied rules at 65535)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Rules for a Web Tier</h2><pre><code class="language-bash">SA_WEB=web@shop-prod-4821.iam.gserviceaccount.com
+gcloud compute firewall-rules create allow-lb-health --network=vpc-shop \
+    --direction=INGRESS --action=allow --rules=tcp:8080 \
+    --source-ranges=35.191.0.0/16,130.211.0.0/22 \
+    --target-service-accounts=$SA_WEB --priority=1000
+gcloud compute firewall-rules create allow-iap-ssh --network=vpc-shop \
+    --direction=INGRESS --action=allow --rules=tcp:22 \
+    --source-ranges=35.235.240.0/20 --target-service-accounts=$SA_WEB
+gcloud compute firewall-rules create deny-egress-inet --network=vpc-shop \
+    --direction=EGRESS --action=deny --rules=all \
+    --destination-ranges=0.0.0.0/0 --target-tags=db --priority=2000 \
+    --enable-logging
+
+# Network firewall policy managed centrally
+gcloud compute network-firewall-policies create shop-fw --global
+gcloud compute network-firewall-policies rules create 1000 \
+    --firewall-policy=shop-fw --global-firewall-policy \
+    --direction=INGRESS --action=allow --layer4-configs=tcp:443 \
+    --src-ip-ranges=0.0.0.0/0
+gcloud compute network-firewall-policies associations create \
+    --firewall-policy=shop-fw --network=vpc-shop --global-firewall-policy</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Load balancer health checks come from Google's fixed ranges</div><div class="explain-item">SSH is allowed only from IAP, never the internet</div><div class="explain-item">The egress deny keeps database VMs from calling out</div><div class="explain-item">Network firewall policies group rules and attach to networks</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Security groups and NACLs (aws-12)</li><li class="note-item"><strong>Azure</strong> NSGs, ASGs, Azure Firewall (az-12)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">VPC firewall rules are free</li><li class="note-item">Firewall Rules Logging bills as log ingestion</li><li class="note-item">Cloud NGFW Enterprise (L7 inspection) bills per endpoint-hour + GB</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Rule Fields Table | Policy Levels Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-rule-fields"><h2 class="section-title">Rule Fields</h2><table><thead><tr><th>Field</th><th>Example</th></tr></thead><tbody><tr><td>Direction</td><td class="desc">INGRESS / EGRESS</td></tr><tr><td>Priority</td><td class="desc">1000 (lower wins)</td></tr><tr><td>Action</td><td class="desc">allow / deny</td></tr><tr><td>Targets</td><td class="desc">All, tags, service accounts</td></tr><tr><td>Source / destination</td><td class="desc">CIDRs, tags, SAs</td></tr><tr><td>Protocols / ports</td><td class="desc">tcp:443, udp:53, all</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-policy-levels"><h2 class="section-title">Policy Levels</h2><table><thead><tr><th>Level</th><th>Scope</th></tr></thead><tbody><tr><td>Hierarchical policy</td><td class="desc">Organization / folder</td></tr><tr><td>Global network policy</td><td class="desc">One VPC, all regions</td></tr><tr><td>Regional network policy</td><td class="desc">One VPC, one region</td></tr><tr><td>VPC firewall rules</td><td class="desc">Per network (classic)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Allow health check and IAP ranges explicitly</li><li class="note-item note-do"><strong>Do</strong> Keep org-wide denies in hierarchical policies</li><li class="note-item note-dont"><strong>Don’t</strong> Open admin ports to 0.0.0.0/0</li><li class="note-item note-dont"><strong>Don’t</strong> Rely on tags anyone with instance admin can change</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Connectivity Tests show which rule allowed or blocked traffic</li><li class="note-item">Firewall Insights flags shadowed and unused rules</li><li class="note-item">Test from a VM with <code>nc -zv</code> after each change</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">No public admin ports; IAP only</li><li class="note-item">Central policies for org-wide rules</li><li class="note-item">Firewall logging and Firewall Insights reviewed</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-11-cloud-nat-connectivity.html">Cloud NAT &amp; Connectivity</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-13-cloud-dns.html">Cloud DNS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

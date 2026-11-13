@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 36: SAM &amp; Terraform on AWS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>SAM &amp; Terraform on AWS</h1>
+			<div class="sheet-desc"><code>sam init</code> / <code>build</code> / <code>deploy</code> · <code>AWS::Serverless</code> transform · <code>sam local invoke</code> · Terraform AWS provider · S3 state backend · choosing an IaC tool</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Serverless Templates and Terraform</h2><div class="description">The <strong>AWS Serverless Application Model (SAM)</strong> extends CloudFormation with short resource types (<code>AWS::Serverless::Function</code>, <code>Api</code>, <code>SimpleTable</code>) and a CLI that builds, runs locally and deploys. <strong>Terraform</strong> with the AWS provider is the common multi-cloud choice; state goes in <strong>S3</strong> with native locking (lock files).</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>sam deploy --guided</code> saves settings in <code>samconfig.toml</code></li><li class="note-item"><code>sam sync --watch</code> pushes code changes in seconds during development</li><li class="note-item">Terraform S3 backend supports <code>use_lockfile = true</code> (DynamoDB locking is legacy)</li><li class="note-item">Use OIDC roles for Terraform in CI</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code + Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">template.yaml (SAM)</h2><pre><code class="language-yaml">Transform: AWS::Serverless-2016-10-31
+Globals:
+  Function: { Runtime: python3.13, Architectures: [arm64], Timeout: 10 }
+Resources:
+  OrdersFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.handler
+      CodeUri: src/
+      Policies: [{ DynamoDBCrudPolicy: { TableName: !Ref Orders } }]
+      Events:
+        Api: { Type: HttpApi, Properties: { Path: /orders, Method: post } }
+  Orders:
+    Type: AWS::Serverless::SimpleTable</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Terraform</h2><pre><code class="language-hcl">terraform {
+  required_providers { aws = { source = "hashicorp/aws", version = "~&gt; 6.0" } }
+  backend "s3" {
+    bucket       = "acme-tfstate"
+    key          = "shop/prod.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+  }
+}
+provider "aws" {
+  region = "us-east-1"
+  default_tags { tags = { owner = "team-a", env = "prod" } }
+}
+resource "aws_sqs_queue" "orders" { visibility_timeout_seconds = 60 }</code></pre></section><section class="section-code" id="code-3"><h2 class="section-title">CLIs</h2><pre><code class="language-bash">sam build &amp;&amp; sam local invoke OrdersFn -e event.json &amp;&amp; sam deploy --guided
+terraform init &amp;&amp; terraform plan -out tf.plan &amp;&amp; terraform apply tf.plan</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The SAM transform expands short types into full CloudFormation</div><div class="explain-item">Policy templates like <code>DynamoDBCrudPolicy</code> scope IAM to one table</div><div class="explain-item"><code>default_tags</code> tags every AWS resource Terraform creates</div><div class="explain-item">The S3 backend locks state with a lock file</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure Developer CLI, Terraform azurerm (az-35, az-36)</li><li class="note-item"><strong>GCP</strong> Terraform, Infrastructure Manager, Config Connector (gcp-34–36)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">SAM and Terraform CLI are free</li><li class="note-item">State bucket costs pennies; enable versioning on it</li><li class="note-item">Infracost estimates Terraform plan costs in PRs</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Choosing Iac On Aws Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-choosing-iac-on-aws"><h2 class="section-title">Choosing IaC on AWS</h2><table><thead><tr><th>Tool</th><th>Best When</th></tr></thead><tbody><tr><td>CloudFormation</td><td class="desc">AWS-only, declarative YAML</td></tr><tr><td>SAM</td><td class="desc">Serverless apps with local testing</td></tr><tr><td>CDK</td><td class="desc">Teams who prefer code, rich constructs</td></tr><tr><td>Terraform / OpenTofu</td><td class="desc">Multi-cloud, existing Terraform skills</td></tr><tr><td>Pulumi</td><td class="desc">Code with multi-cloud state</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Keep one state file per environment / component</li><li class="note-item note-do"><strong>Do</strong> Use SAM policy templates instead of broad managed policies</li><li class="note-item note-dont"><strong>Don’t</strong> Store Terraform state locally or in git</li><li class="note-item note-dont"><strong>Don’t</strong> Mix console edits with IaC-managed resources</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>sam local start-api</code> / <code>invoke</code> run functions in Docker</li><li class="note-item"><code>terraform validate</code> and tflint run offline</li><li class="note-item">LocalStack works with both SAM (<code>samlocal</code>) and Terraform (<code>tflocal</code>)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">CI deploys with OIDC roles and approvals</li><li class="note-item">State bucket versioned, encrypted, private</li><li class="note-item">Drift detection (terraform plan on a schedule)</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-35-cdk.html">AWS CDK</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-37-cloudwatch-metrics-alarms.html">CloudWatch Metrics &amp; Alarms</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-hcl.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

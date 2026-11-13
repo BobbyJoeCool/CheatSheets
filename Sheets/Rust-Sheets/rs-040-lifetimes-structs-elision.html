@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 040: Lifetimes — Structs &amp; Elision</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s040">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 040</div>
+			<h1>Lifetimes — Structs &amp; Elision</h1>
+			<div class="sheet-desc">structs holding <code>&amp;'a T</code> · <code>impl&lt;'a&gt;</code> · three elision rules · <code>'_</code> anonymous lifetime · <code>T: 'a</code> bounds · own instead of borrow</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Borrowed Data in Structs</h2><div class="description">A struct that holds a reference needs a lifetime parameter, which guarantees the struct cannot outlive the data it borrows. <strong>Elision rules</strong> let you skip annotations in common function signatures, and <code>'_</code> marks an inferred lifetime. In practice, most structs should own their data; borrowing structs suit short-lived views like parsers.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>struct Parser&lt;'a&gt; { input: &amp;'a str }</code></li><li class="note-item">Impl blocks repeat the parameter: <code>impl&lt;'a&gt; Parser&lt;'a&gt;</code></li><li class="note-item">Elision: a <code>&amp;self</code> method returns refs tied to self</li><li class="note-item"><code>'_</code> shows a borrow without naming it</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Structs with References</h2><pre><code class="language-rust">struct Parser&lt;'a&gt; {
+    input: &amp;'a str,                         // borrows, never owns
+    pos: usize,
+}
+
+impl&lt;'a&gt; Parser&lt;'a&gt; {
+    fn new(input: &amp;'a str) -&gt; Self { Parser { input, pos: 0 } }
+
+    fn next_word(&amp;mut self) -&gt; Option&lt;&amp;'a str&gt; {   // tied to input, not self
+        let rest = self.input[self.pos..].trim_start();
+        if rest.is_empty() { return None; }
+        let start = self.input.len() - rest.len();
+        let end = rest.find(' ').map_or(self.input.len(), |i| start + i);
+        self.pos = end;
+        Some(&amp;self.input[start..end])
+    }
+}
+
+let text = String::from("parse these words");
+let mut p = Parser::new(&amp;text);
+while let Some(w) = p.next_word() {
+    print!("[{w}] ");                       // [parse] [these] [words]
+}
+
+// Elision: these two signatures are the same
+fn first_word(s: &amp;str) -&gt; &amp;str { s.split(' ').next().unwrap_or("") }
+fn first_word2&lt;'a&gt;(s: &amp;'a str) -&gt; &amp;'a str { s.split(' ').next().unwrap_or("") }
+
+impl Parser&lt;'_&gt; {                           // '_ when the name isn't needed
+    fn remaining(&amp;self) -&gt; &amp;str { &amp;self.input[self.pos..] }   // tied to self
+}
+
+struct Holder&lt;'a, T: 'a&gt; { item: &amp;'a T }   // T must outlive 'a
+
+struct Config { name: String }              // usually better: own the data</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>Parser&lt;'a&gt;</code> cannot outlive the string it reads</div><div class="explain-item"><code>next_word</code> returns <code>&amp;'a str</code>, so words outlive the <code>&amp;mut self</code> borrow</div><div class="explain-item">Elision fills in lifetimes for one-input functions</div><div class="explain-item"><code>impl Parser&lt;'_&gt;</code> skips naming an unused lifetime</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> a struct holding a <code>string_view</code> can outlive its buffer</li><li class="note-item"><strong>Java / Go</strong> objects hold references; the GC prevents dangling</li><li class="note-item"><strong>Python</strong> same as Java; no concept of borrowed fields</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>struct User&lt;'a&gt; { name: &amp;'a str }</code> in long-lived data → <code>name: String</code></li><li class="note-item">naming lifetimes the compiler can elide → let elision work</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Elision Rules Table | When To Borrow In St Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-elision-rules"><h2 class="section-title">Elision Rules</h2><table><thead><tr><th>Rule</th><th>Effect</th></tr></thead><tbody><tr><td>1</td><td class="desc">Each input ref gets its own lifetime</td></tr><tr><td>2</td><td class="desc">One input lifetime → output gets it</td></tr><tr><td>3</td><td class="desc">&amp;self / &amp;mut self → output gets self's</td></tr><tr><td>Otherwise</td><td class="desc">Annotate (E0106)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-when-to-borrow-in-st"><h2 class="section-title">When to Borrow in Structs</h2><table><thead><tr><th>Situation</th><th>Choice</th></tr></thead><tbody><tr><td>Parser / iterator over input</td><td class="desc">Borrow &amp;'a</td></tr><tr><td>Config, models, entities</td><td class="desc">Own (String, Vec)</td></tr><tr><td>Shared across threads</td><td class="desc">Arc&lt;T&gt;</td></tr><tr><td>Sometimes owned</td><td class="desc">Cow&lt;'a, T&gt;</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Adding lifetimes to every struct and spreading them through the codebase</li><li class="note-item">Returning <code>&amp;str</code> tied to <code>&amp;mut self</code> when it should be tied to <code>'a</code></li><li class="note-item">Self-referential structs (not expressible safely)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with owned fields; add borrowing only for performance</li><li class="note-item">Use <code>'_</code> to keep signatures short</li><li class="note-item">Read rule 3 when a method's returned reference keeps <code>self</code> borrowed</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">struct Foo&lt;'a&gt; { r: &amp;'a T }</li><li class="note-item"><code>impl&lt;'a&gt;</code> repeats it</li><li class="note-item">three elision rules</li><li class="note-item">prefer owned fields</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-039-lifetimes-basics.html">Lifetimes — Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-041-panic.html">panic! &amp; Unrecoverable Errors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

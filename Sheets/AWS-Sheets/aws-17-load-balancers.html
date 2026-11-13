@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 17: Elastic Load Balancing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Elastic Load Balancing</h1>
+			<div class="sheet-desc">ALB vs NLB · target groups · listeners &amp; rules · health checks · path / host routing · sticky sessions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Spreading Traffic Across Targets</h2><div class="description"><strong>Application Load Balancers (ALB)</strong> work at layer 7: HTTP / HTTPS routing by host, path, headers or query, with TLS termination, authentication and WAF. <strong>Network Load Balancers (NLB)</strong> work at layer 4 with static IPs, very high throughput and TLS passthrough. Both send traffic to <strong>target groups</strong> (instances, IPs, Lambda) checked by <strong>health checks</strong>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Listeners accept connections on a port; rules route to target groups</li><li class="note-item">ALB can authenticate users with Cognito or any OIDC provider</li><li class="note-item">Deregistration delay drains connections before removing targets</li><li class="note-item">Gateway Load Balancer inserts third-party appliances</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">ALB With HTTPS and Path Routing</h2><pre><code class="language-bash">ALB=$(aws elbv2 create-load-balancer --name shop-alb --type application \
+  --subnets $PUB_A $PUB_B --security-groups $ALB_SG \
+  --query "LoadBalancers[0].LoadBalancerArn" --output text)
+TG=$(aws elbv2 create-target-group --name shop-api --protocol HTTP \
+  --port 8080 --vpc-id $VPC --target-type ip \
+  --health-check-path /health --health-check-interval-seconds 15 \
+  --query "TargetGroups[0].TargetGroupArn" --output text)
+
+aws elbv2 create-listener --load-balancer-arn $ALB --protocol HTTPS \
+    --port 443 --certificates CertificateArn=$CERT \
+    --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
+    --default-actions Type=forward,TargetGroupArn=$TG
+aws elbv2 create-listener --load-balancer-arn $ALB --protocol HTTP --port 80 \
+    --default-actions file://redirect-https.json        # 301 → HTTPS
+
+aws elbv2 create-rule --listener-arn $HTTPS_LISTENER --priority 10 \
+    --conditions Field=path-pattern,Values='/admin/*' \
+    --actions Type=forward,TargetGroupArn=$ADMIN_TG
+aws elbv2 describe-target-health --target-group-arn $TG</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>target-type ip</code> suits Fargate and containers</div><div class="explain-item">The HTTPS listener uses an ACM certificate and a TLS 1.3 policy</div><div class="explain-item">Port 80 redirects to HTTPS</div><div class="explain-item">A path rule sends <code>/admin/*</code> to a separate target group</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure Load Balancer, Application Gateway (az-17)</li><li class="note-item"><strong>GCP</strong> Network LB, Application LB (gcp-17)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Hourly fee plus LCUs (ALB) / NLCUs (NLB) for traffic</li><li class="note-item">One ALB can serve many apps via host / path rules</li><li class="note-item">Cross-zone traffic for NLB can add data charges</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Alb Vs Nlb Table | Health Check Setting Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-alb-vs-nlb"><h2 class="section-title">ALB vs NLB</h2><table><thead><tr><th>Feature</th><th>ALB</th><th>NLB</th></tr></thead><tbody><tr><td>Layer</td><td class="kw">7 (HTTP)</td><td class="kw">4 (TCP / UDP / TLS)</td></tr><tr><td>Routing</td><td class="kw">Host, path, header</td><td class="kw">Port</td></tr><tr><td>Static IP</td><td class="kw">No (use Global Accelerator)</td><td class="kw">Yes</td></tr><tr><td>WAF / auth</td><td class="kw">Yes</td><td class="kw">No</td></tr><tr><td>Targets</td><td class="kw">Instance, IP, Lambda</td><td class="kw">Instance, IP, ALB</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-health-check-setting"><h2 class="section-title">Health Check Settings</h2><table><thead><tr><th>Setting</th><th>Typical</th></tr></thead><tbody><tr><td>Path</td><td class="desc">/health</td></tr><tr><td>Interval</td><td class="desc">15–30 s</td></tr><tr><td>Healthy threshold</td><td class="desc">2–5</td></tr><tr><td>Unhealthy threshold</td><td class="desc">2</td></tr><tr><td>Matcher</td><td class="desc">200-399</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Redirect HTTP to HTTPS and use modern TLS policies</li><li class="note-item note-do"><strong>Do</strong> Spread across at least two AZs</li><li class="note-item note-dont"><strong>Don’t</strong> Point health checks at a page that hits the database heavily</li><li class="note-item note-dont"><strong>Don’t</strong> Create one ALB per microservice when rules can share one</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Traefik or nginx in Docker Compose mimics host / path routing</li><li class="note-item">LocalStack supports ELBv2 APIs for IaC tests</li><li class="note-item"><code>curl -H "Host: …"</code> tests host rules before DNS</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">HTTPS only, WAF attached, access logs to S3</li><li class="note-item">Deletion protection on</li><li class="note-item">Alarms on 5xx and unhealthy host count</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-16-ec2-operations-pricing.html">EC2 Operations &amp; Pricing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-18-auto-scaling.html">Auto Scaling</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

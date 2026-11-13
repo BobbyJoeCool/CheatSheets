@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 40: Microsoft Foundry &amp; Azure OpenAI</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s40">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 40</div>
+			<h1>Microsoft Foundry &amp; Azure OpenAI</h1>
+			<div class="sheet-desc">Foundry resources &amp; projects · model deployments · Responses / chat completions API · Entra ID auth over API keys · content safety · Foundry Agent Service · RAG with AI Search</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Generative AI on Azure</h2><div class="description"><strong>Microsoft Foundry</strong> (formerly Azure AI Foundry) is Azure's platform for models, agents and evaluations. You create a Foundry resource and <strong>projects</strong>, <strong>deploy</strong> models (OpenAI GPT models plus others from the catalog) with a deployment name and quota, then call them through the OpenAI-compatible <strong>v1 API</strong> (Responses or chat completions) using Entra ID. <strong>Content filters</strong> run by default; <strong>Foundry Agent Service</strong> builds tool-using agents.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Deployment types: Global Standard, Data Zone, Standard (regional), Provisioned</li><li class="note-item">Your code calls the deployment name, not the raw model name</li><li class="note-item">Use the OpenAI SDK with an Azure base URL and Entra token provider</li><li class="note-item">RAG: retrieve from Azure AI Search, then pass results to the model</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check + Security Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create a Resource and Deployment</h2><pre><code class="language-bash">az cognitiveservices account create -g rg-ai -n ai-shop -l eastus2 \
+    --kind AIServices --sku S0 --custom-domain ai-shop \
+    --disable-local-auth true
+az cognitiveservices account deployment create -g rg-ai -n ai-shop \
+    --deployment-name chat --model-name gpt-5-mini \
+    --model-version &lt;version&gt; --model-format OpenAI \
+    --sku-name GlobalStandard --sku-capacity 50
+AI=$(az cognitiveservices account show -g rg-ai -n ai-shop --query id -o tsv)
+az role assignment create --assignee-object-id $MI \
+    --assignee-principal-type ServicePrincipal \
+    --role "Cognitive Services OpenAI User" --scope $AI</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Call It (Python, Entra ID)</h2><pre><code class="language-python">from openai import OpenAI
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+token = get_bearer_token_provider(
+    DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
+client = OpenAI(base_url="https://ai-shop.openai.azure.com/openai/v1/",
+                api_key=token)
+resp = client.responses.create(
+    model="chat",                                  # deployment name
+    input="Summarize our return policy in 3 bullets.")
+print(resp.output_text)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>--disable-local-auth</code> removes API keys from the resource</div><div class="explain-item"><code>sku-capacity 50</code> sets thousands of tokens per minute for the deployment</div><div class="explain-item">The token provider refreshes Entra tokens for the OpenAI client</div><div class="explain-item"><code>model</code> is the deployment name you chose</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Amazon Bedrock (InvokeModel / Converse, Agents, Guardrails) (aws-40)</li><li class="note-item"><strong>GCP</strong> Agent Platform (Vertex AI) with Gemini (gcp-40)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Pay per input / output token on Standard deployments</li><li class="note-item">Provisioned throughput: reserved capacity, hourly or monthly</li><li class="note-item">Smaller models (mini / nano) cost a fraction for simple tasks</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Disable key-based auth; grant Cognitive Services OpenAI User to app identities</li><li class="note-item">Private endpoints for the Foundry resource</li><li class="note-item">Keep content filters on and log prompts responsibly</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Quota is tokens per minute (TPM) per model per region per subscription</li><li class="note-item">Requests per minute follow from TPM; exceeding returns 429 with retry-after</li><li class="note-item">Request quota increases in the Foundry portal</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Deployment Types Table | Foundry Pieces Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-deployment-types"><h2 class="section-title">Deployment Types</h2><table><thead><tr><th>Type</th><th>Use</th></tr></thead><tbody><tr><td>Global Standard</td><td class="desc">Highest quota, data may process in any region</td></tr><tr><td>Data Zone Standard</td><td class="desc">Processing within a geography (US / EU)</td></tr><tr><td>Standard (regional)</td><td class="desc">Single region</td></tr><tr><td>Provisioned (PTU)</td><td class="desc">Reserved, predictable latency</td></tr><tr><td>Batch</td><td class="desc">Async jobs at lower price</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-foundry-pieces"><h2 class="section-title">Foundry Pieces</h2><table><thead><tr><th>Piece</th><th>Does</th></tr></thead><tbody><tr><td>Foundry resource</td><td class="desc">Hosts models and projects</td></tr><tr><td>Project</td><td class="desc">Workspace for an app or team</td></tr><tr><td>Model deployment</td><td class="desc">Named endpoint with quota</td></tr><tr><td>Agent Service</td><td class="desc">Agents with tools and threads</td></tr><tr><td>Evaluations</td><td class="desc">Quality and safety tests</td></tr><tr><td>Content Safety</td><td class="desc">Filters and shields</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use Entra ID auth and managed identity</li><li class="note-item note-do"><strong>Do</strong> Handle 429s with retry-after and backoff</li><li class="note-item note-dont"><strong>Don’t</strong> Ship API keys in client apps</li><li class="note-item note-dont"><strong>Don’t</strong> Send sensitive data without checking data residency options</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Call a dev deployment from a notebook with <code>az login</code> credentials</li><li class="note-item">Prompt and evaluation work in the Foundry portal playground</li><li class="note-item">Mock the OpenAI client in unit tests; test prompts with evals</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Key auth disabled, private endpoint, content filters on</li><li class="note-item">Quota monitored with alerts on 429 rates</li><li class="note-item">Evaluations run on prompt or model changes</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-39-deploying-to-azure.html">Deploying to Azure</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-41-ai-services.html">Foundry Tools &amp; ML</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 100: Logging with log &amp; tracing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s100">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 100</div>
+			<h1>Logging with log &amp; tracing</h1>
+			<div class="sheet-desc"><code>log</code> facade · <code>env_logger</code> · <code>tracing</code> · <code>#[instrument]</code> · spans &amp; events · <code>tracing-subscriber</code> · <code>RUST_LOG</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Structured Diagnostics</h2><div class="description">The <strong>log</strong> crate is a facade: libraries call <code>info!</code> / <code>warn!</code>, and the application picks a backend such as <code>env_logger</code>. <strong>tracing</strong> adds <strong>spans</strong> (timed scopes with fields) and structured key-value events, which matters for async code where many tasks interleave. Both are filtered with the <code>RUST_LOG</code> environment variable.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Libraries depend only on <code>log</code> or <code>tracing</code>, never a backend</li><li class="note-item">Levels: error, warn, info, debug, trace</li><li class="note-item"><code>RUST_LOG=info,my_crate=debug</code> filters per module</li><li class="note-item">tracing can also capture <code>log</code> records via <code>tracing-log</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">log and tracing</h2><pre><code class="language-rust">// ---- log + env_logger ----
+use log::{debug, error, info, warn};
+
+fn init_simple() {
+    env_logger::init();                     // reads RUST_LOG
+    info!("starting v{}", env!("CARGO_PKG_VERSION"));
+    warn!("disk at {}%", 91);
+    debug!("only with RUST_LOG=debug");
+    error!(target: "db", "connection lost");
+}
+
+// ---- tracing ----
+use tracing::{info_span, instrument, Level};
+use tracing_subscriber::EnvFilter;
+
+#[instrument(skip(password), fields(user = %name))]
+async fn login(name: &amp;str, password: &amp;str) -&gt; bool {
+    tracing::info!("checking credentials");  // inside the login span
+    tracing::debug!(attempt = 1, "verifying");
+    !password.is_empty()
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())   // RUST_LOG
+        .with_target(false)
+        .init();
+
+    let span = info_span!("request", id = 42, path = "/login");
+    {
+        let _enter = span.enter();      // sync code only: never across .await
+        tracing::info!(status = 200, ms = 12.5, "handled"); // structured fields
+    }
+    let ok = login("ada", "secret").await;  // async: #[instrument] instead
+    tracing::event!(Level::WARN, ok, "login finished");
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>env_logger::init()</code> sets the log backend once</div><div class="explain-item"><code>#[instrument]</code> wraps a function in a span with its arguments</div><div class="explain-item"><code>skip(password)</code> keeps secrets out of logs</div><div class="explain-item">Fields like <code>status = 200</code> are recorded as structured data</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Java</strong> SLF4J facade + Logback (same split as log + env_logger)</li><li class="note-item"><strong>Python</strong> <code>logging</code> module; structlog for structured events</li><li class="note-item"><strong>Go</strong> <code>log/slog</code> structured logging; OpenTelemetry for spans</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>println!</code> for diagnostics → <code>tracing::info!</code> / <code>log::info!</code></li><li class="note-item">formatting values into the message → structured fields</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Crates Table | Rust Log Examples Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-crates"><h2 class="section-title">Crates</h2><table><thead><tr><th>Crate</th><th>Role</th></tr></thead><tbody><tr><td>log</td><td class="desc">Facade (macros)</td></tr><tr><td>env_logger</td><td class="desc">Simple backend</td></tr><tr><td>tracing</td><td class="desc">Spans + events</td></tr><tr><td>tracing-subscriber</td><td class="desc">Formatting, filters</td></tr><tr><td>tracing-appender</td><td class="desc">File output</td></tr><tr><td>tracing-opentelemetry</td><td class="desc">Export traces</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-rust-log-examples"><h2 class="section-title">RUST_LOG Examples</h2><table><thead><tr><th>Value</th><th>Shows</th></tr></thead><tbody><tr><td>info</td><td class="desc">info and above</td></tr><tr><td>debug</td><td class="desc">debug and above</td></tr><tr><td>warn,myapp=trace</td><td class="desc">Per crate</td></tr><tr><td>myapp::db=debug</td><td class="desc">Per module</td></tr><tr><td>off</td><td class="desc">Nothing</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Initializing a logger in a library</li><li class="note-item">Logging secrets (use <code>skip</code> / redact)</li><li class="note-item">Forgetting to initialize any backend, so nothing prints</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use tracing for async services, log for small tools</li><li class="note-item">Use <code>%</code> for Display and <code>?</code> for Debug in fields: <code>user = %name</code></li><li class="note-item">Output JSON in production with <code>.json()</code> on the fmt subscriber</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>log</code> facade + backend</li><li class="note-item"><code>tracing</code> spans &amp; events</li><li class="note-item"><code>#[instrument]</code></li><li class="note-item">filter with <code>RUST_LOG</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-099-axum-web.html">Web Servers with Axum</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-101-databases-sqlx.html">Databases with sqlx</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

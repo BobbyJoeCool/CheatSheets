@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 043: Result&lt;T, E&gt; &amp; the ? Operator</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s043">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 043</div>
+			<h1>Result&lt;T, E&gt; &amp; the ? Operator</h1>
+			<div class="sheet-desc"><code>Ok</code> / <code>Err</code> · <code>?</code> propagation · <code>map_err</code> · <code>ok()</code> / <code>err()</code> · <code>Box&lt;dyn Error&gt;</code> · <code>main() -&gt; Result</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Recoverable Errors as Values</h2><div class="description">Functions that can fail return <code>Result&lt;T, E&gt;</code>: <code>Ok(value)</code> or <code>Err(error)</code>. The **<code>?</code> operator** returns the error to the caller if there is one and unwraps the value otherwise, so error handling stays one character per call. <code>Box&lt;dyn Error&gt;</code> is a quick catch-all error type for applications.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>Result</code> is <code>#[must_use]</code>: ignoring one warns</li><li class="note-item"><code>?</code> converts the error with <code>From::from</code></li><li class="note-item"><code>?</code> only works in functions returning Result/Option</li><li class="note-item"><code>map_err</code> changes the error type</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item"><code>expr?</code> desugars to <code>match Try::branch(expr) { Continue(v) =&gt; v, Break(r) =&gt; return FromResidual::from_residual(r) }</code></li><li class="note-item">For Result, the residual path calls <code>From::from(err)</code></li><li class="note-item">No exceptions or unwinding: an Err is an ordinary return value</li><li class="note-item"><code>Result&lt;T, E&gt;</code> size ≈ max(T, E) + tag</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Result and ?</h2><pre><code class="language-rust">use std::fs;
+use std::num::ParseIntError;
+
+fn parse_double(s: &amp;str) -&gt; Result&lt;i32, ParseIntError&gt; {
+    let n: i32 = s.trim().parse()?;         // Err → return early
+    Ok(n * 2)
+}
+println!("{:?}", parse_double("21"));       // Ok(42)
+println!("{:?}", parse_double("x"));
+                              // Err(ParseIntError { kind: InvalidDigit })
+
+fn read_port(path: &amp;str) -&gt; Result&lt;u16, String&gt; {
+    let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    text.trim().parse::&lt;u16&gt;().map_err(|e| e.to_string())
+}
+
+fn load() -&gt; Result&lt;u16, Box&lt;dyn std::error::Error&gt;&gt; {
+    let text = fs::read_to_string("port.txt")?;   // io::Error → Box
+    let port = text.trim().parse::&lt;u16&gt;()?;       // ParseIntError → Box
+    Ok(port)
+}
+
+let maybe: Option&lt;i32&gt; = parse_double("5").ok();   // Result → Option
+let total: Result&lt;Vec&lt;i32&gt;, _&gt; =
+    ["1", "2", "x"].iter().map(|s| s.parse::&lt;i32&gt;()).collect();
+println!("{}", total.is_err());             // true: stops at first Err
+let n2 = parse_double("8").inspect_err(|e| eprintln!("{e}")).unwrap_or(0);
+
+fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let port = load()?;                     // error printed, exit code 1
+    println!("listening on {port}");
+    Ok(())
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>?</code> unwraps Ok or returns the Err immediately</div><div class="explain-item"><code>map_err</code> adds context or converts the error type</div><div class="explain-item"><code>Box&lt;dyn Error&gt;</code> accepts any error via <code>From</code></div><div class="explain-item">Collecting into <code>Result&lt;Vec&lt;_&gt;, _&gt;</code> stops at the first error</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Go</strong> <code>if err != nil { return err }</code> (? is the one-character version)</li><li class="note-item"><strong>Java</strong> checked exceptions with <code>throws</code>; Result is explicit in the type</li><li class="note-item"><strong>Python</strong> <code>try</code> / <code>except</code>; errors are invisible in signatures</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>match r { Ok(v) =&gt; v, Err(e) =&gt; return Err(e.into()) }</code> → <code>r?</code></li><li class="note-item"><code>.unwrap()</code> in library code → return <code>Result</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Methods Table | Error Type Choice Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-methods"><h2 class="section-title">Methods</h2><table><thead><tr><th>Method</th><th>Does</th></tr></thead><tbody><tr><td>?</td><td class="desc">Propagate Err</td></tr><tr><td>map(f)</td><td class="desc">Transform Ok</td></tr><tr><td>map_err(f)</td><td class="desc">Transform Err</td></tr><tr><td>and_then(f)</td><td class="desc">Chain fallible steps</td></tr><tr><td>unwrap_or / _else / _default</td><td class="desc">Fallback</td></tr><tr><td>ok() / err()</td><td class="desc">→ Option</td></tr><tr><td>is_ok() / is_err()</td><td class="desc">bool</td></tr><tr><td>inspect_err(f)</td><td class="desc">Log, pass through</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-error-type-choice"><h2 class="section-title">Error Type Choice</h2><table><thead><tr><th>Context</th><th>Type</th></tr></thead><tbody><tr><td>Quick app / script</td><td class="desc">Box&lt;dyn Error&gt;</td></tr><tr><td>Application</td><td class="desc">anyhow::Result</td></tr><tr><td>Library</td><td class="desc">Custom enum / thiserror</td></tr><tr><td>Simple messages</td><td class="desc">String (prototypes)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using <code>?</code> in a function returning <code>()</code></li><li class="note-item">Error types that do not convert (implement <code>From</code>)</li><li class="note-item">Ignoring a <code>Result</code> with <code>let _ =</code> without a reason</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add context with <code>map_err</code> or anyhow's <code>.context()</code></li><li class="note-item">Make <code>main</code> return <code>Result</code> in CLI tools</li><li class="note-item">Collect into <code>Result&lt;Vec&lt;T&gt;, E&gt;</code> to validate a batch</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Ok</code> / <code>Err</code></li><li class="note-item"><code>?</code> — propagate</li><li class="note-item"><code>map_err</code> — convert</li><li class="note-item"><code>Box&lt;dyn Error&gt;</code> — catch-all</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-042-option.html">Option&lt;T&gt;</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-044-custom-errors.html">Custom Error Types</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 44: Performance &amp; Production Config</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s44">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 44</div>
+			<h1>Performance &amp; Production Config</h1>
+			<div class="sheet-desc">ORJSONResponse · response caching · connection pooling · root_path · docs off in prod · logging</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">FastAPI is fast out of the box; most real gains come from <strong>fewer and cheaper I/O calls</strong>. Reuse connection pools and HTTP clients, cache hot responses, pick a faster JSON encoder, and paginate. Production config also means correct <strong>proxy settings</strong> (<code>root_path</code>, forwarded headers), structured logging, and no debug-only features.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Measure first: <code>py-spy</code>, OpenTelemetry, or simple timing middleware</li><li class="note-item">Pydantic v2 serialization is already Rust-fast</li><li class="note-item"><code>orjson</code> helps with large JSON responses</li><li class="note-item">Uvicorn <code>--proxy-headers</code> trusts <code>X-Forwarded-*</code></li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Production Settings</h2><pre><code class="language-python">import logging
+from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
+
+logging.basicConfig(level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s")
+log = logging.getLogger("todo")
+
+app = FastAPI(
+    default_response_class=ORJSONResponse,    # faster JSON
+    root_path="/api",                         # behind proxy at /api
+    docs_url=None if settings.prod else "/docs",
+    redoc_url=None,
+)
+
+@app.get("/todos/stats")
+async def stats(response: Response, cache: Redis):
+    if hit := await cache.get("stats"):
+        return ORJSONResponse(content=json.loads(hit))
+    data = await compute_stats()
+    await cache.set("stats", json.dumps(data), ex=60)
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return data</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>default_response_class=ORJSONResponse</code> — app-wide fast JSON</div><div class="explain-item"><code>root_path</code> — correct URLs and docs behind a path prefix</div><div class="explain-item">docs disabled in prod via settings</div><div class="explain-item">Redis cache — 60 s for an expensive query</div><div class="explain-item"><code>Cache-Control</code> — let CDNs and browsers cache</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — <code>flask-caching</code>; <code>ProxyFix</code> for proxy headers</li><li class="note-item">Django — cache framework + <code>@cache_page</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid N+1 queries · Prefer eager loading / joins</li><li class="note-item">Avoid <code>print()</code> debugging in prod · Prefer <code>logging</code> with levels</li></ul></section></div>
+			</div>
+			<!-- Row 3: Wins Table | Check Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-wins"><h2 class="section-title">Quick Wins</h2><table><thead><tr><th>Change</th><th>Why</th></tr></thead><tbody><tr><td>reuse httpx client</td><td class="desc">connection pooling</td></tr><tr><td>DB pool sizing</td><td class="desc">avoid connection waits</td></tr><tr><td>paginate everything</td><td class="desc">smaller responses</td></tr><tr><td>cache hot reads</td><td class="desc">skip the DB</td></tr><tr><td>GZip middleware</td><td class="desc">less bandwidth</td></tr><tr><td>uvloop + httptools</td><td class="desc">faster server loop</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-check"><h2 class="section-title">Production Checklist</h2><table><thead><tr><th>Item</th><th>Setting</th></tr></thead><tbody><tr><td>no reload</td><td class="desc">fastapi run</td></tr><tr><td>workers</td><td class="desc">--workers N</td></tr><tr><td>proxy headers</td><td class="desc">--proxy-headers</td></tr><tr><td>allowed hosts</td><td class="desc">TrustedHostMiddleware</td></tr><tr><td>HTTPS</td><td class="desc">terminate at proxy</td></tr><tr><td>health check</td><td class="desc">/health</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Optimizing JSON speed while making 50 DB queries per request</li><li class="note-item">Missing <code>--forwarded-allow-ips</code>, so client IPs all show as the proxy</li><li class="note-item">Caching per-user data under a shared key</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add OpenTelemetry instrumentation for traces across services</li><li class="note-item">Set <code>pool_size</code> + <code>max_overflow</code> per worker, not per server</li><li class="note-item">Load-test with realistic data sizes</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">measure, then optimize I/O first</li><li class="note-item"><code>ORJSONResponse</code> — faster JSON</li><li class="note-item"><code>root_path</code> + proxy headers — behind a proxy</li><li class="note-item">logging + no docs/reload — prod config</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-43-openapi-customization.html" class="nav-link prev" title="OpenAPI Customization &amp; Client Generation">OpenAPI &amp; Clients</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-45-deployment.html" class="nav-link next">Deployment</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

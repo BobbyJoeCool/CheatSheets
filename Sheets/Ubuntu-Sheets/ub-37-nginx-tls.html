@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ubuntu — Sheet 37: Nginx &amp; HTTPS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ub-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>Nginx &amp; HTTPS</h1>
+			<div class="sheet-desc">apt install nginx · sites-available / sites-enabled · server blocks · proxy_pass · nginx -t · Certbot · Apache</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>Nginx</strong> is the usual web server and <strong>reverse proxy</strong> on Ubuntu: it serves static files and forwards requests to apps on local ports (FastAPI, Node, Docker containers). Each site is a <strong>server block</strong> in <code>sites-available</code>, enabled by a symlink. <strong>Certbot</strong> gets free Let's Encrypt certificates and renews them automatically.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Config test before reload: <code>sudo nginx -t</code></li><li class="note-item"><code>reload</code> applies config without dropping connections</li><li class="note-item">Certbot renews via a systemd timer</li><li class="note-item">Apache: <code>a2ensite</code>, <code>a2enmod</code> play the same roles</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code + Code | Explain + Other Distros + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code-1"><h2 class="section-title">/etc/nginx/sites-available/todo</h2><pre><code class="language-nginx">server {
+    listen 80;
+    server_name todo.example.com;
+
+    location /static/ {
+        alias /srv/todo/static/;
+        expires 7d;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Enable + HTTPS</h2><pre><code class="language-bash">sudo ln -s /etc/nginx/sites-available/todo /etc/nginx/sites-enabled/
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d todo.example.com      # cert + HTTPS redirect
+sudo certbot renew --dry-run</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>server_name</code> — which hostname this block serves</div><div class="explain-item"><code>location /static/</code> + <code>alias</code> — files from disk</div><div class="explain-item"><code>proxy_pass</code> — forward to the app</div><div class="explain-item"><code>X-Forwarded-*</code> — tell the app the real client/scheme</div><div class="explain-item"><code>certbot --nginx</code> — edits the block for TLS</div></div></section><section class="section-notes section-distro" id="distro"><h2 class="section-title">Other Distros</h2><ul class="note-list"><li class="note-item">Debian — identical layout</li><li class="note-item">Fedora/RHEL — single <code>/etc/nginx/conf.d/*.conf</code>, SELinux booleans for proxying</li><li class="note-item">macOS — <code>brew install nginx</code>, <code>/opt/homebrew/etc/nginx/</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid editing <code>nginx.conf</code> for each site · Prefer one file per site</li><li class="note-item">Avoid exposing app ports publicly · Prefer apps on <code>127.0.0.1</code> behind Nginx</li></ul></section></div>
+			</div>
+			<!-- Row 3: Dir Table | Files Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-dir"><h2 class="section-title">Useful Directives</h2><table><thead><tr><th>Directive</th><th>Purpose</th></tr></thead><tbody><tr><td>client_max_body_size 50M</td><td class="desc">upload limit</td></tr><tr><td>try_files $uri /index.html</td><td class="desc">SPA routing</td></tr><tr><td>return 301 https://$host$request_uri</td><td class="desc">redirect to HTTPS</td></tr><tr><td>gzip on</td><td class="desc">compression</td></tr><tr><td>add_header X-Frame-Options DENY</td><td class="desc">security header</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-files"><h2 class="section-title">Files &amp; Commands</h2><table><thead><tr><th>Item</th><th>What</th></tr></thead><tbody><tr><td>sites-available/</td><td class="desc">all site configs</td></tr><tr><td>sites-enabled/</td><td class="desc">symlinks = active</td></tr><tr><td>nginx -t</td><td class="desc">test config</td></tr><tr><td>/var/log/nginx/</td><td class="desc">access + error logs</td></tr><tr><td>certbot certificates</td><td class="desc">list certs</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting the trailing slash rules in <code>alias</code> and <code>proxy_pass</code></li><li class="note-item">Leaving the <code>default</code> site enabled and catching all hostnames</li><li class="note-item">Port 80 blocked by UFW: Certbot's HTTP challenge fails</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item"><code>sudo ufw allow "Nginx Full"</code> opens 80 and 443</li><li class="note-item">Use Caddy if you want automatic HTTPS with less config</li><li class="note-item">Read <code>/var/log/nginx/error.log</code> first when you see 502</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">server block per site — sites-available + symlink</li><li class="note-item"><code>proxy_pass</code> — reverse proxy to apps</li><li class="note-item"><code>nginx -t</code> → <code>reload</code> — safe changes</li><li class="note-item">Certbot — free HTTPS, auto-renew</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ub-36-ubuntu-pro-security.html" class="nav-link prev" title="Ubuntu Pro &amp; Security Updates">Ubuntu Pro &amp; Security</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ubuntu · 49 Sheets</a>
+				<a href="ub-38-docker-on-ubuntu.html" class="nav-link next">Docker on Ubuntu</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-nginx.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

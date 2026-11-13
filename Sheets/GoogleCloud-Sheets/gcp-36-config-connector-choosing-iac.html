@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 36: Config Connector &amp; Choosing IaC</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>Config Connector &amp; Choosing IaC</h1>
+			<div class="sheet-desc">Config Connector (Kubernetes resources for Google Cloud) · Config Controller · exporting existing resources · Pulumi pointer · choosing an IaC tool · decision table</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Kubernetes-Style Infrastructure</h2><div class="description"><strong>Config Connector</strong> is a Kubernetes add-on that manages Google Cloud resources as Kubernetes objects (<code>StorageBucket</code>, <code>SQLInstance</code>, <code>IAMPolicyMember</code>…), reconciling continuously. <strong>Config Controller</strong> hosts it as a managed service with Config Sync and Policy Controller. <code>gcloud resource-config bulk-export</code> exports existing resources to Terraform or KRM. Choose the tool your team can review and operate.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Config Connector runs on GKE (add-on) or Config Controller</li><li class="note-item">Resources reconcile: manual changes are reverted</li><li class="note-item">Pulumi offers general-purpose languages with the Google Cloud provider</li><li class="note-item">Terraform has the widest ecosystem and examples</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Config Connector Resources</h2><pre><code class="language-yaml">apiVersion: storage.cnrm.cloud.google.com/v1beta1
+kind: StorageBucket
+metadata:
+  name: acme-uploads-prod
+  namespace: shop
+  annotations:
+    cnrm.cloud.google.com/project-id: shop-prod-4821
+spec:
+  location: US-CENTRAL1
+  uniformBucketLevelAccess: true
+  publicAccessPrevention: enforced
+  versioning: { enabled: true }
+  lifecycleRule:
+    - action: { type: Delete }
+      condition: { age: 365 }
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata: { name: api-uploads, namespace: shop }
+spec:
+  member: serviceAccount:api@shop-prod-4821.iam.gserviceaccount.com
+  role: roles/storage.objectUser
+  resourceRef:
+    kind: StorageBucket
+    name: acme-uploads-prod</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Apply and Export</h2><pre><code class="language-bash">kubectl apply -f bucket.yaml
+kubectl -n shop get storagebuckets
+kubectl -n shop describe storagebucket acme-uploads-prod
+
+gcloud resource-config bulk-export --project=shop-prod-4821 \
+    --resource-format=terraform --path=./exported</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The project annotation picks where the bucket is created</div><div class="explain-item">Config Connector keeps the bucket matching this spec</div><div class="explain-item"><code>IAMPolicyMember</code> adds one binding (non-authoritative)</div><div class="explain-item">Bulk export turns existing resources into Terraform files</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> CDK, AWS Controllers for Kubernetes (aws-35)</li><li class="note-item"><strong>Azure</strong> azd, Azure Service Operator (az-35)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Config Connector is free; you pay for the GKE cluster</li><li class="note-item">Config Controller bills per instance-hour</li><li class="note-item">Pick one tool per resource to avoid fighting reconcilers</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Choose An Iac Tool Table | Trade Offs Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-choose-an-iac-tool"><h2 class="section-title">Choose an IaC Tool</h2><table><thead><tr><th>Situation</th><th>Use</th></tr></thead><tbody><tr><td>Most teams, multi-cloud</td><td class="desc">Terraform</td></tr><tr><td>Managed Terraform runs on Google Cloud</td><td class="desc">Infrastructure Manager</td></tr><tr><td>Kubernetes / GitOps teams</td><td class="desc">Config Connector / Config Controller</td></tr><tr><td>Code in TypeScript / Python / Go</td><td class="desc">Pulumi</td></tr><tr><td>Legacy Deployment Manager</td><td class="desc">Migrate to Terraform / Infra Manager</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-trade-offs"><h2 class="section-title">Trade-offs</h2><table><thead><tr><th>Tool</th><th>Model</th></tr></thead><tbody><tr><td>Terraform</td><td class="desc">Plan / apply on demand</td></tr><tr><td>Infra Manager</td><td class="desc">Managed plan / apply</td></tr><tr><td>Config Connector</td><td class="desc">Continuous reconcile</td></tr><tr><td>Pulumi</td><td class="desc">Programs + state service</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Pick one primary tool and stick to it</li><li class="note-item note-do"><strong>Do</strong> Export existing resources instead of rewriting by hand</li><li class="note-item note-dont"><strong>Don’t</strong> Manage the same resource with two tools</li><li class="note-item note-dont"><strong>Don’t</strong> Expect Config Connector to stay quiet about manual console edits (it reverts them)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">kind + Config Connector for experiments (with a dev project)</li><li class="note-item"><code>kubectl apply --dry-run=server</code> validates against CRDs</li><li class="note-item">Terraform plans locally with impersonated ADC</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">One tool of record per resource</li><li class="note-item">GitOps or CI applies only</li><li class="note-item">Drift detected and reconciled automatically</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-35-infrastructure-manager.html">Infrastructure Manager</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-37-cloud-monitoring.html">Cloud Monitoring</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

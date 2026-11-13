@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 57: Testing &amp; Deploying Flask</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s57">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 57</div>
+			<h1>Testing &amp; Deploying Flask</h1>
+			<div class="sheet-desc">app.test_client() · test_cli_runner() · TESTING=True · pytest fixtures · Gunicorn · Waitress · ProxyFix</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Test Flask apps with the built-in <strong>test client</strong> and <strong>pytest fixtures</strong> that build the app through <code>create_app()</code> with test config. Deploy with a production <strong>WSGI server</strong>: <strong>Gunicorn</strong> on Linux, <strong>Waitress</strong> on Windows, behind Nginx. Add <strong><code>ProxyFix</code></strong> so Flask trusts the proxy's forwarded headers.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>TESTING=True</code> propagates exceptions to the test</li><li class="note-item">Disable CSRF in tests: <code>WTF_CSRF_ENABLED=False</code></li><li class="note-item">Gunicorn workers ≈ 2 × cores + 1 for sync workers</li><li class="note-item">Never deploy with <code>flask run</code></li></ul></section></div>
+			</div>
+			<!-- Row 2: Code + Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code-1"><h2 class="section-title">tests/conftest.py + test</h2><pre><code class="language-python">import pytest
+from myapp import create_app
+from myapp.extensions import db
+
+@pytest.fixture
+def app():
+    app = create_app({"TESTING": True, "WTF_CSRF_ENABLED": False,
+                      "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
+    with app.app_context():
+        db.create_all()
+        yield app
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+def test_create_todo(client):
+    r = client.post("/todos", json={"title": "Buy milk"})
+    assert r.status_code == 201
+    assert r.get_json()["title"] == "Buy milk"</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Production</h2><pre><code class="language-bash">pip install gunicorn
+gunicorn -w 4 -b 127.0.0.1:8000 "myapp:create_app()"
+# app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>create_app({...})</code> — test config per run</div><div class="explain-item"><code>app.app_context()</code> — DB setup inside context</div><div class="explain-item"><code>app.test_client()</code> — fake requests</div><div class="explain-item"><code>r.get_json()</code> — parsed JSON</div><div class="explain-item"><code>"myapp:create_app()"</code> — Gunicorn calls the factory</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">FastAPI — <code>TestClient</code> + Uvicorn workers (sheets 40, 45)</li><li class="note-item">Django — <code>TestCase</code> client; Gunicorn + <code>collectstatic</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid testing against the dev database · Prefer an isolated test DB</li><li class="note-item">Avoid <code>app.run(debug=True)</code> on servers · Prefer Gunicorn/Waitress</li></ul></section></div>
+			</div>
+			<!-- Row 3: Client Table | Servers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-client"><h2 class="section-title">Test Client</h2><table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td>client.get(url)</td><td class="desc">GET</td></tr><tr><td>client.post(url, json=)</td><td class="desc">JSON POST</td></tr><tr><td>client.post(url, data=)</td><td class="desc">form POST</td></tr><tr><td>follow_redirects=True</td><td class="desc">follow 302s</td></tr><tr><td>with client.session_transaction() as s:</td><td class="desc">edit session</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-servers"><h2 class="section-title">WSGI Servers</h2><table><thead><tr><th>Server</th><th>Notes</th></tr></thead><tbody><tr><td>Gunicorn</td><td class="desc">Linux, pre-fork workers</td></tr><tr><td>Waitress</td><td class="desc">pure Python, Windows OK</td></tr><tr><td>uWSGI</td><td class="desc">powerful, maintenance mode</td></tr><tr><td>Gunicorn + gevent</td><td class="desc">many idle connections</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Tests sharing state through a module-level app</li><li class="note-item">Forgetting <code>ProxyFix</code>: <code>url_for(_external=True)</code> builds <code>http://</code> links</li><li class="note-item">Running Gunicorn as root on port 80 instead of behind Nginx</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>app.test_cli_runner()</code> to test custom <code>flask</code> commands</li><li class="note-item">Run Gunicorn under systemd (see the Ubuntu set)</li><li class="note-item">Serve <code>static/</code> from Nginx in production</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>create_app(test_config)</code> — isolated tests</li><li class="note-item"><code>test_client()</code> — fake requests</li><li class="note-item">Gunicorn / Waitress — production servers</li><li class="note-item"><code>ProxyFix</code> — trust proxy headers</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-56-flask-rest-async.html" class="nav-link prev" title="REST APIs &amp; Async in Flask">REST &amp; Async in Flask</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-58-fastapi-flask-django.html" class="nav-link next">FastAPI vs Flask vs Django</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

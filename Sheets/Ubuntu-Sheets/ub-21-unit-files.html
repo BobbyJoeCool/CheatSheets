@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ubuntu — Sheet 21: Writing Service Units</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ub-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Writing Service Units</h1>
+			<div class="sheet-desc">/etc/systemd/system/app.service · [Unit] / [Service] / [Install] · ExecStart · Restart=on-failure · User= · daemon-reload · systemctl edit</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Run your own app as a proper service by writing a <strong>unit file</strong> in <code>/etc/systemd/system/</code>. systemd then starts it at boot, restarts it if it crashes, runs it as an unprivileged user, and sends its output to the journal. To tweak a packaged service, use <strong><code>systemctl edit</code></strong> to create an override instead of editing the vendor file.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Run <code>daemon-reload</code> after creating or editing units</li><li class="note-item">Use absolute paths in <code>ExecStart</code></li><li class="note-item">stdout/stderr go to the journal automatically</li><li class="note-item">Overrides land in <code>/etc/systemd/system/&lt;unit&gt;.d/override.conf</code></li></ul></section></div>
+			</div>
+			<!-- Row 2: Code + Code | Explain + Other Distros + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code-1"><h2 class="section-title">/etc/systemd/system/todo-api.service</h2><pre><code class="language-ini">[Unit]
+Description=Todo API (FastAPI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=todo
+Group=todo
+WorkingDirectory=/srv/todo-api
+EnvironmentFile=/etc/todo-api.env
+ExecStart=/srv/todo-api/.venv/bin/fastapi run app/main.py --port 8000
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/todo-api/data
+
+[Install]
+WantedBy=multi-user.target</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Load It</h2><pre><code class="language-bash">sudo systemctl daemon-reload
+sudo systemctl enable --now todo-api
+sudo systemctl edit nginx     # opens an override.conf</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>After=</code> / <code>Wants=</code> — start order and soft dependency</div><div class="explain-item"><code>User=</code> — never run apps as root</div><div class="explain-item"><code>EnvironmentFile=</code> — secrets outside the unit</div><div class="explain-item"><code>Restart=on-failure</code> — auto-restart crashes</div><div class="explain-item"><code>ProtectSystem=strict</code> — read-only OS for the service</div></div></section><section class="section-notes section-distro" id="distro"><h2 class="section-title">Other Distros</h2><ul class="note-list"><li class="note-item">Debian/Fedora — identical unit files</li><li class="note-item">macOS — launchd plist in <code>/Library/LaunchDaemons/</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid <code>nohup</code> / <code>screen</code> for services · Prefer a unit file</li><li class="note-item">Avoid copying vendor units to edit · Prefer <code>systemctl edit</code> overrides</li></ul></section></div>
+			</div>
+			<!-- Row 3: Service Table | Harden Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-service"><h2 class="section-title">[Service] Keys</h2><table><thead><tr><th>Key</th><th>Purpose</th></tr></thead><tbody><tr><td>Type=simple / notify / oneshot</td><td class="desc">how startup is detected</td></tr><tr><td>ExecStart / ExecReload</td><td class="desc">commands</td></tr><tr><td>Restart= / RestartSec=</td><td class="desc">crash policy</td></tr><tr><td>Environment= / EnvironmentFile=</td><td class="desc">variables</td></tr><tr><td>User= / Group=</td><td class="desc">run as</td></tr><tr><td>MemoryMax= / CPUQuota=</td><td class="desc">resource limits</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-harden"><h2 class="section-title">Hardening Keys</h2><table><thead><tr><th>Key</th><th>Effect</th></tr></thead><tbody><tr><td>NoNewPrivileges=true</td><td class="desc">no setuid escalation</td></tr><tr><td>ProtectSystem=strict</td><td class="desc">read-only /usr, /etc</td></tr><tr><td>ProtectHome=true</td><td class="desc">hide /home</td></tr><tr><td>PrivateTmp=true</td><td class="desc">own /tmp</td></tr><tr><td>ReadWritePaths=</td><td class="desc">allowed writes</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting <code>daemon-reload</code>: systemd keeps the old definition</li><li class="note-item">Relative paths in <code>ExecStart</code>: "Executable path is not absolute"</li><li class="note-item">Secrets in <code>Environment=</code> lines, readable by <code>systemctl show</code></li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Check hardening with <code>systemd-analyze security todo-api</code></li><li class="note-item">Use <code>Type=notify</code> for apps that support sd_notify</li><li class="note-item">Test the exact <code>ExecStart</code> command as that user first</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">unit file — <code>[Unit]</code> <code>[Service]</code> <code>[Install]</code></li><li class="note-item"><code>User=</code> + <code>Restart=on-failure</code> — safe, resilient</li><li class="note-item"><code>daemon-reload</code> → <code>enable --now</code></li><li class="note-item"><code>systemctl edit</code> — override packaged units</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ub-20-systemctl.html" class="nav-link prev" title="systemd &amp; systemctl">systemctl</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ubuntu · 49 Sheets</a>
+				<a href="ub-22-logs-journalctl.html" class="nav-link next">Logs &amp; journalctl</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ini.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

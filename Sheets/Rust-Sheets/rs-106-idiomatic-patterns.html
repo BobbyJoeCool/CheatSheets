@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 106: Idiomatic Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s106">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 106</div>
+			<h1>Idiomatic Patterns</h1>
+			<div class="sheet-desc">newtype · builder · typestate · RAII guards · <code>impl From</code> conversions · iterator-returning APIs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Patterns Rust Code Uses Everywhere</h2><div class="description">Rust's type system makes some patterns especially effective: <strong>newtypes</strong> prevent mixing values, <strong>builders</strong> replace default arguments, <strong>typestate</strong> encodes valid state transitions in types, <strong>RAII guards</strong> pair setup with automatic cleanup, <code>From</code> impls make conversions and <code>?</code> smooth, and returning <code>impl Iterator</code> keeps APIs lazy.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Newtypes are free at runtime (same layout)</li><li class="note-item">Builders often consume and return <code>self</code></li><li class="note-item">Typestate turns runtime state errors into compile errors</li><li class="note-item">Guards implement <code>Drop</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Six Patterns</h2><pre><code class="language-rust">// Newtype
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct UserId(u64);                         // not mixable with OrderId(u64)
+// Builder
+#[derive(Debug, Default)]
+struct Request { url: String, timeout: u64, retries: u8 }
+struct RequestBuilder(Request);
+impl RequestBuilder {
+    fn new(url: &amp;str) -&gt; Self {
+        Self(Request { url: url.into(), timeout: 30, ..Default::default() })
+    }
+    fn timeout(mut self, s: u64) -&gt; Self { self.0.timeout = s; self }
+    fn build(self) -&gt; Request { self.0 }
+}
+let req = RequestBuilder::new("https://x.io").timeout(5).build();
+// Typestate
+struct Draft; struct Published;
+struct Post&lt;S&gt; { body: String, _s: std::marker::PhantomData&lt;S&gt; }
+impl Post&lt;Draft&gt; {
+    fn publish(self) -&gt; Post&lt;Published&gt; {
+        Post { body: self.body, _s: Default::default() }
+    }
+}
+impl Post&lt;Published&gt; { fn url(&amp;self) -&gt; String { format!("/p/{}", self.body) } }
+// RAII guard
+struct Timer(&amp;'static str, std::time::Instant);
+impl Drop for Timer {
+    fn drop(&amp;mut self) { println!("{} took {:?}", self.0, self.1.elapsed()); }
+}
+{ let _t = Timer("load", std::time::Instant::now()); /* work */ }
+// From conversions power `?`
+impl From&lt;u64&gt; for UserId { fn from(v: u64) -&gt; Self { UserId(v) } }
+let id: UserId = 7.into();
+// Iterator-returning API
+struct Library { books: Vec&lt;(String, u16)&gt; }
+impl Library {
+    fn published_after(&amp;self, y: u16) -&gt; impl Iterator&lt;Item = &amp;str&gt; + '_ {
+        self.books.iter().filter(move |b| b.1 &gt; y).map(|b| b.0.as_str())
+    }
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>UserId</code> and <code>OrderId</code> are both u64 inside but cannot be mixed</div><div class="explain-item">The builder chains settings and fills the rest with defaults</div><div class="explain-item">Only <code>Post&lt;Published&gt;</code> has a <code>url</code> method</div><div class="explain-item">Returning <code>impl Iterator</code> lets callers chain without allocating</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Java</strong> builders and value objects are common; typestate is rare</li><li class="note-item"><strong>Python</strong> keyword arguments replace builders; NewType is only a hint</li><li class="note-item"><strong>C++</strong> strong typedefs, RAII and builders all apply</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item">raw <code>u64</code> IDs everywhere → newtypes</li><li class="note-item">returning <code>Vec&lt;T&gt;</code> just to iterate → <code>impl Iterator&lt;Item = T&gt;</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Patterns Table | More Patterns Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-patterns"><h2 class="section-title">Patterns</h2><table><thead><tr><th>Pattern</th><th>Solves</th></tr></thead><tbody><tr><td>Newtype</td><td class="desc">Mixing similar values</td></tr><tr><td>Builder</td><td class="desc">Many optional settings</td></tr><tr><td>Typestate</td><td class="desc">Invalid transitions</td></tr><tr><td>RAII guard</td><td class="desc">Forgotten cleanup</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-more-patterns"><h2 class="section-title">More Patterns</h2><table><thead><tr><th>Pattern</th><th>Solves</th></tr></thead><tbody><tr><td>From / TryFrom</td><td class="desc">Conversions, ? errors</td></tr><tr><td>impl Iterator</td><td class="desc">Lazy results</td></tr><tr><td>Extension trait</td><td class="desc">Methods on foreign types</td></tr><tr><td>Enum state machine</td><td class="desc">Runtime states</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Builders that allow <code>build()</code> with required fields missing (use typestate or Result)</li><li class="note-item">Newtypes without the traits users need (derive them)</li><li class="note-item">Overusing typestate for simple runtime states</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Derive or forward traits on newtypes with <code>derive_more</code></li><li class="note-item">Use <code>bon</code> / <code>typed-builder</code> to generate builders</li><li class="note-item">Name guards <code>_guard</code> so they live to the end of scope</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">newtype · builder</li><li class="note-item">typestate · RAII guard</li><li class="note-item"><code>From</code> conversions</li><li class="note-item">return <code>impl Iterator</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-105-ffi-c.html">FFI &amp; Calling C</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-107-quick-reference-syntax.html">QR — Syntax &amp; Errors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 12: NSGs &amp; Azure Firewall</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>NSGs &amp; Azure Firewall</h1>
+			<div class="sheet-desc">network security groups · rule priorities · service tags · application security groups · Azure Firewall · VNet flow logs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Filtering Traffic</h2><div class="description">A <strong>network security group (NSG)</strong> holds stateful allow / deny rules, attached to a subnet or a NIC. Rules run in <strong>priority</strong> order (100 first, 4096 last) and can use <strong>service tags</strong> (Internet, AzureLoadBalancer, Storage.EastUS2) and <strong>application security groups</strong> instead of IPs. <strong>Azure Firewall</strong> is a managed central firewall for hub networks with FQDN filtering and threat intelligence.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Default rules (priority 65000+) allow VNet-to-VNet and load balancer probes, deny other inbound</li><li class="note-item">NSG on subnet and NIC: both must allow the traffic</li><li class="note-item">ASGs group VMs by role, e.g. <code>asg-web</code>, <code>asg-db</code></li><li class="note-item">VNet flow logs replace NSG flow logs</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Never allow 22 / 3389 from <code>Internet</code>; use Azure Bastion</li><li class="note-item">Review rules with "Any" source or destination</li><li class="note-item">Deny outbound to the internet from data subnets</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">1,000 rules per NSG</li><li class="note-item">5,000 NSGs per subscription</li><li class="note-item">Priorities 100–4096 for custom rules</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">NSG With Service Tags and ASGs</h2><pre><code class="language-bash">az network nsg create -g rg-net -n nsg-app
+az network asg create -g rg-net -n asg-web
+az network asg create -g rg-net -n asg-db
+
+az network nsg rule create -g rg-net --nsg-name nsg-app -n allow-https \
+    --priority 100 --direction Inbound --access Allow --protocol Tcp \
+    --source-address-prefixes Internet --destination-port-ranges 443 \
+    --destination-asgs asg-web
+az network nsg rule create -g rg-net --nsg-name nsg-app -n web-to-db \
+    --priority 110 --direction Inbound --access Allow --protocol Tcp \
+    --source-asgs asg-web --destination-asgs asg-db \
+    --destination-port-ranges 5432
+az network nsg rule create -g rg-net --nsg-name nsg-app -n deny-inet-out \
+    --priority 4000 --direction Outbound --access Deny \
+    --destination-address-prefixes Internet --destination-port-ranges '*'
+
+az network vnet subnet update -g rg-net --vnet-name vnet-shop-prod \
+    -n snet-app --network-security-group nsg-app
+az network nsg rule list -g rg-net --nsg-name nsg-app --include-default -o table</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The <code>Internet</code> service tag stands for all public addresses</div><div class="explain-item">ASGs let rules say "web may reach db" without IPs</div><div class="explain-item">A low-priority outbound deny blocks internet egress</div><div class="explain-item">NSGs attach to subnets (preferred) or individual NICs</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Security groups (stateful), NACLs (stateless) (aws-12)</li><li class="note-item"><strong>GCP</strong> VPC firewall rules and firewall policies (gcp-12)</li><li class="note-item">NSGs can sit on subnets, which AWS security groups cannot</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">NSGs and ASGs are free</li><li class="note-item">Azure Firewall bills hourly plus per GB processed: one per hub, not per spoke</li><li class="note-item">Flow logs bill for storage and optional traffic analytics</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Rule Fields Table | Firewall Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-rule-fields"><h2 class="section-title">Rule Fields</h2><table><thead><tr><th>Field</th><th>Example</th></tr></thead><tbody><tr><td>Priority</td><td class="desc">100 (lower first)</td></tr><tr><td>Direction</td><td class="desc">Inbound / Outbound</td></tr><tr><td>Source</td><td class="desc">Internet, 10.0.0.0/8, asg-web</td></tr><tr><td>Destination port</td><td class="desc">443, 5432, *</td></tr><tr><td>Protocol</td><td class="desc">Tcp, Udp, Icmp, *</td></tr><tr><td>Access</td><td class="desc">Allow / Deny</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-firewall-options"><h2 class="section-title">Firewall Options</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Per-subnet filtering</td><td class="desc">NSG</td></tr><tr><td>Central egress + FQDN rules</td><td class="desc">Azure Firewall</td></tr><tr><td>Web app protection</td><td class="desc">WAF on App Gateway / Front Door</td></tr><tr><td>Third-party NVA</td><td class="desc">Marketplace appliance</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Leave gaps between priorities (100, 110, 120) for later rules</li><li class="note-item note-do"><strong>Do</strong> Use service tags for Azure services instead of IP ranges</li><li class="note-item note-dont"><strong>Don’t</strong> Open broad port ranges to <code>Internet</code></li><li class="note-item note-dont"><strong>Don’t</strong> Stack NIC and subnet NSGs without documenting why</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Network Watcher "IP flow verify" says which rule allows or blocks a packet</li><li class="note-item">"Effective security rules" on a NIC shows the merged rule set</li><li class="note-item">Test from a VM with <code>nc -zv</code> / <code>curl</code> after each change</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">NSG on every subnet; no SSH / RDP from Internet</li><li class="note-item">Central egress through Azure Firewall where required</li><li class="note-item">VNet flow logs with traffic analytics enabled</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-11-nat-private-endpoints.html">NAT, Private Endpoints &amp; Connectivity</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-13-azure-dns.html">Azure DNS &amp; Traffic Manager</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

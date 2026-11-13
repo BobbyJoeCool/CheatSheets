@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 29: Storage Security &amp; Features</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>Storage Security &amp; Features</h1>
+			<div class="sheet-desc">Entra ID data roles · SAS tokens (user delegation SAS) · disable shared key &amp; anonymous access · versioning &amp; soft delete · lifecycle management · static website hosting</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Protecting and Managing Blob Data</h2><div class="description">Grant access with Entra ID <strong>data roles</strong>; when a client needs a temporary link, issue a <strong>user delegation SAS</strong> signed with Entra credentials rather than account keys. <strong>Versioning</strong>, <strong>soft delete</strong> and <strong>immutability</strong> protect against overwrites, deletes and ransomware. <strong>Lifecycle management</strong> moves or deletes blobs by age, and <strong>static website</strong> hosting serves a <code>$web</code> container.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Account-key SAS tokens cannot be revoked without rotating the key</li><li class="note-item">User delegation SAS lasts up to 7 days and can be revoked by revoking delegation keys</li><li class="note-item">Point-in-time restore for block blobs builds on versioning and change feed</li><li class="note-item">Immutability policies make blobs write-once (WORM)</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Prefer user delegation SAS with short expiry and minimal permissions</li><li class="note-item">Turn on versioning and soft delete for blobs and containers</li><li class="note-item">Alert on any change that re-enables public or shared-key access</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">SAS, Protection, Lifecycle, Static Site</h2><pre><code class="language-bash">az storage blob generate-sas --account-name stshopdata -c uploads \
+    -n 2026/11/photo.jpg --permissions r --expiry 2026-11-13T00:00Z \
+    --as-user --auth-mode login --full-uri -o tsv
+
+az storage account blob-service-properties update -n stshopdata -g rg-data \
+    --enable-versioning true --enable-delete-retention true \
+    --delete-retention-days 14 --enable-container-delete-retention true \
+    --container-delete-retention-days 14
+
+az storage account management-policy create -n stshopdata -g rg-data \
+    --policy @lifecycle.json
+
+az storage blob service-properties update --account-name stshopdata \
+    --static-website --index-document index.html --404-document 404.html \
+    --auth-mode login
+az storage account show -n stshopdata --query primaryEndpoints.web -o tsv</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">lifecycle.json</h2><pre><code class="language-json">{ "rules": [{ "name": "age-out", "enabled": true, "type": "Lifecycle",
+  "definition": {
+    "filters": { "blobTypes": ["blockBlob"], "prefixMatch": ["logs/"] },
+    "actions": { "baseBlob": {
+      "tierToCool":    { "daysAfterModificationGreaterThan": 30 },
+      "tierToArchive": { "daysAfterModificationGreaterThan": 180 },
+      "delete":        { "daysAfterModificationGreaterThan": 730 } } } } }] }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>--as-user</code> signs the SAS with a user delegation key from Entra ID</div><div class="explain-item">Soft delete keeps deleted blobs and containers for 14 days</div><div class="explain-item">The lifecycle rule cools logs at 30 days, archives at 180, deletes at 2 years</div><div class="explain-item">Static website content goes in the <code>$web</code> container</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> S3 bucket policies, presigned URLs, versioning, lifecycle (aws-29)</li><li class="note-item"><strong>GCP</strong> IAM, signed URLs, versioning, soft delete, lifecycle (gcp-29)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Versions and soft-deleted blobs bill as normal storage: pair with lifecycle cleanup</li><li class="note-item">Lifecycle actions are free; tier changes bill transaction fees</li><li class="note-item">Static website hosting is cheap; add Front Door for HTTPS on custom domains</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Access Options Table | Data Protection Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-access-options"><h2 class="section-title">Access Options</h2><table><thead><tr><th>Method</th><th>Use</th></tr></thead><tbody><tr><td>Entra ID + data role</td><td class="desc">Apps and users (default)</td></tr><tr><td>User delegation SAS</td><td class="desc">Temporary link, Entra-signed</td></tr><tr><td>Service / account SAS</td><td class="desc">Legacy; key-signed</td></tr><tr><td>Anonymous read</td><td class="desc">Avoid; use CDN instead</td></tr><tr><td>Account key</td><td class="desc">Disable</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-data-protection"><h2 class="section-title">Data Protection</h2><table><thead><tr><th>Feature</th><th>Protects Against</th></tr></thead><tbody><tr><td>Soft delete (blob / container)</td><td class="desc">Accidental delete</td></tr><tr><td>Versioning</td><td class="desc">Overwrites</td></tr><tr><td>Point-in-time restore</td><td class="desc">Bulk mistakes</td></tr><tr><td>Immutability (WORM)</td><td class="desc">Tampering, ransomware</td></tr><tr><td>Resource lock</td><td class="desc">Account deletion</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Issue SAS links valid for minutes or hours, read-only</li><li class="note-item note-do"><strong>Do</strong> Pair versioning with lifecycle rules that delete old versions</li><li class="note-item note-dont"><strong>Don’t</strong> Embed long-lived account-key SAS tokens in apps</li><li class="note-item note-dont"><strong>Don’t</strong> Serve a public site straight from a public container</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Azurite supports SAS generation and soft delete for testing</li><li class="note-item">Validate lifecycle JSON with <code>az storage account management-policy show</code> in a sandbox</li><li class="note-item">Test static sites locally with <code>npx serve</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Versioning, soft delete and lifecycle cleanup configured</li><li class="note-item">Only user delegation SAS allowed (policy / key access disabled)</li><li class="note-item">Front Door with HTTPS in front of static websites</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-28-blob-storage-basics.html">Blob Storage Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-30-disks-files-backup.html">Disks, Files &amp; Backup</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

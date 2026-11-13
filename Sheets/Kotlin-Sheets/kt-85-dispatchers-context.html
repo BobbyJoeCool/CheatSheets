@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 85: Dispatchers &amp; Context</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s85">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 85</div>
+			<h1>Dispatchers &amp; Context</h1>
+			<div class="sheet-desc"><code>Dispatchers.Default</code> / <code>IO</code> / <code>Main</code> · <code>withContext</code> · <code>CoroutineContext</code> · <code>CoroutineName</code> · <code>limitedParallelism</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Choosing Threads</h2><div class="description">A <strong>dispatcher</strong> decides which threads a coroutine runs on. <code>Dispatchers.Default</code> is for CPU work, <code>Dispatchers.IO</code> for blocking I/O such as JDBC and files, and <code>Dispatchers.Main</code> for UI threads. <code>withContext(Dispatchers.IO) { }</code> switches threads for a block and returns its result.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">A coroutine context holds Job, dispatcher, name and exception handler</li><li class="note-item">Contexts combine with <code>+</code></li><li class="note-item"><code>withContext</code> suspends until the block finishes</li><li class="note-item"><code>Main</code> needs a UI module (Android, JavaFX, Swing)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Switching Dispatchers</h2><pre><code class="language-kotlin">import kotlinx.coroutines.*
+
+suspend fun loadUser(id: Int): User = withContext(Dispatchers.IO) {
+    jdbc.queryForObject("SELECT * FROM users WHERE id = ?", id)  // blocks
+}
+
+suspend fun scoreAll(items: List&lt;Item&gt;): List&lt;Int&gt; =
+    withContext(Dispatchers.Default) {
+    items.map { heavyScore(it) }                                   // CPU work
+}
+
+fun main() = runBlocking(CoroutineName("main")) {
+    launch(Dispatchers.Default + CoroutineName("worker")) {
+        val name = coroutineContext[CoroutineName]
+        println("$name on ${Thread.currentThread().name}")
+        // CoroutineName(worker) on DefaultDispatcher-worker-1
+    }
+
+    val user = loadUser(1)          // caller does not care which thread
+    println(user)
+
+    val dbPool = Dispatchers.IO.limitedParallelism(10)   // at most 10 at once
+    repeat(100) { launch(dbPool) { loadUser(it) } }
+}
+
+// Android / UI
+// viewModelScope.launch {                     // Main by default
+//     val data = repository.load()            // switches to IO inside
+//     textView.text = data.title              // back on Main
+// }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>loadUser</code> hides the thread switch, so callers stay simple</div><div class="explain-item">CPU-heavy work goes to Default, which has one thread per core</div><div class="explain-item">Context elements like <code>CoroutineName</code> show up in logs</div><div class="explain-item"><code>limitedParallelism(10)</code> caps concurrent database calls</div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item"><code>ExecutorService</code> pools chosen by hand (<code>newFixedThreadPool</code>)</li><li class="note-item"><code>CompletableFuture.supplyAsync(task, ioExecutor)</code></li><li class="note-item">UI: <code>SwingUtilities.invokeLater</code> / <code>Platform.runLater</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item">blocking I/O on Default → <code>withContext(Dispatchers.IO)</code></li><li class="note-item">switching dispatchers at every call site → switch once inside the function</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Dispatchers Table | Context Elements Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-dispatchers"><h2 class="section-title">Dispatchers</h2><table><thead><tr><th>Dispatcher</th><th>Use For</th><th>Threads</th></tr></thead><tbody><tr><td>Default</td><td class="kw">CPU work</td><td class="kw">One per core</td></tr><tr><td>IO</td><td class="kw">Blocking I/O</td><td class="kw">Up to 64 (shared with Default)</td></tr><tr><td>Main</td><td class="kw">UI updates</td><td class="kw">UI thread</td></tr><tr><td>Unconfined</td><td class="kw">Special cases/tests</td><td class="kw">Caller's thread</td></tr><tr><td>limitedParallelism(n)</td><td class="kw">Capped pool view</td><td class="kw">n at a time</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-context-elements"><h2 class="section-title">Context Elements</h2><table><thead><tr><th>Element</th><th>Holds</th></tr></thead><tbody><tr><td>Job</td><td class="desc">Lifecycle, cancellation</td></tr><tr><td>CoroutineDispatcher</td><td class="desc">Threads</td></tr><tr><td>CoroutineName</td><td class="desc">Debug name</td></tr><tr><td>CoroutineExceptionHandler</td><td class="desc">Uncaught errors</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Running blocking JDBC on Default and starving CPU work</li><li class="note-item">Updating UI from IO threads</li><li class="note-item">Using <code>Dispatchers.Unconfined</code> in production code</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Make suspend functions main-safe: they switch dispatchers themselves</li><li class="note-item">Turn on <code>-Dkotlinx.coroutines.debug</code> to see coroutine names in thread names</li><li class="note-item">Use <code>limitedParallelism</code> to protect databases and APIs</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Default — CPU</li><li class="note-item">IO — blocking I/O</li><li class="note-item"><code>withContext</code> — switch for a block</li><li class="note-item">context = Job + dispatcher + …</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-84-async-structured-concurrency.html">async &amp; Structured Concurrency</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-86-cancellation-timeouts.html">Cancellation &amp; Timeouts</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

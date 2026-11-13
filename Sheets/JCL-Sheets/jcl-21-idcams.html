@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 21: IDCAMS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>IDCAMS</h1>
+			<div class="sheet-desc"><code>DEFINE CLUSTER</code> (KSDS) · <code>KEYS</code> / <code>RECORDSIZE</code> · <code>REPRO</code> · <code>PRINT</code> · <code>DELETE … PURGE</code> · <code>LISTCAT</code> · <code>SET MAXCC=0</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">The VSAM and Catalog Utility</h2><div class="description"><strong>IDCAMS</strong> (Access Method Services) defines, loads, prints and deletes <strong>VSAM</strong> datasets and manages catalog entries. It takes commands in SYSIN: <code>DEFINE CLUSTER</code> creates a KSDS, <code>REPRO</code> copies data in or out, <code>PRINT</code> dumps records and <code>LISTCAT</code> shows catalog details.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Commands continue with a trailing <code>-</code></li><li class="note-item"><code>IF LASTCC = 8 THEN SET MAXCC = 0</code> ignores "not found" on deletes</li><li class="note-item">KEYS(length offset) must match the program's record key</li><li class="note-item">REPRO can load a KSDS from a sorted sequential file</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Define, Load, Print</h2><pre><code class="language-jcl">//VSAMDEF  EXEC PGM=IDCAMS
+//SYSPRINT DD SYSOUT=*
+//SEQIN    DD DSN=USER.ACCT.SORTED,DISP=SHR
+//SYSIN    DD *
+  DELETE USER.ACCT.KSDS CLUSTER PURGE
+  IF LASTCC = 8 THEN SET MAXCC = 0
+
+  DEFINE CLUSTER (NAME(USER.ACCT.KSDS) -
+         INDEXED -
+         KEYS(10 0) -
+         RECORDSIZE(100 100) -
+         FREESPACE(10 10) -
+         CYLINDERS(5 2)) -
+       DATA  (NAME(USER.ACCT.KSDS.DATA)) -
+       INDEX (NAME(USER.ACCT.KSDS.INDEX))
+
+  REPRO INFILE(SEQIN) OUTDATASET(USER.ACCT.KSDS)
+  PRINT INDATASET(USER.ACCT.KSDS) CHARACTER COUNT(5)
+  LISTCAT ENTRIES(USER.ACCT.KSDS) ALL
+/*</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The delete makes the job rerunnable; RC 8 (not found) is reset to 0</div><div class="explain-item"><code>KEYS(10 0)</code>: 10-byte key starting at offset 0</div><div class="explain-item"><code>RECORDSIZE(100 100)</code>: average and maximum record length</div><div class="explain-item">REPRO loads the KSDS; input must be in key order</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>CREATE TABLE … PRIMARY KEY</code> then a bulk <code>INSERT</code> (sqlite3)</li><li class="note-item"><strong>Java</strong> JDBC DDL + batch inserts, or a <code>TreeMap</code> persisted to disk</li><li class="note-item"><strong>JavaScript</strong> SQL DDL via a driver, or an embedded key-value store</li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item">IDCAMS RC 8 <code>IDC3012I ENTRY NOT FOUND</code> on DELETE: harmless with the LASTCC reset</li><li class="note-item">REPRO RC 12 <code>IDC3314I</code> duplicate / out-of-sequence key: sort the input by key first</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Commands Table | Cluster Types Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-commands"><h2 class="section-title">Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td>DEFINE CLUSTER</td><td class="desc">Create VSAM</td></tr><tr><td>DEFINE GDG</td><td class="desc">Create GDG base</td></tr><tr><td>DEFINE AIX / PATH</td><td class="desc">Alternate index</td></tr><tr><td>REPRO</td><td class="desc">Copy / load / unload</td></tr><tr><td>PRINT</td><td class="desc">Dump records</td></tr><tr><td>DELETE</td><td class="desc">Delete + uncatalog</td></tr><tr><td>LISTCAT</td><td class="desc">Catalog info</td></tr><tr><td>ALTER</td><td class="desc">Change attributes</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-cluster-types"><h2 class="section-title">Cluster Types</h2><table><thead><tr><th>Keyword</th><th>VSAM Type</th></tr></thead><tbody><tr><td>INDEXED</td><td class="desc">KSDS</td></tr><tr><td>NONINDEXED</td><td class="desc">ESDS</td></tr><tr><td>NUMBERED</td><td class="desc">RRDS</td></tr><tr><td>LINEAR</td><td class="desc">LDS</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">KEYS offset or length not matching the COBOL RECORD KEY (status 39)</li><li class="note-item">REPRO from unsorted input into a KSDS</li><li class="note-item">Missing <code>-</code> continuation, so the rest of the command is lost</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Keep VSAM DEFINE jobs in source control beside the programs</li><li class="note-item">Use FREESPACE on files with many inserts</li><li class="note-item">Use <code>PRINT … CHARACTER COUNT(n)</code> to check data quickly</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">IDCAMS — VSAM utility</li><li class="note-item"><code>DEFINE CLUSTER</code> — create KSDS</li><li class="note-item"><code>REPRO</code> — load / copy</li><li class="note-item"><code>SET MAXCC=0</code> — ignore not-found</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-20-iebcopy.html">IEBCOPY</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-22-dfsort.html">DFSORT</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

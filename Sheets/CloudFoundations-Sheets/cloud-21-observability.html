@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 21: Observability</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Observability</h1>
+			<div class="sheet-desc">metrics, logs &amp; traces · OpenTelemetry · alerts &amp; SLOs · CloudWatch / Azure Monitor / Cloud Monitoring · log retention costs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Knowing What Your System Is Doing</h2><div class="description">Observability rests on three signals: <strong>metrics</strong> (numbers over time), <strong>logs</strong> (event records) and <strong>traces</strong> (one request's path through services). Each cloud collects platform metrics and logs automatically; your app adds its own through <strong>OpenTelemetry</strong>, the vendor-neutral standard that every provider now accepts. <strong>Alerts</strong> on user-facing symptoms and <strong>SLOs</strong> turn data into action.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Platform metrics come free; custom metrics and log ingestion are billed</li><li class="note-item">Structured (JSON) logs are far easier to query</li><li class="note-item">Trace IDs in logs link a log line to its request</li><li class="note-item">Alert on symptoms (errors, latency) before causes (CPU)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Query Recent Errors</h2><pre><code class="language-bash"># AWS CloudWatch Logs Insights
+aws logs start-query --log-group-name /app/api \
+    --start-time $(date -d '-1 hour' +%s) --end-time $(date +%s) \
+    --query-string 'fields @timestamp, @message
+      | filter level = "error" | sort @timestamp desc | limit 20'
+
+# Azure Log Analytics (KQL)
+az monitor log-analytics query -w &lt;workspace-id&gt; --analytics-query \
+  "AppTraces | where SeverityLevel &gt;= 3 | top 20 by TimeGenerated"
+
+# Google Cloud Logging
+gcloud logging read 'resource.type="cloud_run_revision" AND
+  severity&gt;=ERROR' --freshness=1h --limit=20</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">OpenTelemetry in Python (any cloud)</h2><pre><code class="language-python">from opentelemetry import trace
+tracer = trace.get_tracer("checkout")
+
+def checkout(cart):
+    with tracer.start_as_current_span("checkout") as span:
+        span.set_attribute("cart.items", len(cart))
+        return charge(cart)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Each provider has its own query language: Logs Insights, KQL, Logging query language</div><div class="explain-item">All three accept OpenTelemetry traces and metrics through exporters or collectors</div><div class="explain-item">Span attributes become searchable fields</div><div class="explain-item">The same instrumented code works on every cloud</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> CloudWatch metrics, logs, X-Ray / ADOT (aws-37, aws-38)</li><li class="note-item"><strong>Azure</strong> Azure Monitor, Log Analytics, Application Insights (az-37, az-38)</li><li class="note-item"><strong>Google Cloud</strong> Cloud Monitoring, Cloud Logging, Cloud Trace (gcp-37, gcp-38)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Instrument with OpenTelemetry, not a vendor SDK, to stay portable</li><li class="note-item">Set log retention on day one: default retention can be forever and costly</li><li class="note-item">Every alert should have a runbook link</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Services Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-services"><h2 class="section-title">Services</h2><table><thead><tr><th>Signal</th><th>AWS</th><th>Azure</th><th>Google Cloud</th></tr></thead><tbody><tr><td>Metrics</td><td class="kw">CloudWatch Metrics</td><td class="kw">Azure Monitor Metrics</td><td class="kw">Cloud Monitoring</td></tr><tr><td>Logs</td><td class="kw">CloudWatch Logs</td><td class="kw">Log Analytics</td><td class="kw">Cloud Logging</td></tr><tr><td>Traces / APM</td><td class="kw">X-Ray / Application Signals</td><td class="kw">Application Insights</td><td class="kw">Cloud Trace</td></tr><tr><td>Query language</td><td class="kw">Logs Insights</td><td class="kw">KQL</td><td class="kw">Logging query language</td></tr><tr><td>Managed Prometheus</td><td class="kw">Amazon Managed Prometheus</td><td class="kw">Azure Monitor managed Prometheus</td><td class="kw">Managed Service for Prometheus</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Log in JSON with a request / trace ID on every line</li><li class="note-item note-do"><strong>Do</strong> Define SLOs for the few user journeys that matter</li><li class="note-item note-dont"><strong>Don’t</strong> Log full request bodies with personal data or secrets</li><li class="note-item note-dont"><strong>Don’t</strong> Page someone for a CPU spike that users never noticed</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Run an OpenTelemetry Collector plus Jaeger or Grafana LGTM in Docker</li><li class="note-item"><code>docker run -p 4317:4317 otel/opentelemetry-collector</code> receives local traces</li><li class="note-item">Use the console exporter during development to print spans</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Alerts on error rate and latency with runbooks</li><li class="note-item">Log retention and sampling set to control cost</li><li class="note-item">Dashboards for each service's golden signals</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-20-infrastructure-as-code.html">Infrastructure as Code</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-22-cicd-to-the-cloud.html">CI/CD to the Cloud</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

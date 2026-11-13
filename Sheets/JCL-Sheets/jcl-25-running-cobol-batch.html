@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 25: Running a COBOL Batch Program</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Running a COBOL Batch Program</h1>
+			<div class="sheet-desc"><code>EXEC PGM=</code> · <code>STEPLIB</code> · DD names ↔ <code>SELECT … ASSIGN</code> · <code>PARM=</code> → <code>LINKAGE SECTION</code> · <code>DISPLAY</code> → <code>SYSOUT</code> · <code>RETURN-CODE</code> → step RC</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | In COBOL -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Wiring a Program to Its Data</h2><div class="description">Running a COBOL program means one EXEC step plus a DD for <strong>every file the program opens</strong>. The DD names must match the <code>ASSIGN TO</code> names in the program. <code>PARM</code> arrives in the LINKAGE SECTION, DISPLAY output lands in SYSOUT, and the program's RETURN-CODE becomes the step's RC.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Read the program's SELECT statements to know which DDs it needs</li><li class="note-item">Missing DD → FILE STATUS 35 on OPEN (or an abend)</li><li class="note-item">Add CEEDUMP so abends produce a useful dump</li><li class="note-item">Test and production differ only in DSNs and STEPLIB</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-cobol" id="cobol"><h2 class="section-title">In COBOL</h2><ul class="note-list"><li class="note-item"><code>SELECT TRAN-IN ASSIGN TO TRANIN</code> ↔ <code>//TRANIN DD DSN=…</code></li><li class="note-item"><code>PROCEDURE DIVISION USING LK-PARM</code> receives <code>PARM='2026-11'</code> as length + text</li><li class="note-item"><code>MOVE 4 TO RETURN-CODE</code> → step RC 4 → IF/COND in the JCL</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Complete Run Step</h2><pre><code class="language-jcl">//USER01R  JOB (ACCT),'PAYROLL RUN',CLASS=A,MSGCLASS=X,
+//         NOTIFY=&amp;SYSUID
+//PAYRUN   EXEC PGM=PAYCALC,PARM='2026-11'
+//STEPLIB  DD DSN=USER.LOADLIB,DISP=SHR
+//* Files the program opens (match SELECT ... ASSIGN TO)
+//TRANIN   DD DSN=PROD.PAY.TRANS.NOV,DISP=SHR
+//ACCTMAST DD DSN=PROD.ACCT.KSDS,DISP=SHR
+//PAYOUT   DD DSN=USER.PAY.OUT,DISP=(NEW,CATLG,DELETE),
+//            SPACE=(CYL,(5,5),RLSE),RECFM=FB,LRECL=150
+//RPTOUT   DD SYSOUT=*
+//REJECTS  DD DSN=USER.PAY.REJECTS,DISP=(NEW,CATLG,DELETE),
+//            SPACE=(TRK,(5,5),RLSE),RECFM=FB,LRECL=180
+//* Runtime DDs
+//SYSOUT   DD SYSOUT=*
+//CEEDUMP  DD SYSOUT=*
+//SYSUDUMP DD SYSOUT=*
+//         IF (PAYRUN.RC &gt; 4) THEN
+//ALERT    EXEC PGM=IEFBR14
+//         ENDIF</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Five file DDs match five SELECT statements in PAYCALC</div><div class="explain-item">PARM '2026-11' is the run period</div><div class="explain-item">SYSOUT collects DISPLAY messages and control totals</div><div class="explain-item">The IF step reacts to RC 8 or higher from PAYCALC</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>python paycalc.py 2026-11</code> with paths in env vars; <code>sys.exit(rc)</code></li><li class="note-item"><strong>Java</strong> <code>java -cp app.jar PayCalc 2026-11</code> with config; <code>System.exit(rc)</code></li><li class="note-item"><strong>JavaScript</strong> <code>node paycalc.js 2026-11</code> with <code>process.env</code> paths; <code>process.exitCode = rc</code></li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item">FILE STATUS 35 / <code>IEC130I … DD STATEMENT MISSING</code>: a SELECT's DD name is not in the step</li><li class="note-item">S806: STEPLIB does not contain PAYCALC (or the name is misspelled)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Program Jcl Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-program-jcl"><h2 class="section-title">Program ↔ JCL</h2><table><thead><tr><th>COBOL</th><th>JCL</th></tr></thead><tbody><tr><td>ASSIGN TO TRANIN</td><td class="desc">//TRANIN DD</td></tr><tr><td>FD record length</td><td class="desc">LRECL</td></tr><tr><td>RECORDING MODE F</td><td class="desc">RECFM=FB</td></tr><tr><td>PROCEDURE DIVISION USING</td><td class="desc">PARM=</td></tr><tr><td>DISPLAY</td><td class="desc">//SYSOUT DD</td></tr><tr><td>ACCEPT</td><td class="desc">//SYSIN DD</td></tr><tr><td>RETURN-CODE</td><td class="desc">Step RC</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">A DD name typo that only shows up as status 35 at run time</li><li class="note-item">Output LRECL not matching the FD record</li><li class="note-item">No CEEDUMP DD, so an abend leaves little to debug</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">List the program's DD names in its header comment</li><li class="note-item">Use symbols for the environment qualifier so one JCL fits test and prod</li><li class="note-item">Check control totals in SYSOUT after every run</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">one DD per SELECT</li><li class="note-item"><code>PARM</code> → LINKAGE</li><li class="note-item"><code>DISPLAY</code> → SYSOUT</li><li class="note-item">RETURN-CODE → step RC</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-24-compile-link-go.html">Compile, Link &amp; Go</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-26-generation-data-groups.html">Generation Data Groups (GDGs)</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

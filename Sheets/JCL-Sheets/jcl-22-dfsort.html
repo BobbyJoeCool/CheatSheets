@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 22: DFSORT</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>DFSORT</h1>
+			<div class="sheet-desc"><code>SORT FIELDS=(1,10,CH,A)</code> · <code>CH</code> / <code>ZD</code> / <code>PD</code> / <code>BI</code> formats · <code>INCLUDE COND=</code> / <code>OMIT</code> · <code>INREC</code> / <code>OUTREC BUILD=</code> · <code>SUM FIELDS=NONE</code> · ICETOOL</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | In COBOL -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Sorting, Filtering and Reformatting</h2><div class="description"><strong>DFSORT</strong> (PGM=SORT) sorts, merges, filters and reformats records with control statements in SYSIN. Fields are given as <strong>position, length, format, order</strong>. <code>INCLUDE</code> keeps matching records, <code>OUTREC BUILD</code> rearranges fields, and <code>SUM FIELDS=NONE</code> removes duplicate keys.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Positions start at 1; for VB data, position 5 is the first data byte</li><li class="note-item">Formats must match the data: CH text, ZD zoned, PD packed</li><li class="note-item">SORTIN in, SORTOUT out, SYSOUT messages</li><li class="note-item">RC 0 = success, 16 = failure</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-cobol" id="cobol"><h2 class="section-title">In COBOL</h2><ul class="note-list"><li class="note-item">Packed <code>PIC S9(7)V99 COMP-3</code> = 5 bytes → format PD, length 5</li><li class="note-item">Zoned <code>PIC S9(5)</code> = 5 bytes → format ZD</li><li class="note-item">Positions come from the copybook: offset + 1</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Sort, Filter, Reformat</h2><pre><code class="language-jcl">//SORTSTEP EXEC PGM=SORT
+//SYSOUT   DD SYSOUT=*
+//SORTIN   DD DSN=PROD.SALES.NOV,DISP=SHR
+//SORTOUT  DD DSN=USER.SALES.IAMN,DISP=(NEW,CATLG,DELETE),
+//            SPACE=(CYL,(5,5),RLSE)
+//SYSIN    DD *
+* Keep Iowa and Minnesota, sales over 1000.00
+  INCLUDE COND=((21,2,CH,EQ,C'IA',OR,21,2,CH,EQ,C'MN'),
+                AND,51,5,PD,GT,+100000)
+* State ascending, sales descending
+  SORT FIELDS=(21,2,CH,A,51,5,PD,D)
+* Output: account, state, sales
+  OUTREC BUILD=(1,10,21,2,51,5)
+/*
+//*
+//DEDUP    EXEC PGM=SORT
+//SYSOUT   DD SYSOUT=*
+//SORTIN   DD DSN=USER.CUST.ALL,DISP=SHR
+//SORTOUT  DD DSN=USER.CUST.UNIQUE,DISP=(NEW,CATLG,DELETE),
+//            SPACE=(CYL,(5,5),RLSE)
+//SYSIN    DD *
+  SORT FIELDS=(1,10,CH,A)
+  SUM FIELDS=NONE
+/*</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Bytes 21–22 hold the state; bytes 51–55 a packed amount</div><div class="explain-item">Packed 100000 with 2 implied decimals = 1000.00</div><div class="explain-item">OUTREC keeps 17 bytes: account, state, amount</div><div class="explain-item"><code>SUM FIELDS=NONE</code> keeps one record per key</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>sorted(filter(lambda r: r.state in ("IA","MN"), rows), key=…)</code></li><li class="note-item"><strong>Java</strong> <code>rows.stream().filter(…).sorted(comparing(…)).map(…)</code></li><li class="note-item"><strong>JavaScript</strong> <code>rows.filter(…).sort(…).map(r =&gt; ({acct, state, sales}))</code></li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item">DFSORT RC 16 <code>ICE…A</code> message in SYSOUT: read the first A-level message</li><li class="note-item"><code>ICE043A</code> / wrong data in output: field position or format does not match the layout</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Formats Table | Statements Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-formats"><h2 class="section-title">Formats</h2><table><thead><tr><th>Code</th><th>Data</th></tr></thead><tbody><tr><td>CH</td><td class="desc">Characters</td></tr><tr><td>ZD</td><td class="desc">Zoned decimal</td></tr><tr><td>PD</td><td class="desc">Packed decimal</td></tr><tr><td>BI</td><td class="desc">Unsigned binary</td></tr><tr><td>FI</td><td class="desc">Signed binary</td></tr><tr><td>Y4T</td><td class="desc">Date CCYYMMDD</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-statements"><h2 class="section-title">Statements</h2><table><thead><tr><th>Statement</th><th>Does</th></tr></thead><tbody><tr><td>SORT FIELDS=(p,l,f,A|D)</td><td class="desc">Sort</td></tr><tr><td>MERGE FIELDS=…</td><td class="desc">Merge sorted inputs</td></tr><tr><td>SORT FIELDS=COPY</td><td class="desc">Copy, no sort</td></tr><tr><td>INCLUDE / OMIT COND=</td><td class="desc">Filter</td></tr><tr><td>INREC / OUTREC BUILD=</td><td class="desc">Reformat</td></tr><tr><td>SUM FIELDS=(p,l,f)</td><td class="desc">Total by key</td></tr><tr><td>OUTFIL</td><td class="desc">Several outputs</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Positions counted from 0 (DFSORT starts at 1)</li><li class="note-item">Treating packed data as CH, which sorts by raw bytes</li><li class="note-item">Forgetting the 4-byte RDW when coding positions on VB files</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Copy field positions from the COBOL compile listing MAP</li><li class="note-item">Use <code>SORT FIELDS=COPY</code> with INCLUDE for fast filtering</li><li class="note-item">Use OUTFIL to split one input into several outputs in one pass</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>SORT FIELDS=(p,l,f,o)</code></li><li class="note-item"><code>INCLUDE COND=</code> — filter</li><li class="note-item"><code>OUTREC BUILD=</code> — reformat</li><li class="note-item"><code>SUM FIELDS=NONE</code> — dedupe</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-21-idcams.html">IDCAMS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-23-tso-batch-other-utilities.html">TSO Batch &amp; Utilities</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

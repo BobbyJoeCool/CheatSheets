@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 21: Depends Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Depends Basics</h1>
+			<div class="sheet-desc">Depends() · Annotated[T, Depends(fn)] · shared params · type aliases · per-request cache</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>Dependency injection</strong> lets a path operation declare "I need X" and have FastAPI build X for it. A dependency is any callable; its parameters are resolved exactly like a route's (path, query, body, other dependencies). Use it for shared query params, DB sessions, the current user, settings, and permission checks.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Dependencies can be <code>def</code> or <code>async def</code></li><li class="note-item">Their params appear in <code>/docs</code> as if on the route</li><li class="note-item">Same dependency used twice in one request runs once</li><li class="note-item">Wrap in an <code>Annotated</code> alias to reuse with one name</li></ul></section></div>
+				<div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">FastAPI builds a dependency tree per route at startup</li><li class="note-item">Per request it solves the tree, caching results by callable</li><li class="note-item"><code>def</code> dependencies run in the threadpool, like <code>def</code> routes</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Shared Paging Dependency</h2><pre><code class="language-python">from typing import Annotated
+from fastapi import Depends, FastAPI, Query
+
+app = FastAPI()
+
+def paging(skip: Annotated[int, Query(ge=0)] = 0,
+           limit: Annotated[int, Query(le=100)] = 20) -&gt; dict:
+    return {"skip": skip, "limit": limit}
+
+Paging = Annotated[dict, Depends(paging)]     # reusable alias
+
+@app.get("/todos")
+def list_todos(page: Paging):
+    return repo.list(**page)
+
+@app.get("/users")
+def list_users(page: Paging, q: str | None = None):
+    return users.search(q, **page)
+
+# /todos?skip=40&amp;limit=10 → page = {"skip": 40, "limit": 10}</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>paging()</code> — normal function with query params</div><div class="explain-item"><code>Depends(paging)</code> — call it, inject the result</div><div class="explain-item"><code>Paging</code> alias — one name for type + dependency</div><div class="explain-item">Both routes get the same validated paging params</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — no DI; use <code>g</code>, decorators or helper functions</li><li class="note-item">Django — middleware, decorators, or class-based view mixins</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid <code>page: dict = Depends(paging)</code> · Prefer <code>Annotated</code> aliases</li><li class="note-item">Avoid copying the same params into every route · Prefer one dependency</li></ul></section></div>
+			</div>
+			<!-- Row 3: Kinds Table | Uses Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-kinds"><h2 class="section-title">What Can Be a Dependency</h2><table><thead><tr><th>Kind</th><th>Example</th></tr></thead><tbody><tr><td>function</td><td class="desc">def paging(...)</td></tr><tr><td>async function</td><td class="desc">async def get_user(...)</td></tr><tr><td>class</td><td class="desc">Depends(Pager) (sheet 22)</td></tr><tr><td>callable instance</td><td class="desc">Depends(RoleChecker("admin"))</td></tr><tr><td>generator</td><td class="desc">yield session (sheet 23)</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-uses"><h2 class="section-title">Common Uses</h2><table><thead><tr><th>Dependency</th><th>Provides</th></tr></thead><tbody><tr><td>get_db</td><td class="desc">DB session</td></tr><tr><td>get_current_user</td><td class="desc">auth user</td></tr><tr><td>get_settings</td><td class="desc">config</td></tr><tr><td>paging</td><td class="desc">skip/limit</td></tr><tr><td>require_admin</td><td class="desc">permission check</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling the function yourself: <code>Depends(paging())</code> passes the result, not the callable</li><li class="note-item">Using dependencies for heavy app-wide setup; put that in lifespan (sheet 26)</li><li class="note-item">Forgetting dependency params show in docs and leak internal names</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Keep dependencies in <code>deps.py</code> with <code>Annotated</code> aliases</li><li class="note-item">Return a small dataclass instead of a dict for type checking</li><li class="note-item">Override any dependency in tests (sheet 41)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Depends(fn)</code> — FastAPI calls <code>fn</code>, injects result</li><li class="note-item">dependency params — resolved like route params</li><li class="note-item"><code>Annotated</code> alias — reuse everywhere</li><li class="note-item">per-request cache — runs once per request</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-20-validation-errors.html" class="nav-link prev" title="Validation Errors &amp; Error Formats">Validation Errors</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-22-class-sub-dependencies.html" class="nav-link next" title="Class &amp; Sub-Dependencies">Class &amp; Sub-Deps</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 098: HTTP Clients with reqwest</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s098">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 098</div>
+			<h1>HTTP Clients with reqwest</h1>
+			<div class="sheet-desc"><code>reqwest::get</code> · <code>Client</code> · <code>.json()</code> / <code>.text()</code> · POST <code>.json(&amp;body)</code> · headers &amp; timeouts · <code>reqwest::blocking</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Calling HTTP APIs</h2><div class="description"><strong>reqwest</strong> is the standard HTTP client, built on hyper and async by default. Create one <code>Client</code> and reuse it: it pools connections. Requests are built with method calls, sent with <code>.send().await</code>, and the response body is read as text, bytes or deserialized JSON via serde. A <code>blocking</code> API exists for simple scripts.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>cargo add reqwest -F json</code> (+ tokio)</li><li class="note-item">Non-2xx statuses are <strong>not</strong> errors until <code>error_for_status()</code></li><li class="note-item">Set timeouts on the Client builder</li><li class="note-item">The <code>blocking</code> feature must not be used inside an async runtime</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">reqwest</h2><pre><code class="language-rust">use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+#[derive(Debug, Deserialize)]
+struct Repo { name: String, stargazers_count: u32 }
+#[derive(Serialize)]
+struct NewTodo&lt;'a&gt; { title: &amp;'a str, done: bool }
+#[tokio::main]
+async fn main() -&gt; Result&lt;(), reqwest::Error&gt; {
+    let body = reqwest::get("https://httpbin.org/ip").await?.text().await?;
+    println!("{body}");
+
+    let client = reqwest::Client::builder()
+        .user_agent("cheatsheet-demo/1.0")
+        .timeout(Duration::from_secs(10))
+        .build()?;
+
+    let repo: Repo = client
+        .get("https://api.github.com/repos/rust-lang/rust")
+        .header("Accept", "application/vnd.github+json")
+        .send().await?
+        .error_for_status()?                // 4xx/5xx → Err
+        .json().await?;                     // deserialize
+    println!("{} ⭐ {}", repo.name, repo.stargazers_count);
+
+    let resp = client
+        .post("https://httpbin.org/post")
+        .bearer_auth("TOKEN")
+        .query(&amp;[("page", "1")])
+        .json(&amp;NewTodo { title: "write sheet", done: false })
+        .send().await?;
+    println!("{}", resp.status());          // 200 OK
+
+    Ok(())
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>reqwest::get</code> is a one-off shortcut</div><div class="explain-item">The builder sets a user agent and timeout once</div><div class="explain-item"><code>error_for_status</code> turns HTTP errors into <code>Err</code></div><div class="explain-item"><code>.json(&amp;body)</code> serializes the request; <code>.json()</code> parses the response</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>requests</code> / <code>httpx</code> (<code>httpx.AsyncClient</code> ≈ reqwest Client)</li><li class="note-item"><strong>JavaScript</strong> <code>fetch()</code> with <code>await res.json()</code></li><li class="note-item"><strong>Java</strong> <code>java.net.http.HttpClient</code>; <strong>Go</strong> <code>net/http</code> Client</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>reqwest::get</code> in a loop → one shared <code>Client</code></li><li class="note-item">checking only <code>?</code> on send → also <code>error_for_status()</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Request Builder Table | Response Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-request-builder"><h2 class="section-title">Request Builder</h2><table><thead><tr><th>Method</th><th>Does</th></tr></thead><tbody><tr><td>.get/.post/.put/.delete(url)</td><td class="desc">Start request</td></tr><tr><td>.header(k, v)</td><td class="desc">Header</td></tr><tr><td>.bearer_auth(t) / .basic_auth</td><td class="desc">Auth</td></tr><tr><td>.query(&amp;[…])</td><td class="desc">URL params</td></tr><tr><td>.json(&amp;body)</td><td class="desc">JSON body</td></tr><tr><td>.form(&amp;[…])</td><td class="desc">Form body</td></tr><tr><td>.timeout(d)</td><td class="desc">Per request</td></tr><tr><td>.send().await</td><td class="desc">Execute</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-response"><h2 class="section-title">Response</h2><table><thead><tr><th>Method</th><th>Returns</th></tr></thead><tbody><tr><td>.status()</td><td class="desc">StatusCode</td></tr><tr><td>.headers()</td><td class="desc">HeaderMap</td></tr><tr><td>.error_for_status()</td><td class="desc">Err on 4xx/5xx</td></tr><tr><td>.text().await</td><td class="desc">String</td></tr><tr><td>.json::&lt;T&gt;().await</td><td class="desc">T</td></tr><tr><td>.bytes().await</td><td class="desc">Bytes</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Creating a new Client per request (no connection reuse)</li><li class="note-item">Assuming a 404 returns <code>Err</code> from <code>send()</code></li><li class="note-item">Calling <code>reqwest::blocking</code> from inside Tokio (panics)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Store the Client in app state and clone it (cheap Arc)</li><li class="note-item">Use <code>rustls-tls</code> to avoid OpenSSL system deps</li><li class="note-item">Add retries with <code>reqwest-middleware</code> / <code>reqwest-retry</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">one shared <code>Client</code></li><li class="note-item"><code>.send().await?</code></li><li class="note-item"><code>error_for_status()</code></li><li class="note-item"><code>.json()</code> both ways</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-097-tokio.html">Tokio</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-099-axum-web.html">Web Servers with Axum</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 049: Fn, FnMut &amp; FnOnce</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s049">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 049</div>
+			<h1>Fn, FnMut &amp; FnOnce</h1>
+			<div class="sheet-desc"><code>Fn</code> · <code>FnMut</code> · <code>FnOnce</code> · how captures pick the trait · <code>F: Fn(i32) -&gt; i32</code> · <code>where</code> clauses · <code>fn</code> pointers vs closures</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">The Three Closure Traits</h2><div class="description">Every closure implements one or more of three traits. <strong>FnOnce</strong> can be called once (it may consume captures), <strong>FnMut</strong> can be called many times and may mutate captures, and <strong>Fn</strong> can be called many times through a shared reference. Functions that accept closures state which trait they need; ask for the weakest one you can.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Every Fn is also FnMut, and every FnMut is FnOnce</li><li class="note-item">Accept <code>FnOnce</code> if you call it once (most flexible for callers)</li><li class="note-item"><code>fn(i32) -&gt; i32</code> is a function pointer type</li><li class="note-item">Plain functions implement all three traits</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Accepting Closures</h2><pre><code class="language-rust">fn apply&lt;F: Fn(i32) -&gt; i32&gt;(f: F, x: i32) -&gt; i32 { f(x) }
+
+fn repeat&lt;F&gt;(n: usize, mut f: F)
+where
+    F: FnMut(usize),
+{
+    for i in 0..n { f(i); }
+}
+
+fn run_once&lt;F: FnOnce() -&gt; String&gt;(f: F) -&gt; String { f() }
+
+println!("{}", apply(|x| x * 2, 21));        // 42
+
+let mut log = Vec::new();
+repeat(3, |i| log.push(i));                  // FnMut: mutates log
+println!("{log:?}");                         // [0, 1, 2]
+
+let name = String::from("Ada");
+let msg = run_once(move || name + "!");      // FnOnce: consumes name
+println!("{msg}");                           // Ada!
+
+fn double(x: i32) -&gt; i32 { x * 2 }
+println!("{}", apply(double, 5));            // functions work too: 10
+
+let ops: Vec&lt;fn(i32) -&gt; i32&gt; = vec![double, |x| x + 1];   // no captures
+println!("{}", ops.iter().fold(3, |acc, f| f(acc)));      // 7
+
+let consume = move || drop(log);             // FnOnce only
+consume();
+// consume();                          // E0382: closure moved by first call
+
+fn make_counter() -&gt; impl FnMut() -&gt; u32 {
+    let mut c = 0;
+    move || { c += 1; c }
+}
+let mut next = make_counter();
+println!("{} {}", next(), next());           // 1 2</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>apply</code> needs <code>Fn</code>: it only reads its captures</div><div class="explain-item"><code>repeat</code> needs <code>FnMut</code> because the closure pushes to <code>log</code></div><div class="explain-item"><code>run_once</code> accepts closures that consume what they capture</div><div class="explain-item">Closures without captures coerce to <code>fn</code> pointers</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> <code>std::function&lt;int(int)&gt;</code> or a template parameter</li><li class="note-item"><strong>Java</strong> <code>Function&lt;T,R&gt;</code>, <code>Consumer&lt;T&gt;</code>, <code>Supplier&lt;T&gt;</code></li><li class="note-item"><strong>Python</strong> any callable; no compile-time distinction</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>F: Fn()</code> for a callback called once → <code>F: FnOnce()</code></li><li class="note-item">long inline bounds → <code>where</code> clause</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Traits Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-traits"><h2 class="section-title">Traits</h2><table><thead><tr><th>Trait</th><th>Call Via</th><th>Times</th><th>Captures</th></tr></thead><tbody><tr><td>FnOnce</td><td class="kw">self</td><td class="kw">Once</td><td class="kw">May consume</td></tr><tr><td>FnMut</td><td class="kw">&amp;mut self</td><td class="kw">Many</td><td class="kw">May mutate</td></tr><tr><td>Fn</td><td class="kw">&amp;self</td><td class="kw">Many</td><td class="kw">Read only</td></tr><tr><td>fn ptr</td><td class="kw">value</td><td class="kw">Many</td><td class="kw">None</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Requiring <code>Fn</code> when callers need to mutate state</li><li class="note-item">Forgetting <code>mut f: F</code> to call an FnMut</li><li class="note-item">Expecting a capturing closure to coerce to <code>fn</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Accept <code>impl FnOnce</code> for one-shot callbacks</li><li class="note-item">Use <code>where</code> clauses for readability</li><li class="note-item">Use <code>fn</code> pointers for tables of plain functions</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">FnOnce ⊇ FnMut ⊇ Fn</li><li class="note-item">captures decide the trait</li><li class="note-item">ask for the weakest</li><li class="note-item"><code>fn</code> — pointer, no captures</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-048-closures.html">Closures</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-050-higher-order-functions.html">Higher-Order Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

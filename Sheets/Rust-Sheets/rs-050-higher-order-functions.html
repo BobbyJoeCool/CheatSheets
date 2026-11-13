@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 050: Higher-Order Functions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s050">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 050</div>
+			<h1>Higher-Order Functions</h1>
+			<div class="sheet-desc">closures as arguments · returning <code>impl Fn</code> · <code>Box&lt;dyn Fn&gt;</code> · <code>fn(i32) -&gt; i32</code> pointers · composing functions · callbacks</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Functions That Take or Return Functions</h2><div class="description">Pass closures with generic parameters (<code>impl Fn</code>) for zero-cost static dispatch. Return a single closure type with <code>impl Fn</code>. When you need to store <strong>different</strong> closures together or choose one at runtime, box them as <code>Box&lt;dyn Fn&gt;</code>, paying for a heap allocation and an indirect call.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>impl Fn</code> in return position = one concrete hidden type</li><li class="note-item">Two different closures need <code>Box&lt;dyn Fn&gt;</code> to share a type</li><li class="note-item">Returned closures usually need <code>move</code></li><li class="note-item">Iterators are the most common higher-order API</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Passing, Returning, Storing</h2><pre><code class="language-rust">fn make_adder(n: i32) -&gt; impl Fn(i32) -&gt; i32 {
+    move |x| x + n                          // captures n by value
+}
+let add5 = make_adder(5);
+println!("{}", add5(10));                   // 15
+
+fn compose&lt;A, B, C&gt;(f: impl Fn(A) -&gt; B, g: impl Fn(B) -&gt; C) -&gt; impl Fn(A) -&gt; C {
+    move |x| g(f(x))
+}
+let inc_then_double = compose(|x: i32| x + 1, |x| x * 2);
+println!("{}", inc_then_double(4));         // 10
+
+fn op(name: &amp;str) -&gt; Box&lt;dyn Fn(f64, f64) -&gt; f64&gt; {
+    match name {
+        "add" =&gt; Box::new(|a, b| a + b),
+        "pow" =&gt; Box::new(f64::powf),
+        _ =&gt; Box::new(|_, _| f64::NAN),
+    }
+}
+println!("{}", op("pow")(2.0, 10.0));       // 1024
+
+struct Button {
+    label: String,
+    on_click: Vec&lt;Box&lt;dyn Fn(&amp;str)&gt;&gt;,       // list of callbacks
+}
+impl Button {
+    fn click(&amp;self) { for cb in &amp;self.on_click { cb(&amp;self.label); } }
+}
+let b = Button {
+    label: "OK".into(),
+    on_click: vec![Box::new(|l| println!("clicked {l}")),
+                   Box::new(|l| println!("log: {l}"))],
+};
+b.click();
+
+let pipeline: [fn(i32) -&gt; i32; 3] = [|x| x + 1, |x| x * 10, |x| x - 3];
+println!("{}", pipeline.iter().fold(1, |v, f| f(v)));   // 17</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>make_adder</code> returns a closure that remembers <code>n</code></div><div class="explain-item"><code>compose</code> combines two functions into one</div><div class="explain-item"><code>op</code> returns different closures, so it boxes them</div><div class="explain-item">A <code>Vec&lt;Box&lt;dyn Fn&gt;&gt;</code> stores callbacks of different types</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>JavaScript</strong> functions are first-class values; no boxing decisions</li><li class="note-item"><strong>Python</strong> decorators and <code>functools.partial</code></li><li class="note-item"><strong>C++</strong> <code>std::function</code> ≈ <code>Box&lt;dyn Fn&gt;</code>; templates ≈ <code>impl Fn</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>Box&lt;dyn Fn&gt;</code> parameters → <code>impl Fn</code> (no allocation)</li><li class="note-item">returning <code>Box&lt;dyn Fn&gt;</code> for a single closure → <code>impl Fn</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Choosing A Form Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-choosing-a-form"><h2 class="section-title">Choosing a Form</h2><table><thead><tr><th>Form</th><th>Dispatch</th><th>Use</th></tr></thead><tbody><tr><td>impl Fn (param)</td><td class="kw">Static</td><td class="kw">Most callbacks</td></tr><tr><td>impl Fn (return)</td><td class="kw">Static</td><td class="kw">One closure type</td></tr><tr><td>Box&lt;dyn Fn&gt;</td><td class="kw">Dynamic</td><td class="kw">Mixed closures, storage</td></tr><tr><td>&amp;dyn Fn</td><td class="kw">Dynamic</td><td class="kw">Borrowed, no alloc</td></tr><tr><td>fn(T) -&gt; U</td><td class="kw">Pointer</td><td class="kw">No captures</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Returning a closure without <code>move</code> (borrows a local: E0373)</li><li class="note-item">Trying to return two different closures as <code>impl Fn</code></li><li class="note-item">Boxing closures when generics would do</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add <code>+ Send + 'static</code> to boxed callbacks used across threads</li><li class="note-item">Prefer iterator adapters over hand-written HOFs</li><li class="note-item">Use <code>&amp;dyn Fn</code> to avoid generics bloat without allocating</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>impl Fn</code> — static, zero-cost</li><li class="note-item"><code>Box&lt;dyn Fn&gt;</code> — mixed / stored</li><li class="note-item"><code>move</code> for returned closures</li><li class="note-item">compose small functions</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-049-fn-traits.html">Fn, FnMut &amp; FnOnce</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-051-const-fn-recursion.html">const fn, Recursion &amp; Attributes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

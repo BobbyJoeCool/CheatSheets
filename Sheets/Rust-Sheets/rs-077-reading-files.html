@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 077: Reading Files</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s077">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 077</div>
+			<h1>Reading Files</h1>
+			<div class="sheet-desc"><code>fs::read_to_string</code> · <code>File::open</code> · <code>BufReader</code> &amp; <code>lines()</code> · <code>read_to_end</code> · <code>io::Result</code> · <code>?</code> in file code</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Getting Data In</h2><div class="description">For small files, <code>fs::read_to_string</code> reads everything into a <code>String</code> and <code>fs::read</code> into <code>Vec&lt;u8&gt;</code>. For large files, wrap a <code>File</code> in a <code>BufReader</code> and iterate <code>lines()</code> so memory stays flat. All I/O returns <code>io::Result&lt;T&gt;</code>, so <code>?</code> handles errors cleanly.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>read_to_string</code> fails on invalid UTF-8</li><li class="note-item"><code>lines()</code> strips <code>\n</code> and <code>\r\n</code>; each line is <code>io::Result&lt;String&gt;</code></li><li class="note-item">Files close automatically when dropped</li><li class="note-item"><code>io::ErrorKind::NotFound</code> lets you match specific errors</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Reading</h2><pre><code class="language-rust">use std::fs::{self, File};
+use std::io::{self, BufRead, BufReader, Read};
+
+fn main() -&gt; io::Result&lt;()&gt; {
+    let text = fs::read_to_string("notes.txt")?;     // whole file → String
+    println!("{} lines", text.lines().count());
+
+    let bytes: Vec&lt;u8&gt; = fs::read("logo.png")?;       // whole file → bytes
+    println!("{} bytes", bytes.len());
+
+    let file = File::open("big.log")?;
+    let reader = BufReader::new(file);
+    for (n, line) in reader.lines().enumerate() {    // streams line by line
+        let line = line?;
+        if line.contains("ERROR") { println!("{}: {line}", n + 1); }
+    }
+
+    let mut f = File::open("data.bin")?;
+    let mut header = [0u8; 4];
+    f.read_exact(&amp;mut header)?;                      // exactly 4 bytes
+    let mut rest = Vec::new();
+    f.read_to_end(&amp;mut rest)?;
+
+    match fs::read_to_string("missing.txt") {
+        Ok(s) =&gt; println!("{s}"),
+        Err(e) if e.kind() == io::ErrorKind::NotFound =&gt; println!("no file"),
+        Err(e) =&gt; return Err(e),
+    }
+
+    let nums: Vec&lt;i64&gt; = fs::read_to_string("nums.txt")?
+        .lines()
+        .filter_map(|l| l.trim().parse().ok())
+        .collect();
+    println!("sum = {}", nums.iter().sum::&lt;i64&gt;());
+    Ok(())
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>read_to_string</code> is the one-liner for small text files</div><div class="explain-item"><code>BufReader::lines</code> reads one line at a time</div><div class="explain-item"><code>read_exact</code> fills a fixed buffer or errors</div><div class="explain-item">Match on <code>e.kind()</code> to handle a missing file</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> <code>open(p).read()</code> / <code>for line in open(p):</code></li><li class="note-item"><strong>Java</strong> <code>Files.readString(path)</code> / <code>Files.lines(path)</code></li><li class="note-item"><strong>Go</strong> <code>os.ReadFile</code> / <code>bufio.Scanner</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>read_to_string</code> on multi-GB logs → <code>BufReader::lines()</code></li><li class="note-item"><code>.unwrap()</code> on file opens → <code>?</code> with a <code>Result</code> return</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Functions Table | Errorkind Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-functions"><h2 class="section-title">Functions</h2><table><thead><tr><th>Call</th><th>Returns</th></tr></thead><tbody><tr><td>fs::read_to_string(p)</td><td class="desc">io::Result&lt;String&gt;</td></tr><tr><td>fs::read(p)</td><td class="desc">io::Result&lt;Vec&lt;u8&gt;&gt;</td></tr><tr><td>File::open(p)</td><td class="desc">io::Result&lt;File&gt;</td></tr><tr><td>BufReader::new(f).lines()</td><td class="desc">Iterator&lt;io::Result&lt;String&gt;&gt;</td></tr><tr><td>f.read_to_end(&amp;mut v)</td><td class="desc">io::Result&lt;usize&gt;</td></tr><tr><td>f.read_exact(&amp;mut buf)</td><td class="desc">io::Result&lt;()&gt;</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-errorkind"><h2 class="section-title">ErrorKind</h2><table><thead><tr><th>Kind</th><th>Meaning</th></tr></thead><tbody><tr><td>NotFound</td><td class="desc">No such file</td></tr><tr><td>PermissionDenied</td><td class="desc">No access</td></tr><tr><td>AlreadyExists</td><td class="desc">create_new failed</td></tr><tr><td>InvalidData</td><td class="desc">Bad UTF-8 etc.</td></tr><tr><td>UnexpectedEof</td><td class="desc">File too short</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Reading huge files into memory at once</li><li class="note-item">Unbuffered small reads on a <code>File</code> (many syscalls)</li><li class="note-item">Ignoring the <code>io::Result</code> inside <code>lines()</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>BufReader</code> for anything read piece by piece</li><li class="note-item">Add the path to error messages (<code>map_err</code> / anyhow <code>context</code>)</li><li class="note-item">Use <code>memmap2</code> for very large read-only files</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>fs::read_to_string</code> — small files</li><li class="note-item"><code>BufReader::lines</code> — big files</li><li class="note-item"><code>io::Result</code> + <code>?</code></li><li class="note-item">match <code>ErrorKind</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-076-cow-choosing.html">Cow &amp; Choosing a Pointer</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-078-writing-files.html">Writing Files</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

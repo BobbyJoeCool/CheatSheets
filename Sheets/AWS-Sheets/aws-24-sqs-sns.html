@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 24: SQS &amp; SNS</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s24">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 24</div>
+			<h1>SQS &amp; SNS</h1>
+			<div class="sheet-desc">standard vs FIFO queues · visibility timeout · dead-letter queues · SNS topics &amp; subscriptions · fan-out pattern · Lambda triggers</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Queues and Topics</h2><div class="description"><strong>SQS</strong> queues hold messages until a consumer processes and deletes them. <strong>Standard</strong> queues give nearly unlimited throughput with at-least-once, best-effort ordering; <strong>FIFO</strong> queues give ordering per message group and deduplication. The <strong>visibility timeout</strong> hides a message while it is processed. <strong>SNS</strong> topics push each message to many subscribers (SQS, Lambda, HTTP, email): the <strong>fan-out</strong> pattern.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Long polling (<code>WaitTimeSeconds</code> up to 20) cuts empty receives</li><li class="note-item">A redrive policy moves repeatedly failing messages to a DLQ</li><li class="note-item">SNS subscription filter policies route by message attributes</li><li class="note-item">Set visibility timeout to at least 6× the Lambda timeout for Lambda consumers</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">SQS message up to 1 MiB (raised from 256 KB in 2025)</li><li class="note-item">Retention 1 minute–14 days (default 4 days)</li><li class="note-item">Visibility timeout up to 12 hours</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Queue, DLQ, Topic Fan-Out</h2><pre><code class="language-bash">DLQ=$(aws sqs create-queue --queue-name orders-dlq \
+  --query QueueUrl --output text)
+DLQ_ARN=$(aws sqs get-queue-attributes --queue-url $DLQ \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+Q=$(aws sqs create-queue --queue-name orders \
+  --attributes file://orders-attrs.json --query QueueUrl --output text)
+# orders-attrs.json:
+# {"VisibilityTimeout": "60", "ReceiveMessageWaitTimeSeconds": "20",
+#  "RedrivePolicy": "{\"deadLetterTargetArn\": \"&lt;dlq-arn&gt;\",
+#                     \"maxReceiveCount\": \"5\"}"}
+
+aws sqs send-message --queue-url $Q --message-body '{"id": 42}'
+aws sqs receive-message --queue-url $Q --max-number-of-messages 10
+aws sqs delete-message --queue-url $Q --receipt-handle &lt;handle&gt;
+
+T=$(aws sns create-topic --name order-events --query TopicArn --output text)
+aws sns subscribe --topic-arn $T --protocol sqs --notification-endpoint $Q_ARN \
+    --attributes file://sub-attrs.json   # filter policy: region = eu
+aws sns publish --topic-arn $T --message '{"id": 42}' \
+    --message-attributes '{"region":{"DataType":"String","StringValue":"eu"}}'
+aws sqs start-message-move-task --source-arn $DLQ_ARN   # redrive back</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">After 5 failed receives a message moves to the DLQ</div><div class="explain-item">Delete with the receipt handle after successful processing</div><div class="explain-item">The SQS subscription only gets EU messages (filter policy)</div><div class="explain-item"><code>start-message-move-task</code> redrives DLQ messages to the source queue</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Service Bus queues / topics, Storage Queues (az-24)</li><li class="note-item"><strong>GCP</strong> Pub/Sub topics and subscriptions (gcp-24)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Per million requests; first million each month free (SQS and SNS)</li><li class="note-item">Long polling and batching (up to 10 messages) cut request counts</li><li class="note-item">SNS to HTTP / SMS / email has delivery charges</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Standard Vs Fifo Table | Patterns Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-standard-vs-fifo"><h2 class="section-title">Standard vs FIFO</h2><table><thead><tr><th>Feature</th><th>Standard</th><th>FIFO</th></tr></thead><tbody><tr><td>Throughput</td><td class="kw">Nearly unlimited</td><td class="kw">High with high-throughput mode</td></tr><tr><td>Ordering</td><td class="kw">Best effort</td><td class="kw">Per message group</td></tr><tr><td>Delivery</td><td class="kw">At least once</td><td class="kw">Exactly-once processing (dedup)</td></tr><tr><td>Name</td><td class="kw">any</td><td class="kw">Must end in .fifo</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-patterns"><h2 class="section-title">Patterns</h2><table><thead><tr><th>Pattern</th><th>Build</th></tr></thead><tbody><tr><td>Work queue</td><td class="desc">SQS + consumers</td></tr><tr><td>Fan-out</td><td class="desc">SNS → many SQS</td></tr><tr><td>Ordered processing</td><td class="desc">SQS FIFO + group IDs</td></tr><tr><td>Event routing by content</td><td class="desc">EventBridge (sheet 23)</td></tr><tr><td>Retry with delay</td><td class="desc">Visibility timeout / delay queues</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Make consumers idempotent and delete only after success</li><li class="note-item note-do"><strong>Do</strong> Alarm on DLQ depth and oldest message age</li><li class="note-item note-dont"><strong>Don’t</strong> Set visibility timeout shorter than processing time</li><li class="note-item note-dont"><strong>Don’t</strong> Send large blobs in messages (store in S3, send a pointer)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">LocalStack emulates SQS and SNS</li><li class="note-item">ElasticMQ is a lightweight SQS-compatible server</li><li class="note-item">moto mocks SQS / SNS in Python tests</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">DLQs with alarms and a redrive process</li><li class="note-item">Encryption (SSE-SQS / KMS) on queues and topics</li><li class="note-item">Queue policies restricting senders</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-23-eventbridge-step-functions.html">EventBridge &amp; Step Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-25-ecr.html">Elastic Container Registry</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

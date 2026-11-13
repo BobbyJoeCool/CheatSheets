@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 13: Virtual Machines &amp; Autoscaling</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s13">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 13</div>
+			<h1>Virtual Machines &amp; Autoscaling</h1>
+			<div class="sheet-desc">instance families &amp; sizes · images · startup scripts · disks · scale groups (ASG / VMSS / MIG) · Arm instances</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Renting Servers by the Second</h2><div class="description">A virtual machine is a slice of a physical server with your choice of CPU, memory, disk and image. Families target workloads (general purpose, compute, memory, GPU), and <strong>Arm</strong> families (Graviton, Cobalt, Axion) are usually cheaper per unit of work. Put identical VMs in a <strong>scale group</strong> (Auto Scaling group, VM Scale Set, managed instance group) to add and remove machines with load.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Billing is per second (AWS Linux, Google Cloud) or per minute (Azure) while running</li><li class="note-item">Stopped VMs still pay for disks and reserved IPs</li><li class="note-item">Startup scripts / cloud-init configure a VM on first boot</li><li class="note-item">Treat VMs as cattle: rebuild from an image instead of fixing in place</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Launch a Small Linux VM</h2><pre><code class="language-bash"># AWS
+P=/aws/service/ami-amazon-linux-latest
+aws ec2 run-instances \
+    --image-id resolve:ssm:$P/al2023-ami-kernel-default-arm64 \
+    --instance-type t4g.small --subnet-id subnet-a \
+    --user-data file://init.sh --metadata-options HttpTokens=required
+
+# Azure
+az vm create -g rg-app -n vm-web-1 --image Ubuntu2404 \
+    --size Standard_B2s --custom-data init.sh \
+    --generate-ssh-keys --public-ip-address ""
+
+# Google Cloud
+gcloud compute instances create web-1 --zone=us-central1-a \
+    --machine-type=e2-small --image-family=debian-12 \
+    --image-project=debian-cloud --no-address \
+    --metadata-from-file=startup-script=init.sh</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Each command picks a small size, an image and a first-boot script</div><div class="explain-item">AWS resolves the latest Amazon Linux image from a public SSM parameter</div><div class="explain-item"><code>HttpTokens=required</code> enforces IMDSv2 on AWS</div><div class="explain-item">Empty public IP / <code>--no-address</code> keeps the VM private</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> EC2, AMIs, Auto Scaling groups (aws-15, aws-16, aws-18)</li><li class="note-item"><strong>Azure</strong> VMs, managed disks, VM Scale Sets (az-15, az-16, az-18)</li><li class="note-item"><strong>Google Cloud</strong> Compute Engine, managed instance groups (gcp-15, gcp-16, gcp-18)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Choose the smallest size that passes load tests, then scale out</li><li class="note-item">Try Arm first for Linux workloads: often 20–40% better price-performance</li><li class="note-item">Bake images with Packer for faster, repeatable boots</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Families Examples Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-families-examples"><h2 class="section-title">Families (examples)</h2><table><thead><tr><th>Workload</th><th>AWS</th><th>Azure</th><th>Google Cloud</th></tr></thead><tbody><tr><td>Burstable / small</td><td class="kw">t4g, t3</td><td class="kw">B-series</td><td class="kw">e2</td></tr><tr><td>General purpose</td><td class="kw">m7g, m7i</td><td class="kw">Dsv5 / Dpsv6</td><td class="kw">n4, c4</td></tr><tr><td>Compute heavy</td><td class="kw">c7g, c7i</td><td class="kw">Fsv2</td><td class="kw">c3, c4</td></tr><tr><td>Memory heavy</td><td class="kw">r7g</td><td class="kw">Esv5</td><td class="kw">m3, n4-highmem</td></tr><tr><td>Arm</td><td class="kw">Graviton</td><td class="kw">Cobalt</td><td class="kw">Axion (c4a)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Keep VMs stateless; store data in managed disks, databases or object storage</li><li class="note-item note-do"><strong>Do</strong> Use scale groups even for one instance (self-healing)</li><li class="note-item note-dont"><strong>Don’t</strong> SSH in to patch production servers by hand</li><li class="note-item note-dont"><strong>Don’t</strong> Leave dev VMs running 24/7</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Multipass, Vagrant or a local VM runs the same cloud-init script</li><li class="note-item">Test startup scripts in a container first (<code>docker run -it ubuntu</code>)</li><li class="note-item">Packer builds images locally before pushing to a cloud</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Images patched and rebuilt on a schedule</li><li class="note-item">Instances spread across zones in a scale group with health checks</li><li class="note-item">No public IPs; admin access through Session Manager, Bastion or IAP</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-12-cdn-edge.html">CDN &amp; Edge</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-14-containers-kubernetes.html">Containers &amp; Managed Kubernetes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 097: Tokio</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s097">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 097</div>
+			<h1>Tokio</h1>
+			<div class="sheet-desc"><code>#[tokio::main]</code> · <code>tokio::spawn</code> · <code>join!</code> / <code>select!</code> · <code>tokio::time::sleep</code> · <code>tokio::sync::Mutex</code> / <code>mpsc</code> · <code>spawn_blocking</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">The Most Common Async Runtime</h2><div class="description"><strong>Tokio</strong> provides the executor, timers, async I/O, channels and sync primitives. <code>#[tokio::main]</code> starts a multi-threaded runtime. <code>tokio::spawn</code> runs a future as an independent <strong>task</strong> (like a lightweight thread). <code>join!</code> waits for several futures, <code>select!</code> takes the first to finish, and <code>spawn_blocking</code> moves blocking work off the async threads.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>cargo add tokio -F full</code> (or pick features)</li><li class="note-item">Spawned tasks need <code>Send + 'static</code> futures</li><li class="note-item"><code>JoinHandle::await</code> returns <code>Result&lt;T, JoinError&gt;</code></li><li class="note-item">Use <code>tokio::sync::Mutex</code> only when holding the lock across <code>.await</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Tokio Tasks, Timers, Channels</h2><pre><code class="language-rust">use std::time::Duration;
+use tokio::sync::mpsc;
+use tokio::time::{sleep, timeout};
+
+#[tokio::main]
+async fn main() -&gt; anyhow::Result&lt;()&gt; {
+    let h = tokio::spawn(async { 7 });      // independent task
+    println!("{}", h.await?);               // 7
+
+    let (a, b) = tokio::join!(work("a", 30), work("b", 10)); // both at once
+    println!("{a} {b}");
+    tokio::select! {                        // first one wins, other is dropped
+        v = work("fast", 5) =&gt; println!("got {v}"),
+        _ = sleep(Duration::from_secs(1)) =&gt; println!("timed out"),
+    }
+    let (tx, mut rx) = mpsc::channel::&lt;String&gt;(16);   // bounded async channel
+    for id in 0..3 {
+        let tx = tx.clone();
+        tokio::spawn(async move { tx.send(format!("job {id}")).await.ok(); });
+    }
+    drop(tx);
+    while let Some(msg) = rx.recv().await { println!("{msg}"); }
+
+    let hash = tokio::task::spawn_blocking(|| expensive_cpu_hash()).await?;
+    println!("{hash}");
+    Ok(())
+}
+
+async fn work(name: &amp;str, ms: u64) -&gt; String {
+    sleep(Duration::from_millis(ms)).await;
+    name.to_uppercase()
+}
+fn expensive_cpu_hash() -&gt; u64 { (0..1_000_000u64).fold(0, |h, x| h ^ x) }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>tokio::spawn</code> returns a handle you can <code>.await</code></div><div class="explain-item"><code>join!</code> runs both futures and waits for both</div><div class="explain-item"><code>select!</code> cancels the losing branch by dropping it</div><div class="explain-item"><code>spawn_blocking</code> keeps CPU work off the async worker threads</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>JavaScript</strong> <code>Promise.all</code> ≈ <code>join!</code>, <code>Promise.race</code> ≈ <code>select!</code></li><li class="note-item"><strong>Python</strong> <code>asyncio.gather</code>, <code>asyncio.wait_for</code>, <code>asyncio.Queue</code></li><li class="note-item"><strong>Go</strong> goroutines + channels + <code>select</code> (built into the language)</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>std::sync::mpsc</code> in async code → <code>tokio::sync::mpsc</code></li><li class="note-item">CPU-heavy loops in tasks → <code>spawn_blocking</code> or rayon</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Core Api Table | Runtime Flavors Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-core-api"><h2 class="section-title">Core API</h2><table><thead><tr><th>Item</th><th>Does</th></tr></thead><tbody><tr><td>#[tokio::main]</td><td class="desc">Start runtime</td></tr><tr><td>tokio::spawn(fut)</td><td class="desc">New task</td></tr><tr><td>join! / try_join!</td><td class="desc">Wait for all</td></tr><tr><td>select!</td><td class="desc">First to finish</td></tr><tr><td>time::sleep / timeout</td><td class="desc">Timers</td></tr><tr><td>sync::mpsc / oneshot / broadcast</td><td class="desc">Channels</td></tr><tr><td>sync::Mutex / RwLock</td><td class="desc">Async locks</td></tr><tr><td>task::spawn_blocking</td><td class="desc">Blocking work</td></tr><tr><td>fs / net / process</td><td class="desc">Async I/O</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-runtime-flavors"><h2 class="section-title">Runtime Flavors</h2><table><thead><tr><th>Attribute</th><th>Runtime</th></tr></thead><tbody><tr><td>#[tokio::main]</td><td class="desc">Multi-thread</td></tr><tr><td>#[tokio::main(flavor = "current_thread")]</td><td class="desc">Single thread</td></tr><tr><td>#[tokio::test]</td><td class="desc">Test runtime</td></tr><tr><td>Runtime::new()?.block_on(f)</td><td class="desc">Manual</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling blocking std functions inside tasks</li><li class="note-item">Ignoring <code>JoinHandle</code> results and missing panics</li><li class="note-item">Assuming <code>select!</code> lets the losing future finish (it is dropped)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>JoinSet</code> to manage a dynamic group of tasks</li><li class="note-item">Use <code>CancellationToken</code> (tokio-util) for graceful shutdown</li><li class="note-item">Enable only the Tokio features you use</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>#[tokio::main]</code></li><li class="note-item"><code>tokio::spawn</code> tasks</li><li class="note-item"><code>join!</code> / <code>select!</code> / <code>timeout</code></li><li class="note-item"><code>spawn_blocking</code> for CPU</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-096-async-await.html">async / await &amp; Futures</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-098-reqwest-http.html">HTTP Clients with reqwest</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

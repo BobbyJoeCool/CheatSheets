@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ubuntu — Sheet 27: ZFS &amp; Software RAID</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ub-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>ZFS &amp; Software RAID</h1>
+			<div class="sheet-desc">zpool create · mirrors / raidz · zfs create · snapshots · zpool status · mdadm RAID 1/5 · scrubs</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes | ⚠ Danger Check -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>ZFS</strong> combines RAID, volume management and a filesystem, with checksums that detect silent corruption, cheap <strong>snapshots</strong> and compression. Ubuntu supports it out of the box (<code>zfsutils-linux</code>). <strong>mdadm</strong> is classic Linux software RAID under any filesystem. Both protect against disk failure, but <strong>RAID is not backup</strong>.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Mirror (RAID 1): 2+ disks, survives 1 failure per mirror</li><li class="note-item">raidz1/2: survives 1/2 disk failures</li><li class="note-item">ZFS likes lots of RAM and whole disks</li><li class="note-item">Scrub monthly to find and repair bad blocks</li></ul></section></div>
+				<div class="col" id="col-1-3"><section class="section-notes section-danger" id="danger"><h2 class="section-title">⚠ Danger Check</h2><ul class="note-list"><li class="note-item"><code>zpool create</code> / <code>mdadm --create</code> wipe the member disks</li><li class="note-item">Use <code>/dev/disk/by-id/</code> names, or pools break when <code>sdX</code> names change</li><li class="note-item">Deleting a dataset or destroying a pool is permanent</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Distros + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">ZFS Mirror &amp; mdadm RAID 1</h2><pre><code class="language-bash">sudo apt install zfsutils-linux
+sudo zpool create -o ashift=12 tank mirror \
+    /dev/disk/by-id/ata-WDC_A /dev/disk/by-id/ata-WDC_B
+sudo zfs set compression=lz4 tank
+sudo zfs create tank/photos               # dataset at /tank/photos
+sudo zfs snapshot tank/photos@2026-11-13
+zfs list -t snapshot
+sudo zfs rollback tank/photos@2026-11-13  # undo changes
+zpool status                              # health, errors
+sudo zpool scrub tank
+
+sudo apt install mdadm
+sudo mdadm --create /dev/md0 --level=1 \
+    --raid-devices=2 /dev/sdb1 /dev/sdc1
+cat /proc/mdstat                          # sync progress
+sudo mdadm --detail --scan | sudo tee -a /etc/mdadm/mdadm.conf</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>mirror</code> — two-disk ZFS mirror</div><div class="explain-item"><code>ashift=12</code> — 4K sectors (modern disks)</div><div class="explain-item"><code>compression=lz4</code> — free space, often faster</div><div class="explain-item"><code>zfs snapshot</code> / <code>rollback</code> — instant restore points</div><div class="explain-item"><code>mdadm --create --level=1</code> — RAID 1 device</div></div></section><section class="section-notes section-distro" id="distro"><h2 class="section-title">Other Distros</h2><ul class="note-list"><li class="note-item">Debian — ZFS from contrib (DKMS); Fedora — via OpenZFS repo</li><li class="note-item">macOS — OpenZFS on OS X port; no built-in software RAID UI beyond Disk Utility</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid RAID as your only copy · Prefer RAID + off-site backup</li><li class="note-item">Avoid <code>sdX</code> names in pools · Prefer <code>/dev/disk/by-id/</code></li></ul></section></div>
+			</div>
+			<!-- Row 3: Layouts Table | Health Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-layouts"><h2 class="section-title">Layouts</h2><table><thead><tr><th>Layout</th><th>Usable</th><th>Survives</th></tr></thead><tbody><tr><td>mirror (2 disks)</td><td class="desc">1 disk</td><td class="desc">1 failure</td></tr><tr><td>raidz1 (4 disks)</td><td class="desc">3 disks</td><td class="desc">1 failure</td></tr><tr><td>raidz2 (6 disks)</td><td class="desc">4 disks</td><td class="desc">2 failures</td></tr><tr><td>RAID 5 mdadm (3)</td><td class="desc">2 disks</td><td class="desc">1 failure</td></tr><tr><td>RAID 10 (4)</td><td class="desc">2 disks</td><td class="desc">1 per mirror</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-health"><h2 class="section-title">Health Checks</h2><table><thead><tr><th>Command</th><th>Shows</th></tr></thead><tbody><tr><td>zpool status -x</td><td class="desc">only problems</td></tr><tr><td>zpool list</td><td class="desc">capacity</td></tr><tr><td>zfs list -o name,used,avail</td><td class="desc">datasets</td></tr><tr><td>cat /proc/mdstat</td><td class="desc">mdadm arrays</td></tr><tr><td>mdadm --detail /dev/md0</td><td class="desc">array details</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mixing disk sizes: pool uses the smallest</li><li class="note-item">Ignoring <code>DEGRADED</code> status until the second disk dies</li><li class="note-item">Filling ZFS above ~80%: performance drops sharply</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Automate snapshots with <code>zfs-auto-snapshot</code> or sanoid</li><li class="note-item">Send snapshots off-box: <code>zfs send | ssh backup zfs recv</code></li><li class="note-item">Set up email alerts (<code>zed</code> or mdadm <code>MAILADDR</code>)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">ZFS — RAID + volumes + checksummed FS</li><li class="note-item">mirror / raidz — redundancy</li><li class="note-item">snapshots + scrubs — safety and integrity</li><li class="note-item">mdadm — classic software RAID</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ub-26-lvm.html" class="nav-link prev">LVM</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Ubuntu · 49 Sheets</a>
+				<a href="ub-28-network-basics.html" class="nav-link next">Network Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

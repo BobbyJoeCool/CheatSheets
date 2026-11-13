@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 15: Serverless Functions</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s15">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 15</div>
+			<h1>Serverless Functions</h1>
+			<div class="sheet-desc">event-driven functions · triggers · cold starts · concurrency · timeouts &amp; limits · Lambda / Azure Functions / Cloud Run functions</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Code That Runs When Something Happens</h2><div class="description">A serverless function is a handler the platform runs in response to an event: an HTTP request, a new file in a bucket, a queue message or a timer. You pay per invocation and execution time, and it scales to zero when idle. The trade-offs are <strong>cold starts</strong> on the first request after idle time, execution time limits, and less control over the runtime.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">AWS Lambda, Azure Functions and Cloud Run functions (formerly Cloud Functions)</li><li class="note-item">Triggers are wired by the platform; your code just receives the event</li><li class="note-item">Keep handlers small; reuse clients across invocations</li><li class="note-item">Long work goes to queues, workflows or containers</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">An HTTP Function on Each Cloud</h2><pre><code class="language-python"># AWS Lambda (Python)
+def handler(event, context):
+    name = (event.get("queryStringParameters") or {}).get("name", "world")
+    return {"statusCode": 200, "body": f"hello {name}"}
+
+# Azure Functions (Python v2 programming model)
+import azure.functions as func
+app = func.FunctionApp()
+@app.route(route="hello", auth_level=func.AuthLevel.ANONYMOUS)
+def hello(req: func.HttpRequest) -&gt; func.HttpResponse:
+    return func.HttpResponse(f"hello {req.params.get('name', 'world')}")
+
+# Cloud Run functions (Functions Framework)
+import functions_framework
+@functions_framework.http
+def hello(request):
+    return f"hello {request.args.get('name', 'world')}"</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Deploy</h2><pre><code class="language-bash">aws lambda create-function --function-name hello --runtime python3.13 \
+    --handler app.handler --zip-file fileb://app.zip --role &lt;role-arn&gt;
+func azure functionapp publish func-hello
+gcloud functions deploy hello --gen2 --runtime=python313 \
+    --trigger-http --entry-point=hello --region=us-central1</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Each platform wraps the request in its own event / request object</div><div class="explain-item">Azure declares routes with decorators in <code>function_app.py</code></div><div class="explain-item">The Functions Framework makes the Google function a normal Flask-style handler</div><div class="explain-item">Deploy commands package and upload the code</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Lambda (aws-20, aws-21)</li><li class="note-item"><strong>Azure</strong> Azure Functions (az-20, az-21)</li><li class="note-item"><strong>Google Cloud</strong> Cloud Run functions (gcp-21)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Use functions for glue, webhooks, scheduled jobs and event processing</li><li class="note-item">Move to containers when a function needs more than a few minutes or custom runtimes</li><li class="note-item">Make handlers idempotent: events can arrive twice</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Common Limits Verify Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-common-limits-verify"><h2 class="section-title">Common Limits (verify per plan)</h2><table><thead><tr><th>Limit</th><th>Lambda</th><th>Azure Functions</th><th>Cloud Run functions</th></tr></thead><tbody><tr><td>Max run time</td><td class="kw">15 min</td><td class="kw">Flex: 30 min default, can raise · Consumption: 10 min</td><td class="kw">60 min HTTP · 9 min events</td></tr><tr><td>Memory</td><td class="kw">128 MB–10 GB</td><td class="kw">Flex: 512 MB–4 GB instances</td><td class="kw">Up to 32 GiB</td></tr><tr><td>Scale to zero</td><td class="kw">Yes</td><td class="kw">Yes (Flex / Consumption)</td><td class="kw">Yes</td></tr><tr><td>Concurrency per instance</td><td class="kw">1</td><td class="kw">Many</td><td class="kw">Up to 1,000</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Create SDK clients outside the handler so warm calls reuse them</li><li class="note-item note-do"><strong>Do</strong> Send failures to a dead-letter queue</li><li class="note-item note-dont"><strong>Don’t</strong> Chain functions synchronously into a call stack</li><li class="note-item note-dont"><strong>Don’t</strong> Hold database connections without a pool or proxy</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">AWS SAM: <code>sam local invoke</code> / <code>sam local start-api</code></li><li class="note-item">Azure Functions Core Tools: <code>func start</code></li><li class="note-item">Functions Framework: <code>functions-framework --target=hello</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Timeouts and memory tuned from real measurements</li><li class="note-item">Dead-letter queues and alerts on errors and throttles</li><li class="note-item">Concurrency limits set to protect downstream databases</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-14-containers-kubernetes.html">Containers &amp; Managed Kubernetes</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-16-choosing-compute.html">Choosing Compute</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 11: NAT, Private Endpoints &amp; Connectivity</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>NAT, Private Endpoints &amp; Connectivity</h1>
+			<div class="sheet-desc">NAT Gateway · service endpoints vs Private Endpoints (Private Link) · Private DNS zones · VNet peering · VPN Gateway · ExpressRoute · Virtual WAN</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Getting In, Out and Across</h2><div class="description"><strong>NAT Gateway</strong> gives a subnet a fixed outbound public IP. A <strong>Private Endpoint</strong> places a PaaS service (storage, SQL, Key Vault) on a private IP in your VNet, with a <strong>Private DNS zone</strong> so its normal name resolves privately. <strong>Peering</strong> links VNets; <strong>VPN Gateway</strong> and <strong>ExpressRoute</strong> link on-premises; <strong>Virtual WAN</strong> manages hub-and-spoke at scale.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Private endpoints beat service endpoints: traffic stays on a private IP</li><li class="note-item">Each PaaS type has a private DNS zone, e.g. <code>privatelink.blob.core.windows.net</code></li><li class="note-item">Peering is not transitive: spoke A cannot reach spoke B through the hub without routing</li><li class="note-item">ExpressRoute is a private circuit through a connectivity provider</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">NAT and a Private Endpoint for Blob Storage</h2><pre><code class="language-bash">az network public-ip create -g rg-net -n pip-nat --sku Standard
+az network nat gateway create -g rg-net -n ng-shop --public-ip-addresses pip-nat
+az network vnet subnet update -g rg-net --vnet-name vnet-shop-prod \
+    -n snet-app --nat-gateway ng-shop
+
+az network private-endpoint create -g rg-net -n pe-shopdata-blob \
+    --vnet-name vnet-shop-prod --subnet snet-data \
+    --private-connection-resource-id $STG --group-id blob \
+    --connection-name shopdata-blob
+
+az network private-dns zone create -g rg-net \
+    -n privatelink.blob.core.windows.net
+az network private-dns link vnet create -g rg-net -n link-shop \
+    --zone-name privatelink.blob.core.windows.net \
+    --virtual-network vnet-shop-prod --registration-enabled false
+az network private-endpoint dns-zone-group create -g rg-net \
+    --endpoint-name pe-shopdata-blob -n default \
+    --private-dns-zone privatelink.blob.core.windows.net --zone-name blob
+
+# Peer two VNets (run in both directions)
+az network vnet peering create -g rg-net -n hub-to-spoke \
+    --vnet-name vnet-hub --remote-vnet vnet-shop-prod --allow-vnet-access</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The NAT gateway gives every VM in <code>snet-app</code> the same outbound IP</div><div class="explain-item"><code>--group-id blob</code> picks the storage sub-resource to expose</div><div class="explain-item">The DNS zone group keeps the private A record in sync</div><div class="explain-item">Peering needs a link from each side</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> NAT Gateway, PrivateLink / VPC endpoints, peering, Transit Gateway (aws-11)</li><li class="note-item"><strong>GCP</strong> Cloud NAT, Private Service Connect, peering, NCC (gcp-11)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">NAT Gateway: hourly + per GB processed</li><li class="note-item">Private endpoints: hourly + per GB in and out</li><li class="note-item">Peering bills per GB in each direction; global peering costs more</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Private Access Optio Table | Connectivity Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-private-access-optio"><h2 class="section-title">Private Access Options</h2><table><thead><tr><th>Option</th><th>Private IP</th><th>Notes</th></tr></thead><tbody><tr><td>Private Endpoint</td><td class="kw">Yes</td><td class="kw">Recommended; needs private DNS</td></tr><tr><td>Service endpoint</td><td class="kw">No</td><td class="kw">Free; source stays public IP</td></tr><tr><td>Public + firewall rules</td><td class="kw">No</td><td class="kw">Allow-list IPs</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-connectivity"><h2 class="section-title">Connectivity</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>VNet ↔ VNet</td><td class="desc">Peering</td></tr><tr><td>Office ↔ Azure (internet)</td><td class="desc">VPN Gateway</td></tr><tr><td>Datacenter ↔ Azure (private)</td><td class="desc">ExpressRoute</td></tr><tr><td>Many sites and VNets</td><td class="desc">Virtual WAN</td></tr><tr><td>Hub routing / inspection</td><td class="desc">Azure Firewall in hub</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Centralize private DNS zones in a hub subscription</li><li class="note-item note-do"><strong>Do</strong> Disable public network access once private endpoints work</li><li class="note-item note-dont"><strong>Don’t</strong> Forget DNS: a private endpoint without the zone still resolves publicly</li><li class="note-item note-dont"><strong>Don’t</strong> Assume peering chains route automatically</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>nslookup shopdata.blob.core.windows.net</code> from a VM shows whether DNS returns the private IP</li><li class="note-item">Network Watcher connection troubleshoot tests paths</li><li class="note-item">Practice hub-and-spoke in a sandbox with tiny VMs</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">PaaS services reachable only through private endpoints</li><li class="note-item">Private DNS zones linked to every VNet that needs them</li><li class="note-item">Fixed outbound IPs (NAT Gateway) shared with partners who allow-list</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-10-virtual-networks.html">Virtual Networks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-12-nsgs-firewall.html">NSGs &amp; Azure Firewall</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

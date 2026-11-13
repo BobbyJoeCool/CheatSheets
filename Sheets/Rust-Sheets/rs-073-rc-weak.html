@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 073: Rc&lt;T&gt; &amp; Weak</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s073">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 073</div>
+			<h1>Rc&lt;T&gt; &amp; Weak</h1>
+			<div class="sheet-desc"><code>Rc::new</code> · <code>Rc::clone</code> · <code>strong_count</code> · single-thread shared ownership · <code>Weak</code> / <code>upgrade()</code> · reference cycles · parent pointers</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Reference-Counted Shared Ownership</h2><div class="description"><code>Rc&lt;T&gt;</code> lets several owners share one read-only value on a single thread. Each <code>Rc::clone</code> increments a count; the value is dropped when the last owner goes away. <code>Weak&lt;T&gt;</code> is a non-owning pointer that does not keep the value alive, used for parent links and caches to avoid <strong>reference cycles</strong>, which would leak memory.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>Rc</code> gives shared <code>&amp;T</code> only; add <code>RefCell</code> for mutation</li><li class="note-item"><code>Rc</code> is not <code>Send</code>: use <code>Arc</code> across threads</li><li class="note-item"><code>Weak::upgrade()</code> returns <code>Option&lt;Rc&lt;T&gt;&gt;</code></li><li class="note-item">Cycles of strong <code>Rc</code>s are never freed</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item"><code>Rc::new</code> allocates one block: strong count, weak count, then the value</li><li class="note-item"><code>Rc&lt;T&gt;</code> is one pointer (8 bytes); clone is a non-atomic increment</li><li class="note-item">Drop decrements; at strong = 0 the value drops, at weak = 0 the block frees</li><li class="note-item"><code>Arc</code> is the same layout with atomic counts</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Rc and Weak</h2><pre><code class="language-rust">use std::rc::{Rc, Weak};
+use std::cell::RefCell;
+
+let shared = Rc::new(String::from("config"));
+let a = Rc::clone(&amp;shared);                 // count 2 (cheap)
+let b = Rc::clone(&amp;shared);                 // count 3
+println!("{}", Rc::strong_count(&amp;shared));  // 3
+drop(a);
+println!("{}", Rc::strong_count(&amp;shared));  // 2
+
+#[derive(Debug)]
+struct Node {
+    name: String,
+    parent: RefCell&lt;Weak&lt;Node&gt;&gt;,            // weak: child doesn't own parent
+    children: RefCell&lt;Vec&lt;Rc&lt;Node&gt;&gt;&gt;,       // strong: parent owns children
+}
+fn node(name: &amp;str, kids: Vec&lt;Rc&lt;Node&gt;&gt;) -&gt; Rc&lt;Node&gt; {
+    Rc::new(Node { name: name.into(), parent: RefCell::new(Weak::new()),
+                   children: RefCell::new(kids) })
+}
+let leaf = node("leaf", vec![]);
+let branch = node("branch", vec![Rc::clone(&amp;leaf)]);
+*leaf.parent.borrow_mut() = Rc::downgrade(&amp;branch);
+if let Some(p) = leaf.parent.borrow().upgrade() {
+    println!("{} -&gt; {}", leaf.name, p.name);    // leaf -&gt; branch
+}
+println!("{} {}", Rc::strong_count(&amp;branch), Rc::weak_count(&amp;branch));   // 1 1
+drop(branch);
+println!("{}", leaf.parent.borrow().upgrade().is_none());   // true
+
+let mut unique = Rc::new(5);
+*Rc::make_mut(&amp;mut unique) += 1;            // clone-on-write if shared
+println!("{:?}", Rc::try_unwrap(unique));   // Ok(6): last owner gets value</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>Rc::clone</code> shares the same String; no copy</div><div class="explain-item">Children hold <code>Weak</code> parents, so there is no cycle</div><div class="explain-item"><code>upgrade()</code> returns None once the parent is dropped</div><div class="explain-item"><code>make_mut</code> clones only when other owners exist</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> <code>std::shared_ptr</code> / <code>std::weak_ptr</code> (atomic counts by default)</li><li class="note-item"><strong>Python</strong> reference counting + a cycle collector; Rust has no collector</li><li class="note-item"><strong>Java / Go</strong> tracing GC handles cycles automatically</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>shared.clone()</code> → <code>Rc::clone(&amp;shared)</code> (shows it is cheap)</li><li class="note-item">parent and child both holding <code>Rc</code> → parent strong, child <code>Weak</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Api Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-api"><h2 class="section-title">API</h2><table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td>Rc::new(v)</td><td class="desc">Allocate, count 1</td></tr><tr><td>Rc::clone(&amp;rc)</td><td class="desc">Count + 1</td></tr><tr><td>Rc::strong_count</td><td class="desc">Owners</td></tr><tr><td>Rc::downgrade(&amp;rc)</td><td class="desc">→ Weak</td></tr><tr><td>weak.upgrade()</td><td class="desc">Option&lt;Rc&lt;T&gt;&gt;</td></tr><tr><td>Rc::ptr_eq</td><td class="desc">Same allocation?</td></tr><tr><td>Rc::make_mut</td><td class="desc">Clone-on-write</td></tr><tr><td>Rc::try_unwrap</td><td class="desc">Take if unique</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Strong cycles (parent ↔ child) leaking memory</li><li class="note-item">Expecting <code>Rc&lt;T&gt;</code> to allow mutation (needs <code>RefCell</code>)</li><li class="note-item">Sending an <code>Rc</code> to another thread (E0277: Rc cannot be sent)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>Rc&lt;str&gt;</code> / <code>Rc&lt;[T]&gt;</code> for shared immutable data</li><li class="note-item">Consider arena or index-based graphs (<code>Vec&lt;Node&gt;</code> + ids)</li><li class="note-item">Use <code>Arc</code> only when threads are involved</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Rc&lt;T&gt;</code> — shared, single thread</li><li class="note-item"><code>Rc::clone</code> bumps a count</li><li class="note-item"><code>Weak</code> — no ownership</li><li class="note-item">avoid strong cycles</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-072-box.html">Box&lt;T&gt;</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-074-refcell-cell.html">Cell, RefCell &amp; Interior Mutability</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

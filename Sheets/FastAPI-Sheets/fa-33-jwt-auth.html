@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 33: JWT Authentication</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s33">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 33</div>
+			<h1>JWT Authentication</h1>
+			<div class="sheet-desc">PyJWT · jwt.encode / decode · exp claim · get_current_user · 401 + WWW-Authenticate · refresh tokens</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">A <strong>JWT</strong> is a signed token carrying claims like the user ID (<code>sub</code>) and expiry (<code>exp</code>). The server signs it at login and verifies the signature on each request, so no session lookup is needed. Use <strong>PyJWT</strong> to encode and decode, keep access tokens short-lived, and use refresh tokens to get new ones.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>pip install pyjwt</code></li><li class="note-item">JWT payloads are signed, <strong>not encrypted</strong>: no secrets inside</li><li class="note-item"><code>decode</code> checks <code>exp</code> automatically</li><li class="note-item">HS256 = shared secret; RS256 = public/private key pair</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create &amp; Verify Tokens</h2><pre><code class="language-python">from datetime import datetime, timedelta, timezone
+import jwt
+from jwt.exceptions import InvalidTokenError
+
+SECRET = settings.secret_key            # 32+ random bytes
+ALGO = "HS256"
+
+def create_token(user_id: int, minutes: int = 15) -&gt; str:
+    now = datetime.now(timezone.utc)
+    claims = {"sub": str(user_id), "iat": now,
+              "exp": now + timedelta(minutes=minutes)}
+    return jwt.encode(claims, SECRET, algorithm=ALGO)
+
+def get_current_user(token: Annotated[str, Depends(oauth2)],
+                     db: DbSession) -&gt; User:
+    unauthorized = HTTPException(401, "Could not validate credentials",
+                                 headers={"WWW-Authenticate": "Bearer"})
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=[ALGO])
+    except InvalidTokenError:            # bad signature, expired...
+        raise unauthorized
+    user = db.get(User, int(payload["sub"]))
+    if user is None or not user.is_active:
+        raise unauthorized
+    return user</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>sub</code> — subject (user ID), must be a string</div><div class="explain-item"><code>exp</code> — expiry; PyJWT rejects expired tokens</div><div class="explain-item"><code>algorithms=[ALGO]</code> — always pin allowed algorithms</div><div class="explain-item"><code>InvalidTokenError</code> — base for all token errors</div><div class="explain-item">Same 401 for every failure</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — Flask-JWT-Extended: <code>create_access_token()</code>, <code>@jwt_required()</code></li><li class="note-item">Django — <code>djangorestframework-simplejwt</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid long-lived access tokens · Prefer ~15 min + refresh tokens</li><li class="note-item">Avoid <code>algorithms</code> omitted or <code>"none"</code> · Prefer an explicit list</li></ul></section></div>
+			</div>
+			<!-- Row 3: Claims Table | Strategy Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-claims"><h2 class="section-title">Standard Claims</h2><table><thead><tr><th>Claim</th><th>Meaning</th></tr></thead><tbody><tr><td>sub</td><td class="desc">user ID</td></tr><tr><td>exp</td><td class="desc">expires at</td></tr><tr><td>iat</td><td class="desc">issued at</td></tr><tr><td>nbf</td><td class="desc">not before</td></tr><tr><td>iss / aud</td><td class="desc">issuer / audience</td></tr><tr><td>jti</td><td class="desc">token ID (for revocation)</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-strategy"><h2 class="section-title">Token Strategy</h2><table><thead><tr><th>Token</th><th>Typical life</th></tr></thead><tbody><tr><td>access</td><td class="desc">5–15 minutes</td></tr><tr><td>refresh</td><td class="desc">days, rotate on use</td></tr><tr><td>revocation</td><td class="desc">deny-list by jti</td></tr><tr><td>storage (browser)</td><td class="desc">httpOnly cookie &gt; localStorage</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Putting emails or roles you rely on for security in an unverifiable place</li><li class="note-item">Hard-coding the secret in source control</li><li class="note-item">Integer <code>sub</code>: spec says string; PyJWT may reject it</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Generate secrets with <code>openssl rand -hex 32</code></li><li class="note-item">Add <code>aud</code> and <code>iss</code> checks if several services share keys</li><li class="note-item">Use RS256 when other services must verify but not issue tokens</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">JWT — signed claims, not encrypted</li><li class="note-item"><code>jwt.encode/decode</code> — PyJWT</li><li class="note-item"><code>exp</code> — short-lived access tokens</li><li class="note-item">one 401 for all auth failures</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-32-security-basics.html" class="nav-link prev" title="Security Basics &amp; OAuth2 Password Flow">OAuth2 Password Flow</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-34-password-hashing-users.html" class="nav-link next" title="Password Hashing &amp; Users">Password Hashing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

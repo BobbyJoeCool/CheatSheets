@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 17: Symbolic Parameters &amp; SET</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Symbolic Parameters &amp; SET</h1>
+			<div class="sheet-desc"><code>&amp;SYMBOL</code> · defaults on <code>PROC</code> · <code>SET</code> statement · <code>.</code> delimiter <code>&amp;HLQ..DATA</code> · system symbols <code>&amp;SYSUID</code> / <code>&amp;LYYMMDD</code> · <code>EXPORT SYMLIST</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Variables in JCL</h2><div class="description"><strong>Symbolic parameters</strong> (<code>&amp;NAME</code>) are placeholders replaced before the job runs. Defaults are set on the PROC statement or with <code>SET</code>, and callers override them on EXEC. <strong>System symbols</strong> such as <code>&amp;SYSUID</code> and dates are filled in by z/OS. A period ends a symbol, so <code>&amp;HLQ..DATA</code> becomes <code>USER.DATA</code>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Symbol names: 1–7 characters after <code>&amp;</code></li><li class="note-item">A null symbol (<code>PARM=</code>) removes the text</li><li class="note-item">Two periods are needed when a period follows a symbol</li><li class="note-item"><code>&amp;&amp;</code> is a temp dataset, not a symbol</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Symbols and SET</h2><pre><code class="language-jcl">//USER01S  JOB (ACCT),'SYMBOLS',CLASS=A,MSGCLASS=X
+//         SET HLQ=USER,ENV=TEST,RUNDT=20261112
+//*
+//STEP1    EXEC PGM=PAYCALC,PARM='&amp;RUNDT'
+//INFILE   DD DSN=&amp;HLQ..&amp;ENV..PAY.TRANS,DISP=SHR
+//*        resolves to USER.TEST.PAY.TRANS
+//OUTFILE  DD DSN=&amp;HLQ..PAY.D&amp;LYYMMDD,
+//            DISP=(NEW,CATLG,DELETE),SPACE=(TRK,(5,5))
+//*        e.g. USER.PAY.D261112
+//*
+//* Symbols inside in-stream data (z/OS 2.1+)
+//         EXPORT SYMLIST=(RUNDT)
+//STEP2    EXEC PGM=RPT
+//SYSIN    DD *,SYMBOLS=JCLONLY
+RUN DATE &amp;RUNDT
+/*</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">SET defines symbols for the rest of the job</div><div class="explain-item"><code>&amp;HLQ..&amp;ENV..PAY</code> keeps a dot between each part</div><div class="explain-item"><code>&amp;LYYMMDD</code> is the local date when the job is read in</div><div class="explain-item"><code>SYMBOLS=JCLONLY</code> replaces exported symbols inside SYSIN</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> f-strings / env vars: <code>f"{hlq}.{env}.PAY.TRANS"</code></li><li class="note-item"><strong>Java</strong> <code>String.format("%s.%s.PAY.TRANS", hlq, env)</code> or properties</li><li class="note-item"><strong>JavaScript</strong> Template literals: <code></code> <code>${hlq}.${env}.PAY.TRANS</code> <code></code></li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item"><code>IEFC657I THE SYMBOL … WAS NOT USED</code> / unresolved <code>&amp;X</code> in a DSN: misspelled or never set</li><li class="note-item">Name like <code>USERPAY</code> instead of <code>USER.PAY</code>: only one period after the symbol</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: System Symbols Table | Rules Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-system-symbols"><h2 class="section-title">System Symbols</h2><table><thead><tr><th>Symbol</th><th>Value</th></tr></thead><tbody><tr><td>&amp;SYSUID</td><td class="desc">Submitter user ID</td></tr><tr><td>&amp;LYYMMDD</td><td class="desc">Local date YYMMDD</td></tr><tr><td>&amp;LYR4 / &amp;LMON / &amp;LDAY</td><td class="desc">Year, month, day</td></tr><tr><td>&amp;LHHMMSS</td><td class="desc">Local time</td></tr><tr><td>&amp;SYSNAME</td><td class="desc">System name</td></tr><tr><td>&amp;JOBNAME</td><td class="desc">Job name (z/OS 2.x)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-rules"><h2 class="section-title">Rules</h2><table><thead><tr><th>Rule</th><th>Example</th></tr></thead><tbody><tr><td>End with a period</td><td class="desc">&amp;HLQ..DATA</td></tr><tr><td>Default on PROC</td><td class="desc">//P PROC ENV=TEST</td></tr><tr><td>Override on EXEC</td><td class="desc">//S EXEC P,ENV=PROD</td></tr><tr><td>Null value</td><td class="desc">PARM= removes it</td></tr><tr><td>Quoted value</td><td class="desc">TEXT='A B'</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">One period after a symbol before a qualifier, which joins them</li><li class="note-item">Expecting symbols to be replaced in in-stream data without SYMBOLS=</li><li class="note-item">Using symbols for things that should be program parameters</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Put environment-specific values (HLQ, ENV) in one SET at the top</li><li class="note-item">Use <code>&amp;SYSUID</code> in test JCL so anyone can run it</li><li class="note-item">Check the expanded JCL in the job log (MSGLEVEL=(1,1))</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>&amp;NAME</code> — symbolic parameter</li><li class="note-item"><code>SET</code> — define symbols</li><li class="note-item"><code>..</code> — symbol then period</li><li class="note-item"><code>&amp;SYSUID</code> / <code>&amp;LYYMMDD</code> — system symbols</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-16-procedures.html">In-Stream &amp; Cataloged Procedures</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-18-include-overrides.html">INCLUDE &amp; Overrides</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="prism-jcl.js"></script>
+	</body>
+</html>

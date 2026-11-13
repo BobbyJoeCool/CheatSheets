@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 072: Box&lt;T&gt;</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s072">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 072</div>
+			<h1>Box&lt;T&gt;</h1>
+			<div class="sheet-desc"><code>Box::new</code> · heap allocation · recursive types · <code>Box&lt;dyn Trait&gt;</code> · <code>Box&lt;[T]&gt;</code> · moving out of a box</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Owning Heap Pointer</h2><div class="description"><code>Box&lt;T&gt;</code> puts a value on the heap and owns it: when the Box is dropped, the value is dropped and the memory freed. Use it for <strong>recursive types</strong> (whose size would otherwise be infinite), <strong>trait objects</strong> (<code>Box&lt;dyn Trait&gt;</code>), and moving large values cheaply. A Box derefs to <code>T</code>, so you use it almost like the value itself.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>*b</code> moves the value out of a Box (for owned boxes)</li><li class="note-item"><code>Box&lt;[T]&gt;</code> / <code>Box&lt;str&gt;</code> are fixed-size heap buffers</li><li class="note-item">Box has no runtime overhead beyond the allocation</li><li class="note-item"><code>Box::leak</code> gives a <code>&amp;'static mut T</code> (memory never freed)</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item"><code>Box&lt;T&gt;</code> is a single non-null pointer (8 bytes); <code>Box&lt;dyn T&gt;</code> / <code>Box&lt;[T]&gt;</code> are fat (16)</li><li class="note-item"><code>Option&lt;Box&lt;T&gt;&gt;</code> uses the null niche: still 8 bytes</li><li class="note-item"><code>Box::new(x)</code> may build x on the stack, then copy it to the heap</li><li class="note-item">Drop calls <code>T::drop</code>, then frees with the global allocator</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Using Box</h2><pre><code class="language-rust">let b = Box::new(5);                        // i32 on the heap
+println!("{}", *b + 1);                     // 6
+println!("{}", b);                          // Display passes through: 5
+
+#[derive(Debug)]
+enum List { Cons(i32, Box&lt;List&gt;), Nil }    // recursive: needs indirection
+use List::{Cons, Nil};
+let list = Cons(1, Box::new(Cons(2, Box::new(Nil))));
+println!("{list:?}");                       // Cons(1, Cons(2, Nil))
+
+#[derive(Debug)]
+struct Node { val: i32, left: Option&lt;Box&lt;Node&gt;&gt;, right: Option&lt;Box&lt;Node&gt;&gt; }
+let leaf = |v| Some(Box::new(Node { val: v, left: None, right: None }));
+let root = Node { val: 2, left: leaf(1), right: leaf(3) };
+fn sum(n: &amp;Option&lt;Box&lt;Node&gt;&gt;) -&gt; i32 {
+    n.as_ref().map_or(0, |b| b.val + sum(&amp;b.left) + sum(&amp;b.right))
+}
+println!("{}", root.val + sum(&amp;root.left) + sum(&amp;root.right));   // 6
+
+trait Animal { fn speak(&amp;self) -&gt; &amp;str; }
+struct Cat;
+impl Animal for Cat { fn speak(&amp;self) -&gt; &amp;str { "meow" } }
+let pet: Box&lt;dyn Animal&gt; = Box::new(Cat);
+println!("{}", pet.speak());
+
+let big = Box::new([0u8; 1_000_000]);       // 1 MB moved by pointer, not copied
+let moved = big;                            // copies 8 bytes
+
+let s: Box&lt;str&gt; = "fixed".into();           // no spare capacity
+let v: Box&lt;[i32]&gt; = vec![1, 2, 3].into_boxed_slice();
+let inner: i32 = *Box::new(7);              // move out of the box
+let forever: &amp;'static mut Vec&lt;u8&gt; = Box::leak(Box::new(Vec::new()));</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>*b</code> reads through the Box; Display works directly</div><div class="explain-item"><code>Box&lt;List&gt;</code> gives the enum a known size</div><div class="explain-item">Trees use <code>Option&lt;Box&lt;Node&gt;&gt;</code> for optional children</div><div class="explain-item">Moving a Box copies only the pointer</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> <code>std::unique_ptr&lt;T&gt;</code> (same ownership semantics)</li><li class="note-item"><strong>Java / Python / Go</strong> every object is already heap-allocated and GC-managed</li><li class="note-item"><strong>C</strong> <code>malloc</code> + <code>free</code>, done automatically by Box's drop</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>Box&lt;Vec&lt;T&gt;&gt;</code> → <code>Vec&lt;T&gt;</code> (already on the heap)</li><li class="note-item"><code>Box&lt;T&gt;</code> for small Copy values → plain <code>T</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Uses Table | Sizes 64 Bit Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-uses"><h2 class="section-title">Uses</h2><table><thead><tr><th>Use</th><th>Example</th></tr></thead><tbody><tr><td>Recursive type</td><td class="desc">Cons(i32, Box&lt;List&gt;)</td></tr><tr><td>Trait object</td><td class="desc">Box&lt;dyn Animal&gt;</td></tr><tr><td>Large value</td><td class="desc">Box&lt;[u8; 1_000_000]&gt;</td></tr><tr><td>Fixed buffer</td><td class="desc">Box&lt;[T]&gt;, Box&lt;str&gt;</td></tr><tr><td>Error type</td><td class="desc">Box&lt;dyn Error&gt;</td></tr><tr><td>Leak to static</td><td class="desc">Box::leak(b)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-sizes-64-bit"><h2 class="section-title">Sizes (64-bit)</h2><table><thead><tr><th>Type</th><th>Bytes</th></tr></thead><tbody><tr><td>Box&lt;T&gt;</td><td class="desc">8</td></tr><tr><td>Option&lt;Box&lt;T&gt;&gt;</td><td class="desc">8</td></tr><tr><td>Box&lt;[T]&gt;</td><td class="desc">16</td></tr><tr><td>Box&lt;dyn Trait&gt;</td><td class="desc">16</td></tr><tr><td>Vec&lt;T&gt;</td><td class="desc">24</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Boxing everything out of habit</li><li class="note-item">Recursive struct without Box (E0072: recursive type has infinite size)</li><li class="note-item">Very large <code>Box::new([0; N])</code> overflowing the stack first (use <code>vec!</code>)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>vec![0; n].into_boxed_slice()</code> for big zeroed buffers</li><li class="note-item">Box the largest enum variant to shrink the enum</li><li class="note-item">Prefer <code>Box&lt;dyn Error + Send + Sync&gt;</code> in threaded code</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Box&lt;T&gt;</code> — owned heap value</li><li class="note-item">recursive types</li><li class="note-item"><code>Box&lt;dyn Trait&gt;</code></li><li class="note-item">drop frees the memory</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-071-associated-types-consts.html">Associated Types &amp; Consts</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-073-rc-weak.html">Rc&lt;T&gt; &amp; Weak</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

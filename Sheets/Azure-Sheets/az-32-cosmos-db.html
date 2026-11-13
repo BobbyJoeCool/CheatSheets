@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 32: Cosmos DB</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s32">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 32</div>
+			<h1>Cosmos DB</h1>
+			<div class="sheet-desc">accounts, databases &amp; containers · partition keys · request units · consistency levels · APIs (NoSQL, MongoDB) · serverless vs autoscale · change feed</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Globally Distributed NoSQL</h2><div class="description"><strong>Azure Cosmos DB</strong> stores JSON items in <strong>containers</strong> spread across physical partitions by a <strong>partition key</strong>. Every operation costs <strong>request units (RUs)</strong>; you buy throughput as provisioned, <strong>autoscale</strong> or <strong>serverless</strong>. Five <strong>consistency levels</strong> trade latency for freshness, and the <strong>change feed</strong> streams every write. Multiple APIs exist: NoSQL (native), MongoDB, Cassandra, Gremlin and Table.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Pick a partition key with high cardinality that appears in most queries</li><li class="note-item">A point read of a 1 KB item by id + partition key costs 1 RU</li><li class="note-item">Cross-partition queries cost more and scale worse</li><li class="note-item">Session consistency is the default and fits most apps</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check + Security Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Account, Container, Data Role</h2><pre><code class="language-bash">az cosmosdb create -g rg-data -n cosmos-shop \
+    --default-consistency-level Session \
+    --locations regionName=eastus2 failoverPriority=0 isZoneRedundant=True
+COSMOS=$(az cosmosdb show -g rg-data -n cosmos-shop --query id -o tsv)
+az resource update --ids $COSMOS \
+    --set properties.disableLocalAuth=true
+az cosmosdb sql database create -g rg-data -a cosmos-shop -n shop
+az cosmosdb sql container create -g rg-data -a cosmos-shop -d shop \
+    -n orders --partition-key-path /customerId --max-throughput 4000
+
+# Built-in Data Contributor role for the app identity
+az cosmosdb sql role assignment create -g rg-data -a cosmos-shop \
+    --role-definition-id 00000000-0000-0000-0000-000000000002 \
+    --principal-id $MI --scope "/"</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Python SDK</h2><pre><code class="language-python">from azure.cosmos import CosmosClient
+from azure.identity import DefaultAzureCredential
+db = CosmosClient("https://cosmos-shop.documents.azure.com",
+                  DefaultAzureCredential()).get_database_client("shop")
+orders = db.get_container_client("orders")
+orders.upsert_item({"id": "o-42", "customerId": "c-7", "total": 59.0})
+item = orders.read_item("o-42", partition_key="c-7")       # ~1 RU
+for o in orders.query_items("SELECT * FROM o WHERE o.total &gt; @t",
+        parameters=[{"name": "@t", "value": 50}], partition_key="c-7"):
+    print(o["id"])</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Zone redundancy is set per region location</div><div class="explain-item"><code>disableLocalAuth</code> turns off account keys</div><div class="explain-item">Autoscale scales between 10% and 100% of 4,000 RU/s</div><div class="explain-item">Passing <code>partition_key</code> keeps queries to one partition</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> DynamoDB (partition / sort keys, RCU / WCU) (aws-32)</li><li class="note-item"><strong>GCP</strong> Firestore, Spanner, Bigtable (gcp-32)</li><li class="note-item">RUs ≈ DynamoDB capacity units; partition key choice matters the same way</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Provisioned: per 100 RU/s per hour; autoscale bills the hourly peak</li><li class="note-item">Serverless: per million RUs consumed, best for spiky low traffic</li><li class="note-item">Storage per GB per region; every extra region multiplies cost</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Disable key-based (local) auth; use Entra data-plane RBAC</li><li class="note-item">Private endpoints with public network access off</li><li class="note-item">Least-privilege data roles (Reader vs Contributor)</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Item size up to 2 MB</li><li class="note-item">Logical partition up to 20 GB</li><li class="note-item">Physical partition up to 10,000 RU/s</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Consistency Levels Table | Throughput Modes Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-consistency-levels"><h2 class="section-title">Consistency Levels</h2><table><thead><tr><th>Level</th><th>Guarantee</th></tr></thead><tbody><tr><td>Strong</td><td class="desc">Latest committed write</td></tr><tr><td>Bounded staleness</td><td class="desc">Lag within K versions or T time</td></tr><tr><td>Session (default)</td><td class="desc">Read your own writes</td></tr><tr><td>Consistent prefix</td><td class="desc">No out-of-order reads</td></tr><tr><td>Eventual</td><td class="desc">Lowest latency, no ordering</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-throughput-modes"><h2 class="section-title">Throughput Modes</h2><table><thead><tr><th>Mode</th><th>Best For</th></tr></thead><tbody><tr><td>Provisioned (manual)</td><td class="desc">Steady, predictable load</td></tr><tr><td>Autoscale</td><td class="desc">Variable load with a peak</td></tr><tr><td>Serverless</td><td class="desc">Dev / spiky, low traffic</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Model around access patterns and the partition key first</li><li class="note-item note-do"><strong>Do</strong> Use point reads (id + partition key) whenever possible</li><li class="note-item note-dont"><strong>Don’t</strong> Choose a low-cardinality partition key like <code>country</code></li><li class="note-item note-dont"><strong>Don’t</strong> Run unbounded cross-partition queries on hot paths</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">The Cosmos DB emulator runs on Windows or as a Linux Docker image</li><li class="note-item">Point the SDK at the emulator endpoint with its well-known key</li><li class="note-item">Check RU charge per query in the response headers while testing</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Local auth disabled; Entra data roles only</li><li class="note-item">Zone redundancy and, if needed, multi-region with failover</li><li class="note-item">Alerts on 429 throttling and RU consumption</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-31-azure-sql-postgresql.html">Azure SQL &amp; PostgreSQL</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-33-redis-other-data-services.html">Redis &amp; Other Data Services</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

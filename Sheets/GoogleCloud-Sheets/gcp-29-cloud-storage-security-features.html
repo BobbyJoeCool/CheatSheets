@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 29: Cloud Storage Security &amp; Features</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>Cloud Storage Security &amp; Features</h1>
+			<div class="sheet-desc">uniform bucket-level access · public access prevention · signed URLs · versioning &amp; soft delete · lifecycle rules · retention policies &amp; Bucket Lock</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Protecting and Managing Objects</h2><div class="description"><strong>Uniform bucket-level access</strong> makes IAM the only access control. <strong>Public access prevention</strong> blocks <code>allUsers</code> grants. <strong>Signed URLs</strong> give time-limited access without IAM. <strong>Object versioning</strong> and <strong>soft delete</strong> (7 days by default) recover deletes and overwrites; <strong>lifecycle rules</strong> change classes or delete objects. <strong>Retention policies</strong> with <strong>Bucket Lock</strong> give WORM compliance.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Signed URLs (V4) are valid for up to 7 days</li><li class="note-item">Signing with an attached service account uses the IAM signBlob API (no key file)</li><li class="note-item">Static websites: serve through a load balancer backend bucket (sheet 14)</li><li class="note-item">CMEK and VPC Service Controls protect sensitive buckets</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code + Code | Explain + AWS / Azure Equivalent + Cost Check + Security Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Lifecycle, Versioning, Retention</h2><pre><code class="language-bash">gcloud storage buckets update gs://acme-media-prod --versioning \
+    --soft-delete-duration=14d
+gcloud storage buckets update gs://acme-media-prod \
+    --lifecycle-file=lifecycle.json
+gcloud storage buckets update gs://acme-audit --retention-period=2557d
+gcloud storage buckets update gs://acme-audit --lock-retention-period
+
+gcloud storage ls --soft-deleted gs://acme-media-prod/2026/
+gcloud storage restore gs://acme-media-prod/2026/report.pdf#1767225600000000
+
+gcloud storage sign-url gs://acme-media-prod/2026/report.pdf --duration=15m \
+    --impersonate-service-account=signer@shop-prod-4821.iam.gserviceaccount.com</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">lifecycle.json</h2><pre><code class="language-json">{"rule": [
+  {"action": {"type": "SetStorageClass", "storageClass": "NEARLINE"},
+   "condition": {"age": 30, "matchesPrefix": ["logs/"]}},
+  {"action": {"type": "Delete"},
+   "condition": {"age": 365, "matchesPrefix": ["logs/"]}},
+  {"action": {"type": "Delete"},
+   "condition": {"isLive": false, "daysSinceNoncurrentTime": 30}}
+]}</code></pre></section><section class="section-code" id="code-3"><h2 class="section-title">Signed URL in Python</h2><pre><code class="language-python">import datetime
+from google.cloud import storage
+blob = storage.Client().bucket("acme-media-prod").blob("2026/report.pdf")
+url = blob.generate_signed_url(version="v4", method="GET",
+    expiration=datetime.timedelta(minutes=15))</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Soft delete keeps deleted objects restorable for 14 days</div><div class="explain-item">Logs move to Nearline after 30 days, delete after a year</div><div class="explain-item">Locking a retention policy is permanent</div><div class="explain-item">The signed URL works for 15 minutes for anyone holding it</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Block Public Access, presigned URLs, Object Lock (aws-29)</li><li class="note-item"><strong>Azure</strong> SAS tokens, soft delete, immutability (az-29)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Versioning and soft delete keep billing for old / deleted data</li><li class="note-item">Lifecycle actions are free (class-change operations bill)</li><li class="note-item">Early deletion of colder classes still bills the minimum duration</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Enforce public access prevention org-wide (<code>storage.publicAccessPrevention</code>)</li><li class="note-item">Keep soft delete on for buckets holding irreplaceable data</li><li class="note-item">Prefer short signed URL expiry (minutes, not days)</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Access Controls Table | Data Protection Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-access-controls"><h2 class="section-title">Access Controls</h2><table><thead><tr><th>Control</th><th>Use</th></tr></thead><tbody><tr><td>Uniform bucket-level access</td><td class="desc">IAM only (recommended)</td></tr><tr><td>Public access prevention</td><td class="desc">Block public grants</td></tr><tr><td>Signed URL / policy document</td><td class="desc">Temporary access, uploads</td></tr><tr><td>IAM Conditions</td><td class="desc">Prefix-based grants</td></tr><tr><td>VPC Service Controls</td><td class="desc">Perimeter around buckets</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-data-protection"><h2 class="section-title">Data Protection</h2><table><thead><tr><th>Feature</th><th>Protects Against</th></tr></thead><tbody><tr><td>Soft delete</td><td class="desc">Accidental delete (default 7 days)</td></tr><tr><td>Object versioning</td><td class="desc">Overwrites</td></tr><tr><td>Retention policy</td><td class="desc">Early deletion</td></tr><tr><td>Bucket Lock</td><td class="desc">Changes to retention (WORM)</td></tr><tr><td>Object holds</td><td class="desc">Legal / event holds</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Generate signed URLs server-side with short expiry</li><li class="note-item note-do"><strong>Do</strong> Pair versioning with a noncurrent-version lifecycle rule</li><li class="note-item note-dont"><strong>Don’t</strong> Grant <code>allUsers</code> to serve a website (use a load balancer)</li><li class="note-item note-dont"><strong>Don’t</strong> Lock a retention policy before you are sure of the period</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Test lifecycle rules on a scratch bucket with small ages</li><li class="note-item">Sign URLs locally with impersonated ADC</li><li class="note-item">fake-gcs-server for upload / download flows</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Public access prevention enforced by org policy</li><li class="note-item">Soft delete + versioning on critical data</li><li class="note-item">Retention / Bucket Lock for compliance data</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-28-cloud-storage-basics.html">Cloud Storage Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-30-disks-filestore-backup.html">Disks, Filestore &amp; Backup</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

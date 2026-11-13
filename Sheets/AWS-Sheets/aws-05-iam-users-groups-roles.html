@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 05: IAM Users, Groups &amp; Roles</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s05">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 05</div>
+			<h1>IAM Users, Groups &amp; Roles</h1>
+			<div class="sheet-desc">users vs roles · groups · <code>aws iam create-role</code> · least privilege · access keys · <code>aws sts get-caller-identity</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Identities in AWS</h2><div class="description"><strong>IAM</strong> controls who can call AWS APIs in an account. <strong>Users</strong> have long-term credentials and are now mainly for edge cases; people should use <strong>IAM Identity Center</strong>. <strong>Roles</strong> have no long-term credentials: a trusted principal (a person, a service such as Lambda, another account, or an OIDC identity) <strong>assumes</strong> the role and gets temporary keys. <strong>Groups</strong> attach policies to many users.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Every role has a trust policy (who can assume) and permission policies (what it can do)</li><li class="note-item">Service roles let AWS services act for you (Lambda execution role)</li><li class="note-item">Service-linked roles are created and managed by a service</li><li class="note-item">IAM is global within an account</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create a Role for Lambda</h2><pre><code class="language-bash">cat &gt; trust.json &lt;&lt;'JSON'
+{ "Version": "2012-10-17",
+  "Statement": [{ "Effect": "Allow",
+    "Principal": { "Service": "lambda.amazonaws.com" },
+    "Action": "sts:AssumeRole" }] }
+JSON
+aws iam create-role --role-name resize-fn-role \
+    --assume-role-policy-document file://trust.json
+aws iam attach-role-policy --role-name resize-fn-role \
+    --policy-arn \
+    arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+aws iam list-roles --query "Roles[?starts_with(RoleName,'resize')].Arn"
+aws iam list-attached-role-policies --role-name resize-fn-role
+
+# Who am I right now?
+aws sts get-caller-identity
+# Find old access keys
+aws iam generate-credential-report &amp;&amp; aws iam get-credential-report \
+    --query Content --output text | base64 -d | cut -d, -f1,9,10</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The trust policy lets the Lambda service assume the role</div><div class="explain-item">The managed policy grants CloudWatch Logs access</div><div class="explain-item">JMESPath filters roles by name prefix</div><div class="explain-item">The credential report lists users and key ages</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Entra ID users, groups, service principals (az-05)</li><li class="note-item"><strong>GCP</strong> Google accounts, groups, service accounts (gcp-05)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">IAM is free</li><li class="note-item">Leaked access keys are the most expensive mistake: crypto-mining bills</li><li class="note-item">Unused roles cost nothing but widen the attack surface</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Identity Types Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-identity-types"><h2 class="section-title">Identity Types</h2><table><thead><tr><th>Type</th><th>Credentials</th><th>Use</th></tr></thead><tbody><tr><td>Root user</td><td class="kw">Password + MFA</td><td class="kw">Account-level tasks only</td></tr><tr><td>Identity Center user</td><td class="kw">SSO, temporary</td><td class="kw">People</td></tr><tr><td>IAM user</td><td class="kw">Password / access keys</td><td class="kw">Legacy, break-glass</td></tr><tr><td>IAM role</td><td class="kw">Temporary (STS)</td><td class="kw">Services, apps, cross-account</td></tr><tr><td>Group</td><td class="kw">None</td><td class="kw">Attach policies to users</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use roles for every workload and Identity Center for people</li><li class="note-item note-do"><strong>Do</strong> Remove unused users, keys and roles</li><li class="note-item note-dont"><strong>Don’t</strong> Share IAM user credentials among a team</li><li class="note-item note-dont"><strong>Don’t</strong> Attach AdministratorAccess to application roles</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">IAM Policy Simulator tests what a role can do</li><li class="note-item">IAM Access Analyzer validates policies and finds unused access</li><li class="note-item">LocalStack accepts IAM calls (enforcement optional)</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">No IAM users for humans; MFA on any that remain</li><li class="note-item">Credential report reviewed; keys rotated or removed</li><li class="note-item">Access Analyzer unused-access findings acted on</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-04-sdks-credentials.html">SDKs &amp; Credentials</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-06-iam-policies.html">IAM Policies</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

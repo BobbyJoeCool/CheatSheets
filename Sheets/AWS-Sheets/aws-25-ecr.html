@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 25: Elastic Container Registry</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Elastic Container Registry</h1>
+			<div class="sheet-desc"><code>aws ecr create-repository</code> · <code>get-login-password | docker login</code> · tag &amp; push · lifecycle policies · image scanning · immutable tags</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Private Container Images on AWS</h2><div class="description"><strong>Amazon ECR</strong> stores container images and OCI artifacts in private repositories (and offers a public gallery). Docker logs in with a short-lived token from <code>get-login-password</code>. <strong>Immutable tags</strong> prevent overwrites, <strong>lifecycle policies</strong> expire old images, and <strong>scanning</strong> (basic or enhanced with Inspector) reports vulnerabilities. Pull-through cache rules mirror public registries.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Registry URL: <code>&lt;account&gt;.dkr.ecr.&lt;region&gt;.amazonaws.com</code></li><li class="note-item">ECS, EKS, Lambda and App Runner pull with IAM roles</li><li class="note-item">Replication copies images across Regions and accounts</li><li class="note-item">Pull-through cache avoids Docker Hub rate limits</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Enable tag immutability on release repositories</li><li class="note-item">Enhanced scanning (Inspector) with alerts on critical findings</li><li class="note-item">Repository policies limiting who can push</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Repositories and images per repository have adjustable quotas (Service Quotas)</li><li class="note-item">Lifecycle policies: up to 50 rules each</li><li class="note-item">API rate limits per account and Region apply to large fleets</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Create, Push, Expire</h2><pre><code class="language-bash">aws ecr create-repository --repository-name shop-api \
+    --image-tag-mutability IMMUTABLE \
+    --image-scanning-configuration scanOnPush=true \
+    --encryption-configuration encryptionType=KMS
+REG=111122223333.dkr.ecr.us-east-1.amazonaws.com
+aws ecr get-login-password | docker login --username AWS --password-stdin $REG
+
+docker build -t $REG/shop-api:1.4.0 .
+docker push $REG/shop-api:1.4.0
+aws ecr describe-images --repository-name shop-api \
+    --query "imageDetails[].[imageTags[0],imagePushedAt]" --output table
+aws ecr describe-image-scan-findings --repository-name shop-api \
+    --image-id imageTag=1.4.0 --query "imageScanFindings.findingSeverityCounts"
+
+aws ecr put-lifecycle-policy --repository-name shop-api \
+    --lifecycle-policy-text '{"rules":[{"rulePriority":1,
+      "selection":{"tagStatus":"untagged","countType":"sinceImagePushed",
+        "countUnit":"days","countNumber":14},"action":{"type":"expire"}}]}'
+aws ecr create-pull-through-cache-rule --ecr-repository-prefix dockerhub \
+    --upstream-registry-url registry-1.docker.io --credential-arn &lt;secret-arn&gt;</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Immutable tags stop a release tag from being overwritten</div><div class="explain-item">The login token lasts 12 hours</div><div class="explain-item">Scan findings summarize vulnerabilities by severity</div><div class="explain-item">The lifecycle rule expires untagged images after 14 days</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure Container Registry (az-25)</li><li class="note-item"><strong>GCP</strong> Artifact Registry (gcp-25)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Storage per GB-month plus data transfer out</li><li class="note-item">Pulls inside the same Region are free (other than NAT / endpoint charges)</li><li class="note-item">Lifecycle policies keep storage from growing forever</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Repository Settings Table | Pull Paths Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-repository-settings"><h2 class="section-title">Repository Settings</h2><table><thead><tr><th>Setting</th><th>Use</th></tr></thead><tbody><tr><td>Tag immutability</td><td class="desc">Release integrity</td></tr><tr><td>Scan on push / enhanced</td><td class="desc">Vulnerabilities</td></tr><tr><td>KMS encryption</td><td class="desc">Key control</td></tr><tr><td>Lifecycle policy</td><td class="desc">Expire old images</td></tr><tr><td>Replication</td><td class="desc">Multi-Region / account</td></tr><tr><td>Repository policy</td><td class="desc">Cross-account access</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-pull-paths"><h2 class="section-title">Pull Paths</h2><table><thead><tr><th>Consumer</th><th>Auth</th></tr></thead><tbody><tr><td>ECS / Fargate</td><td class="desc">Task execution role</td></tr><tr><td>EKS nodes</td><td class="desc">Node role</td></tr><tr><td>Lambda</td><td class="desc">Function service</td></tr><tr><td>Laptop / CI</td><td class="desc">get-login-password</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Tag images with version + commit SHA</li><li class="note-item note-do"><strong>Do</strong> Add VPC endpoints (ecr.api, ecr.dkr, S3) for private pulls</li><li class="note-item note-dont"><strong>Don’t</strong> Deploy <code>latest</code></li><li class="note-item note-dont"><strong>Don’t</strong> Keep every CI build forever</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>docker run -d -p 5000:5000 registry:2</code> for a local registry</li><li class="note-item">Trivy scans images before push</li><li class="note-item">LocalStack Pro emulates ECR</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Immutable tags + enhanced scanning on release repos</li><li class="note-item">VPC endpoints for private pulls</li><li class="note-item">Replication for DR Regions where needed</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-24-sqs-sns.html">SQS &amp; SNS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-26-ecs-fargate.html">ECS &amp; Fargate</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

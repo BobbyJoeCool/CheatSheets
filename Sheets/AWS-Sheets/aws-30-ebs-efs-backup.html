@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 30: EBS, EFS &amp; AWS Backup</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>EBS, EFS &amp; AWS Backup</h1>
+			<div class="sheet-desc">EBS volume types (gp3, io2) · snapshots · EFS shared file systems · S3 vs EBS vs EFS · AWS Backup plans</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Block, File and Backup</h2><div class="description"><strong>EBS</strong> volumes are block storage attached to one instance in one AZ (multi-attach for some io2 cases). <strong>EFS</strong> is an elastic NFS file system many instances, containers and Lambdas can mount across AZs. <strong>FSx</strong> offers Windows, Lustre, NetApp ONTAP and OpenZFS file systems. <strong>AWS Backup</strong> centralizes backup plans across EBS, EFS, RDS, DynamoDB, S3 and more.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">EBS snapshots are incremental and can be copied across Regions</li><li class="note-item">EFS storage classes (Standard, IA, Archive) with lifecycle management</li><li class="note-item">EFS access points enforce a path and POSIX user per app</li><li class="note-item">Backup vault lock makes backups immutable</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">EFS Mount and Backup Plan</h2><pre><code class="language-bash">FS=$(aws efs create-file-system --encrypted --throughput-mode elastic \
+  --tags Key=Name,Value=shared --query FileSystemId --output text)
+aws efs create-mount-target --file-system-id $FS --subnet-id $APP_A \
+    --security-groups $EFS_SG
+aws efs put-lifecycle-configuration --file-system-id $FS \
+    --lifecycle-policies TransitionToIA=AFTER_30_DAYS
+sudo mount -t efs -o tls $FS:/ /mnt/shared        # amazon-efs-utils
+
+aws backup create-backup-vault --backup-vault-name prod-vault
+aws backup create-backup-plan --backup-plan '{"BackupPlanName":"daily",
+  "Rules":[{"RuleName":"daily","TargetBackupVaultName":"prod-vault",
+    "ScheduleExpression":"cron(0 5 * * ? *)",
+    "Lifecycle":{"DeleteAfterDays":35}}]}'
+aws backup create-backup-selection --backup-plan-id &lt;plan-id&gt; \
+    --backup-selection '{"SelectionName":"tagged","IamRoleArn":"&lt;role-arn&gt;",
+      "ListOfTags":[{"ConditionType":"STRINGEQUALS",
+        "ConditionKey":"backup","ConditionValue":"daily"}]}'</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Elastic throughput scales with demand automatically</div><div class="explain-item">One mount target per AZ lets instances mount locally</div><div class="explain-item">The EFS mount helper encrypts traffic in transit with <code>tls</code></div><div class="explain-item">Backup selects resources by tag, so new resources join automatically</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> managed disks, Azure Files, Azure Backup (az-30)</li><li class="note-item"><strong>GCP</strong> Persistent Disk / Hyperdisk, Filestore, Backup and DR (gcp-30)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">EBS bills provisioned GB (and IOPS / throughput above gp3 baseline)</li><li class="note-item">EFS bills stored GB by class plus elastic throughput</li><li class="note-item">Backup bills per GB stored in vaults</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Which Storage Table | Ebs Types Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-which-storage"><h2 class="section-title">Which Storage</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Objects over HTTPS</td><td class="desc">S3</td></tr><tr><td>Boot / database disk</td><td class="desc">EBS</td></tr><tr><td>Shared Linux files</td><td class="desc">EFS</td></tr><tr><td>Windows SMB</td><td class="desc">FSx for Windows</td></tr><tr><td>HPC scratch</td><td class="desc">FSx for Lustre</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ebs-types"><h2 class="section-title">EBS Types</h2><table><thead><tr><th>Type</th><th>Use</th></tr></thead><tbody><tr><td>gp3</td><td class="desc">Default SSD, tunable</td></tr><tr><td>io2 Block Express</td><td class="desc">Highest IOPS</td></tr><tr><td>st1</td><td class="desc">Throughput HDD</td></tr><tr><td>sc1</td><td class="desc">Cold HDD</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Back up by tag with AWS Backup</li><li class="note-item note-do"><strong>Do</strong> Use EFS access points per application</li><li class="note-item note-dont"><strong>Don’t</strong> Use EFS for database data files</li><li class="note-item note-dont"><strong>Don’t</strong> Keep snapshots forever without lifecycle</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Practice NFS mounts with a local NFS server container</li><li class="note-item">Restore drills from AWS Backup into a scratch account</li><li class="note-item">fio benchmarks EBS settings on a test instance</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Backup plans with vault lock for critical data</li><li class="note-item">Cross-Region / cross-account backup copies</li><li class="note-item">Restores tested regularly</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-29-s3-security-features.html">S3 Security &amp; Features</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-31-rds-aurora.html">RDS &amp; Aurora</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

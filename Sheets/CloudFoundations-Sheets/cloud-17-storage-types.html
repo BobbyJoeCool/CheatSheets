@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 17: Object, Block &amp; File Storage</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s17">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 17</div>
+			<h1>Object, Block &amp; File Storage</h1>
+			<div class="sheet-desc">buckets &amp; objects · block volumes · shared file systems · storage classes &amp; tiers · lifecycle rules · durability vs availability</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Three Kinds of Storage</h2><div class="description"><strong>Object storage</strong> (S3, Azure Blob Storage, Cloud Storage) keeps files as objects in buckets, reached over HTTPS, with near-unlimited size and very high durability. <strong>Block storage</strong> (EBS, managed disks, Persistent Disk / Hyperdisk) is a virtual disk attached to one VM. <strong>File storage</strong> (EFS, Azure Files, Filestore) is a shared network file system many machines mount at once.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Object storage is the default for uploads, backups, logs, static sites and data lakes</li><li class="note-item">Durability: designed for 99.999999999% (11 nines) on object storage</li><li class="note-item">Colder tiers cost less to store and more to read</li><li class="note-item">Lifecycle rules move or delete objects by age automatically</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Copy, List, Tier</h2><pre><code class="language-bash"># Upload and list
+aws s3 cp report.pdf s3://acme-docs/2026/report.pdf
+az storage blob upload --account-name acmedocs -c docs \
+    -f report.pdf -n 2026/report.pdf --auth-mode login
+gcloud storage cp report.pdf gs://acme-docs/2026/report.pdf
+
+aws s3 ls s3://acme-docs/2026/
+az storage blob list --account-name acmedocs -c docs \
+    --prefix 2026/ --auth-mode login -o table
+gcloud storage ls gs://acme-docs/2026/
+
+# Store infrequently-read data in a colder class
+aws s3 cp backup.tar s3://acme-backup/ --storage-class STANDARD_IA
+az storage blob upload --account-name acmebackup -c b \
+    -f backup.tar --tier Cool --auth-mode login
+gcloud storage cp backup.tar gs://acme-backup/ --storage-class=NEARLINE</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">A Lifecycle Rule (Google Cloud JSON)</h2><pre><code class="language-json">{ "rule": [
+  { "action": { "type": "SetStorageClass", "storageClass": "COLDLINE" },
+    "condition": { "age": 90 } },
+  { "action": { "type": "Delete" }, "condition": { "age": 365 } } ] }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">"Folders" are just key prefixes like <code>2026/</code></div><div class="explain-item"><code>--auth-mode login</code> uses your Entra ID login instead of account keys</div><div class="explain-item">Each provider names its colder classes differently (table)</div><div class="explain-item">The lifecycle JSON moves objects to Coldline at 90 days and deletes them at a year</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> S3, EBS, EFS (aws-28, aws-29, aws-30)</li><li class="note-item"><strong>Azure</strong> Blob Storage, managed disks, Azure Files (az-28, az-29, az-30)</li><li class="note-item"><strong>Google Cloud</strong> Cloud Storage, Persistent Disk / Hyperdisk, Filestore (gcp-28, gcp-29, gcp-30)</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Object storage unless an app needs a disk or a shared POSIX mount</li><li class="note-item">Turn on versioning or soft delete for anything you cannot recreate</li><li class="note-item">Add a lifecycle rule the day you create a log or backup bucket</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Storage Classes Table | Which Kind Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-storage-classes"><h2 class="section-title">Storage Classes</h2><table><thead><tr><th>Access</th><th>AWS S3</th><th>Azure Blob</th><th>Cloud Storage</th></tr></thead><tbody><tr><td>Frequent</td><td class="kw">Standard</td><td class="kw">Hot</td><td class="kw">Standard</td></tr><tr><td>Monthly</td><td class="kw">Standard-IA</td><td class="kw">Cool</td><td class="kw">Nearline</td></tr><tr><td>Quarterly</td><td class="kw">Glacier Instant Retrieval</td><td class="kw">Cold</td><td class="kw">Coldline</td></tr><tr><td>Yearly / archive</td><td class="kw">Glacier Deep Archive</td><td class="kw">Archive</td><td class="kw">Archive</td></tr><tr><td>Automatic</td><td class="kw">Intelligent-Tiering</td><td class="kw">Lifecycle / smart tier</td><td class="kw">Autoclass</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-which-kind"><h2 class="section-title">Which Kind</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Files over HTTP, any scale</td><td class="desc">Object</td></tr><tr><td>A VM boot or database disk</td><td class="desc">Block</td></tr><tr><td>Shared folder for many VMs</td><td class="desc">File</td></tr><tr><td>Archive for compliance</td><td class="desc">Object, archive class</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use one bucket per purpose and environment</li><li class="note-item note-do"><strong>Do</strong> Block public access at the account / organization level</li><li class="note-item note-dont"><strong>Don’t</strong> Use object storage as a database with constant small rewrites</li><li class="note-item note-dont"><strong>Don’t</strong> Put archive-class data where it is read often (retrieval fees add up)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">LocalStack emulates S3; Azurite emulates Blob, Queue and Table storage</li><li class="note-item">The fake-gcs-server container emulates Cloud Storage APIs</li><li class="note-item">MinIO gives an S3-compatible server for local testing</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Public access blocked; access through identities or signed URLs</li><li class="note-item">Versioning / soft delete and lifecycle rules configured</li><li class="note-item">Replication or backups for data you cannot lose</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-16-choosing-compute.html">Choosing Compute</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-18-managed-databases.html">Managed Databases</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 35: Scopes, API Keys &amp; HTTP Basic</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>Scopes, API Keys &amp; HTTP Basic</h1>
+			<div class="sheet-desc">Security(scopes=) · SecurityScopes · APIKeyHeader · HTTPBasic · HTTPBearer · secrets.compare_digest</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Beyond user logins, APIs often need <strong>scopes</strong> (fine-grained permissions inside a token), <strong>API keys</strong> for machine clients, and occasionally <strong>HTTP Basic</strong> for simple internal tools. <code>Security()</code> is <code>Depends()</code> plus a list of required scopes, and <code>SecurityScopes</code> tells the dependency which scopes the route needs.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Scopes are strings like <code>todos:read</code>, <code>todos:write</code></li><li class="note-item">Declare available scopes on <code>OAuth2PasswordBearer(scopes={...})</code></li><li class="note-item">API keys: send in a header, never in URLs (they get logged)</li><li class="note-item">Compare secrets with <code>secrets.compare_digest</code></li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Scopes + API Key</h2><pre><code class="language-python">import secrets
+from fastapi import Security
+from fastapi.security import APIKeyHeader, SecurityScopes
+
+oauth2 = OAuth2PasswordBearer(tokenUrl="auth/token",
+    scopes={"todos:read": "Read todos", "todos:write": "Edit todos"})
+
+def current_user(scopes: SecurityScopes,
+                 token: Annotated[str, Depends(oauth2)]) -&gt; User:
+    payload = decode(token)                   # sheet 33
+    granted = set(payload.get("scopes", []))
+    if not set(scopes.scopes) &lt;= granted:
+        raise HTTPException(403, "Not enough permissions")
+    return load_user(payload)
+
+@app.post("/todos")
+def create(user: Annotated[User, Security(current_user,
+                                          scopes=["todos:write"])]): ...
+
+api_key = APIKeyHeader(name="X-API-Key")
+
+def require_key(key: Annotated[str, Depends(api_key)]):
+    if not secrets.compare_digest(key, settings.api_key):
+        raise HTTPException(401, "Invalid API key")</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>scopes={...}</code> — documented scopes for <code>/docs</code></div><div class="explain-item"><code>SecurityScopes.scopes</code> — scopes this route requires</div><div class="explain-item"><code>Security(dep, scopes=[...])</code> — require scopes</div><div class="explain-item"><code>APIKeyHeader(name=)</code> — reads <code>X-API-Key</code></div><div class="explain-item"><code>compare_digest</code> — constant-time comparison</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — custom decorator checking <code>request.headers["X-API-Key"]</code></li><li class="note-item">Django — DRF permissions; <code>djangorestframework-api-key</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid API keys in query strings · Prefer a header</li><li class="note-item">Avoid <code>key == expected</code> · Prefer <code>secrets.compare_digest</code></li></ul></section></div>
+			</div>
+			<!-- Row 3: Methods Table | Helpers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-methods"><h2 class="section-title">Choosing an Auth Method</h2><table><thead><tr><th>Method</th><th>Best for</th></tr></thead><tbody><tr><td>OAuth2 + JWT</td><td class="desc">users, SPAs, mobile</td></tr><tr><td>Scopes</td><td class="desc">per-feature permissions</td></tr><tr><td>API key</td><td class="desc">server-to-server</td></tr><tr><td>HTTP Basic</td><td class="desc">internal tools over HTTPS</td></tr><tr><td>Session cookie</td><td class="desc">server-rendered sites</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-helpers"><h2 class="section-title">Security Helpers</h2><table><thead><tr><th>Name</th><th>Gives</th></tr></thead><tbody><tr><td>HTTPBasic()</td><td class="desc">HTTPBasicCredentials(username, password)</td></tr><tr><td>HTTPBearer()</td><td class="desc">HTTPAuthorizationCredentials</td></tr><tr><td>APIKeyHeader(name=)</td><td class="desc">key string</td></tr><tr><td>SecurityScopes</td><td class="desc">.scopes, .scope_str</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Storing API keys in plain text in the DB: hash them like passwords</li><li class="note-item">Using 401 when a valid user lacks a scope: that's 403</li><li class="note-item">HTTP Basic over plain HTTP: credentials are only base64</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Prefix keys (<code>tk_live_...</code>) so leaks are easy to spot and scan for</li><li class="note-item">Let users create and revoke multiple keys</li><li class="note-item">Put scope checks on routers for whole feature areas</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Security(dep, scopes=)</code> — require permissions</li><li class="note-item"><code>SecurityScopes</code> — route's needed scopes</li><li class="note-item"><code>APIKeyHeader</code> — machine clients</li><li class="note-item"><code>compare_digest</code> — safe secret comparison</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-34-password-hashing-users.html" class="nav-link prev" title="Password Hashing &amp; Users">Password Hashing</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-36-async-vs-def.html" class="nav-link next">async def vs def</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

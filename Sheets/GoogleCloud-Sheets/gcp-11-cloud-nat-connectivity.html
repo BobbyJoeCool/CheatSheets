@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 11: Cloud NAT &amp; Connectivity</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s11">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 11</div>
+			<h1>Cloud NAT &amp; Connectivity</h1>
+			<div class="sheet-desc">Cloud NAT · Cloud Router · Private Service Connect · VPC Network Peering · Cloud VPN · Cloud Interconnect · Network Connectivity Center</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Outbound, Private Services and Hybrid</h2><div class="description"><strong>Cloud NAT</strong> (configured on a <strong>Cloud Router</strong>) gives private VMs and GKE nodes outbound internet access. <strong>Private Service Connect (PSC)</strong> exposes Google APIs or producer services on private IPs in your VPC. <strong>Private services access</strong> peers your VPC with Google-managed services such as Cloud SQL. <strong>Cloud VPN</strong>, <strong>Interconnect</strong> and <strong>Network Connectivity Center</strong> link on-premises and other networks.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Cloud NAT is a managed, software-defined service (no VM to manage)</li><li class="note-item">Peering is not transitive</li><li class="note-item">NCC provides hub-and-spoke for VPCs and hybrid links</li><li class="note-item">Serverless VPC access / Direct VPC egress connect Cloud Run to a VPC</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / Azure Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">NAT, PSC for Google APIs, Private Services Access</h2><pre><code class="language-bash">gcloud compute routers create rtr-usc1 --network=vpc-shop --region=us-central1
+gcloud compute routers nats create nat-usc1 --router=rtr-usc1 \
+    --region=us-central1 --auto-allocate-nat-external-ips \
+    --nat-all-subnet-ip-ranges --enable-logging
+
+# Private Service Connect endpoint for all Google APIs
+gcloud compute addresses create psc-apis --global \
+    --purpose=PRIVATE_SERVICE_CONNECT --addresses=10.255.255.254 \
+    --network=vpc-shop
+gcloud compute forwarding-rules create pscapis --global --network=vpc-shop \
+    --address=psc-apis --target-google-apis-bundle=all-apis
+
+# Private services access (Cloud SQL, Memorystore…)
+gcloud compute addresses create google-managed --global \
+    --purpose=VPC_PEERING --prefix-length=16 --network=vpc-shop
+gcloud services vpc-peerings connect \
+    --service=servicenetworking.googleapis.com \
+    --ranges=google-managed --network=vpc-shop
+
+gcloud compute networks peerings create shop-to-data --network=vpc-shop \
+    --peer-network=vpc-data --peer-project=data-prod-1111</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Cloud NAT needs a Cloud Router in the same region</div><div class="explain-item">The PSC endpoint gives Google APIs a private address in your VPC</div><div class="explain-item">Private services access reserves a range for Google-managed services</div><div class="explain-item">Peering needs a matching peering from the other side</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> NAT gateway, VPC endpoints / PrivateLink, peering, Transit Gateway (aws-11)</li><li class="note-item"><strong>Azure</strong> NAT Gateway, Private Endpoints, peering, Virtual WAN (az-11)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Cloud NAT: per gateway-hour + per GB processed</li><li class="note-item">PSC endpoints: hourly + data processed</li><li class="note-item">Interconnect beats VPN on egress price at high volume</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Connectivity Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-connectivity-options"><h2 class="section-title">Connectivity Options</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Private VMs → internet</td><td class="desc">Cloud NAT</td></tr><tr><td>Private → Google APIs</td><td class="desc">Private Google Access / PSC</td></tr><tr><td>Use Cloud SQL privately</td><td class="desc">Private services access or PSC</td></tr><tr><td>VPC ↔ VPC</td><td class="desc">Peering / NCC</td></tr><tr><td>Office ↔ cloud</td><td class="desc">HA VPN</td></tr><tr><td>Datacenter ↔ cloud</td><td class="desc">Dedicated / Partner Interconnect</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use HA VPN (two tunnels) rather than Classic VPN</li><li class="note-item note-do"><strong>Do</strong> Size NAT ports for busy egress (dynamic port allocation)</li><li class="note-item note-dont"><strong>Don’t</strong> Give every VM an external IP to reach the internet</li><li class="note-item note-dont"><strong>Don’t</strong> Forget DNS for PSC endpoints</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Connectivity Tests simulate paths</li><li class="note-item">NAT logs show port exhaustion and drops</li><li class="note-item">Practice in a sandbox VPC with tiny VMs</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Cloud NAT per region with logging</li><li class="note-item">Private access to Google APIs and managed services</li><li class="note-item">Hybrid links redundant (HA VPN / dual Interconnect)</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-10-vpc-basics.html">VPC Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-12-firewall-rules-policies.html">Firewall Rules &amp; Policies</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

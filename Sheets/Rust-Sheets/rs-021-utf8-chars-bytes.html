@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 021: UTF-8, chars &amp; bytes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s021">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 021</div>
+			<h1>UTF-8, chars &amp; bytes</h1>
+			<div class="sheet-desc">UTF-8 guarantee · no <code>s[0]</code> indexing · byte-range slices &amp; panics · <code>chars()</code> / <code>char_indices()</code> · <code>bytes()</code> · <code>is_char_boundary</code> · <code>String::from_utf8_lossy</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Why You Cannot Index a String</h2><div class="description">Rust strings are always <strong>valid UTF-8</strong>, where a character takes 1 to 4 bytes. Indexing with <code>s[0]</code> is not allowed because a byte position may fall in the middle of a character. Instead, iterate with <code>chars()</code> (Unicode scalars) or <code>bytes()</code> (raw bytes), and slice only on character boundaries.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>&amp;s[0..1]</code> panics if byte 1 is not a char boundary</li><li class="note-item"><code>chars().nth(i)</code> is O(n), not O(1)</li><li class="note-item">Invalid UTF-8 from files → <code>from_utf8</code> returns an error</li><li class="note-item">User-visible "characters" (graphemes) may be several chars</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">A <code>String</code> is a <code>Vec&lt;u8&gt;</code> with a UTF-8 invariant checked at creation</li><li class="note-item"><code>chars()</code> decodes UTF-8 on the fly; it does not store chars</li><li class="note-item">Slicing checks <code>is_char_boundary</code> at runtime and panics on failure</li><li class="note-item"><code>from_utf8_unchecked</code> (unsafe) skips validation</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">chars, bytes and slicing</h2><pre><code class="language-rust">let s = "héllo🦀";
+println!("{}", s.len());                    // 10 bytes
+println!("{}", s.chars().count());          // 6 chars
+// let c = s[0];                    // error: cannot index str by integer
+
+println!("{:?}", s.chars().next());         // Some('h')
+println!("{:?}", s.chars().nth(1));         // Some('é')
+println!("{:?}", s.chars().rev().next());   // Some('🦀')
+println!("{}", &amp;s[0..1]);                   // h
+// println!("{}", &amp;s[0..2]);                // panic: byte 2 is inside 'é'
+println!("{}", s.is_char_boundary(2));      // false
+
+for (i, c) in s.char_indices() {
+    print!("{i}:{c} ");                     // 0:h 1:é 3:l 4:l 5:o 6:🦀
+}
+println!();
+println!("{:?}", "hé".bytes().collect::&lt;Vec&lt;u8&gt;&gt;());   // [104, 195, 169]
+println!("{:?}", "hé".as_bytes());          // same, as &amp;[u8]
+
+let raw = vec![72, 105, 0xFF];
+println!("{:?}", String::from_utf8(raw.clone()));   // Err(FromUtf8Error …)
+println!("{}", String::from_utf8_lossy(&amp;raw));      // Hi�
+
+let first3: String = s.chars().take(3).collect();   // "hél"
+let ascii_upper = "hello".to_ascii_uppercase();     // fast for ASCII</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>len()</code> is 10 bytes for 6 characters</div><div class="explain-item"><code>char_indices</code> gives byte offsets you can slice at</div><div class="explain-item">Slicing in the middle of a character panics</div><div class="explain-item"><code>from_utf8_lossy</code> replaces bad bytes with �</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> <code>std::string</code> is bytes with no encoding guarantee</li><li class="note-item"><strong>Python</strong> <code>str</code> indexes by code point; <code>bytes</code> is separate</li><li class="note-item"><strong>Java / JS</strong> strings are UTF-16; <code>charAt</code> can split emoji</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>s.chars().nth(i)</code> in a loop (O(n²)) → iterate once with <code>chars()</code></li><li class="note-item"><code>&amp;s[..n]</code> with a char count → <code>s.chars().take(n).collect()</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Views Of A String Table | Utf 8 Sizes Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-views-of-a-string"><h2 class="section-title">Views of a String</h2><table><thead><tr><th>Method</th><th>Yields</th></tr></thead><tbody><tr><td>bytes() / as_bytes()</td><td class="desc">u8</td></tr><tr><td>chars()</td><td class="desc">char (scalar)</td></tr><tr><td>char_indices()</td><td class="desc">(byte_idx, char)</td></tr><tr><td>&amp;s[a..b]</td><td class="desc">&amp;str (byte range)</td></tr><tr><td>graphemes (crate)</td><td class="desc">User characters</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-utf-8-sizes"><h2 class="section-title">UTF-8 Sizes</h2><table><thead><tr><th>Character</th><th>Bytes</th></tr></thead><tbody><tr><td>ASCII (a)</td><td class="desc">1</td></tr><tr><td>Latin (é)</td><td class="desc">2</td></tr><tr><td>CJK (中)</td><td class="desc">3</td></tr><tr><td>Emoji (🦀)</td><td class="desc">4</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Slicing with indices computed from char counts</li><li class="note-item">Assuming one char per visible character (é can be e + ◌́)</li><li class="note-item">Using <code>chars().nth</code> for random access</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Work in bytes for ASCII-only protocols</li><li class="note-item">Use <code>unicode-segmentation</code> for graphemes</li><li class="note-item">Validate external bytes with <code>from_utf8</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">always UTF-8</li><li class="note-item">no <code>s[i]</code> indexing</li><li class="note-item"><code>chars()</code> / <code>bytes()</code></li><li class="note-item">slice on char boundaries</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-020-string-methods-transform.html">String Methods — Transform &amp; Split</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-022-arithmetic-overflow.html">Arithmetic &amp; Overflow</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

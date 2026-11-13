@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 45: Deployment</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s45">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 45</div>
+			<h1>Deployment</h1>
+			<div class="sheet-desc">fastapi run --workers 4 · Uvicorn · Gunicorn + UvicornWorker · Dockerfile · Nginx · HTTPS · health checks</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">In production, run FastAPI with <strong><code>fastapi run</code></strong> (or Uvicorn directly) with several <strong>worker processes</strong>, inside a container, behind a <strong>reverse proxy</strong> that handles HTTPS. Use one worker per container when an orchestrator like Kubernetes scales containers for you; use several workers on a single VM.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Workers ≈ CPU cores for one VM/container</li><li class="note-item">In Kubernetes: 1 worker per pod, scale pods</li><li class="note-item">Proxy terminates TLS; app speaks plain HTTP inside</li><li class="note-item">Run migrations as a separate deploy step</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code + Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code-1"><h2 class="section-title">Dockerfile</h2><pre><code class="language-docker">FROM python:3.13-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY ./app ./app
+EXPOSE 8000
+CMD ["fastapi", "run", "app/main.py", "--port", "8000", \
+     "--workers", "4", "--proxy-headers"]</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Nginx Reverse Proxy</h2><pre><code class="language-nginx">server {
+    listen 443 ssl;
+    server_name api.example.com;
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;     # websockets
+        proxy_set_header Connection "upgrade";
+    }
+}</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">slim base image — smaller, faster pulls</div><div class="explain-item">copy requirements first — cached dependency layer</div><div class="explain-item">exec-form <code>CMD</code> — clean signals and shutdown</div><div class="explain-item"><code>--proxy-headers</code> — trust <code>X-Forwarded-*</code></div><div class="explain-item"><code>Upgrade</code> headers — needed for websockets</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — Gunicorn or Waitress behind Nginx (sheet 57)</li><li class="note-item">Django — Gunicorn (WSGI) or Uvicorn (ASGI) + <code>collectstatic</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid <code>fastapi dev</code> / <code>--reload</code> in prod · Prefer <code>fastapi run</code></li><li class="note-item">Avoid running as root in the container · Prefer a non-root <code>USER</code></li></ul></section></div>
+			</div>
+			<!-- Row 3: Servers Table | Hosts Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-servers"><h2 class="section-title">Server Options</h2><table><thead><tr><th>Command</th><th>When</th></tr></thead><tbody><tr><td>fastapi run --workers 4</td><td class="desc">simple, single host</td></tr><tr><td>uvicorn app.main:app --workers 4</td><td class="desc">same, direct</td></tr><tr><td>gunicorn -k uvicorn_worker.UvicornWorker</td><td class="desc">process manager features</td></tr><tr><td>1 worker per pod</td><td class="desc">Kubernetes / ECS</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-hosts"><h2 class="section-title">Where to Host</h2><table><thead><tr><th>Option</th><th>Notes</th></tr></thead><tbody><tr><td>VPS + Docker + Nginx</td><td class="desc">full control</td></tr><tr><td>Fly.io / Render / Railway</td><td class="desc">push to deploy</td></tr><tr><td>AWS ECS / Cloud Run</td><td class="desc">containers, autoscale</td></tr><tr><td>Kubernetes</td><td class="desc">big fleets</td></tr><tr><td>FastAPI Cloud</td><td class="desc">official managed host</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Many workers per pod and autoscaling pods: double counting, memory blowup</li><li class="note-item">Forgetting forwarded headers: wrong scheme in redirects and docs</li><li class="note-item">Baking secrets into the image instead of env vars</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add a <code>HEALTHCHECK</code> or orchestrator probe on <code>/health</code></li><li class="note-item">Pin the Python base image tag and rebuild for security updates</li><li class="note-item">See the Docker and Ubuntu sets for container and server setup</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>fastapi run --workers N</code> — prod server</li><li class="note-item">Docker — repeatable builds</li><li class="note-item">Nginx / proxy — TLS, headers, websockets</li><li class="note-item">1 worker per pod — when the platform scales</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-44-performance-config.html" class="nav-link prev" title="Performance &amp; Production Config">Performance &amp; Config</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-46-flask-introduction.html" class="nav-link next" title="Flask Introduction &amp; First App">Flask Intro</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-docker.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-nginx.min.js"></script>
+	</body>
+</html>

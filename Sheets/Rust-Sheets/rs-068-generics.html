@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 068: Generics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s068">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 068</div>
+			<h1>Generics</h1>
+			<div class="sheet-desc">generic functions <code>fn largest&lt;T&gt;</code> · generic structs &amp; enums · <code>impl&lt;T&gt;</code> · monomorphization · const generics <code>[T; N]</code> · <code>PhantomData</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Code That Works for Many Types</h2><div class="description">Generics let one definition work for many types: <code>fn largest&lt;T: PartialOrd&gt;(v: &amp;[T]) -&gt; &amp;T</code>. Structs and enums can be generic too (<code>Vec&lt;T&gt;</code>, <code>Option&lt;T&gt;</code>). The compiler generates a specialized copy for each concrete type used, so generics have <strong>zero runtime cost</strong>. <strong>Const generics</strong> parameterize over values like array lengths.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Type parameters are CamelCase single letters by convention</li><li class="note-item">Bounds (<code>T: Trait</code>) say what the code may do with T</li><li class="note-item"><code>impl&lt;T&gt; Point&lt;T&gt;</code> vs <code>impl Point&lt;f64&gt;</code> (specific type only)</li><li class="note-item"><code>PhantomData&lt;T&gt;</code> marks an unused type parameter</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item"><strong>Monomorphization</strong>: <code>largest::&lt;i32&gt;</code> and <code>largest::&lt;f64&gt;</code> become separate machine-code functions</li><li class="note-item">Calls are static and inlinable, as fast as hand-written code</li><li class="note-item">Cost: longer compile times and larger binaries</li><li class="note-item">Const generics are also monomorphized per <code>N</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Generic Functions and Types</h2><pre><code class="language-rust">fn largest&lt;T: PartialOrd&gt;(items: &amp;[T]) -&gt; &amp;T {
+    let mut max = &amp;items[0];
+    for it in items { if it &gt; max { max = it; } }
+    max
+}
+println!("{}", largest(&amp;[3, 9, 2]));        // 9
+println!("{}", largest(&amp;["b", "z", "a"]));  // z
+
+#[derive(Debug)]
+struct Point&lt;T&gt; { x: T, y: T }
+
+impl&lt;T: std::ops::Add&lt;Output = T&gt; + Copy&gt; Point&lt;T&gt; {
+    fn sum(&amp;self) -&gt; T { self.x + self.y }
+}
+impl Point&lt;f64&gt; {                           // only for f64
+    fn dist(&amp;self) -&gt; f64 { (self.x * self.x + self.y * self.y).sqrt() }
+}
+let pi = Point { x: 1, y: 2 };
+let pf = Point { x: 3.0, y: 4.0 };
+println!("{} {}", pi.sum(), pf.dist());     // 3 5
+
+struct Pair&lt;A, B&gt; { a: A, b: B }
+let p = Pair { a: "id", b: 7u8 };
+
+fn sum_all&lt;const N: usize&gt;(arr: [i32; N]) -&gt; i32 { arr.iter().sum() }
+println!("{}", sum_all([1, 2, 3]));         // 6 (N = 3)
+
+struct Matrix&lt;const R: usize, const C: usize&gt;([[f32; C]; R]);
+let m: Matrix&lt;2, 3&gt; = Matrix([[0.0; 3]; 2]);
+
+use std::marker::PhantomData;
+struct Meters;
+struct Length&lt;Unit&gt; { value: f64, _unit: PhantomData&lt;Unit&gt; }
+let len: Length&lt;Meters&gt; = Length { value: 5.0, _unit: PhantomData };</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>T: PartialOrd</code> allows <code>&gt;</code> on items</div><div class="explain-item"><code>impl Point&lt;f64&gt;</code> adds a method only for f64 points</div><div class="explain-item">Const generic <code>N</code> is inferred from the array length</div><div class="explain-item"><code>PhantomData&lt;Unit&gt;</code> tags a type without storing data</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> templates (also monomorphized), checked at instantiation</li><li class="note-item"><strong>Java</strong> generics with type erasure: one runtime copy, boxed values</li><li class="note-item"><strong>Go</strong> generics (1.18+) with type sets; partly dictionary-based</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item">copy-pasted functions for i32/f64 → one generic function</li><li class="note-item"><code>Box&lt;dyn Trait&gt;</code> where one type is used per call site → generics</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Syntax Table | Generic Vs Dyn Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-syntax"><h2 class="section-title">Syntax</h2><table><thead><tr><th>Form</th><th>Example</th></tr></thead><tbody><tr><td>Function</td><td class="desc">fn f&lt;T&gt;(x: T)</td></tr><tr><td>Struct</td><td class="desc">struct S&lt;T&gt; { v: T }</td></tr><tr><td>Enum</td><td class="desc">enum E&lt;T&gt; { A(T) }</td></tr><tr><td>Impl for all</td><td class="desc">impl&lt;T&gt; S&lt;T&gt;</td></tr><tr><td>Impl for one</td><td class="desc">impl S&lt;f64&gt;</td></tr><tr><td>Const generic</td><td class="desc">fn f&lt;const N: usize&gt;</td></tr><tr><td>Turbofish</td><td class="desc">f::&lt;i32&gt;(…)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-generic-vs-dyn"><h2 class="section-title">Generic vs dyn</h2><table><thead><tr><th>Item</th><th>Generics</th><th>dyn Trait</th></tr></thead><tbody><tr><td>Dispatch</td><td class="kw">Static</td><td class="kw">Vtable</td></tr><tr><td>Speed</td><td class="kw">Inlinable</td><td class="kw">Indirect call</td></tr><tr><td>Binary size</td><td class="kw">Larger</td><td class="kw">Smaller</td></tr><tr><td>Mixed types in one Vec</td><td class="kw">No</td><td class="kw">Yes</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using an operation without the bound (E0369 binary operation cannot be applied)</li><li class="note-item">Over-generic APIs that are hard to read</li><li class="note-item">Expecting runtime type info about T</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start concrete, generalize when a second type appears</li><li class="note-item">Put long bounds in <code>where</code> clauses (sheet 069)</li><li class="note-item">Use const generics for fixed-size buffers and matrices</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>&lt;T&gt;</code> on fns, structs, enums</li><li class="note-item">bounds limit what T can do</li><li class="note-item">monomorphized: zero cost</li><li class="note-item">const generics <code>&lt;const N: usize&gt;</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-067-common-std-traits.html">Common Standard Traits</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-069-trait-bounds-where.html">Trait Bounds &amp; where</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

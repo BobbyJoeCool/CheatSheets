@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 21: Cloud Run Functions &amp; Jobs</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Cloud Run Functions &amp; Jobs</h1>
+			<div class="sheet-desc">Cloud Run functions (formerly Cloud Functions) · HTTP &amp; event triggers · Functions Framework · Cloud Run jobs · tasks &amp; parallelism · scheduling jobs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Functions and Run-to-Completion Work</h2><div class="description"><strong>Cloud Run functions</strong> deploy source code (Node.js, Python, Go, Java, .NET, Ruby, PHP) as a Cloud Run service built with the <strong>Functions Framework</strong>, triggered by HTTP or <strong>Eventarc</strong> events. <strong>Cloud Run jobs</strong> run containers to completion: a job execution starts many <strong>tasks</strong> in parallel, each with an index, retries and a timeout. Cloud Scheduler can run jobs on a cron.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>gcloud functions deploy --gen2</code> and <code>gcloud run deploy --function</code> both create Cloud Run functions</li><li class="note-item">Tasks read <code>CLOUD_RUN_TASK_INDEX</code> and <code>CLOUD_RUN_TASK_COUNT</code></li><li class="note-item">Event functions receive CloudEvents</li><li class="note-item">Jobs can run up to 168 hours per task (7 days)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / Azure Equivalent + Cost Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Function Code (Python)</h2><pre><code class="language-python">import functions_framework
+
+@functions_framework.http
+def hello(request):
+    name = request.args.get("name", "world")
+    return {"hello": name}
+
+@functions_framework.cloud_event
+def on_upload(event):
+    data = event.data
+    print(f"New object gs://{data['bucket']}/{data['name']}")</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Deploy Function, Job, Schedule</h2><pre><code class="language-bash">gcloud run deploy hello --source=. --function=hello \
+    --base-image=python312 --region=us-central1 --no-allow-unauthenticated
+
+gcloud functions deploy on-upload --gen2 --runtime=python312 \
+    --region=us-central1 --source=. --entry-point=on_upload \
+    --trigger-bucket=acme-uploads-prod \
+    --service-account=fn@shop-prod-4821.iam.gserviceaccount.com
+
+REPO=us-central1-docker.pkg.dev/shop-prod-4821/apps
+gcloud run jobs create resize --image=$REPO/resize:1.0 \
+    --region=us-central1 --tasks=50 --parallelism=10 \
+    --max-retries=3 --task-timeout=15m
+gcloud run jobs execute resize --region=us-central1 --wait
+
+RUN=https://run.googleapis.com/v2
+gcloud scheduler jobs create http resize-nightly --location=us-central1 \
+    --schedule="0 2 * * *" --http-method=POST \
+    --uri="$RUN/projects/shop-prod-4821/locations/us-central1/jobs/resize:run" \
+    --oauth-service-account-email=sched@shop-prod-4821.iam.gserviceaccount.com</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">One decorator per trigger type</div><div class="explain-item"><code>--trigger-bucket</code> wires an Eventarc trigger for new objects</div><div class="explain-item">The job runs 50 tasks, 10 at a time, retrying failures</div><div class="explain-item">Cloud Scheduler calls the Run Admin API to start the job nightly</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Lambda functions, ECS tasks / Batch (aws-21)</li><li class="note-item"><strong>Azure</strong> Azure Functions, Container Apps jobs (az-21)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Functions bill as Cloud Run (CPU, memory, requests)</li><li class="note-item">Jobs bill only while tasks run</li><li class="note-item">Scheduler: a few free jobs per billing account, then per job per month</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Up to 10,000 tasks per job execution</li><li class="note-item">Task timeout default 10 min, max 168 hours</li><li class="note-item">Event-driven functions inherit Eventarc delivery and retry limits</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Triggers Table | Job Settings Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-triggers"><h2 class="section-title">Triggers</h2><table><thead><tr><th>Trigger</th><th>Source</th></tr></thead><tbody><tr><td>HTTP</td><td class="desc">Direct request</td></tr><tr><td>Cloud Storage</td><td class="desc">Object finalized / deleted</td></tr><tr><td>Pub/Sub</td><td class="desc">Message published</td></tr><tr><td>Eventarc (audit logs)</td><td class="desc">Almost any Google API call</td></tr><tr><td>Firestore</td><td class="desc">Document changes</td></tr><tr><td>Scheduler</td><td class="desc">Cron (HTTP / Pub/Sub)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-job-settings"><h2 class="section-title">Job Settings</h2><table><thead><tr><th>Flag</th><th>Meaning</th></tr></thead><tbody><tr><td>--tasks</td><td class="desc">Total tasks</td></tr><tr><td>--parallelism</td><td class="desc">Run at once</td></tr><tr><td>--max-retries</td><td class="desc">Per task</td></tr><tr><td>--task-timeout</td><td class="desc">Per task limit</td></tr><tr><td>--args / --set-env-vars</td><td class="desc">Per execution overrides</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Make event handlers idempotent (events can repeat)</li><li class="note-item note-do"><strong>Do</strong> Split big batches by task index</li><li class="note-item note-dont"><strong>Don’t</strong> Use a function for long-running batch work (use jobs)</li><li class="note-item note-dont"><strong>Don’t</strong> Process an upload event by writing back to the same bucket path (loop)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>functions-framework --target=hello</code> runs locally on port 8080</li><li class="note-item">Send test CloudEvents with curl to the local server</li><li class="note-item">Run job containers locally with <code>CLOUD_RUN_TASK_INDEX=0</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Dedicated SA per function / job</li><li class="note-item">Dead-letter topics on event triggers</li><li class="note-item">Alerts on job failures and function errors</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-20-cloud-run-basics.html">Cloud Run Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-22-api-gateway-apigee.html">API Gateway &amp; Apigee</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

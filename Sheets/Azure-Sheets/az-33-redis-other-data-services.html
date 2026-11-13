@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 33: Redis &amp; Other Data Services</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s33">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 33</div>
+			<h1>Redis &amp; Other Data Services</h1>
+			<div class="sheet-desc">Azure Managed Redis (replacing Azure Cache for Redis) · Azure AI Search · Fabric / Synapse pointer · choosing a database · pointer to SQL &amp; NoSQL sets</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Caches, Search and Analytics</h2><div class="description"><strong>Azure Managed Redis</strong> is the current Redis offering (built on Redis Enterprise); <strong>Azure Cache for Redis</strong> is being retired, so new work should start on Managed Redis. <strong>Azure AI Search</strong> provides full-text, vector and hybrid search, often the retrieval layer for RAG. <strong>Microsoft Fabric</strong> (and older Synapse) covers analytics and data warehousing.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Cache-aside: read cache, fall back to the database, then populate</li><li class="note-item">Managed Redis supports Entra ID authentication</li><li class="note-item">AI Search indexes data from Blob, SQL, Cosmos DB and more</li><li class="note-item">See the SQL and NoSQL sets for engine details</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Managed Redis, AI Search</h2><pre><code class="language-bash">az redisenterprise create -g rg-data -n amr-shop -l eastus2 \
+    --sku Balanced_B1
+az redisenterprise database list -g rg-data --cluster-name amr-shop -o table
+
+az search service create -g rg-search -n srch-shop --sku basic \
+    --partition-count 1 --replica-count 2 --disable-local-auth true</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Cache-Aside in Python</h2><pre><code class="language-python">import json, redis
+from redis_entraid.cred_provider import create_from_default_azure_credential
+creds = create_from_default_azure_credential(
+    ("https://redis.azure.com/.default",))
+r = redis.Redis(host="amr-shop.eastus2.redis.azure.net", port=10000,
+                ssl=True, credential_provider=creds)
+
+def get_product(pid):
+    if (hit := r.get(f"product:{pid}")):
+        return json.loads(hit)
+    row = db_fetch_product(pid)                  # slow path
+    r.set(f"product:{pid}", json.dumps(row), ex=300)
+    return row</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Managed Redis is managed with the <code>redisenterprise</code> CLI group</div><div class="explain-item">AI Search with 2 replicas gets a read SLA</div><div class="explain-item">The <code>redis-entraid</code> package supplies Entra tokens to redis-py</div><div class="explain-item">Cache entries expire after 300 seconds</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> ElastiCache (Valkey / Redis OSS), OpenSearch (aws-33)</li><li class="note-item"><strong>GCP</strong> Memorystore (Valkey / Redis), BigQuery, Vertex AI Search (gcp-33)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Managed Redis bills per hour by SKU; size the memory to the working set</li><li class="note-item">AI Search: per search unit per hour (partitions × replicas)</li><li class="note-item">Fabric bills by capacity; pause when idle</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Choosing A Data Serv Table | Redis Options Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-choosing-a-data-serv"><h2 class="section-title">Choosing a Data Service</h2><table><thead><tr><th>Need</th><th>Use</th></tr></thead><tbody><tr><td>Relational, SQL Server</td><td class="desc">Azure SQL (sheet 31)</td></tr><tr><td>Relational, open source</td><td class="desc">PostgreSQL Flexible (sheet 31)</td></tr><tr><td>Global NoSQL / document</td><td class="desc">Cosmos DB (sheet 32)</td></tr><tr><td>Cache / session store</td><td class="desc">Azure Managed Redis</td></tr><tr><td>Full-text / vector search</td><td class="desc">Azure AI Search</td></tr><tr><td>Analytics / warehouse</td><td class="desc">Microsoft Fabric</td></tr><tr><td>Time series / logs</td><td class="desc">Azure Data Explorer</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-redis-options"><h2 class="section-title">Redis Options</h2><table><thead><tr><th>Option</th><th>Status</th></tr></thead><tbody><tr><td>Azure Managed Redis</td><td class="desc">Current, recommended</td></tr><tr><td>Azure Cache for Redis</td><td class="desc">Retiring; migrate</td></tr><tr><td>Redis on AKS / VMs</td><td class="desc">Self-managed</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Set TTLs on every cache key</li><li class="note-item note-do"><strong>Do</strong> Plan migration from Azure Cache for Redis to Managed Redis</li><li class="note-item note-dont"><strong>Don’t</strong> Treat a cache as the source of truth</li><li class="note-item note-dont"><strong>Don’t</strong> Index everything in AI Search without a retrieval plan</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Run Redis or Valkey in Docker: <code>docker run -p 6379:6379 redis</code></li><li class="note-item">Elasticsearch / OpenSearch containers approximate search behavior locally</li><li class="note-item">Mock the cache layer in unit tests</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Cache with zone redundancy and Entra auth</li><li class="note-item">AI Search with 2+ replicas and private endpoint</li><li class="note-item">Cache hit-rate and memory alerts</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-32-cosmos-db.html">Cosmos DB</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-34-bicep.html">Bicep</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

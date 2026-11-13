@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>JCL &amp; z/OS — Sheet 30: Scheduling &amp; Modern Workflow</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/jcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s30">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 30</div>
+			<h1>Scheduling &amp; Modern Workflow</h1>
+			<div class="sheet-desc">batch windows · schedulers (IBM Workload Scheduler, Control-M) · job dependencies · JCL in Git · <code>zowe zos-jobs submit … --wait-for-output</code> in CI · z/OSMF REST jobs API</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">From Submitting by Hand to Pipelines</h2><div class="description">Production jobs are run by a <strong>scheduler</strong> such as IBM Workload Scheduler or Control-M, which starts jobs at set times or when other jobs finish, and alerts on failures. Development teams now keep JCL in <strong>Git</strong> and use <strong>Zowe CLI</strong> or the <strong>z/OSMF REST API</strong> to submit jobs and check return codes from CI pipelines.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Schedulers track dependencies: job B runs after job A ends RC ≤ 4</li><li class="note-item">The <strong>batch window</strong> is the overnight period jobs must finish in</li><li class="note-item">Restarts are run from the scheduler, usually with RESTART=step</li><li class="note-item">CI should fail the build when a job's RC is above 4 or it abends</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Modern Equivalent + Abend Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Submitting from GitHub Actions</h2><pre><code class="language-bash"># .github/workflows/zos.yml (run step)
+npm install -g @zowe/cli
+zowe config set profiles.zosmf.properties.host "$ZOS_HOST"
+
+# Upload JCL and source from the repo
+zowe files upload dir-to-pds jcl/ "USER.CI.JCL"
+zowe files upload dir-to-pds cobol/ "USER.CI.COBOL"
+
+# Compile, then run tests; fail on RC &gt; 4 or abend
+for job in COMPILE TESTRUN; do
+  out=$(zowe jobs submit ds "USER.CI.JCL($job)" \
+        --wait-for-output --rfj)
+  rc=$(echo "$out" | jq -r '.data.retcode')
+  echo "$job: $rc"
+  case "$rc" in "CC 0000"|"CC 0004") ;; *) exit 1 ;; esac
+done
+
+# z/OSMF REST: PUT /zosmf/restjobs/jobs  (submit)
+#              GET /zosmf/restjobs/jobs/{name}/{id}  (status)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>--rfj</code> returns JSON so the script can read the retcode</div><div class="explain-item">RC 0 and 4 pass; 8, abends and JCL errors fail the pipeline</div><div class="explain-item">Uploading from Git makes the repo the source of truth</div><div class="explain-item">The same API calls work from Jenkins or GitLab CI</div></div></section><section class="section-notes section-modern" id="modern"><h2 class="section-title">Modern Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> Airflow DAGs or cron + a Python driver that checks exit codes</li><li class="note-item"><strong>Java</strong> Spring Batch or Quartz jobs with dependency flows</li><li class="note-item"><strong>JavaScript</strong> GitHub Actions / node-cron with <code>needs:</code> dependencies</li></ul></section><section class="section-notes section-abend" id="abend"><h2 class="section-title">Abend Check</h2><ul class="note-list"><li class="note-item">CI passes but the job abended: you checked "submitted" instead of the final retcode</li><li class="note-item">Scheduler shows the job late: an upstream job failed and dependents are waiting</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Schedulers Table | Retcode Values Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-schedulers"><h2 class="section-title">Schedulers</h2><table><thead><tr><th>Product</th><th>Notes</th></tr></thead><tbody><tr><td>IBM Workload Scheduler (TWS / OPC)</td><td class="desc">IBM's z/OS scheduler</td></tr><tr><td>Control-M (BMC)</td><td class="desc">Cross-platform</td></tr><tr><td>CA 7 (Broadcom)</td><td class="desc">z/OS scheduler</td></tr><tr><td>Zowe + CI</td><td class="desc">Dev/test pipelines</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-retcode-values"><h2 class="section-title">Retcode Values</h2><table><thead><tr><th>retcode</th><th>Meaning</th></tr></thead><tbody><tr><td>CC 0000</td><td class="desc">Success</td></tr><tr><td>CC 0004</td><td class="desc">Warnings</td></tr><tr><td>CC 0008+</td><td class="desc">Errors</td></tr><tr><td>ABEND S0C7</td><td class="desc">Abended</td></tr><tr><td>JCL ERROR</td><td class="desc">Did not run</td></tr><tr><td>null</td><td class="desc">Still running / not found</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Pipelines that do not wait for job completion</li><li class="note-item">Hard-coded passwords in workflow files (use repository secrets)</li><li class="note-item">Editing production JCL directly instead of through Git and the scheduler</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Store host and credentials as CI secrets</li><li class="note-item">Name CI datasets per branch or build to avoid collisions</li><li class="note-item">Download job output as build artifacts for every run</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">scheduler — times + dependencies</li><li class="note-item">batch window — overnight limit</li><li class="note-item">Zowe <code>--wait-for-output</code> — CI submit</li><li class="note-item">fail CI on RC &gt; 4 or abend</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="jcl-29-common-abends.html">Common Abends</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">JCL &amp; z/OS Reference · 32 Sheets</a>
+				<a class="nav-link next" href="jcl-31-quick-reference-statements.html">QR — Statements &amp; Parameters</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

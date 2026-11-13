@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Cloud Foundations — Sheet 23: Reliability &amp; Well-Architected</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/cloud-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<h1>Reliability &amp; Well-Architected</h1>
+			<div class="sheet-desc">AWS Well-Architected · Azure Well-Architected · Google Cloud Architecture Framework · multi-AZ vs multi-region · RTO / RPO · backup &amp; disaster recovery tiers</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Designing for Failure</h2><div class="description">Hardware, zones and even regions fail; well-built systems expect it. Each provider publishes a framework of best practices organized into pillars such as reliability, security, cost, operations, performance and sustainability. Reliability starts with two numbers: <strong>RTO</strong> (how long you can be down) and <strong>RPO</strong> (how much data you can lose). They decide between multi-zone, warm standby and multi-region active-active.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Multi-zone covers most failures at modest cost</li><li class="note-item">Multi-region is for strict RTO / RPO or regulations</li><li class="note-item">Backups are only as good as your last tested restore</li><li class="note-item">Health checks, retries with backoff and timeouts prevent cascades</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Across the Clouds + Rule of Thumb -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Retries, Timeouts and a Circuit Breaker Idea</h2><pre><code class="language-python">import random, time, requests
+
+def call_with_retry(url, attempts=4, timeout=2.0):
+    for n in range(attempts):
+        try:
+            r = requests.get(url, timeout=timeout)   # always set a timeout
+            if r.status_code &lt; 500:
+                return r
+        except requests.RequestException:
+            pass
+        sleep = min(8, 0.2 * 2 ** n) * random.uniform(0.5, 1.5)
+        time.sleep(sleep)               # exponential backoff + jitter
+    raise RuntimeError(f"{url} unavailable after {attempts} tries")</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Framework Reviews</h2><pre><code class="language-bash">aws wellarchitected create-workload --workload-name shop \
+    --environment PRODUCTION --lenses wellarchitected --review-owner me \
+    --aws-regions us-east-1 --description "shop"
+az advisor recommendation list --category HighAvailability -o table
+gcloud recommender recommendations list --project=app-prod \
+    --location=global --recommender=google.iam.policy.Recommender</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Timeouts stop one slow dependency from tying up every worker</div><div class="explain-item">Exponential backoff with jitter avoids retry storms</div><div class="explain-item">Only retry server errors and network failures, not 4xx</div><div class="explain-item">Each provider has a review tool or advisor that checks your setup</div></div></section><section class="section-notes section-across" id="across"><h2 class="section-title">Across the Clouds</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Well-Architected Framework and Tool</li><li class="note-item"><strong>Azure</strong> Well-Architected Framework, Azure Advisor</li><li class="note-item"><strong>Google Cloud</strong> Architecture Framework, Recommender</li></ul></section><section class="section-notes section-thumb" id="thumb"><h2 class="section-title">Rule of Thumb</h2><ul class="note-list"><li class="note-item">Agree RTO / RPO with the business before choosing an architecture</li><li class="note-item">Multi-zone first; multi-region only with a proven need</li><li class="note-item">Run a restore drill every quarter</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Dr Tiers Table | Framework Pillars Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-dr-tiers"><h2 class="section-title">DR Tiers</h2><table><thead><tr><th>Tier</th><th>RTO</th><th>RPO</th><th>Cost</th></tr></thead><tbody><tr><td>Backup &amp; restore</td><td class="kw">Hours–days</td><td class="kw">Hours</td><td class="kw">$</td></tr><tr><td>Pilot light</td><td class="kw">Tens of minutes</td><td class="kw">Minutes</td><td class="kw">$$</td></tr><tr><td>Warm standby</td><td class="kw">Minutes</td><td class="kw">Seconds–minutes</td><td class="kw">$$$</td></tr><tr><td>Active-active</td><td class="kw">Near zero</td><td class="kw">Near zero</td><td class="kw">$$$$</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-framework-pillars"><h2 class="section-title">Framework Pillars</h2><table><thead><tr><th>Pillar</th><th>Asks</th></tr></thead><tbody><tr><td>Reliability</td><td class="desc">Will it survive failures?</td></tr><tr><td>Security</td><td class="desc">Is access minimal and audited?</td></tr><tr><td>Cost</td><td class="desc">Is spend matched to value?</td></tr><tr><td>Operations</td><td class="desc">Can we deploy and observe safely?</td></tr><tr><td>Performance</td><td class="desc">Does it meet latency at scale?</td></tr><tr><td>Sustainability</td><td class="desc">Is waste minimized?</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Set timeouts on every network call</li><li class="note-item note-do"><strong>Do</strong> Practice failover with game days</li><li class="note-item note-dont"><strong>Don’t</strong> Retry instantly in a tight loop</li><li class="note-item note-dont"><strong>Don’t</strong> Claim multi-region resilience you have never tested</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Toxiproxy or <code>tc netem</code> inject latency and failures locally</li><li class="note-item">Chaos tools: AWS Fault Injection Service, Azure Chaos Studio, Chaos Mesh / Litmus on Kubernetes</li><li class="note-item">Restore last night's backup into a scratch environment</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">RTO / RPO written down and tested</li><li class="note-item">Every dependency call has timeout, retry and backoff</li><li class="note-item">Runbooks for zone and region failure</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="cloud-22-cicd-to-the-cloud.html">CI/CD to the Cloud</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Cloud Foundations Reference · 26 Sheets</a>
+				<a class="nav-link next" href="cloud-24-cost-management.html">Cost Management &amp; FinOps</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

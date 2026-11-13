@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 38: WebSockets</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s38">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 38</div>
+			<h1>WebSockets</h1>
+			<div class="sheet-desc">@app.websocket · await ws.accept() · receive_text / send_json · WebSocketDisconnect · connection manager</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>WebSockets</strong> keep a two-way connection open for real-time features like chat, live dashboards and notifications. Declare an endpoint with <code>@app.websocket</code>, <code>accept()</code> the connection, then loop on <code>receive_*</code> and <code>send_*</code>. A disconnect raises <strong><code>WebSocketDisconnect</code></strong>, which you catch to clean up.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">URL scheme is <code>ws://</code> or <code>wss://</code> (TLS)</li><li class="note-item">Dependencies, path and query params work on websockets</li><li class="note-item">Multiple workers don't share connections; use Redis pub/sub</li><li class="note-item"><code>TestClient.websocket_connect()</code> tests them</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Chat Room</h2><pre><code class="language-python">from fastapi import WebSocket, WebSocketDisconnect
+
+class Manager:
+    def __init__(self):
+        self.active: list[WebSocket] = []
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self.active.append(ws)
+    def disconnect(self, ws: WebSocket):
+        self.active.remove(ws)
+    async def broadcast(self, msg: dict):
+        for ws in self.active:
+            await ws.send_json(msg)
+
+manager = Manager()
+
+@app.websocket("/ws/{room}")
+async def chat(ws: WebSocket, room: str, name: str = "anon"):
+    await manager.connect(ws)
+    try:
+        while True:
+            text = await ws.receive_text()
+            await manager.broadcast(
+                {"room": room, "from": name, "text": text})
+    except WebSocketDisconnect:
+        manager.disconnect(ws)</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>@app.websocket(path)</code> — websocket route</div><div class="explain-item"><code>await ws.accept()</code> — complete the handshake</div><div class="explain-item"><code>receive_text()</code> — waits for the next message</div><div class="explain-item"><code>send_json()</code> — send a dict as JSON</div><div class="explain-item"><code>WebSocketDisconnect</code> — client left</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — no native support; Flask-SocketIO or Flask-Sock</li><li class="note-item">Django — Django Channels with consumers</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid an in-memory manager with many workers · Prefer Redis pub/sub broadcast</li><li class="note-item">Avoid unauthenticated sockets · Prefer a token in query or first message</li></ul></section></div>
+			</div>
+			<!-- Row 3: Api Table | Codes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-api"><h2 class="section-title">WebSocket API</h2><table><thead><tr><th>Method</th><th>Does</th></tr></thead><tbody><tr><td>accept()</td><td class="desc">open</td></tr><tr><td>receive_text / bytes / json</td><td class="desc">read</td></tr><tr><td>send_text / bytes / json</td><td class="desc">write</td></tr><tr><td>close(code=1000)</td><td class="desc">close</td></tr><tr><td>iter_text()</td><td class="desc">async for loop</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-codes"><h2 class="section-title">Close Codes</h2><table><thead><tr><th>Code</th><th>Meaning</th></tr></thead><tbody><tr><td>1000</td><td class="desc">normal</td></tr><tr><td>1001</td><td class="desc">going away</td></tr><tr><td>1008</td><td class="desc">policy violation (auth)</td></tr><tr><td>1011</td><td class="desc">server error</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting <code>accept()</code>: the client sees an immediate close</li><li class="note-item">Raising <code>HTTPException</code> in a websocket; use <code>WebSocketException</code> or <code>close()</code></li><li class="note-item">Broadcasting while iterating a list that a disconnect modifies</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Send heartbeats (ping) to keep proxies from closing idle sockets</li><li class="note-item">Configure Nginx with <code>Upgrade</code> / <code>Connection</code> headers (sheet 45)</li><li class="note-item">Prefer SSE (sheet 39) when data only flows server → client</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>@app.websocket</code> — real-time endpoint</li><li class="note-item"><code>accept</code> → loop <code>receive</code> / <code>send</code></li><li class="note-item"><code>WebSocketDisconnect</code> — clean up</li><li class="note-item">multi-worker — Redis to broadcast</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-37-background-tasks.html" class="nav-link prev">Background Tasks</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-39-streaming-sse.html" class="nav-link next" title="Streaming &amp; Server-Sent Events">Streaming &amp; SSE</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

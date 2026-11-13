@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 041: panic! &amp; Unrecoverable Errors</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s041">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 041</div>
+			<h1>panic! &amp; Unrecoverable Errors</h1>
+			<div class="sheet-desc"><code>panic!</code> · <code>unwrap()</code> / <code>expect()</code> · <code>unreachable!</code> / <code>todo!</code> / <code>unimplemented!</code> · <code>assert!</code> / <code>assert_eq!</code> / <code>debug_assert!</code> · <code>RUST_BACKTRACE=1</code> · <code>panic = "abort"</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Bugs, Not Expected Failures</h2><div class="description">A <strong>panic</strong> stops the current thread, unwinding the stack and running destructors. Use it for <strong>bugs and broken invariants</strong>, not for errors a caller could handle (those return <code>Result</code>). <code>unwrap()</code> and <code>expect()</code> panic on <code>None</code>/<code>Err</code>; <code>expect("why")</code> documents the assumption.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">A panic in <code>main</code>'s thread ends the program with exit code 101</li><li class="note-item">Other threads' panics show up as <code>Err</code> from <code>join()</code></li><li class="note-item"><code>RUST_BACKTRACE=1</code> prints a stack trace</li><li class="note-item"><code>panic = "abort"</code> in Cargo.toml skips unwinding (smaller binary)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Panicking Macros</h2><pre><code class="language-rust">fn divide(a: i32, b: i32) -&gt; i32 {
+    if b == 0 { panic!("division by zero: {a}/{b}"); }
+    a / b
+}
+
+let v = vec![1, 2, 3];
+// let x = v[10];              // panic: index out of bounds: the len is 3…
+
+let port: u16 = "8080".parse().expect("PORT must be a number");
+let first = v.first().unwrap();             // fine when you just checked
+
+fn grade(n: u8) -&gt; char {
+    match n {
+        90..=100 =&gt; 'A',
+        0..=89 =&gt; 'B',
+        _ =&gt; unreachable!("score {n} out of range"),
+    }
+}
+fn later() -&gt; u32 { todo!("implement caching") }   // compiles, panics if called
+
+assert!(v.len() == 3, "expected 3 items, got {}", v.len());
+assert_eq!(divide(10, 2), 5);
+assert_ne!(port, 0);
+debug_assert!(v.windows(2).all(|w| w[0] &lt;= w[1]));   // debug builds only
+
+let r = std::panic::catch_unwind(|| divide(1, 0));
+println!("{}", r.is_err());                 // true (rarely needed)
+
+// Terminal:
+// $ RUST_BACKTRACE=1 cargo run
+// thread 'main' panicked at src/main.rs:2:17:
+// division by zero: 1/0
+
+// Cargo.toml
+// [profile.release]
+// panic = "abort"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>panic!</code> takes a format string like <code>println!</code></div><div class="explain-item"><code>expect</code> adds a message explaining why the value should exist</div><div class="explain-item"><code>unreachable!</code> marks branches that indicate a bug</div><div class="explain-item"><code>debug_assert!</code> is removed in release builds</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Go</strong> <code>panic</code> / <code>recover</code>, also for bugs only</li><li class="note-item"><strong>Java</strong> unchecked exceptions (<code>IllegalStateException</code>)</li><li class="note-item"><strong>Python</strong> <code>assert</code> and uncaught exceptions</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>unwrap()</code> on user input → return <code>Result</code> and use <code>?</code></li><li class="note-item"><code>unwrap()</code> on an invariant → <code>expect("reason it holds")</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Macros Table | Panics Implicitly Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-macros"><h2 class="section-title">Macros</h2><table><thead><tr><th>Macro</th><th>Use</th></tr></thead><tbody><tr><td>panic!(…)</td><td class="desc">Explicit bug</td></tr><tr><td>unreachable!()</td><td class="desc">Impossible branch</td></tr><tr><td>todo!()</td><td class="desc">Not written yet</td></tr><tr><td>unimplemented!()</td><td class="desc">Intentionally missing</td></tr><tr><td>assert! / assert_eq!</td><td class="desc">Check invariant</td></tr><tr><td>debug_assert!</td><td class="desc">Debug-only check</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-panics-implicitly"><h2 class="section-title">Panics Implicitly</h2><table><thead><tr><th>Code</th><th>When</th></tr></thead><tbody><tr><td>v[i]</td><td class="desc">Out of bounds</td></tr><tr><td>x / 0</td><td class="desc">Integer divide by zero</td></tr><tr><td>a + b</td><td class="desc">Overflow (debug)</td></tr><tr><td>opt.unwrap()</td><td class="desc">None</td></tr><tr><td>&amp;s[a..b]</td><td class="desc">Not a char boundary</td></tr><tr><td>RefCell::borrow_mut</td><td class="desc">Already borrowed</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using panics for validation errors</li><li class="note-item">Bare <code>unwrap()</code> hiding why a value must exist</li><li class="note-item">Relying on <code>catch_unwind</code> for control flow</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Write <code>expect</code> messages as the expected state: "config loaded"</li><li class="note-item">Ban <code>unwrap</code> in libraries with <code>clippy::unwrap_used</code></li><li class="note-item">Use <code>todo!()</code> to sketch code that still compiles</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">panic = bug</li><li class="note-item"><code>expect</code> &gt; <code>unwrap</code></li><li class="note-item"><code>unreachable!</code> / <code>todo!</code></li><li class="note-item"><code>RUST_BACKTRACE=1</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-040-lifetimes-structs-elision.html">Lifetimes — Structs &amp; Elision</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-042-option.html">Option&lt;T&gt;</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

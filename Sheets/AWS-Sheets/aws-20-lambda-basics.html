@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 20: Lambda Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Lambda Basics</h1>
+			<div class="sheet-desc">handler signature · runtimes · deploy a zip · <code>aws lambda invoke</code> · environment variables · memory &amp; timeout · function URLs</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Functions on AWS</h2><div class="description"><strong>AWS Lambda</strong> runs a <strong>handler</strong> when an event arrives: an API request, S3 upload, queue message, schedule or direct invoke. You choose a runtime (Python, Node.js, Java, .NET, Ruby, or custom / container), memory (CPU scales with it) and timeout. The function runs with an <strong>execution role</strong>. <strong>Function URLs</strong> give a dedicated HTTPS endpoint without API Gateway.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Code outside the handler runs once per execution environment: put clients there</li><li class="note-item">Environment variables configure the function (encrypted at rest)</li><li class="note-item">Synchronous, asynchronous and poll-based (event source mapping) invocations</li><li class="note-item">Arm64 (Graviton) is cheaper per GB-second</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Least-privilege execution role per function</li><li class="note-item">Function URLs: use <code>AWS_IAM</code> auth unless the endpoint must be public</li><li class="note-item">Keep secrets in Secrets Manager, not environment variables</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Timeout up to 15 minutes; memory 128 MB–10,240 MB</li><li class="note-item">Payload 6 MB synchronous; 1 MB asynchronous (raised from 256 KB in 2025)</li><li class="note-item">Zip package 50 MB direct upload / 250 MB unzipped; images up to 10 GB</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">handler.py</h2><pre><code class="language-python">import json, os, boto3
+s3 = boto3.client("s3")                  # created once per environment
+BUCKET = os.environ["BUCKET"]
+
+def handler(event, context):
+    body = json.loads(event.get("body") or "{}")
+    key = f"orders/{body['id']}.json"
+    s3.put_object(Bucket=BUCKET, Key=key, Body=json.dumps(body))
+    return {"statusCode": 201, "body": json.dumps({"key": key})}</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Create, Invoke, Expose</h2><pre><code class="language-bash">zip fn.zip handler.py
+aws lambda create-function --function-name orders --runtime python3.13 \
+    --architectures arm64 --handler handler.handler --zip-file fileb://fn.zip \
+    --role $LAMBDA_ROLE --memory-size 512 --timeout 10 \
+    --environment Variables={BUCKET=acme-orders}
+aws lambda invoke --function-name orders --cli-binary-format raw-in-base64-out \
+    --payload '{"body": "{\"id\": 42}"}' out.json &amp;&amp; cat out.json
+aws lambda update-function-code --function-name orders --zip-file fileb://fn.zip
+aws lambda create-function-url-config --function-name orders --auth-type AWS_IAM
+aws logs tail /aws/lambda/orders --follow</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The S3 client is reused across warm invocations</div><div class="explain-item">Arm64 and 512 MB keep cost low while giving enough CPU</div><div class="explain-item"><code>raw-in-base64-out</code> lets the CLI take a plain JSON payload</div><div class="explain-item">Logs go to the <code>/aws/lambda/&lt;name&gt;</code> log group</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> Azure Functions, triggers and bindings (az-20)</li><li class="note-item"><strong>GCP</strong> Cloud Run (gcp-20), Cloud Run functions (gcp-21)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Per request + GB-second; generous monthly free tier</li><li class="note-item">Arm64 is about 20% cheaper per GB-second</li><li class="note-item">More memory can be cheaper if it shortens run time</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Invocation Types Table | Runtimes Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-invocation-types"><h2 class="section-title">Invocation Types</h2><table><thead><tr><th>Type</th><th>Examples</th><th>Retries</th></tr></thead><tbody><tr><td>Synchronous</td><td class="kw">API Gateway, function URL, invoke</td><td class="kw">Caller retries</td></tr><tr><td>Asynchronous</td><td class="kw">S3, SNS, EventBridge</td><td class="kw">2 retries, then DLQ / destination</td></tr><tr><td>Event source mapping</td><td class="kw">SQS, Kinesis, DynamoDB Streams</td><td class="kw">Until success / expiry</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-runtimes"><h2 class="section-title">Runtimes</h2><table><thead><tr><th>Runtime</th><th>Identifier</th></tr></thead><tbody><tr><td>Python</td><td class="desc">python3.13</td></tr><tr><td>Node.js</td><td class="desc">nodejs22.x</td></tr><tr><td>Java</td><td class="desc">java21</td></tr><tr><td>.NET</td><td class="desc">dotnet8</td></tr><tr><td>Custom / Go / Rust</td><td class="desc">provided.al2023</td></tr><tr><td>Container</td><td class="desc">Image</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Initialize clients outside the handler</li><li class="note-item note-do"><strong>Do</strong> Configure DLQs or on-failure destinations for async invokes</li><li class="note-item note-dont"><strong>Don’t</strong> Use Lambda for long-running or always-busy workloads</li><li class="note-item note-dont"><strong>Don’t</strong> Open function URLs with <code>NONE</code> auth for internal APIs</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>sam local invoke</code> and <code>sam local start-api</code> run functions in Docker</li><li class="note-item">Unit-test the handler as a plain function with fake events</li><li class="note-item">LocalStack runs Lambda with other emulated services</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Alarms on errors, throttles and duration</li><li class="note-item">Reserved concurrency to protect downstream systems</li><li class="note-item">Execution role least privilege; secrets from Secrets Manager</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-19-choosing-compute.html">Choosing Compute</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-21-lambda-operations.html">Lambda Operations</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

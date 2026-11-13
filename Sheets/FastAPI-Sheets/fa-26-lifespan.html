@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 26: Lifespan Events</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Lifespan Events</h1>
+			<div class="sheet-desc">@asynccontextmanager · lifespan= · startup/shutdown · app.state · on_event (deprecated)</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes | Under the Hood -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">The <strong>lifespan</strong> function runs once when the app starts and once when it stops. Code before <code>yield</code> is <strong>startup</strong> (open DB pools, load ML models, create HTTP clients); code after is <strong>shutdown</strong> (close them). Store shared objects on <code>app.state</code> or yield a dict that becomes <code>request.state</code>.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Replaces <code>@app.on_event("startup")</code> / <code>("shutdown")</code></li><li class="note-item">Runs per worker process, not once per server</li><li class="note-item">Startup failure stops the server from starting</li><li class="note-item"><code>TestClient</code> runs lifespan only inside <code>with TestClient(app)</code></li></ul></section></div>
+				<div class="col" id="col-1-3"><section class="section-notes section-hood" id="hood"><h2 class="section-title">Under the Hood</h2><ul class="note-list"><li class="note-item">ASGI servers send <code>lifespan.startup</code> / <code>lifespan.shutdown</code> messages</li><li class="note-item">Starlette runs your context manager on those messages</li><li class="note-item">A yielded dict becomes the initial <code>request.state</code> for every request</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Shared Resources</h2><pre><code class="language-python">from contextlib import asynccontextmanager
+import httpx
+from fastapi import FastAPI, Request
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup
+    engine = create_async_engine(settings.database_url)
+    client = httpx.AsyncClient(timeout=10)
+    model = load_model("sentiment.bin")
+    yield {"client": client, "model": model}
+    # shutdown
+    await client.aclose()
+    await engine.dispose()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/score")
+async def score(text: str, request: Request):
+    model = request.state.model
+    return {"score": model.predict(text)}</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>@asynccontextmanager</code> — turns the generator into a lifespan</div><div class="explain-item">before <code>yield</code> — startup work</div><div class="explain-item"><code>yield {...}</code> — state shared with requests</div><div class="explain-item">after <code>yield</code> — shutdown cleanup</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — create resources in <code>create_app()</code>; no shutdown hook</li><li class="note-item">Django — <code>AppConfig.ready()</code> for startup code</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid <code>@app.on_event</code> · Prefer <code>lifespan=</code></li><li class="note-item">Avoid creating <code>httpx.AsyncClient()</code> per request · Prefer one in lifespan</li></ul></section></div>
+			</div>
+			<!-- Row 3: Jobs Table | State Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-jobs"><h2 class="section-title">Good Lifespan Jobs</h2><table><thead><tr><th>Startup</th><th>Shutdown</th></tr></thead><tbody><tr><td>create DB engine/pool</td><td class="desc">engine.dispose()</td></tr><tr><td>open HTTP client</td><td class="desc">client.aclose()</td></tr><tr><td>load ML model</td><td class="desc">free memory</td></tr><tr><td>connect Redis</td><td class="desc">close connection</td></tr><tr><td>validate settings</td><td class="desc">—</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-state"><h2 class="section-title">Where State Lives</h2><table><thead><tr><th>Option</th><th>Access</th></tr></thead><tbody><tr><td>yield dict</td><td class="desc">request.state.key</td></tr><tr><td>app.state.key = x</td><td class="desc">request.app.state.key</td></tr><tr><td>module global</td><td class="desc">import (avoid)</td></tr><tr><td>dependency</td><td class="desc">Depends(get_x)</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using a plain <code>TestClient(app)</code> without <code>with</code>: startup never runs</li><li class="note-item">Heavy startup in every worker multiplies memory use</li><li class="note-item">Mixing <code>lifespan=</code> with <code>on_event</code> handlers: the event handlers are ignored</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Wrap state access in a dependency so tests can override it</li><li class="note-item">Fail fast: check DB connectivity during startup</li><li class="note-item">Log startup and shutdown so deploys are easy to debug</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>lifespan</code> — startup before <code>yield</code>, shutdown after</li><li class="note-item"><code>yield {...}</code> — becomes <code>request.state</code></li><li class="note-item">per worker — runs in each process</li><li class="note-item">replaces <code>on_event</code></li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-25-apirouter-bigger-apps.html" class="nav-link prev" title="APIRouter &amp; Bigger Applications">APIRouter</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-27-middleware-cors.html" class="nav-link next">Middleware &amp; CORS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

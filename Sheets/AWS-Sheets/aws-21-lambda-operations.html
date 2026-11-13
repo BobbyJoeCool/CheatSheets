@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 21: Lambda Operations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Lambda Operations</h1>
+			<div class="sheet-desc">layers · versions &amp; aliases · reserved / provisioned concurrency · cold starts · SnapStart · container images · event source mappings</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Running Lambda in Production</h2><div class="description"><strong>Versions</strong> freeze code and config; <strong>aliases</strong> (e.g. <code>live</code>) point at versions and can split traffic for canaries. <strong>Reserved concurrency</strong> caps (and guarantees) a function's share; <strong>provisioned concurrency</strong> keeps environments warm to remove <strong>cold starts</strong>. <strong>SnapStart</strong> snapshots initialized environments for Java, Python and .NET. <strong>Layers</strong> share libraries; <strong>event source mappings</strong> poll SQS, Kinesis and streams.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Account concurrency is shared by all functions in a Region</li><li class="note-item">Alias routing configuration enables weighted canary releases</li><li class="note-item">Partial batch responses avoid retrying a whole SQS batch</li><li class="note-item">Lambda Powertools adds logging, tracing, idempotency helpers</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Default 1,000 concurrent executions per Region (adjustable)</li><li class="note-item">Up to 5 layers per function; 250 MB unzipped total</li><li class="note-item">Each function scales by up to 1,000 environments every 10 seconds</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Versions, Aliases, Concurrency, Queues</h2><pre><code class="language-bash">V=$(aws lambda publish-version --function-name orders \
+  --query Version --output text)
+aws lambda create-alias --function-name orders --name live --function-version $V
+# Canary: 10% of traffic to the new version
+aws lambda update-alias --function-name orders --name live \
+    --function-version $OLD \
+    --routing-config "AdditionalVersionWeights={\"$V\"=0.1}"
+
+aws lambda put-function-concurrency --function-name orders \
+    --reserved-concurrent-executions 50
+aws lambda put-provisioned-concurrency-config --function-name orders \
+    --qualifier live --provisioned-concurrent-executions 5
+
+aws lambda create-event-source-mapping --function-name orders \
+    --event-source-arn arn:aws:sqs:us-east-1:111122223333:orders \
+    --batch-size 10 --function-response-types ReportBatchItemFailures
+aws lambda publish-layer-version --layer-name common \
+    --zip-file fileb://layer.zip --compatible-runtimes python3.13
+aws lambda update-function-configuration --function-name orders \
+    --snap-start ApplyOn=PublishedVersions</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Callers invoke the <code>live</code> alias, not <code>$LATEST</code></div><div class="explain-item">Weights shift 10% of invocations to the new version</div><div class="explain-item">Reserved concurrency 50 protects the database from overload</div><div class="explain-item"><code>ReportBatchItemFailures</code> retries only the failed messages</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> App Service slots, Durable Functions, Functions plans (az-21)</li><li class="note-item"><strong>GCP</strong> Cloud Run revisions and jobs, Cloud Run functions (gcp-21)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Provisioned concurrency bills per hour even when idle</li><li class="note-item">SnapStart for Python / .NET bills for caching and restores; Java is free</li><li class="note-item">Reserved concurrency is free</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Concurrency Controls Table | Cold Start Fixes Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-concurrency-controls"><h2 class="section-title">Concurrency Controls</h2><table><thead><tr><th>Setting</th><th>Does</th></tr></thead><tbody><tr><td>Reserved</td><td class="desc">Max for this function (and guaranteed)</td></tr><tr><td>Provisioned</td><td class="desc">Pre-warmed environments</td></tr><tr><td>Maximum concurrency (SQS ESM)</td><td class="desc">Caps pollers per queue</td></tr><tr><td>Account limit</td><td class="desc">Shared Region pool</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-cold-start-fixes"><h2 class="section-title">Cold Start Fixes</h2><table><thead><tr><th>Fix</th><th>Effect</th></tr></thead><tbody><tr><td>Smaller package / fewer deps</td><td class="desc">Faster init</td></tr><tr><td>SnapStart</td><td class="desc">Restore from snapshot</td></tr><tr><td>Provisioned concurrency</td><td class="desc">Always warm</td></tr><tr><td>Arm64 + right memory</td><td class="desc">More CPU for init</td></tr><tr><td>Avoid VPC unless needed</td><td class="desc">Fewer network setup steps (now small)</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Deploy through aliases with canaries (CodeDeploy can automate)</li><li class="note-item note-do"><strong>Do</strong> Use partial batch responses for SQS</li><li class="note-item note-dont"><strong>Don’t</strong> Let one function consume the whole account concurrency</li><li class="note-item note-dont"><strong>Don’t</strong> Pay for provisioned concurrency on low-traffic internal jobs</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">SAM accelerate (<code>sam sync --watch</code>) for fast dev loops</li><li class="note-item">Lambda Powertools has test helpers</li><li class="note-item">Replay sample SQS events locally with <code>sam local invoke -e</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Aliases + gradual deployments with automatic rollback alarms</li><li class="note-item">Reserved concurrency on critical / dangerous functions</li><li class="note-item">Powertools logging, tracing and idempotency</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-20-lambda-basics.html">Lambda Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-22-api-gateway.html">API Gateway</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

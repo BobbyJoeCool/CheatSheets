@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 74: Resources &amp; use</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s74">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 74</div>
+			<h1>Resources &amp; use</h1>
+			<div class="sheet-desc"><code>use { }</code> · <code>AutoCloseable</code> · classpath resources · <code>this::class.java.getResource</code> · <code>Properties</code> files</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Closing Resources and Loading Bundled Files</h2><div class="description"><code>use { }</code> works on any <code>Closeable</code> or <code>AutoCloseable</code>: it runs the block and then closes the resource, even when an exception is thrown. <strong>Classpath resources</strong> are files packaged in <code>src/main/resources</code>; read them with <code>getResource</code> or <code>getResourceAsStream</code>, never with file paths.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>use</code> returns the block's result</li><li class="note-item">Nest <code>use</code> calls for several resources</li><li class="note-item">Resource paths start with <code>/</code> for the classpath root</li><li class="note-item">Resources inside a jar are not files: read them as streams</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">use and Resources</h2><pre><code class="language-kotlin">import java.util.Properties
+
+val count = File("data.csv").bufferedReader().use { r -&gt;
+    r.lineSequence().count()              // reader closed afterwards
+}
+
+FileInputStream("in.bin").use { input -&gt;
+    FileOutputStream("out.bin").use { output -&gt;
+        input.copyTo(output)              // both closed in reverse order
+    }
+}
+
+class Connection(val url: String) : AutoCloseable {
+    init { println("open $url") }
+    override fun close() = println("close $url")
+}
+Connection("db://x").use { println("query on ${it.url}") }
+// open db://x / query on db://x / close db://x
+
+// src/main/resources/config.properties
+object AppConfig {
+    private val props = Properties().apply {
+        AppConfig::class.java.getResourceAsStream("/config.properties")
+            ?.use { load(it) } ?: error("config.properties missing")
+    }
+    val dbUrl: String get() = props.getProperty("db.url")
+    val poolSize: Int get() = props.getProperty("db.pool", "5").toInt()
+}
+
+val template = javaClass.getResource("/templates/email.html")?.readText()</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>use</code> closes the reader once counting finishes</div><div class="explain-item">Nested <code>use</code> closes the output, then the input</div><div class="explain-item">Any class implementing <code>AutoCloseable</code> works with <code>use</code></div><div class="explain-item"><code>getResourceAsStream</code> works both from a folder and inside a jar</div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item">try-with-resources: <code>try (var r = Files.newBufferedReader(p)) { … }</code></li><li class="note-item"><code>getClass().getResourceAsStream("/config.properties")</code></li><li class="note-item"><code>Properties.load(InputStream)</code> is the same API</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item"><code>try { … } finally { x.close() }</code> → <code>x.use { }</code></li><li class="note-item"><code>File("src/main/resources/x")</code> → <code>getResource("/x")</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Use Table | Resources Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-use"><h2 class="section-title">use</h2><table><thead><tr><th>Item</th><th>Detail</th></tr></thead><tbody><tr><td>Works on</td><td class="desc">Closeable, AutoCloseable</td></tr><tr><td>Returns</td><td class="desc">Block result</td></tr><tr><td>Exception in block</td><td class="desc">Still closes</td></tr><tr><td>Exception in close</td><td class="desc">Added as suppressed</td></tr><tr><td>Several</td><td class="desc">Nest use blocks</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-resources"><h2 class="section-title">Resources</h2><table><thead><tr><th>Call</th><th>Gives</th></tr></thead><tbody><tr><td>getResource("/x")</td><td class="desc">URL?</td></tr><tr><td>getResourceAsStream("/x")</td><td class="desc">InputStream?</td></tr><tr><td>?.readText()</td><td class="desc">Text or null</td></tr><tr><td>Leading /</td><td class="desc">From classpath root</td></tr><tr><td>No leading /</td><td class="desc">Relative to class package</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Reading resources with <code>File</code> paths (breaks inside a jar)</li><li class="note-item">Forgetting the leading <code>/</code></li><li class="note-item">Not handling a null resource (missing file)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Wrap every stream, reader, socket and connection in <code>use</code></li><li class="note-item">Fail fast with <code>?: error("missing …")</code> for required resources</li><li class="note-item">Keep config in <code>src/main/resources</code> and override with env vars</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>use { }</code> — auto-close</li><li class="note-item"><code>AutoCloseable</code> — your types too</li><li class="note-item"><code>getResource("/x")</code> — bundled files</li><li class="note-item">null check — missing resource</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-73-kotlinx-serialization.html">JSON with kotlinx.serialization</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-75-packages-imports.html">Packages &amp; Imports</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

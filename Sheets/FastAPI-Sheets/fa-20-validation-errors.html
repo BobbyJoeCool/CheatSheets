@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 20: Validation Errors &amp; Error Formats</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Validation Errors &amp; Error Formats</h1>
+			<div class="sheet-desc">422 shape · RequestValidationError · override handler · jsonable_encoder · error envelopes</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">When input fails validation FastAPI raises <strong><code>RequestValidationError</code></strong> and returns <strong>422</strong> with a <code>detail</code> list: one entry per problem, each with <code>type</code>, <code>loc</code>, <code>msg</code> and <code>input</code>. You can override the handler to reshape errors into your API's standard <strong>error envelope</strong>, change the status to 400, or log bad requests.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>loc</code> starts with the source: <code>body</code>, <code>query</code>, <code>path</code>, <code>header</code></li><li class="note-item">Pydantic errors in your own code are <code>ValidationError</code> (500 if uncaught)</li><li class="note-item"><code>exc.errors()</code> gives the list; <code>exc.body</code> the raw body</li><li class="note-item"><code>jsonable_encoder</code> makes errors JSON-safe</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Custom Error Envelope</h2><pre><code class="language-python">from fastapi import Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+def envelope(code: str, message: str, fields=None, status=400):
+    return JSONResponse(status_code=status, content=jsonable_encoder(
+        {"error": {"code": code, "message": message, "fields": fields}}))
+
+@app.exception_handler(RequestValidationError)
+async def on_invalid(request: Request, exc: RequestValidationError):
+    fields = {".".join(map(str, e["loc"][1:])): e["msg"]
+              for e in exc.errors()}
+    return envelope("invalid_input", "Check the fields", fields, 422)
+
+@app.exception_handler(StarletteHTTPException)
+async def on_http(request: Request, exc: StarletteHTTPException):
+    return envelope(f"http_{exc.status_code}", str(exc.detail),
+                    status=exc.status_code)</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>exc.errors()</code> — list of error dicts</div><div class="explain-item"><code>loc[1:]</code> — drop <code>body</code> to get the field path</div><div class="explain-item"><code>jsonable_encoder</code> — converts dates, Decimals, sets</div><div class="explain-item">StarletteHTTPException handler — also catches unknown-route 404s</div><div class="explain-item">Every error now has one shape</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — return your own error JSON from <code>@app.errorhandler</code></li><li class="note-item">Django — DRF <code>EXCEPTION_HANDLER</code> setting</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid ad-hoc error shapes per route · Prefer one envelope everywhere</li><li class="note-item">Avoid echoing <code>input</code> for password fields · Prefer stripping sensitive inputs</li></ul></section></div>
+			</div>
+			<!-- Row 3: 422 Table | Types Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-422"><h2 class="section-title">Default 422 Entry</h2><table><thead><tr><th>Key</th><th>Example</th></tr></thead><tbody><tr><td>type</td><td class="desc">"missing"</td></tr><tr><td>loc</td><td class="desc">["body", "email"]</td></tr><tr><td>msg</td><td class="desc">"Field required"</td></tr><tr><td>input</td><td class="desc">{...}</td></tr><tr><td>ctx</td><td class="desc">{"ge": 1} (for limits)</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-types"><h2 class="section-title">Common Error Types</h2><table><thead><tr><th>type</th><th>Cause</th></tr></thead><tbody><tr><td>missing</td><td class="desc">required field absent</td></tr><tr><td>int_parsing</td><td class="desc">not an integer</td></tr><tr><td>string_too_short</td><td class="desc">min_length</td></tr><tr><td>greater_than_equal</td><td class="desc">ge rule</td></tr><tr><td>value_error</td><td class="desc">your ValueError</td></tr><tr><td>extra_forbidden</td><td class="desc">unknown key</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Overriding the 422 handler and dropping the field locations clients rely on</li><li class="note-item">Registering for FastAPI's <code>HTTPException</code> only: route 404s use Starlette's</li><li class="note-item">Logging full request bodies with passwords</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Version your error format with the API</li><li class="note-item">Use RFC 9457 Problem Details if you want a standard shape</li><li class="note-item">Reuse FastAPI's default handlers: <code>from fastapi.exception_handlers import ...</code></li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">422 — <code>detail</code> list of <code>type/loc/msg</code></li><li class="note-item"><code>RequestValidationError</code> — override to reshape</li><li class="note-item">Starlette <code>HTTPException</code> — catch all HTTP errors</li><li class="note-item">one envelope — predictable clients</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-19-httpexception-handlers.html" class="nav-link prev" title="HTTPException &amp; Exception Handlers">HTTPException</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-21-depends-basics.html" class="nav-link next">Depends Basics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

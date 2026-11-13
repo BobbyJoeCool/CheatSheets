@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 099: Web Servers with Axum</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s099">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 099</div>
+			<h1>Web Servers with Axum</h1>
+			<div class="sheet-desc"><code>Router::new().route()</code> · handlers · extractors <code>Path</code> / <code>Query</code> / <code>Json</code> / <code>State</code> · <code>IntoResponse</code> · <code>TcpListener</code> · tower middleware</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">HTTP Services</h2><div class="description"><strong>Axum</strong> (from the Tokio team) builds web services from async <strong>handler</strong> functions. Handler arguments are <strong>extractors</strong> that parse the request (path params, query strings, JSON bodies, shared state), and return values implement <code>IntoResponse</code>. Middleware comes from the tower ecosystem, such as <code>tower-http</code> for tracing, CORS and compression.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>cargo add axum tokio -F tokio/full serde -F serde/derive</code></li><li class="note-item">Axum 0.8 path syntax: <code>/users/{id}</code></li><li class="note-item">The body extractor (<code>Json</code>) must be the last argument</li><li class="note-item">Share state with <code>with_state</code> and <code>State&lt;T&gt;</code> (T: Clone)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">An Axum Service</h2><pre><code class="language-rust">use axum::{extract::{Path, Query, State}, http::StatusCode,
+           response::IntoResponse, routing::get, Json, Router};
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone, Default)]
+struct AppState { todos: Arc&lt;Mutex&lt;Vec&lt;Todo&gt;&gt;&gt; }
+#[derive(Clone, Serialize, Deserialize)]
+struct Todo { id: u32, title: String }
+#[derive(Deserialize)]
+struct Paging { limit: Option&lt;usize&gt; }
+async fn list(State(s): State&lt;AppState&gt;, Query(p): Query&lt;Paging&gt;)
+    -&gt; Json&lt;Vec&lt;Todo&gt;&gt; {
+    let todos = s.todos.lock().unwrap();
+    Json(todos.iter().take(p.limit.unwrap_or(50)).cloned().collect())
+}
+async fn get_one(State(s): State&lt;AppState&gt;, Path(id): Path&lt;u32&gt;)
+    -&gt; impl IntoResponse {
+    match s.todos.lock().unwrap().iter().find(|t| t.id == id) {
+        Some(t) =&gt; Ok(Json(t.clone())),
+        None =&gt; Err((StatusCode::NOT_FOUND, "no such todo")),
+    }
+}
+async fn create(State(s): State&lt;AppState&gt;, Json(t): Json&lt;Todo&gt;)
+    -&gt; impl IntoResponse {
+    s.todos.lock().unwrap().push(t.clone());
+    (StatusCode::CREATED, Json(t))
+}
+
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route("/todos", get(list).post(create))
+        .route("/todos/{id}", get(get_one))
+        .with_state(AppState::default());
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Routes map paths and methods to handler functions</div><div class="explain-item">Extractors like <code>Path(id)</code> destructure in the parameter list</div><div class="explain-item">Tuples of (StatusCode, body) are valid responses</div><div class="explain-item"><code>with_state</code> makes <code>AppState</code> available to every handler</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Python</strong> FastAPI (typed params ≈ extractors)</li><li class="note-item"><strong>JavaScript</strong> Express / Hono route handlers</li><li class="note-item"><strong>Java</strong> Spring <code>@GetMapping</code> + <code>@PathVariable</code>; <strong>Go</strong> net/http + chi</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item">parsing <code>req.uri()</code> by hand → <code>Path</code> / <code>Query</code> extractors</li><li class="note-item"><code>std::sync::Mutex</code> held across <code>.await</code> → lock, copy, drop, then await</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Extractors Table | Responses Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-extractors"><h2 class="section-title">Extractors</h2><table><thead><tr><th>Extractor</th><th>Gets</th></tr></thead><tbody><tr><td>Path&lt;T&gt;</td><td class="desc">URL params /{id}</td></tr><tr><td>Query&lt;T&gt;</td><td class="desc">?key=value</td></tr><tr><td>Json&lt;T&gt;</td><td class="desc">JSON body (last)</td></tr><tr><td>Form&lt;T&gt;</td><td class="desc">Form body</td></tr><tr><td>State&lt;T&gt;</td><td class="desc">Shared state</td></tr><tr><td>HeaderMap</td><td class="desc">Headers</td></tr><tr><td>Extension&lt;T&gt;</td><td class="desc">Middleware data</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-responses"><h2 class="section-title">Responses</h2><table><thead><tr><th>Return</th><th>Becomes</th></tr></thead><tbody><tr><td>&amp;str / String</td><td class="desc">text/plain</td></tr><tr><td>Json(v)</td><td class="desc">application/json</td></tr><tr><td>StatusCode</td><td class="desc">Empty body</td></tr><tr><td>(StatusCode, body)</td><td class="desc">Status + body</td></tr><tr><td>Result&lt;A, B&gt;</td><td class="desc">Either</td></tr><tr><td>Html(s)</td><td class="desc">text/html</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Putting <code>Json&lt;T&gt;</code> before other extractors (compile error)</li><li class="note-item">Old <code>/:id</code> path syntax with Axum 0.8 (now <code>/{id}</code>)</li><li class="note-item">Long-running blocking work inside handlers</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add <code>tower_http::trace::TraceLayer</code> for request logs</li><li class="note-item">Return <code>Result&lt;T, AppError&gt;</code> with <code>impl IntoResponse for AppError</code></li><li class="note-item">Test routers with <code>tower::ServiceExt::oneshot</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Router</code> + <code>.route()</code></li><li class="note-item">extractors in parameters</li><li class="note-item"><code>IntoResponse</code> returns</li><li class="note-item">state via <code>with_state</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-098-reqwest-http.html">HTTP Clients with reqwest</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-100-logging-tracing.html">Logging with log &amp; tracing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Kotlin — Sheet 43: inline &amp; reified</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/kt-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s43">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 43</div>
+			<h1>inline &amp; reified</h1>
+			<div class="sheet-desc"><code>inline fun</code> · <code>noinline</code> · <code>crossinline</code> · non-local returns · <code>reified T</code> · how <code>filterIsInstance&lt;T&gt;()</code> works</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Under the JVM -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Zero-Cost Lambdas and Real Generics</h2><div class="description">An <code>inline</code> function has its body, and the lambdas passed to it, copied into each call site, so no function object is created. That also allows <strong>non-local returns</strong> from the lambda. Inline functions can declare <code>reified</code> type parameters, which keep the actual type at runtime, so <code>is T</code> and <code>T::class</code> work.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Most collection functions (<code>map</code>, <code>filter</code>, <code>forEach</code>) are inline</li><li class="note-item"><code>noinline</code> keeps one lambda as a real object (to store or pass on)</li><li class="note-item"><code>crossinline</code> forbids non-local returns from a lambda</li><li class="note-item">Only inline small functions; big bodies bloat code</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-jvm" id="jvm"><h2 class="section-title">Under the JVM</h2><ul class="note-list"><li class="note-item">The inline function body is copied into the caller's bytecode</li><li class="note-item">Reified type arguments are written in as concrete classes at each call site</li><li class="note-item">Inline functions cannot be called from Java with reified types (they need Kotlin's compiler)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Java Equivalent + Idiomatic Kotlin -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">inline and reified</h2><pre><code class="language-kotlin">inline fun &lt;T&gt; measure(label: String, block: () -&gt; T): T {
+    val start = System.nanoTime()
+    val result = block()                     // block is inlined, no object
+    println("$label: ${(System.nanoTime() - start) / 1000} µs")
+    return result
+}
+
+fun findFirstNegative(nums: List&lt;Int&gt;): Int? {
+    nums.forEach { if (it &lt; 0) return it }  // non-local return
+    return null
+}
+
+inline fun &lt;reified T&gt; List&lt;Any&gt;.ofType(): List&lt;T&gt; =
+    filter { it is T }.map { it as T }
+val mixed = listOf(1, "a", 2.5, "b")
+println(mixed.ofType&lt;String&gt;())              // [a, b]
+println(mixed.filterIsInstance&lt;Double&gt;())    // [2.5] (stdlib, also reified)
+
+inline fun &lt;reified T : Any&gt; typeName() = T::class.simpleName
+println(typeName&lt;LocalDate&gt;())               // LocalDate
+
+inline fun runTwice(first: () -&gt; Unit, noinline second: () -&gt; Unit) {
+    first()
+    scheduler.post(second)                   // stored, so it must be noinline
+}
+
+inline fun onClick(crossinline action: () -&gt; Unit) {
+    button.setListener { action() }          // runs later: no non-local return
+}
+
+// Gson / Jackson style:
+inline fun &lt;reified T&gt; Gson.fromJson(json: String): T =
+    fromJson(json, T::class.java)</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>measure</code> adds timing without allocating a lambda object</div><div class="explain-item"><code>return it</code> leaves <code>findFirstNegative</code> because <code>forEach</code> is inline</div><div class="explain-item"><code>reified T</code> makes <code>it is T</code> and <code>T::class</code> legal</div><div class="explain-item"><code>noinline</code> and <code>crossinline</code> handle lambdas that run later or elsewhere</div></div></section><section class="section-notes section-java" id="java"><h2 class="section-title">Java Equivalent</h2><ul class="note-list"><li class="note-item">Lambdas always allocate (or are cached) objects in Java</li><li class="note-item">Generics are erased: you must pass <code>Class&lt;T&gt; type</code> explicitly</li><li class="note-item"><code>gson.fromJson(json, User.class)</code></li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Idiomatic Kotlin</h2><ul class="note-list"><li class="note-item">passing <code>Class&lt;T&gt;</code> parameters → <code>inline fun &lt;reified T&gt;</code></li><li class="note-item">marking big functions <code>inline</code> → only small higher-order functions</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Modifiers Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-modifiers"><h2 class="section-title">Modifiers</h2><table><thead><tr><th>Modifier</th><th>Effect</th></tr></thead><tbody><tr><td>inline</td><td class="desc">Copy body + lambdas to call site</td></tr><tr><td>noinline</td><td class="desc">Keep this lambda as an object</td></tr><tr><td>crossinline</td><td class="desc">Inlined, but no non-local return</td></tr><tr><td>reified</td><td class="desc">Type available at runtime</td></tr><tr><td>inline class (old)</td><td class="desc">Now @JvmInline value class</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Inlining large functions with no lambda parameters (warning, no benefit)</li><li class="note-item">Storing an inline lambda in a field without <code>noinline</code></li><li class="note-item">Expecting reified types to work from Java callers</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>reified</code> for JSON, DI and logging helpers that need <code>T::class</code></li><li class="note-item">Read the "expected performance impact is insignificant" warning: it means remove <code>inline</code></li><li class="note-item">Prefer stdlib inline functions (<code>map</code>, <code>let</code>) over hand-written loops</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>inline</code> — no lambda objects</li><li class="note-item">non-local <code>return</code> — allowed</li><li class="note-item"><code>reified T</code> — runtime type</li><li class="note-item"><code>noinline</code> / <code>crossinline</code></li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="kt-42-higher-order-function-types.html">Higher-Order Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Kotlin Reference · 95 Sheets</a>
+				<a class="nav-link next" href="kt-44-scope-functions.html">Scope Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+	</body>
+</html>

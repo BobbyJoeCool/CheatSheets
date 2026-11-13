@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Google Cloud — Sheet 39: Deploying to Google Cloud</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/gcp-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s39">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 39</div>
+			<h1>Deploying to Google Cloud</h1>
+			<div class="sheet-desc"><code>google-github-actions/auth</code> (WIF) · Cloud Build &amp; <code>cloudbuild.yaml</code> · Cloud Deploy pipelines · Cloud Run canary via traffic splitting · Binary Authorization · labels strategy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">CI/CD Into Google Cloud</h2><div class="description">From GitHub Actions, authenticate with <code>google-github-actions/auth</code> using <strong>Workload Identity Federation</strong> (sheet 07), then build and deploy. <strong>Cloud Build</strong> runs build steps defined in <code>cloudbuild.yaml</code> with triggers from GitHub or other repos. <strong>Cloud Deploy</strong> promotes releases through targets (dev → staging → prod) with approvals and canary strategies for Cloud Run and GKE.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>id-token: write</code> permission is required for WIF in GitHub Actions</li><li class="note-item">Build once, promote the same image digest through environments</li><li class="note-item">Cloud Deploy supports canary percentages and verification jobs</li><li class="note-item">Labels like <code>app</code>, <code>env</code>, <code>team</code> tie deployments to costs</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / Azure Equivalent + Cost Check + Security Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">.github/workflows/deploy.yml</h2><pre><code class="language-yaml">on: { push: { branches: [main] } }
+permissions: { contents: read, id-token: write }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      IMG: us-central1-docker.pkg.dev/shop-prod-4821/apps/api:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: deploy@shop-prod-4821.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+      - run: docker build -t "$IMG" . &amp;&amp; docker push "$IMG"
+      - run: &gt;
+          gcloud run deploy api --image="$IMG" --region=us-central1
+          --no-traffic --tag=canary</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">cloudbuild.yaml</h2><pre><code class="language-yaml">steps:
+  - name: gcr.io/cloud-builders/docker
+    args: [build, -t, "$_IMG:$SHORT_SHA", .]
+  - name: gcr.io/cloud-builders/docker
+    args: [push, "$_IMG:$SHORT_SHA"]
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args: [deploy, releases, create, "rel-$SHORT_SHA",
+           --delivery-pipeline=shop, --region=us-central1,
+           "--images=api=$_IMG:$SHORT_SHA"]
+substitutions:
+  _IMG: us-central1-docker.pkg.dev/$PROJECT_ID/apps/api</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The job gets a GitHub OIDC token and exchanges it via WIF</div><div class="explain-item">The new revision deploys with no traffic under a <code>canary</code> tag</div><div class="explain-item">Cloud Build builds, pushes and creates a Cloud Deploy release</div><div class="explain-item">Cloud Deploy then promotes the release through its targets</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / Azure Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> GitHub OIDC role, CodePipeline / CodeDeploy (aws-39)</li><li class="note-item"><strong>Azure</strong> azure/login with OIDC, Azure Pipelines (az-39)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Cloud Build: free build minutes each month, then per build-minute by machine type</li><li class="note-item">Cloud Deploy: per active delivery pipeline (first one free)</li><li class="note-item">GitHub-hosted runners bill on GitHub, not Google Cloud</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">WIF provider condition pinned to the repository and branch / environment</li><li class="note-item">Deploy service account with only run / artifact roles</li><li class="note-item">Binary Authorization to block unsigned or unscanned images</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Pipeline Options Table | Rollout Strategies Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-pipeline-options"><h2 class="section-title">Pipeline Options</h2><table><thead><tr><th>Option</th><th>Use</th></tr></thead><tbody><tr><td>GitHub Actions + WIF</td><td class="desc">Code already on GitHub</td></tr><tr><td>Cloud Build triggers</td><td class="desc">Builds inside Google Cloud</td></tr><tr><td>Cloud Deploy</td><td class="desc">Promotion, approvals, canary</td></tr><tr><td>Config Sync / Argo CD</td><td class="desc">GitOps for GKE</td></tr><tr><td>Infra Manager</td><td class="desc">Terraform deployments</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-rollout-strategies"><h2 class="section-title">Rollout Strategies</h2><table><thead><tr><th>Strategy</th><th>How</th></tr></thead><tbody><tr><td>Cloud Run traffic split</td><td class="desc">Tags + percentages</td></tr><tr><td>Cloud Deploy canary</td><td class="desc">10% → 50% → 100% phases</td></tr><tr><td>GKE rolling update</td><td class="desc">Deployment strategy</td></tr><tr><td>MIG canary</td><td class="desc">Second template at %</td></tr><tr><td>Blue / green</td><td class="desc">Switch LB backend or traffic</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Build once and deploy by digest everywhere</li><li class="note-item note-do"><strong>Do</strong> Gate production with GitHub environments or Cloud Deploy approvals</li><li class="note-item note-dont"><strong>Don’t</strong> Store service account JSON keys as GitHub secrets</li><li class="note-item note-dont"><strong>Don’t</strong> Rebuild images separately for each environment</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>act</code> runs GitHub workflows locally (no real OIDC)</li><li class="note-item"><code>cloud-build-local</code> is retired: test steps with Docker directly</li><li class="note-item">Skaffold renders and tests Cloud Deploy manifests</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Keyless CI with WIF and narrow conditions</li><li class="note-item">Canary + automatic rollback on alerts</li><li class="note-item">Deploy history auditable (Cloud Deploy / audit logs)</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="gcp-38-cloud-logging-trace.html">Cloud Logging &amp; Trace</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Google Cloud Reference · 42 Sheets</a>
+				<a class="nav-link next" href="gcp-40-vertex-ai-gemini.html">Agent Platform (Vertex AI) &amp; Gemini</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>

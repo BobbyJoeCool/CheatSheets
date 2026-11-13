@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 26: Azure Container Apps</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s26">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 26</div>
+			<h1>Azure Container Apps</h1>
+			<div class="sheet-desc">environments · revisions &amp; traffic splitting · ingress · scale rules (KEDA) · Dapr · jobs · <code>az containerapp up</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check + Limits & Quotas -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Serverless Containers</h2><div class="description"><strong>Azure Container Apps</strong> runs containers without managing Kubernetes. Apps live in an <strong>environment</strong> (a shared network and logging boundary). Each deploy creates a <strong>revision</strong>; in multiple-revision mode you can split traffic for canary releases. <strong>Scale rules</strong> (powered by KEDA) scale on HTTP concurrency, queues, events or CPU, including to zero. <strong>Jobs</strong> run scheduled or event-driven tasks.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Ingress can be external or internal to the environment</li><li class="note-item">Built-in Dapr adds service invocation, pub/sub and state APIs</li><li class="note-item">Secrets can reference Key Vault via managed identity</li><li class="note-item">Workload profiles add dedicated hardware options to the consumption model</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Use internal ingress for back-end services</li><li class="note-item">Pull images and read secrets with managed identity (no registry passwords)</li><li class="note-item">Deploy into your own VNet for private networking</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Up to 1,000 replicas per revision</li><li class="note-item">Consumption replicas: up to 4 vCPU / 8 GiB each</li><li class="note-item">Environment core quotas per region; request increases for large fleets</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + AWS / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Environment, App, Revisions, Job</h2><pre><code class="language-bash">az containerapp env create -g rg-app -n cae-shop -l eastus2 \
+    --infrastructure-subnet-resource-id $SUBNET_ACA
+
+az containerapp create -g rg-app -n api --environment cae-shop \
+    --image shopacr.azurecr.io/api:1.4.0 \
+    --registry-server shopacr.azurecr.io --registry-identity $MI_ID \
+    --user-assigned $MI_ID --ingress external --target-port 8080 \
+    --min-replicas 0 --max-replicas 20 \
+    --scale-rule-name http --scale-rule-type http \
+    --scale-rule-http-concurrency 50 \
+    --secrets "db-pass=keyvaultref:$SECRET_URI,identityref:$MI_ID" \
+    --env-vars DB_PASSWORD=secretref:db-pass
+
+# Canary: two revisions, 90/10 split
+az containerapp revision set-mode -g rg-app -n api --mode multiple
+az containerapp update -g rg-app -n api --image shopacr.azurecr.io/api:1.5.0
+az containerapp ingress traffic set -g rg-app -n api \
+    --revision-weight api--v14=90 latest=10
+
+# Scheduled job
+az containerapp job create -g rg-app -n nightly --environment cae-shop \
+    --trigger-type Schedule --cron-expression "0 2 * * *" \
+    --image shopacr.azurecr.io/batch:1.0 --replica-timeout 1800</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The environment joins your VNet through a delegated subnet</div><div class="explain-item">Managed identity pulls the image and resolves the Key Vault secret</div><div class="explain-item">HTTP concurrency of 50 adds a replica per 50 concurrent requests</div><div class="explain-item">Traffic weights shift users between revisions gradually</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> ECS on Fargate, App Runner (aws-26)</li><li class="note-item"><strong>GCP</strong> Cloud Run services and jobs (gcp-20, gcp-21)</li><li class="note-item">Container Apps ≈ Cloud Run with built-in Dapr and KEDA</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Consumption: per vCPU-second and GiB-second with a monthly free grant</li><li class="note-item">Scale to zero means no compute charge when idle</li><li class="note-item">Dedicated workload profiles bill per node like VMs</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Scale Rules Table | Commands Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-scale-rules"><h2 class="section-title">Scale Rules</h2><table><thead><tr><th>Rule</th><th>Scales On</th></tr></thead><tbody><tr><td>http</td><td class="desc">Concurrent requests</td></tr><tr><td>tcp</td><td class="desc">Concurrent connections</td></tr><tr><td>azure-servicebus</td><td class="desc">Queue length</td></tr><tr><td>azure-queue</td><td class="desc">Storage queue length</td></tr><tr><td>custom (KEDA)</td><td class="desc">Any KEDA scaler</td></tr><tr><td>cpu / memory</td><td class="desc">Utilization (not to zero)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-commands"><h2 class="section-title">Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td>az containerapp up</td><td class="desc">Build / create in one step</td></tr><tr><td>az containerapp logs show --follow</td><td class="desc">Stream logs</td></tr><tr><td>az containerapp exec</td><td class="desc">Shell into a replica</td></tr><tr><td>az containerapp revision list</td><td class="desc">Revisions</td></tr><tr><td>az containerapp job start</td><td class="desc">Run a job now</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use multiple-revision mode for canaries and instant rollback</li><li class="note-item note-do"><strong>Do</strong> Keep min replicas at 1 for latency-sensitive APIs</li><li class="note-item note-dont"><strong>Don’t</strong> Store registry passwords as secrets when managed identity works</li><li class="note-item note-dont"><strong>Don’t</strong> Expose internal services with external ingress</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Run the same image with <code>docker run -p 8080:8080</code></li><li class="note-item">Dapr CLI: <code>dapr run</code> emulates sidecar APIs locally</li><li class="note-item">Docker Compose for multi-container local stacks</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Managed identity for registry and secrets</li><li class="note-item">VNet-integrated environment with internal ingress for back ends</li><li class="note-item">Health probes, min replicas and alerts set</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-25-container-registry.html">Azure Container Registry</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-27-aks.html">AKS</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

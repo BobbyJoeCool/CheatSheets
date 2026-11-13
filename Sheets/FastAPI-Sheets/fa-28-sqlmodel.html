@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 28: SQLModel</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>SQLModel</h1>
+			<div class="sheet-desc">SQLModel, table=True · Field(primary_key=True) · create_engine · Session · select() · table vs data models</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>SQLModel</strong> (by FastAPI's author) merges Pydantic and SQLAlchemy: one class can be both a validated model and a database table. Use <code>table=True</code> for real tables and plain <code>SQLModel</code> classes for API schemas that inherit shared fields. Under the hood it is SQLAlchemy, so its sessions and <code>select()</code> work as usual.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>pip install sqlmodel</code></li><li class="note-item"><code>table=True</code> classes are tables; others are just schemas</li><li class="note-item"><code>create_all()</code> is fine for demos; use Alembic in real apps</li><li class="note-item">SQLite needs <code>check_same_thread=False</code> with FastAPI</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Table + Schemas + Route</h2><pre><code class="language-python">from sqlmodel import Field, Session, SQLModel, create_engine, select
+
+class TodoBase(SQLModel):
+    title: str = Field(index=True, max_length=100)
+    done: bool = False
+
+class Todo(TodoBase, table=True):            # DB table
+    id: int | None = Field(default=None, primary_key=True)
+    owner_id: int = Field(foreign_key="user.id")
+
+class TodoCreate(TodoBase): pass             # API input
+class TodoRead(TodoBase): id: int            # API output
+
+engine = create_engine("sqlite:///todos.db",
+                       connect_args={"check_same_thread": False})
+SQLModel.metadata.create_all(engine)
+
+@app.get("/todos", response_model=list[TodoRead])
+def list_todos(done: bool | None = None):
+    with Session(engine) as s:
+        stmt = select(Todo)
+        if done is not None:
+            stmt = stmt.where(Todo.done == done)
+        return s.exec(stmt).all()</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>TodoBase</code> — shared fields, no table</div><div class="explain-item"><code>table=True</code> — real table; <code>id</code> is the primary key</div><div class="explain-item"><code>TodoCreate</code> / <code>TodoRead</code> — input and output schemas</div><div class="explain-item"><code>select(Todo).where(...)</code> — typed query</div><div class="explain-item"><code>s.exec(stmt).all()</code> — run and fetch rows</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — Flask-SQLAlchemy <code>db.Model</code> (sheet 54)</li><li class="note-item">Django — <code>models.Model</code> with the Django ORM</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid returning <code>table=True</code> models with secret columns · Prefer a <code>Read</code> schema</li><li class="note-item">Avoid <code>create_all()</code> in production · Prefer Alembic migrations</li></ul></section></div>
+			</div>
+			<!-- Row 3: Field Table | Session Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-field"><h2 class="section-title">Field() for Tables</h2><table><thead><tr><th>Arg</th><th>Effect</th></tr></thead><tbody><tr><td>primary_key=True</td><td class="desc">PK column</td></tr><tr><td>foreign_key="user.id"</td><td class="desc">FK</td></tr><tr><td>index=True</td><td class="desc">create index</td></tr><tr><td>unique=True</td><td class="desc">unique constraint</td></tr><tr><td>nullable=False</td><td class="desc">NOT NULL</td></tr><tr><td>sa_column=</td><td class="desc">raw SQLAlchemy column</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-session"><h2 class="section-title">Session Calls</h2><table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td>s.add(obj)</td><td class="desc">stage insert/update</td></tr><tr><td>s.commit()</td><td class="desc">write</td></tr><tr><td>s.refresh(obj)</td><td class="desc">reload (get id)</td></tr><tr><td>s.get(Todo, 7)</td><td class="desc">by primary key</td></tr><tr><td>s.exec(select(...))</td><td class="desc">query</td></tr><tr><td>s.delete(obj)</td><td class="desc">stage delete</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Expecting <code>table=True</code> models to validate on construction: they skip validation for speed</li><li class="note-item">Forgetting <code>s.refresh(obj)</code> and returning an object with <code>id=None</code></li><li class="note-item">Sharing one <code>Session</code> across requests</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Provide the session through a yield dependency (sheet 23)</li><li class="note-item">Use <code>TodoUpdate</code> with all-optional fields for PATCH</li><li class="note-item">Drop to SQLAlchemy when SQLModel lacks a feature; both mix fine</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>SQLModel, table=True</code> — model + table</li><li class="note-item">Base / Create / Read — shared + API schemas</li><li class="note-item"><code>Session</code> + <code>select()</code> — SQLAlchemy underneath</li><li class="note-item">Alembic — migrations for real apps</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-27-middleware-cors.html" class="nav-link prev">Middleware &amp; CORS</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-29-sqlalchemy.html" class="nav-link next">SQLAlchemy 2.0</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

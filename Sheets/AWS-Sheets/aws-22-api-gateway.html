@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 22: API Gateway</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>API Gateway</h1>
+			<div class="sheet-desc">HTTP API vs REST API · routes &amp; integrations · stages · Lambda / JWT authorizers · CORS · throttling</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Security Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Managed APIs in Front of Your Code</h2><div class="description"><strong>API Gateway</strong> exposes HTTPS APIs backed by Lambda, HTTP endpoints or AWS services. <strong>HTTP APIs</strong> are cheaper, faster and simpler, with built-in JWT authorizers and CORS. <strong>REST APIs</strong> add request validation, usage plans with API keys, caching, WAF and private endpoints. <strong>Stages</strong> deploy versions; throttling protects back ends.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">WebSocket APIs handle two-way connections</li><li class="note-item">Custom domains map to stages with ACM certificates</li><li class="note-item">Usage plans + API keys meter clients (keys are not authentication)</li><li class="note-item">Default endpoint can be disabled when using a custom domain</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Authenticate with JWT (Cognito / OIDC) or IAM authorizers</li><li class="note-item">Attach AWS WAF to REST APIs (or front HTTP APIs with CloudFront + WAF)</li><li class="note-item">Disable the default execute-api endpoint when a custom domain is used</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">HTTP API With Lambda and JWT Auth</h2><pre><code class="language-bash">API=$(aws apigatewayv2 create-api --name shop --protocol-type HTTP \
+  --cors-configuration AllowOrigins=https://shop.acme.com,AllowMethods=POST \
+  --query ApiId --output text)
+INT=$(aws apigatewayv2 create-integration --api-id $API \
+  --integration-type AWS_PROXY --integration-uri $FN_ARN \
+  --payload-format-version 2.0 --query IntegrationId --output text)
+AUTH=$(aws apigatewayv2 create-authorizer --api-id $API --name jwt \
+  --authorizer-type JWT --identity-source '$request.header.Authorization' \
+  --jwt-configuration Audience=shop-api,Issuer=$COGNITO_ISSUER_URL \
+  --query AuthorizerId --output text)
+aws apigatewayv2 create-route --api-id $API --route-key "POST /orders" \
+    --target integrations/$INT --authorization-type JWT --authorizer-id $AUTH
+aws apigatewayv2 create-stage --api-id $API --stage-name '$default' \
+    --auto-deploy \
+    --default-route-settings ThrottlingBurstLimit=100,ThrottlingRateLimit=50
+aws lambda add-permission --function-name orders --statement-id apigw \
+    --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
+    --source-arn "arn:aws:execute-api:us-east-1:111122223333:$API/*"</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">HTTP APIs set CORS in one flag</div><div class="explain-item">Payload format 2.0 is the simpler event shape for Lambda</div><div class="explain-item">The JWT authorizer validates Cognito tokens before Lambda runs</div><div class="explain-item">Lambda needs a resource policy allowing API Gateway to invoke it</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> API Management (az-22)</li><li class="note-item"><strong>GCP</strong> API Gateway, Apigee (gcp-22)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">HTTP APIs cost much less per million requests than REST APIs</li><li class="note-item">REST API caching bills hourly by cache size</li><li class="note-item">Throttle to stop runaway clients from running up Lambda costs</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Http Api Vs Rest Api Table | Authorizers Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-http-api-vs-rest-api"><h2 class="section-title">HTTP API vs REST API</h2><table><thead><tr><th>Feature</th><th>HTTP API</th><th>REST API</th></tr></thead><tbody><tr><td>Price</td><td class="kw">Lower</td><td class="kw">Higher</td></tr><tr><td>JWT authorizer</td><td class="kw">Built in</td><td class="kw">Via Lambda / Cognito</td></tr><tr><td>Usage plans / API keys</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>Caching</td><td class="kw">No</td><td class="kw">Yes</td></tr><tr><td>WAF</td><td class="kw">No (use CloudFront)</td><td class="kw">Yes</td></tr><tr><td>Private API</td><td class="kw">No</td><td class="kw">Yes</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-authorizers"><h2 class="section-title">Authorizers</h2><table><thead><tr><th>Type</th><th>Use</th></tr></thead><tbody><tr><td>JWT</td><td class="desc">OIDC / Cognito tokens (HTTP API)</td></tr><tr><td>Cognito user pool</td><td class="desc">REST API</td></tr><tr><td>Lambda</td><td class="desc">Custom logic</td></tr><tr><td>IAM (SigV4)</td><td class="desc">Service-to-service</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Start with HTTP APIs unless you need REST features</li><li class="note-item note-do"><strong>Do</strong> Set throttling on every stage</li><li class="note-item note-dont"><strong>Don’t</strong> Rely on API keys as authentication</li><li class="note-item note-dont"><strong>Don’t</strong> Return stack traces from integrations</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>sam local start-api</code> runs routes against local Lambdas</li><li class="note-item">Test JWTs with a local OIDC provider or Cognito test users</li><li class="note-item">Validate OpenAPI definitions with Spectral</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Authorizer on every non-public route</li><li class="note-item">Access logging and throttling configured</li><li class="note-item">Custom domain with ACM; default endpoint disabled</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-21-lambda-operations.html">Lambda Operations</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-23-eventbridge-step-functions.html">EventBridge &amp; Step Functions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>AWS — Sheet 16: EC2 Operations &amp; Pricing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/aws-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s16">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 16</div>
+			<h1>EC2 Operations &amp; Pricing</h1>
+			<div class="sheet-desc">Session Manager · EBS volumes &amp; snapshots · stop vs terminate · Elastic IPs · On-Demand / Spot / Savings Plans · Reserved Instances</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Running and Paying for EC2</h2><div class="description">Instances can be <strong>stopped</strong> (EBS kept, compute not billed) or <strong>terminated</strong> (gone; root volume deleted by default). <strong>EBS</strong> volumes and <strong>snapshots</strong> hold data. Pricing options: <strong>On-Demand</strong>; <strong>Savings Plans</strong> (1 or 3 year spend commitment, flexible); <strong>Reserved Instances</strong> (specific type); and <strong>Spot</strong> (spare capacity at a deep discount with a 2-minute interruption notice).</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">Snapshots are incremental and stored in S3 (managed by AWS)</li><li class="note-item">Termination protection guards important instances</li><li class="note-item">Spot works best for stateless, fault-tolerant work</li><li class="note-item">Compute Savings Plans also cover Fargate and Lambda</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Azure / GCP Equivalent + Cost Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Operate and Save</h2><pre><code class="language-bash">aws ec2 stop-instances --instance-ids i-0abc1234       # compute billing stops
+aws ec2 start-instances --instance-ids i-0abc1234
+aws ec2 modify-instance-attribute --instance-id i-0abc1234 \
+    --disable-api-termination
+
+aws ec2 create-volume --availability-zone us-east-1a --size 100 \
+    --volume-type gp3 --iops 6000 --throughput 250 --encrypted
+aws ec2 attach-volume --volume-id vol-0abc --instance-id i-0abc1234 \
+    --device /dev/sdf
+aws ec2 create-snapshot --volume-id vol-0abc --description nightly
+aws dlm create-lifecycle-policy --execution-role-arn &lt;role-arn&gt; \
+    --description daily --state ENABLED --policy-details file://dlm.json
+
+# Spot instance
+aws ec2 run-instances --image-id $AMI --instance-type c7g.large \
+    --instance-market-options MarketType=spot
+
+aws ec2 describe-volumes --filters Name=status,Values=available \
+    --query "Volumes[].[VolumeId,Size]" --output table     # unattached
+aws ce get-savings-plans-purchase-recommendation \
+    --savings-plans-type COMPUTE_SP --term-in-years ONE_YEAR \
+    --payment-option NO_UPFRONT --lookback-period-in-days THIRTY_DAYS</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Stopping keeps EBS volumes; terminating usually deletes the root volume</div><div class="explain-item">gp3 sets IOPS and throughput independently of size</div><div class="explain-item">Data Lifecycle Manager automates snapshot schedules</div><div class="explain-item">Cost Explorer suggests a Savings Plan from recent usage</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">Azure / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>Azure</strong> deallocate, managed disks, Spot VMs, Reservations / savings plan (az-16)</li><li class="note-item"><strong>GCP</strong> Persistent Disk / Hyperdisk, Spot VMs, committed use discounts (gcp-16)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Savings Plans: up to ~72% off vs On-Demand</li><li class="note-item">Spot: up to ~90% off, interruptible</li><li class="note-item">Unattached EBS volumes and idle Elastic IPs keep billing</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Pricing Options Table | Ebs Types Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-pricing-options"><h2 class="section-title">Pricing Options</h2><table><thead><tr><th>Option</th><th>Commit</th><th>Best For</th></tr></thead><tbody><tr><td>On-Demand</td><td class="kw">None</td><td class="kw">Spiky, short-lived</td></tr><tr><td>Compute Savings Plan</td><td class="kw">$/hour, 1–3 yr</td><td class="kw">Steady, flexible types</td></tr><tr><td>EC2 Instance Savings Plan</td><td class="kw">Family + Region</td><td class="kw">Steady, fixed family</td></tr><tr><td>Reserved Instances</td><td class="kw">Type, 1–3 yr</td><td class="kw">Legacy commitments</td></tr><tr><td>Spot</td><td class="kw">None</td><td class="kw">Batch, CI, stateless</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ebs-types"><h2 class="section-title">EBS Types</h2><table><thead><tr><th>Type</th><th>Use</th></tr></thead><tbody><tr><td>gp3</td><td class="desc">Default SSD</td></tr><tr><td>io2 Block Express</td><td class="desc">High IOPS databases</td></tr><tr><td>st1</td><td class="desc">Throughput HDD</td></tr><tr><td>sc1</td><td class="desc">Cold HDD</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Use gp3 instead of gp2</li><li class="note-item note-do"><strong>Do</strong> Automate snapshots with DLM or AWS Backup</li><li class="note-item note-dont"><strong>Don’t</strong> Leave detached volumes and old snapshots around</li><li class="note-item note-dont"><strong>Don’t</strong> Buy commitments before rightsizing with Compute Optimizer</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item">Price options in the AWS Pricing Calculator</li><li class="note-item">Test Spot interruption handling with Fault Injection Service</li><li class="note-item">Restore a snapshot into a scratch instance to verify backups</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Backups / snapshot policies on all data volumes</li><li class="note-item">Savings Plans cover the steady baseline</li><li class="note-item">Alerts on idle and unattached resources</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="aws-15-ec2-basics.html">EC2 Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">AWS Reference · 42 Sheets</a>
+				<a class="nav-link next" href="aws-17-load-balancers.html">Elastic Load Balancing</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

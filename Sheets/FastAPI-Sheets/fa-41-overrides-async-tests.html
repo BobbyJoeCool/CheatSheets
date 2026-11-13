@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>FastAPI &amp; Flask — Sheet 41: Overrides &amp; Async Tests</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/fa-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s41">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 41</div>
+			<h1>Overrides &amp; Async Tests</h1>
+			<div class="sheet-desc">dependency_overrides · test database · httpx.AsyncClient + ASGITransport · pytest.mark.anyio · auth in tests</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong><code>app.dependency_overrides</code></strong> swaps real dependencies (DB session, current user, settings) for test versions without touching app code. When tests themselves must be async (to call async helpers or share an event loop with an async DB), use <strong><code>httpx.AsyncClient</code></strong> with <strong><code>ASGITransport</code></strong> and mark tests with <code>anyio</code>.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Override the exact callable used in <code>Depends()</code></li><li class="note-item">A SQLite file or in-memory DB per test run keeps tests isolated</li><li class="note-item"><code>ASGITransport</code> does not run lifespan; use <code>asgi-lifespan</code> if needed</li><li class="note-item"><code>anyio</code> comes with FastAPI; <code>pytest-asyncio</code> also works</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">conftest.py</h2><pre><code class="language-python">import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel.pool import StaticPool
+@pytest.fixture
+def session():
+    engine = create_engine("sqlite://", poolclass=StaticPool,
+                connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s: yield s
+
+@pytest.fixture
+def client(session):
+    app.dependency_overrides[get_db] = lambda: session
+    app.dependency_overrides[get_current_user] = lambda: User(id=1)
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+@pytest.mark.anyio
+async def test_async():
+    t = ASGITransport(app=app)
+    async with AsyncClient(transport=t, base_url="http://t") as ac:
+        r = await ac.get("/health")
+    assert r.status_code == 200</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>sqlite://</code> + <code>StaticPool</code> — one shared in-memory DB</div><div class="explain-item"><code>dependency_overrides[get_db]</code> — tests use that session</div><div class="explain-item">fake <code>get_current_user</code> — skip real auth</div><div class="explain-item"><code>ASGITransport</code> — async client against the app</div></div></section><section class="section-notes section-other" id="other"><h2 class="section-title">Other Framework</h2><ul class="note-list"><li class="note-item">Flask — <code>app.config["TESTING"] = True</code> + a test DB URI</li><li class="note-item">Django — test DB created automatically per run</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item">Avoid patching modules with <code>mock.patch</code> · Prefer <code>dependency_overrides</code></li><li class="note-item">Avoid async tests unless needed · Prefer <code>TestClient</code> + sync tests</li></ul></section></div>
+			</div>
+			<!-- Row 3: Targets Table | Async Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-targets"><h2 class="section-title">Override Targets</h2><table><thead><tr><th>Dependency</th><th>Test version</th></tr></thead><tbody><tr><td>get_db</td><td class="desc">test session</td></tr><tr><td>get_current_user</td><td class="desc">fixed user</td></tr><tr><td>get_settings</td><td class="desc">test Settings</td></tr><tr><td>get_http_client</td><td class="desc">mock client (respx)</td></tr><tr><td>get_mailer</td><td class="desc">outbox list</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-async"><h2 class="section-title">Async Test Setup</h2><table><thead><tr><th>Need</th><th>Tool</th></tr></thead><tbody><tr><td>async test functions</td><td class="desc">@pytest.mark.anyio</td></tr><tr><td>client</td><td class="desc">AsyncClient + ASGITransport</td></tr><tr><td>lifespan</td><td class="desc">asgi-lifespan LifespanManager</td></tr><tr><td>mock HTTP</td><td class="desc">respx</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Overriding a function with a different signature than the one in <code>Depends()</code></li><li class="note-item">In-memory SQLite without <code>StaticPool</code>: each connection gets an empty DB</li><li class="note-item">Mixing <code>pytest-asyncio</code> and <code>anyio</code> markers in one suite</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add <code>anyio_backend</code> fixture returning <code>"asyncio"</code> to skip trio runs</li><li class="note-item">Use factories (<code>make_user()</code>) for test data</li><li class="note-item">Run tests in CI against the real DB engine too</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>dependency_overrides</code> — swap dependencies</li><li class="note-item">in-memory DB + <code>StaticPool</code> — isolated tests</li><li class="note-item"><code>AsyncClient</code> + <code>ASGITransport</code> — async tests</li><li class="note-item">clear overrides after each test</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="fa-40-testclient.html" class="nav-link prev">TestClient Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">FastAPI &amp; Flask · 60 Sheets</a>
+				<a href="fa-42-static-templates.html" class="nav-link next" title="Static Files &amp; Templates">Static &amp; Templates</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

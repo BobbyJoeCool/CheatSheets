@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 103: Procedural Macros</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s103">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 103</div>
+			<h1>Procedural Macros</h1>
+			<div class="sheet-desc">derive macros · attribute macros · function-like macros · <code>proc-macro</code> crate · <code>syn</code> / <code>quote</code> · reading <code>cargo expand</code> output</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Macros as Compiler Plugins</h2><div class="description">Procedural macros are Rust functions that run at compile time, take a <code>TokenStream</code> and return a new one. <strong>Derive</strong> macros (<code>#[derive(Serialize)]</code>) add impls, <strong>attribute</strong> macros (<code>#[tokio::main]</code>) transform an item, and <strong>function-like</strong> macros (<code>sql!(…)</code>) look like calls. They live in a separate crate with <code>proc-macro = true</code> and almost always use <code>syn</code> and <code>quote</code>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">A proc-macro crate can only export macros</li><li class="note-item"><code>syn</code> parses tokens into a syntax tree</li><li class="note-item"><code>quote!</code> builds tokens with <code>#var</code> interpolation</li><li class="note-item">Errors: <code>syn::Error::new_spanned(...).to_compile_error()</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Derive Macro</h2><pre><code class="language-rust">// hello_derive/Cargo.toml: [lib] proc-macro = true · deps: syn, quote
+
+// hello_derive/src/lib.rs
+use proc_macro::TokenStream;
+use quote::quote;
+use syn::{parse_macro_input, DeriveInput};
+#[proc_macro_derive(Hello)]
+pub fn derive_hello(input: TokenStream) -&gt; TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    let name = &amp;ast.ident;                   // the type's name
+    let expanded = quote! {
+        impl #name {
+            pub fn hello() -&gt; String {
+                format!("Hello from {}!", stringify!(#name))
+            }
+        }
+    };
+    expanded.into()
+}
+
+#[proc_macro_attribute]
+pub fn log_call(_attr: TokenStream, item: TokenStream) -&gt; TokenStream {
+    let f = parse_macro_input!(item as syn::ItemFn);
+    let sig = &amp;f.sig;
+    let body = &amp;f.block;
+    let fname = sig.ident.to_string();
+    quote! { #sig { println!("calling {}", #fname); #body } }.into()
+}
+
+// app/src/main.rs
+// use hello_derive::{Hello, log_call};
+// #[derive(Hello)]
+// struct Pancakes;
+// #[log_call]
+// fn work() { println!("working"); }
+// fn main() { println!("{}", Pancakes::hello()); work(); }
+// → Hello from Pancakes!  calling work  working</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>parse_macro_input!</code> turns tokens into a <code>DeriveInput</code></div><div class="explain-item"><code>#name</code> inside <code>quote!</code> inserts the type name</div><div class="explain-item">The attribute macro wraps the function body with a log line</div><div class="explain-item">Users import macros like any other item</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Java</strong> annotation processors (generate new files, cannot modify)</li><li class="note-item"><strong>Python</strong> decorators run at runtime, not compile time</li><li class="note-item"><strong>C#</strong> source generators; <strong>Kotlin</strong> KSP</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item">complex <code>macro_rules!</code> parsing → a proc macro with <code>syn</code></li><li class="note-item">a proc macro for something a trait + generics can do → the trait</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Kinds Table | Tooling Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-kinds"><h2 class="section-title">Kinds</h2><table><thead><tr><th>Kind</th><th>Attribute</th><th>Used As</th></tr></thead><tbody><tr><td>Derive</td><td class="kw">#[proc_macro_derive(N)]</td><td class="kw">#[derive(N)]</td></tr><tr><td>Attribute</td><td class="kw">#[proc_macro_attribute]</td><td class="kw">#[name(args)]</td></tr><tr><td>Function-like</td><td class="kw">#[proc_macro]</td><td class="kw">name!(…)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-tooling"><h2 class="section-title">Tooling</h2><table><thead><tr><th>Crate / Tool</th><th>Use</th></tr></thead><tbody><tr><td>syn</td><td class="desc">Parse Rust syntax</td></tr><tr><td>quote</td><td class="desc">Generate tokens</td></tr><tr><td>proc-macro2</td><td class="desc">Testable token types</td></tr><tr><td>darling</td><td class="desc">Parse attribute args</td></tr><tr><td>cargo expand</td><td class="desc">View output</td></tr><tr><td>trybuild</td><td class="desc">Test compile errors</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Trying to export normal functions from a proc-macro crate</li><li class="note-item">Panicking instead of emitting <code>compile_error!</code> with a span</li><li class="note-item">Heavy syn features slowing every build</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Read real expansions with <code>cargo expand</code> before writing your own</li><li class="note-item">Use spans so errors point at user code</li><li class="note-item">Keep proc macros thin; put logic in a normal library</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">TokenStream in → out</li><li class="note-item">derive · attribute · function-like</li><li class="note-item"><code>syn</code> parse · <code>quote!</code> generate</li><li class="note-item">separate proc-macro crate</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-102-declarative-macros.html">Declarative Macros</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-104-unsafe-rust.html">Unsafe Rust</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

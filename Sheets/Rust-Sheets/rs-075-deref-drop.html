@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 075: Deref &amp; Drop</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s075">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 075</div>
+			<h1>Deref &amp; Drop</h1>
+			<div class="sheet-desc"><code>Deref</code> / <code>DerefMut</code> · deref coercion · <code>Drop</code> · RAII · <code>drop(x)</code> early · drop order</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Smart Pointer Traits</h2><div class="description"><code>Deref</code> lets a type act like a reference: <code>*x</code> and method calls pass through to the target, and <strong>deref coercion</strong> turns <code>&amp;String</code> into <code>&amp;str</code> or <code>&amp;Box&lt;T&gt;</code> into <code>&amp;T</code> automatically. <code>Drop</code> runs cleanup code when a value goes out of scope, the basis of <strong>RAII</strong>: files close, locks release and memory frees without manual calls.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">You cannot call <code>x.drop()</code> directly; use <code>drop(x)</code></li><li class="note-item">Fields drop after the struct's own <code>drop</code>, in declaration order</li><li class="note-item">Locals drop in reverse order of declaration</li><li class="note-item">Implement Deref only for smart-pointer-like types</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Deref and Drop</h2><pre><code class="language-rust">use std::ops::{Deref, DerefMut};
+
+struct Wrapper(Vec&lt;i32&gt;);
+impl Deref for Wrapper {
+    type Target = Vec&lt;i32&gt;;
+    fn deref(&amp;self) -&gt; &amp;Vec&lt;i32&gt; { &amp;self.0 }
+}
+impl DerefMut for Wrapper {
+    fn deref_mut(&amp;mut self) -&gt; &amp;mut Vec&lt;i32&gt; { &amp;mut self.0 }
+}
+let mut w = Wrapper(vec![3, 1, 2]);
+w.push(4);                                  // Vec method via DerefMut
+w.sort();                                   // slice method via two derefs
+println!("{} {:?}", w.len(), *w);           // 4 [1, 2, 3, 4]
+
+fn takes_str(s: &amp;str) -&gt; usize { s.len() }
+let boxed: Box&lt;String&gt; = Box::new("hello".into());
+println!("{}", takes_str(&amp;boxed));          // &amp;Box&lt;String&gt; → &amp;String → &amp;str
+
+struct Guard(&amp;'static str);
+impl Drop for Guard {
+    fn drop(&amp;mut self) { println!("drop {}", self.0); }
+}
+{
+    let _a = Guard("a");
+    let _b = Guard("b");
+    println!("in scope");
+}                                           // drop b, then drop a
+
+let early = Guard("early");
+drop(early);                                // drop early (now)
+println!("after early");
+
+let _ = Guard("temp");                      // `_` drops immediately: drop temp
+let _keep = Guard("kept");                  // lives to end of scope</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>Deref</code> exposes Vec methods on Wrapper</div><div class="explain-item">Coercion follows <code>&amp;Box&lt;String&gt;</code> down to <code>&amp;str</code></div><div class="explain-item">Locals drop in reverse order: b, then a</div><div class="explain-item"><code>let _ =</code> drops at once; <code>_keep</code> lives to scope end</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> destructors and RAII (same idea); <code>operator*</code> / <code>operator-&gt;</code></li><li class="note-item"><strong>Java</strong> try-with-resources / <code>AutoCloseable</code></li><li class="note-item"><strong>Python</strong> <code>with</code> context managers; <code>__del__</code> is unreliable</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item">explicit <code>close()</code> methods callers can forget → <code>impl Drop</code></li><li class="note-item"><code>impl Deref</code> to fake inheritance → composition + explicit methods</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Coercions Table | Drop Order Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-coercions"><h2 class="section-title">Coercions</h2><table><thead><tr><th>From</th><th>To</th></tr></thead><tbody><tr><td>&amp;String</td><td class="desc">&amp;str</td></tr><tr><td>&amp;Vec&lt;T&gt;</td><td class="desc">&amp;[T]</td></tr><tr><td>&amp;Box&lt;T&gt;</td><td class="desc">&amp;T</td></tr><tr><td>&amp;Rc&lt;T&gt; / &amp;Arc&lt;T&gt;</td><td class="desc">&amp;T</td></tr><tr><td>&amp;mut T</td><td class="desc">&amp;T</td></tr><tr><td>&amp;[T; N]</td><td class="desc">&amp;[T]</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-drop-order"><h2 class="section-title">Drop Order</h2><table><thead><tr><th>Case</th><th>Order</th></tr></thead><tbody><tr><td>Local variables</td><td class="desc">Reverse declaration</td></tr><tr><td>Struct fields</td><td class="desc">Declaration order</td></tr><tr><td>Vec elements</td><td class="desc">First to last</td></tr><tr><td>Temporaries</td><td class="desc">End of statement</td></tr><tr><td>let _ = x</td><td class="desc">Immediately</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item"><code>let _ = lock.lock()</code> dropping the guard instantly</li><li class="note-item">Calling <code>x.drop()</code> (E0040: explicit destructor call)</li><li class="note-item">Panicking inside <code>drop</code> (can abort the process)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Name guards <code>_guard</code> so they live to scope end</li><li class="note-item">Use <code>drop(x)</code> to release locks and files early</li><li class="note-item">Keep <code>Drop</code> impls small and infallible</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>Deref</code> — act like <code>&amp;T</code></li><li class="note-item">deref coercion</li><li class="note-item"><code>Drop</code> — RAII cleanup</li><li class="note-item">reverse declaration drop order</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-074-refcell-cell.html">Cell, RefCell &amp; Interior Mutability</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-076-cow-choosing.html">Cow &amp; Choosing a Pointer</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

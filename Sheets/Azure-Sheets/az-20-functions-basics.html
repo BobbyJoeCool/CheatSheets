@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 20: Azure Functions Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s20">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 20</div>
+			<h1>Azure Functions Basics</h1>
+			<div class="sheet-desc">triggers &amp; bindings · Flex Consumption plan · Python v2 / Node.js v4 programming models · <code>func init</code> / <code>new</code> / <code>start</code> · <code>func azure functionapp publish</code> · app settings</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Event-Driven Code</h2><div class="description"><strong>Azure Functions</strong> runs code in response to <strong>triggers</strong> (HTTP, timer, queue, blob, Event Grid, Cosmos DB…) and connects to services with input / output <strong>bindings</strong> instead of SDK boilerplate. The <strong>Flex Consumption</strong> plan is the recommended serverless option: scale to zero, fast scale-out, VNet integration and per-instance memory sizes. The Python v2 and Node.js v4 models declare functions in code with decorators.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">A function app is the unit of deploy and scale; it holds many functions</li><li class="note-item">Each app needs a storage account for its runtime state</li><li class="note-item">App settings become environment variables</li><li class="note-item">Use identity-based connections (<code>__accountName</code>, <code>__fullyQualifiedNamespace</code>) instead of keys</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check + Security Check + Limits & Quotas -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">function_app.py (Python v2 model)</h2><pre><code class="language-python">import azure.functions as func, logging, json
+app = func.FunctionApp()
+
+@app.route(route="orders", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@app.queue_output(arg_name="msg", queue_name="orders",
+                  connection="QueueConn")
+def create_order(req: func.HttpRequest,
+                 msg: func.Out[str]) -&gt; func.HttpResponse:
+    order = req.get_json()
+    msg.set(json.dumps(order))              # output binding: enqueue
+    return func.HttpResponse(status_code=202)
+
+@app.timer_trigger(schedule="0 */15 * * * *", arg_name="t")
+def cleanup(t: func.TimerRequest):
+    logging.info("cleanup ran")</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Build, Run, Publish</h2><pre><code class="language-bash">func init shop-func --python &amp;&amp; cd shop-func
+func start                                  # local runtime on :7071
+az functionapp create -g rg-app -n func-shop --storage-account stshopfunc \
+    --flexconsumption-location eastus2 --runtime python --runtime-version 3.12
+func azure functionapp publish func-shop
+az functionapp config appsettings set -g rg-app -n func-shop \
+    --settings QueueConn__queueServiceUri=https://stshop.queue.core.windows.net</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The HTTP function writes the order to a queue via an output binding</div><div class="explain-item">Timer schedules use six-field NCRONTAB (with seconds)</div><div class="explain-item"><code>func start</code> runs the same runtime locally</div><div class="explain-item">The <code>__queueServiceUri</code> suffix makes the binding use managed identity</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> Lambda handler, triggers, function URLs (aws-20)</li><li class="note-item"><strong>GCP</strong> Cloud Run functions, Eventarc triggers (gcp-21)</li><li class="note-item">Bindings have no direct AWS / GCP equivalent</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">Flex Consumption: per GB-second and executions, with a monthly free grant</li><li class="note-item">Always-ready instances remove cold starts but bill continuously</li><li class="note-item">The storage account and Application Insights add small costs</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Use Entra ID authentication (Easy Auth) or APIM in front, not just function keys</li><li class="note-item">Identity-based connections for storage, Service Bus, Event Hubs</li><li class="note-item">Restrict inbound with private endpoints or access restrictions</li></ul></section><section class="section-notes section-limits" id="limits"><h2 class="section-title">Limits &amp; Quotas</h2><ul class="note-list"><li class="note-item">Flex Consumption: 30-minute default timeout, can be raised; Consumption: 10-minute max</li><li class="note-item">HTTP requests: about 230 seconds before the front end times out</li><li class="note-item">Flex instance memory 512 MB, 2 GB or 4 GB; up to 1,000 instances</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Common Triggers Table | Hosting Plans Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-common-triggers"><h2 class="section-title">Common Triggers</h2><table><thead><tr><th>Trigger</th><th>Fires On</th></tr></thead><tbody><tr><td>HTTP</td><td class="desc">Request</td></tr><tr><td>Timer</td><td class="desc">Schedule (NCRONTAB)</td></tr><tr><td>Queue / Service Bus</td><td class="desc">New message</td></tr><tr><td>Blob / Event Grid</td><td class="desc">New or changed blob</td></tr><tr><td>Cosmos DB</td><td class="desc">Change feed</td></tr><tr><td>Event Hubs</td><td class="desc">Stream events</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-hosting-plans"><h2 class="section-title">Hosting Plans</h2><table><thead><tr><th>Plan</th><th>Use</th></tr></thead><tbody><tr><td>Flex Consumption</td><td class="desc">Default serverless</td></tr><tr><td>Consumption</td><td class="desc">Legacy serverless (Windows)</td></tr><tr><td>Premium (Elastic)</td><td class="desc">Always warm, long runs</td></tr><tr><td>Dedicated (App Service)</td><td class="desc">Existing plan capacity</td></tr><tr><td>Container Apps</td><td class="desc">Functions in containers</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Keep functions small and idempotent</li><li class="note-item note-do"><strong>Do</strong> Use output bindings to cut SDK code</li><li class="note-item note-dont"><strong>Don’t</strong> Do heavy work inside an HTTP function past the 230-second limit</li><li class="note-item note-dont"><strong>Don’t</strong> Store connection strings with keys in app settings</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>func start</code> with Azurite for storage triggers</li><li class="note-item"><code>local.settings.json</code> holds local app settings (never commit secrets)</li><li class="note-item">VS Code Azure Functions extension debugs locally</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">Identity-based connections and Key Vault references</li><li class="note-item">Application Insights with alerts on failures</li><li class="note-item">Auth in front (Easy Auth / APIM); function keys not the only control</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-19-choosing-compute.html">Choosing Compute</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-21-app-service-functions-operations.html">App Service &amp; Functions Operations</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>

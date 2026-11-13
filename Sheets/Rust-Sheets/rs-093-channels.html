@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 093: Channels</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s093">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 093</div>
+			<h1>Channels</h1>
+			<div class="sheet-desc"><code>mpsc::channel</code> · <code>Sender</code> / <code>Receiver</code> · <code>send</code> / <code>recv</code> / <code>try_recv</code> · cloning senders · <code>sync_channel</code> · iterating a receiver</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Message Passing</h2><div class="description">Channels move values between threads: "do not communicate by sharing memory; share memory by communicating." <code>mpsc::channel()</code> returns a <code>Sender</code> and a <code>Receiver</code> (multiple producers, single consumer). Sending <strong>moves</strong> the value to the receiving thread. When all senders are dropped, the receiver's loop ends.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>channel()</code> is unbounded; <code>sync_channel(n)</code> blocks when full</li><li class="note-item"><code>recv()</code> blocks; <code>try_recv()</code> and <code>recv_timeout()</code> do not</li><li class="note-item"><code>send</code> fails only if the receiver is gone</li><li class="note-item">crossbeam-channel and flume add multi-consumer and <code>select!</code></li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">mpsc Channels</h2><pre><code class="language-rust">use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+let (tx, rx) = mpsc::channel();
+thread::spawn(move || {
+    for i in 1..=3 {
+        tx.send(format!("msg {i}")).unwrap();   // ownership moves
+        thread::sleep(Duration::from_millis(5));
+    }
+});                                         // tx dropped here
+for msg in rx {                             // ends when all senders drop
+    println!("{msg}");
+}
+
+let (tx, rx) = mpsc::channel::&lt;(usize, u64)&gt;();
+for id in 0..3 {
+    let tx = tx.clone();                    // one sender per producer
+    thread::spawn(move || {
+        let sum = (1..=1000u64).map(|n| n * id as u64).sum();
+        tx.send((id, sum)).unwrap();
+    });
+}
+drop(tx);                                   // drop the original
+let mut results: Vec&lt;_&gt; = rx.iter().collect();
+results.sort();
+println!("{results:?}");            // [(0, 0), (1, 500500), (2, 1001000)]
+
+let (tx, rx) = mpsc::sync_channel(2);       // bounded: backpressure
+thread::spawn(move || for i in 0..5 { tx.send(i).unwrap(); });
+thread::sleep(Duration::from_millis(10));
+println!("{:?}", rx.try_recv());            // Ok(0)
+println!("{:?}", rx.recv_timeout(Duration::from_secs(1)));   // Ok(1)
+
+let (tx, rx) = mpsc::channel::&lt;i32&gt;();
+drop(tx);
+println!("{:?}", rx.recv());                // Err(RecvError): no senders</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Each <code>send</code> moves a String into the channel</div><div class="explain-item"><code>for msg in rx</code> stops once the sender is dropped</div><div class="explain-item">Clone the Sender for each producer, then drop the original</div><div class="explain-item"><code>sync_channel(2)</code> makes senders wait when 2 items are queued</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>Go</strong> <code>ch := make(chan T, n)</code>, <code>ch &lt;- v</code>, <code>range ch</code> (the model Rust copies)</li><li class="note-item"><strong>Java</strong> <code>BlockingQueue</code> (<code>LinkedBlockingQueue</code>, <code>ArrayBlockingQueue</code>)</li><li class="note-item"><strong>Python</strong> <code>queue.Queue</code> between threads</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item"><code>Arc&lt;Mutex&lt;Vec&lt;T&gt;&gt;&gt;</code> as a work queue → a channel</li><li class="note-item">busy-looping on <code>try_recv</code> → <code>recv()</code> or <code>recv_timeout</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Api Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-api"><h2 class="section-title">API</h2><table><thead><tr><th>Call</th><th>Behavior</th></tr></thead><tbody><tr><td>mpsc::channel()</td><td class="desc">Unbounded</td></tr><tr><td>mpsc::sync_channel(n)</td><td class="desc">Bounded (0 = rendezvous)</td></tr><tr><td>tx.send(v)</td><td class="desc">Err if receiver gone</td></tr><tr><td>tx.clone()</td><td class="desc">Another producer</td></tr><tr><td>rx.recv()</td><td class="desc">Block</td></tr><tr><td>rx.try_recv()</td><td class="desc">Never block</td></tr><tr><td>rx.recv_timeout(d)</td><td class="desc">Block up to d</td></tr><tr><td>for v in rx / rx.iter()</td><td class="desc">Until senders drop</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Keeping the original <code>tx</code> alive so the receive loop never ends</li><li class="note-item">Unbounded channels growing without limit under load</li><li class="note-item">Using std mpsc when multiple consumers are needed</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Drop the original sender after cloning for workers</li><li class="note-item">Use bounded channels for backpressure</li><li class="note-item">Use <code>tokio::sync::mpsc</code> inside async code</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>mpsc::channel()</code> — tx / rx</li><li class="note-item"><code>send</code> moves the value</li><li class="note-item">clone tx for producers</li><li class="note-item">loop ends when senders drop</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-092-threads.html">Threads</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-094-shared-state.html">Shared State: Arc, Mutex &amp; Atomics</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

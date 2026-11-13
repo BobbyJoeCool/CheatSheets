@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Rust — Sheet 051: const fn, Recursion &amp; Attributes</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/rs-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s051">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 051</div>
+			<h1>const fn, Recursion &amp; Attributes</h1>
+			<div class="sheet-desc"><code>const fn</code> · recursion &amp; stack depth · no guaranteed tail calls · <code>#[inline]</code> · <code>#[must_use]</code> · diverging <code>-&gt; !</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Compile-Time and Special Functions</h2><div class="description">A <code>const fn</code> can run at compile time to initialize constants, and also at runtime like any function. Recursion works, but Rust does <strong>not guarantee tail-call optimization</strong>, so deep recursion can overflow the stack; iterate instead. Attributes like <code>#[inline]</code> and <code>#[must_use]</code> give hints and warnings.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item"><code>const fn</code> bodies are limited (no heap, no traits calls in most cases)</li><li class="note-item">Main thread stack is usually 8 MB; spawned threads default to 2 MB</li><li class="note-item"><code>#[must_use]</code> warns when a result is ignored</li><li class="note-item"><code>#[inline]</code> matters mostly across crates</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + Coming From… + The Rust Way -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">const fn, Recursion, Attributes</h2><pre><code class="language-rust">const fn kib(n: usize) -&gt; usize { n * 1024 }
+const BUF: usize = kib(64);                 // computed at compile time
+
+const fn fib_const(n: u32) -&gt; u64 {
+    let (mut a, mut b, mut i) = (0, 1, 0);
+    while i &lt; n { let t = a + b; a = b; b = t; i += 1; }
+    a
+}
+const FIB_50: u64 = fib_const(50);          // 12586269025
+
+fn factorial(n: u64) -&gt; u64 {
+    if n &lt;= 1 { 1 } else { n * factorial(n - 1) }   // recursion
+}
+
+fn sum_to(n: u64) -&gt; u64 { (1..=n).sum() }  // iteration: no stack risk
+// fn deep(n: u64) -&gt; u64 { if n == 0 { 0 } else { 1 + deep(n - 1) } }
+// deep(10_000_000)                        // stack overflow
+
+fn depth(tree: &amp;Node) -&gt; usize {
+    1 + tree.children.iter().map(depth).max().unwrap_or(0)
+}
+struct Node { children: Vec&lt;Node&gt; }
+
+#[must_use = "the new string is returned; the input is unchanged"]
+fn shout(s: &amp;str) -&gt; String { s.to_uppercase() }
+// shout("hi");                            // warning: unused return value
+#[inline]
+fn square(x: i32) -&gt; i32 { x * x }
+#[cold]
+fn report(msg: &amp;str) -&gt; ! {                 // rarely called, never returns
+    eprintln!("fatal: {msg}");
+    std::process::exit(1)
+}
+
+println!("{} {}", BUF, FIB_50);             // 65536 12586269025
+println!("{}", factorial(20));              // 2432902008176640000</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>kib(64)</code> runs during compilation</div><div class="explain-item"><code>const fn</code> can use loops but not heap allocation</div><div class="explain-item">Recursion suits trees; use loops for long linear work</div><div class="explain-item"><code>-&gt; !</code> tells the compiler <code>report</code> never returns</div></div></section><section class="section-notes section-compare" id="compare"><h2 class="section-title">Coming From…</h2><ul class="note-list"><li class="note-item"><strong>C++</strong> <code>constexpr</code> / <code>consteval</code> functions</li><li class="note-item"><strong>Python</strong> recursion limit of 1000 by default</li><li class="note-item"><strong>Go / Java</strong> no compile-time function execution in the language</li></ul></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">The Rust Way</h2><ul class="note-list"><li class="note-item">deep linear recursion → a loop or an explicit stack</li><li class="note-item"><code>#[inline(always)]</code> everywhere → measure first</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Attributes Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-attributes"><h2 class="section-title">Attributes</h2><table><thead><tr><th>Attribute</th><th>Effect</th></tr></thead><tbody><tr><td>#[inline]</td><td class="desc">Allow cross-crate inlining</td></tr><tr><td>#[inline(always)] / (never)</td><td class="desc">Strong hint</td></tr><tr><td>#[cold]</td><td class="desc">Unlikely path</td></tr><tr><td>#[must_use]</td><td class="desc">Warn if ignored</td></tr><tr><td>#[track_caller]</td><td class="desc">Panic points to caller</td></tr><tr><td>#[deprecated]</td><td class="desc">Warn on use</td></tr><tr><td>#[doc(hidden)]</td><td class="desc">Hide from docs</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Assuming tail recursion will be optimized</li><li class="note-item">Calling non-const functions inside <code>const fn</code></li><li class="note-item">Ignoring <code>#[must_use]</code> warnings on Results</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>stacker</code> or a bigger thread stack for deep trees if needed</li><li class="note-item">Put <code>#[must_use]</code> on builders and pure functions</li><li class="note-item">Use <code>#[track_caller]</code> on helpers that panic</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>const fn</code> — compile-time capable</li><li class="note-item">no guaranteed TCO</li><li class="note-item"><code>#[must_use]</code> / <code>#[inline]</code></li><li class="note-item"><code>-&gt; !</code> diverges</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="rs-050-higher-order-functions.html">Higher-Order Functions</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Rust Reference · 107 Sheets</a>
+				<a class="nav-link next" href="rs-052-arrays.html">Arrays</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+	</body>
+</html>

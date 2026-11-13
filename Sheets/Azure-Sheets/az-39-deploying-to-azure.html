@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Azure — Sheet 39: Deploying to Azure</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/az-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s39">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 39</div>
+			<h1>Deploying to Azure</h1>
+			<div class="sheet-desc">GitHub Actions <code>azure/login</code> with OIDC · Azure Pipelines YAML · slot swaps · Container Apps revision rollouts · environments &amp; approvals · tagging strategy</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">CI/CD Into Azure</h2><div class="description">Pipelines sign in with <strong>OIDC</strong>: GitHub Actions uses <code>azure/login</code> with a user-assigned identity or app registration that has a <strong>federated credential</strong>; Azure Pipelines uses a <strong>workload identity federation</strong> service connection. Deploy with slot swaps (App Service), revision traffic shifts (Container Apps) or IaC deployments, behind <strong>environment</strong> approvals.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Key Points</h2><ul class="note-list"><li class="note-item">No client secrets or publish profiles in CI</li><li class="note-item">Give the deploy identity only the roles it needs on target resource groups</li><li class="note-item">Build once, deploy the same artifact to each environment</li><li class="note-item">Tag resources with repo and commit for traceability</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + AWS / GCP Equivalent + Cost Check + Security Check -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">GitHub Actions: Build, Push, Deploy to Container Apps</h2><pre><code class="language-yaml">on: { push: { branches: [main] } }
+permissions: { id-token: write, contents: read }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: az acr build -r shopacr -t api:${{ github.sha }} .
+      - run: |
+          az containerapp update -g rg-app -n api \
+            --image shopacr.azurecr.io/api:${{ github.sha }} \
+            --tags commit=${{ github.sha }}</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Azure Pipelines Step</h2><pre><code class="language-yaml">- task: AzureCLI@2
+  inputs:
+    azureSubscription: sc-shop-prod      # workload identity federation
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: az deployment group create -g rg-shop-prod -f infra/main.bicep</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>id-token: write</code> is required for OIDC</div><div class="explain-item">The client ID belongs to the identity with the federated credential</div><div class="explain-item"><code>az acr build</code> builds in Azure, so the runner needs no Docker login</div><div class="explain-item">The service connection uses federation instead of a secret</div></div></section><section class="section-notes section-equiv" id="equiv"><h2 class="section-title">AWS / GCP Equivalent</h2><ul class="note-list"><li class="note-item"><strong>AWS</strong> configure-aws-credentials OIDC, CodeDeploy (aws-39)</li><li class="note-item"><strong>GCP</strong> google-github-actions/auth, Cloud Deploy (gcp-39)</li></ul></section><section class="section-notes section-cost" id="cost"><h2 class="section-title">Cost Check</h2><ul class="note-list"><li class="note-item">GitHub-hosted minutes and Azure Pipelines parallel jobs have free tiers</li><li class="note-item">ACR Tasks builds bill per second</li><li class="note-item">Staging slots and revisions reuse existing capacity</li></ul></section><section class="section-notes section-security" id="security"><h2 class="section-title">Security Check</h2><ul class="note-list"><li class="note-item">Federated subjects bound to protected environments (<code>environment:production</code>)</li><li class="note-item">Deploy identity scoped to specific resource groups, not the subscription</li><li class="note-item">Disable basic auth publishing credentials on App Service</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Deploy Methods Table | Pipeline Identity Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-deploy-methods"><h2 class="section-title">Deploy Methods</h2><table><thead><tr><th>Target</th><th>Method</th></tr></thead><tbody><tr><td>App Service</td><td class="desc">webapps-deploy / zip deploy + slot swap</td></tr><tr><td>Container Apps</td><td class="desc">az containerapp update / revisions</td></tr><tr><td>Functions</td><td class="desc">functions-action / func publish</td></tr><tr><td>AKS</td><td class="desc">kubectl / Helm / Flux GitOps</td></tr><tr><td>Infrastructure</td><td class="desc">az deployment / azd / Terraform</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-pipeline-identity"><h2 class="section-title">Pipeline Identity</h2><table><thead><tr><th>Option</th><th>Verdict</th></tr></thead><tbody><tr><td>Federated credential (OIDC)</td><td class="desc">Use</td></tr><tr><td>Workload identity service connection</td><td class="desc">Use (Azure Pipelines)</td></tr><tr><td>Client secret</td><td class="desc">Avoid</td></tr><tr><td>Publish profile</td><td class="desc">Avoid; disable basic auth</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Do & Don't | Local Testing | Production Checklist -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-notes section-dos" id="dos"><h2 class="section-title">Do &amp; Don't</h2><ul class="note-list"><li class="note-item note-do"><strong>Do</strong> Gate production with environment approvals</li><li class="note-item note-do"><strong>Do</strong> Promote one immutable image by digest or SHA tag</li><li class="note-item note-dont"><strong>Don’t</strong> Use publish profiles or client secrets</li><li class="note-item note-dont"><strong>Don’t</strong> Give the pipeline Owner on the subscription</li></ul></section></div><div class="col" id="col-4-2"><section class="section-notes section-local" id="local"><h2 class="section-title">Local Testing</h2><ul class="note-list"><li class="note-item"><code>act</code> runs workflows locally (OIDC steps need GitHub)</li><li class="note-item">actionlint validates workflow syntax</li><li class="note-item">Run the same <code>az</code> commands from a laptop against a dev environment first</li></ul></section></div><div class="col" id="col-4-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Checklist</h2><ul class="note-list"><li class="note-item">OIDC-only pipeline identity with least privilege</li><li class="note-item">Approvals and change records for production</li><li class="note-item">Rollback documented (slot swap back / revision traffic shift)</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="az-38-log-analytics-app-insights.html">Log Analytics &amp; App Insights</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">Azure Reference · 42 Sheets</a>
+				<a class="nav-link next" href="az-40-microsoft-foundry.html">Microsoft Foundry</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+	</body>
+</html>
