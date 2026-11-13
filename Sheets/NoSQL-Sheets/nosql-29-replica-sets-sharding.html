@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 29: Replica Sets &amp; Sharding</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>Replica Sets &amp; Sharding</h1>
+			<div class="sheet-desc">primary / secondary · elections · oplog · shard key · chunks · <code>mongos</code> · hashed vs ranged</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Copies and Slices</h2><div class="description">A <strong>replica set</strong> is a group of <code>mongod</code> servers holding the same data: one <strong>primary</strong> takes writes and <strong>secondaries</strong> copy them from the <strong>oplog</strong>. If the primary fails, members hold an <strong>election</strong> and promote a secondary in seconds. <strong>Sharding</strong> splits a collection across several replica sets (<strong>shards</strong>) by a <strong>shard key</strong>; the <strong><code>mongos</code></strong> router sends each query to the right shards. Hashed keys spread writes evenly; ranged keys keep nearby values together.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Use an odd number of voting members (3 or 5)</li><li class="note-item">Drivers discover the primary and follow elections</li><li class="note-item">Data moves between shards in ranges (chunks) by the balancer</li><li class="note-item">Since 6.0 <code>shardCollection</code> enables sharding for the database</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">The shard key is hard to change: resharding (5.0+) works but copies the whole collection. Choose it from your top queries</li><li class="note-item">A steadily increasing key (ObjectId, timestamps) sends every insert to one shard; use a hashed or compound key</li><li class="note-item">Queries without the shard key go to every shard (scatter-gather)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Replica Set &amp; Sharding Commands</h2><pre><code class="language-bash"># three-member replica set for local testing
+docker network create mongo-net
+for n in m1 m2 m3; do
+  docker run -d --name $n --net mongo-net mongo:8 --replSet rs0 --bind_ip_all
+done
+mongosh --host m1 --eval 'rs.initiate({ _id: "rs0", members: [
+  { _id: 0, host: "m1:27017" }, { _id: 1, host: "m2:27017" },
+  { _id: 2, host: "m3:27017" } ] })'
+
+# in mongosh
+rs.status()                            # PRIMARY / SECONDARY per member
+rs.printSecondaryReplicationInfo()     # replication lag
+rs.stepDown()                          # force an election
+
+# sharding: connect to mongos
+sh.shardCollection("shop.orders", { customerId: "hashed" })
+sh.shardCollection("shop.events", { tenantId: 1, ts: 1 })     # ranged
+sh.status()
+db.orders.getShardDistribution()
+db.adminCommand({ reshardCollection: "shop.orders",
+                  key: { customerId: 1, orderDate: 1 } })</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>--replSet rs0</code> names the set; <code>rs.initiate</code> lists its members</div><div class="explain-item">A hashed key on <code>customerId</code> spreads customers evenly across shards</div><div class="explain-item">A compound ranged key keeps one tenant's events together and in time order</div><div class="explain-item"><code>getShardDistribution</code> shows how evenly data is spread</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Replica set ↔ PostgreSQL streaming replication plus automatic failover (for example Patroni)</li><li class="note-item">PostgreSQL has no built-in sharding; the nearest is Citus · <a class="xref" href="../SQL-Sheets/sql-74-query-optimization.html">See SQL 74</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> replicas + Sentinel for failover; Cluster shards by 16,384 hash slots</li><li class="note-item"><strong>DynamoDB</strong> automatic: partitions split by size and traffic; you only choose the key</li><li class="note-item"><strong>Cassandra</strong> every node is equal; consistent hashing over the token ring</li><li class="note-item"><strong>Neo4j</strong> clusters replicate; scale-out reads via secondaries, sharding via composite databases (Enterprise)</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>new MongoClient("mongodb://m1,m2,m3/?replicaSet=rs0")</code></li><li class="note-item"><strong>Python</strong> <code>MongoClient("mongodb://m1,m2,m3/?replicaSet=rs0&amp;readPreference=secondaryPreferred")</code></li><li class="note-item"><strong>Java</strong> <code>MongoClients.create("mongodb://m1,m2,m3/?replicaSet=rs0&amp;w=majority")</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Members Table | Keys Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-members"><h2 class="section-title">Replica Set Members</h2><table><thead><tr><th>Role</th><th>Does</th></tr></thead><tbody><tr><td>Primary</td><td class="desc">Accepts writes</td></tr><tr><td>Secondary</td><td class="desc">Copies the oplog; can serve reads</td></tr><tr><td>Arbiter</td><td class="desc">Votes only, no data (avoid if you can)</td></tr><tr><td>Hidden / delayed</td><td class="desc">Backups, analytics, undo window</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-keys"><h2 class="section-title">Shard Key Choices</h2><table><thead><tr><th>Key</th><th>Effect</th></tr></thead><tbody><tr><td>Hashed <code>_id</code></td><td class="desc">Even writes; range queries hit all shards</td></tr><tr><td>Ranged <code>ts</code></td><td class="desc">Hot last shard</td></tr><tr><td>Compound <code>{ tenantId, ts }</code></td><td class="desc">Spread by tenant, ordered within</td></tr><tr><td>Low cardinality (<code>status</code>)</td><td class="desc">Few chunks, uneven</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Two-member replica sets that can't elect a primary when one fails</li><li class="note-item">Sharding before you need it</li><li class="note-item">Picking a shard key nobody filters on</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Always connect with the replica set name so drivers follow failover</li><li class="note-item">Test failover with <code>rs.stepDown()</code> before production</li><li class="note-item">Shard on the field your most frequent queries include</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Replica set — primary + secondaries</li><li class="note-item">Elections fail over in seconds</li><li class="note-item">Shard key decides the shard</li><li class="note-item">Hashed for even writes</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-28-change-streams.html">Change Streams</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-30-mongodb-security-backup.html">Security &amp; Backup</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 56: Search Engines: Elasticsearch &amp; OpenSearch</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s56">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 56</div>
+			<h1>Search Engines: Elasticsearch &amp; OpenSearch</h1>
+			<div class="sheet-desc">inverted index · mappings · analyzers · <code>match</code> / <code>bool</code> query · relevance scoring · aggregations</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Relevance Is the Product</h2><div class="description"><strong>Elasticsearch</strong> and its Apache-licensed fork <strong>OpenSearch</strong> are document stores built around an <strong>inverted index</strong> (word → documents). <strong>Analyzers</strong> break text into normalized tokens, <strong>mappings</strong> set field types, and queries are scored for <strong>relevance</strong> (BM25 by default). A <code>bool</code> query mixes scored <code>must</code> clauses with unscored <code>filter</code> clauses, and <strong>aggregations</strong> compute facets in the same request. They're usually a search copy of data whose source of truth lives elsewhere.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>text</code> fields are analyzed; <code>keyword</code> fields match exactly</li><li class="note-item">Changing a field's mapping means reindexing</li><li class="note-item">Elasticsearch offers AGPLv3 among its licences; OpenSearch is Apache 2.0</li><li class="note-item">Both also do vector search (kNN)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Mapping, Indexing &amp; a bool Query</h2><pre><code class="language-json">PUT /products
+{ "mappings": { "properties": {
+    "name":     { "type": "text", "analyzer": "english" },
+    "category": { "type": "keyword" },
+    "price":    { "type": "scaled_float", "scaling_factor": 100 },
+    "stock":    { "type": "integer" } } } }
+
+PUT /products/_doc/7
+{ "name": "SQL Pocket Guide", "category": "Books", "price": 19.99, "stock": 10 }
+
+GET /products/_search
+{ "query": { "bool": {
+    "must":   [ { "match": { "name": { "query": "pocket gide",
+                                       "fuzziness": "AUTO" } } } ],
+    "filter": [ { "term":  { "category": "Books" } },
+                { "range": { "price": { "lte": 30 } } } ] } },
+  "aggs": { "by_category": { "terms": { "field": "category" } },
+            "avg_price":   { "avg":   { "field": "price" } } },
+  "size": 10 }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The <code>english</code> analyzer lowercases, removes stop words and stems ("guides" → "guid")</div><div class="explain-item"><code>fuzziness: AUTO</code> lets "gide" match "guide"</div><div class="explain-item"><code>filter</code> clauses don't affect the score and are cached</div><div class="explain-item"><code>aggs</code> return facet counts alongside the hits</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Inverted index ↔ a GIN index on <code>tsvector</code> · <code>match</code> ↔ <code>@@ to_tsquery</code> · <code>filter</code> ↔ <code>WHERE</code></li><li class="note-item"><code>aggs</code> ↔ <code>GROUP BY</code>; relevance ranking ↔ <code>ts_rank</code>, much simpler · <a class="xref" href="../SQL-Sheets/sql-80-full-text-search.html">See SQL 80</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> Atlas Search runs Lucene beside the database (sheet 24)</li><li class="note-item"><strong>Redis</strong> Query Engine <code>FT.SEARCH</code>, in memory (sheet 40)</li><li class="note-item"><strong>DynamoDB</strong> zero-ETL integration feeds OpenSearch Service</li><li class="note-item"><strong>Cassandra</strong> SAI handles filters; no relevance scoring</li><li class="note-item"><strong>Neo4j</strong> full-text indexes built on Lucene</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await es.search({ index: "products", query: { match: { name: "pocket guide" } } })</code></li><li class="note-item"><strong>Python</strong> <code>es.search(index="products", query={"match": {"name": "pocket guide"}})</code></li><li class="note-item"><strong>Java</strong> <code>client.search(s -&gt; s.index("products").query(q -&gt; q.match(m -&gt; m.field("name").query("pocket guide"))), Product.class)</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Queries Table | Fields Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-queries"><h2 class="section-title">Query Types</h2><table><thead><tr><th>Query</th><th>Use for</th></tr></thead><tbody><tr><td><code>match</code></td><td class="desc">Analyzed full-text</td></tr><tr><td><code>multi_match</code></td><td class="desc">Several fields, with boosts</td></tr><tr><td><code>term</code> / <code>terms</code></td><td class="desc">Exact keyword values</td></tr><tr><td><code>range</code></td><td class="desc">Numbers and dates</td></tr><tr><td><code>bool</code></td><td class="desc">Combine must / should / filter / must_not</td></tr><tr><td><code>knn</code></td><td class="desc">Vector similarity</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-fields"><h2 class="section-title">Field Types</h2><table><thead><tr><th>Type</th><th>Behavior</th></tr></thead><tbody><tr><td><code>text</code></td><td class="desc">Analyzed, scored</td></tr><tr><td><code>keyword</code></td><td class="desc">Exact, sortable, aggregatable</td></tr><tr><td><code>integer</code> / <code>scaled_float</code></td><td class="desc">Numbers</td></tr><tr><td><code>date</code></td><td class="desc">Dates and times</td></tr><tr><td><code>dense_vector</code></td><td class="desc">Embeddings</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mapping categories as <code>text</code> and failing to aggregate them</li><li class="note-item">Relying on dynamic mapping in production</li><li class="note-item">Using the search engine as the only copy of the data</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Define mappings explicitly</li><li class="note-item">Put non-scoring conditions in <code>filter</code></li><li class="note-item">Reindex through an alias so you can swap indexes with no downtime</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Inverted index + analyzers</li><li class="note-item"><code>text</code> vs <code>keyword</code></li><li class="note-item"><code>bool</code>: must + filter</li><li class="note-item">A search copy, not the source</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-55-graph-modeling-indexes.html" title="Graph Modeling, Indexes &amp; Constraints">Graph Modeling &amp; Indexes</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-57-vector-databases.html">Vector Databases &amp; Embeddings</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+	</body>
+</html>

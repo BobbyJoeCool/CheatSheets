@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 23: Index Strategy &amp; explain()</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s23">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 23</div>
+			<h1>Index Strategy &amp; explain()</h1>
+			<div class="sheet-desc">ESR rule · covered queries · <code>explain("executionStats")</code> · COLLSCAN vs IXSCAN · <code>hint</code></div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Design Indexes for Queries</h2><div class="description">Build compound indexes with the <strong>ESR rule</strong>: <strong>E</strong>quality fields first, then <strong>S</strong>ort fields, then <strong>R</strong>ange fields. Check every important query with <strong><code>explain("executionStats")</code></strong>: an <strong>IXSCAN</strong> with keys examined close to documents returned is healthy, a <strong>COLLSCAN</strong> means a full scan. A <strong>covered query</strong> is answered from the index alone, with zero documents examined.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>queryPlanner</code> shows the plan; <code>executionStats</code> also runs it</li><li class="note-item">The planner caches the winning plan per query shape</li><li class="note-item"><code>$indexStats</code> shows how often each index is used</li><li class="note-item">Atlas Performance Advisor suggests indexes</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">Every index slows writes and uses RAM; drop unused ones (check <code>$indexStats</code>) on write-heavy collections</li><li class="note-item">Order compound fields by ESR; a range field before a sort field forces an in-memory sort</li><li class="note-item">Build large indexes off-peak: builds hold an exclusive lock briefly at the start and end</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">ESR, explain() &amp; Covered Queries</h2><pre><code class="language-javascript">// query: a customer's pending orders over $20, newest first
+db.orders.find({ customerId: 42, status: "pending", total: { $gt: 20 } })
+         .sort({ orderDate: -1 })
+
+// ESR: Equality (customerId, status) → Sort (orderDate) → Range (total)
+db.orders.createIndex({ customerId: 1, status: 1, orderDate: -1, total: 1 })
+
+db.orders.find({ customerId: 42, status: "pending", total: { $gt: 20 } })
+  .sort({ orderDate: -1 })
+  .explain("executionStats")
+// winningPlan.inputStage.stage: "IXSCAN"   (COLLSCAN = full scan)
+// nReturned: 3, totalKeysExamined: 4, totalDocsExamined: 3
+
+// covered: every field comes from the index
+db.orders.find({ customerId: 42 }, { _id: 0, customerId: 1, orderDate: 1 })
+// totalDocsExamined: 0
+
+// force a plan while testing
+db.orders.find({ customerId: 42 }).hint({ customerId: 1, status: 1, orderDate: -1, total: 1 })
+
+// how often is each index used?
+db.orders.aggregate([ { $indexStats: {} } ])</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Equality fields narrow to one slice of the index; the sort field then reads in order; the range filters last</div><div class="explain-item">Keys examined ≈ returned means the index fits the query</div><div class="explain-item">A covered query must exclude <code>_id</code> unless <code>_id</code> is in the index</div><div class="explain-item"><code>hint</code> is for testing; let the planner choose in production</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>explain()</code> ↔ <code>EXPLAIN ANALYZE</code> · COLLSCAN ↔ Seq Scan · IXSCAN ↔ Index Scan</li><li class="note-item">Covered query ↔ Index Only Scan · <a class="xref" href="../SQL-Sheets/sql-73-explain-query-plans.html">See SQL 73</a>, <a class="xref" href="../SQL-Sheets/sql-74-query-optimization.html">74</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> <code>SLOWLOG GET</code>, <code>LATENCY DOCTOR</code>, <code>redis-cli --bigkeys</code></li><li class="note-item"><strong>DynamoDB</strong> no planner: a <code>Query</code> uses the key you name, or it's a <code>Scan</code></li><li class="note-item"><strong>Cassandra</strong> <code>TRACING ON</code> in cqlsh shows replicas contacted and timings</li><li class="note-item"><strong>Neo4j</strong> <code>EXPLAIN</code> / <code>PROFILE</code>: NodeIndexSeek vs NodeByLabelScan</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await orders.find(q).explain("executionStats")</code></li><li class="note-item"><strong>Python</strong> <code>orders.find(q).explain()</code></li><li class="note-item"><strong>Java</strong> <code>orders.find(q).explain(ExplainVerbosity.EXECUTION_STATS)</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Stages Table | Health Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-stages"><h2 class="section-title">Plan Stages</h2><table><thead><tr><th>Stage</th><th>Meaning</th></tr></thead><tbody><tr><td><code>COLLSCAN</code></td><td class="desc">Read every document</td></tr><tr><td><code>IXSCAN</code></td><td class="desc">Walk an index</td></tr><tr><td><code>FETCH</code></td><td class="desc">Load documents after IXSCAN</td></tr><tr><td><code>SORT</code></td><td class="desc">In-memory sort (no index order)</td></tr><tr><td><code>PROJECTION_COVERED</code></td><td class="desc">Answered from the index</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-health"><h2 class="section-title">Healthy Numbers</h2><table><thead><tr><th>Metric</th><th>Aim for</th></tr></thead><tbody><tr><td><code>totalKeysExamined / nReturned</code></td><td class="desc">Close to 1</td></tr><tr><td><code>totalDocsExamined / nReturned</code></td><td class="desc">Close to 1 (0 if covered)</td></tr><tr><td><code>executionTimeMillis</code></td><td class="desc">Stable under load</td></tr><tr><td>Stage <code>SORT</code></td><td class="desc">Absent on big results</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Putting the range field before the sort field</li><li class="note-item">Adding an index for every query instead of sharing compound prefixes</li><li class="note-item">Judging speed on a tiny dev dataset</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Explain with production-sized data</li><li class="note-item">Check <code>$indexStats</code> before adding another index</li><li class="note-item">Turn on the profiler (<code>db.setProfilingLevel(1, { slowms: 100 })</code>) to find slow queries</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">ESR — Equality, Sort, Range</li><li class="note-item">IXSCAN good, COLLSCAN bad</li><li class="note-item">Keys ≈ returned</li><li class="note-item">Covered — 0 docs examined</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-22-mongodb-indexes.html">Index Types</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-24-text-atlas-vector-search.html">Text, Atlas Search &amp; Vector Search</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

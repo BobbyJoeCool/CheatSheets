@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 25: Schema Design Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Schema Design Patterns</h1>
+			<div class="sheet-desc">bucket · outlier · subset · computed · extended reference · polymorphic · schema versioning</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Patterns for Common Problems</h2><div class="description">MongoDB's <strong>schema design patterns</strong> are named answers to recurring problems. <strong>Bucket</strong> groups many small records into one document. <strong>Subset</strong> keeps the most-used part of a large list on the parent. <strong>Computed</strong> stores totals on write instead of calculating them on every read. <strong>Outlier</strong> handles the rare oversized document. <strong>Polymorphic</strong> keeps different shapes in one collection, and <strong>schema versioning</strong> lets old and new shapes live side by side during a migration.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Time series collections now do the bucket pattern for you</li><li class="note-item">Extended reference is on sheet 05</li><li class="note-item">Patterns combine: subset + computed is common on product pages</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Six Patterns</h2><pre><code class="language-javascript">// Bucket: one document per sensor per hour
+{ sensor: "s1", hour: ISODate("2026-11-07T10:00Z"), count: 3,
+  readings: [ { t: 0, v: 21.4 }, { t: 60, v: 21.6 }, { t: 120, v: 21.5 } ] }
+
+// Subset: newest 10 reviews on the product, the rest in `reviews`
+{ _id: 7, name: "SQL Pocket Guide", reviewCount: 214,
+  recentReviews: [ { stars: 5, text: "Clear" }, { stars: 4, text: "Handy" } ] }
+
+// Computed: keep totals current on each write
+db.products.updateOne({ _id: 7 },
+  { $inc: { reviewCount: 1, starSum: 5 },
+    $push: { recentReviews: { $each: [newReview], $position: 0, $slice: 10 } } })
+
+// Outlier: flag the rare document that overflows
+{ _id: 7, buyers: [ /* first 1000 ids */ ], hasOverflow: true }
+
+// Polymorphic: one collection, a type field, different shapes
+{ _id: 21, kind: "book",  name: "SQL Pocket Guide", isbn: "978-0-00-000000-0", pages: 360 }
+{ _id: 22, kind: "cable", name: "USB-C Cable", lengthM: 2, connector: "USB-C" }
+
+// Schema versioning: tag each document, upgrade lazily
+{ _id: 42, schemaVersion: 2, name: { first: "Ada", last: "Lovelace" } }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Buckets cut document count and index size for high-volume small records</div><div class="explain-item"><code>$position: 0</code> + <code>$slice: 10</code> keeps the newest 10 reviews at the front</div><div class="explain-item">Average rating is <code>starSum / reviewCount</code>, computed without reading reviews</div><div class="explain-item">Readers check <code>schemaVersion</code> and convert old shapes (sheet 59)</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Subset ↔ <code>LIMIT</code> in a query · computed ↔ triggers or materialized views · polymorphic ↔ single-table inheritance</li><li class="note-item">Schema versioning ↔ migrations with <code>ALTER TABLE</code> · <a class="xref" href="../SQL-Sheets/sql-63-design-conventions.html">See SQL 63</a>, <a class="xref" href="../SQL-Sheets/sql-64-views-materialized-views.html">64</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> computed: counters with <code>INCR</code>; subset: capped lists with <code>LTRIM</code></li><li class="note-item"><strong>DynamoDB</strong> polymorphic items are normal (single-table design); computed with <code>ADD</code></li><li class="note-item"><strong>Cassandra</strong> bucket partitions by time: <code>PRIMARY KEY ((sensor, day), ts)</code></li><li class="note-item"><strong>Neo4j</strong> intermediate nodes split huge fans; extra labels give polymorphism</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> Mongoose discriminators: <code>Product.discriminator("Book", bookSchema)</code></li><li class="note-item"><strong>Python</strong> Beanie: <code>class Book(Product)</code> with <code>is_root = True</code> on the base</li><li class="note-item"><strong>Java</strong> Spring Data: <code>@TypeAlias("book") class Book extends Product</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Patterns Table | When Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-patterns"><h2 class="section-title">Patterns</h2><table><thead><tr><th>Pattern</th><th>Problem</th><th>Fix</th></tr></thead><tbody><tr><td>Bucket</td><td class="desc">Millions of tiny docs</td><td class="desc">Group by time / owner</td></tr><tr><td>Subset</td><td class="desc">Huge lists on parent</td><td class="desc">Keep the top N</td></tr><tr><td>Computed</td><td class="desc">Repeated heavy math</td><td class="desc">Store results on write</td></tr><tr><td>Outlier</td><td class="desc">Rare oversized docs</td><td class="desc">Overflow flag + extra docs</td></tr><tr><td>Polymorphic</td><td class="desc">Similar things, different fields</td><td class="desc">One collection + type field</td></tr><tr><td>Schema versioning</td><td class="desc">Changing shape</td><td class="desc">Version field + upgrade</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-when"><h2 class="section-title">Signals</h2><table><thead><tr><th>You see…</th><th>Consider</th></tr></thead><tbody><tr><td>Arrays growing without limit</td><td class="desc">Subset or bucket</td></tr><tr><td><code>$group</code> on every page load</td><td class="desc">Computed</td></tr><tr><td>A few docs near 16 MB</td><td class="desc">Outlier</td></tr><tr><td>A <code>$lookup</code> on every read</td><td class="desc">Extended reference</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Applying patterns before measuring a problem</li><li class="note-item">Computed values that drift because one write path forgets to update them</li><li class="note-item">Polymorphic collections without a type field</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Update computed fields in the same operation as the change</li><li class="note-item">Index the type field in polymorphic collections</li><li class="note-item">Document which patterns each collection uses</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Bucket — group small records</li><li class="note-item">Subset — keep the top N</li><li class="note-item">Computed — totals on write</li><li class="note-item">Versioning — evolve safely</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-24-text-atlas-vector-search.html">Text, Atlas Search &amp; Vector Search</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-26-schema-validation.html">Schema Validation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

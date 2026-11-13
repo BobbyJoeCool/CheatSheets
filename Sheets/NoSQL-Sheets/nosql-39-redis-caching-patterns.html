@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 39: Caching Patterns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s39">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 39</div>
+			<h1>Caching Patterns</h1>
+			<div class="sheet-desc">cache-aside · write-through · TTL strategy · invalidation · stampede protection · session store</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Redis as a Cache</h2><div class="description">The most common use of Redis is as a <strong>cache</strong> in front of a slower source of truth. In <strong>cache-aside</strong>, the app checks Redis first, loads from the database on a miss, and stores the result with a <strong>TTL</strong>. On writes, update the database and then <strong>delete</strong> the cache key so the next read refills it. Protect hot keys from a <strong>stampede</strong> (many requests rebuilding at once) with a short lock or early refresh, and add jitter to TTLs.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Cache what's expensive and read often</li><li class="note-item">Key names should include versions: <code>v2:product:7</code></li><li class="note-item">Session stores are caches with sliding TTLs</li><li class="note-item">Measure hit rate (<code>keyspace_hits</code> / <code>keyspace_misses</code>)</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">Cache stampede: a hot key expires and thousands of requests hit the database together. Use a short <code>SET NX EX</code> lock, early refresh or TTL jitter</li><li class="note-item">Stale data after writes: delete the cache key after the database commit, not before</li><li class="note-item">On cache-only instances set <code>maxmemory</code> and <code>maxmemory-policy allkeys-lru</code> (or <code>lfu</code>)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Cache-Aside, Invalidation &amp; Stampede Lock</h2><pre><code class="language-javascript">// cache-aside: read through the cache, fill on a miss
+async function getProduct(id) {
+  const key = `product:${id}`
+  const hit = await redis.get(key)
+  if (hit) return JSON.parse(hit)
+  const p = await db.collection("products").findOne({ _id: id })
+  const ttl = 3600 + Math.floor(Math.random() * 300)      // TTL + jitter
+  await redis.set(key, JSON.stringify(p), { EX: ttl })
+  return p
+}
+
+// write: update the source of truth, then drop the cache entry
+async function updatePrice(id, price) {
+  await db.collection("products").updateOne({ _id: id }, { $set: { price } })
+  await redis.del(`product:${id}`)
+}
+
+// stampede protection: one caller rebuilds, others wait briefly
+async function getWithLock(key, load, ttl = 3600) {
+  const hit = await redis.get(key)
+  if (hit) return JSON.parse(hit)
+  if (await redis.set(`lock:${key}`, "1", { NX: true, EX: 10 })) {
+    const v = await load()
+    await redis.set(key, JSON.stringify(v), { EX: ttl })
+    await redis.del(`lock:${key}`)
+    return v
+  }
+  await new Promise(r =&gt; setTimeout(r, 50))
+  return getWithLock(key, load, ttl)
+}</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Jitter spreads expiry times so a batch of keys doesn't expire together</div><div class="explain-item">Deleting rather than updating the cache avoids racing writers storing old values</div><div class="explain-item">The lock expires after 10 s even if the loader crashes</div><div class="explain-item">Callers that miss the lock retry after 50 ms and usually find the fresh value</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">A cache is a copy kept outside the database; the nearest SQL feature is a materialized view</li><li class="note-item">The database's own buffer cache saves disk reads, not network round trips · <a class="xref" href="../SQL-Sheets/sql-64-views-materialized-views.html">See SQL 64</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> WiredTiger keeps hot data in RAM; Redis still saves the network and query work</li><li class="note-item"><strong>DynamoDB</strong> DAX: a write-through cache with microsecond reads</li><li class="note-item"><strong>Cassandra</strong> key and row caches; Redis often fronts hot rows</li><li class="note-item"><strong>Neo4j</strong> page cache; cache computed recommendations in Redis</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await redis.set(key, JSON.stringify(p), { EX: 3600 })</code></li><li class="note-item"><strong>Python</strong> <code>r.set(key, json.dumps(p), ex=3600)</code></li><li class="note-item"><strong>Java</strong> Spring: <code>@Cacheable(value = "products", key = "#id")</code> with <code>spring-boot-starter-data-redis</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Patterns Table | Ttl Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-patterns"><h2 class="section-title">Caching Patterns</h2><table><thead><tr><th>Pattern</th><th>How</th></tr></thead><tbody><tr><td>Cache-aside</td><td class="desc">App reads cache, fills on miss</td></tr><tr><td>Read-through</td><td class="desc">Cache library loads on miss</td></tr><tr><td>Write-through</td><td class="desc">Write cache and database together</td></tr><tr><td>Write-behind</td><td class="desc">Write cache, flush to database later</td></tr><tr><td>Refresh-ahead</td><td class="desc">Refresh hot keys before expiry</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-ttl"><h2 class="section-title">TTL Strategy</h2><table><thead><tr><th>Data</th><th>Typical TTL</th></tr></thead><tbody><tr><td>Product pages</td><td class="desc">Minutes to hours</td></tr><tr><td>Prices / stock</td><td class="desc">Seconds, or invalidate on write</td></tr><tr><td>Sessions</td><td class="desc">30 min sliding</td></tr><tr><td>Expensive reports</td><td class="desc">Hours; refresh ahead</td></tr><tr><td>Feature flags</td><td class="desc">Seconds</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Updating the cache before the database commit</li><li class="note-item">Caching without TTLs and serving stale data forever</li><li class="note-item">Caching per-user data under shared keys</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start with cache-aside and delete-on-write</li><li class="note-item">Version key names when the cached shape changes</li><li class="note-item">Track hit rate; under ~80% means the cache may not be worth it</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Cache-aside — fill on miss</li><li class="note-item">Delete key after write</li><li class="note-item">TTL + jitter</li><li class="note-item">Lock against stampedes</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-38-redis-streams-pubsub.html">Streams &amp; Pub/Sub</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-40-redis-json-search.html">JSON, Search &amp; Vectors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

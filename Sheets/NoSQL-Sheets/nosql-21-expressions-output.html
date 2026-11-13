@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 21: Expression Operators &amp; Output</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s21">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 21</div>
+			<h1>Expression Operators &amp; Output</h1>
+			<div class="sheet-desc"><code>$cond</code> · <code>$switch</code> · <code>$dateTrunc</code> · <code>$concat</code> · <code>$merge</code> · <code>$out</code> · views</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Logic Inside Pipelines</h2><div class="description"><strong>Expression operators</strong> compute values inside <code>$project</code>, <code>$set</code>, <code>$group</code> and <code>$expr</code>: conditionals (<code>$cond</code>, <code>$switch</code>, <code>$ifNull</code>), strings (<code>$concat</code>, <code>$toUpper</code>), dates (<code>$dateTrunc</code>, <code>$dateToString</code>) and conversions (<code>$toString</code>, <code>$toDecimal</code>). To keep results, <strong><code>$out</code></strong> replaces a collection with the pipeline output and <strong><code>$merge</code></strong> upserts into one, which makes it the tool for incremental summaries. A <strong>view</strong> saves a pipeline as a read-only collection.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>$out</code> and <code>$merge</code> must be the last stage</li><li class="note-item">Views run their pipeline on every read; they store nothing</li><li class="note-item"><code>$merge</code> into the source collection is allowed</li><li class="note-item">"On-demand materialized view" = <code>$merge</code> on a schedule</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Expressions, $out, $merge &amp; Views</h2><pre><code class="language-javascript">db.orders.aggregate([
+  { $project: {
+      total: 1,
+      size: { $cond: { if: { $gte: ["$total", 100] }, then: "large", else: "small" } },
+      label: { $switch: { branches: [
+                 { case: { $eq: ["$status", "pending"] }, then: "Awaiting payment" },
+                 { case: { $eq: ["$status", "shipped"] }, then: "On the way" } ],
+               default: "Other" } },
+      month: { $dateTrunc: { date: "$orderDate", unit: "month" } },
+      ref: { $concat: ["ORD-", { $toString: "$_id" }] },
+      coupon: { $ifNull: ["$couponCode", "none"] }
+  } }
+])
+
+// replace a summary collection
+db.orders.aggregate([
+  { $group: { _id: "$customerId", spent: { $sum: "$total" } } },
+  { $out: "customerTotals" }
+])
+
+// upsert into it instead (incremental refresh)
+db.orders.aggregate([
+  { $match: { orderDate: { $gte: ISODate("2026-11-01") } } },
+  { $group: { _id: "$customerId", spent: { $sum: "$total" } } },
+  { $merge: { into: "customerTotals", on: "_id",
+              whenMatched: "replace", whenNotMatched: "insert" } }
+])
+
+// view: a saved, read-only pipeline
+db.createView("pendingOrders", "orders", [ { $match: { status: "pending" } } ])</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>$cond</code> is if / then / else; <code>$switch</code> handles several cases</div><div class="explain-item"><code>$dateTrunc</code> rounds a date down to the start of the month</div><div class="explain-item"><code>$out</code> swaps in the new collection when the pipeline finishes</div><div class="explain-item"><code>whenMatched</code> can also be <code>"merge"</code>, <code>"keepExisting"</code>, <code>"fail"</code> or a pipeline</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>$cond</code> ↔ <code>CASE WHEN</code> · <code>$ifNull</code> ↔ <code>COALESCE</code> · <code>$dateTrunc</code> ↔ <code>date_trunc</code></li><li class="note-item"><code>$out</code> ↔ <code>CREATE TABLE AS</code> · <code>$merge</code> ↔ <code>MERGE</code> · view ↔ <code>CREATE VIEW</code> · <a class="xref" href="../SQL-Sheets/sql-21-case-expressions.html">See SQL 21</a>, <a class="xref" href="../SQL-Sheets/sql-26-conditional-null-functions.html">26</a>, <a class="xref" href="../SQL-Sheets/sql-64-views-materialized-views.html">64</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> logic in Lua or the app; <code>APPLY</code> expressions in <code>FT.AGGREGATE</code></li><li class="note-item"><strong>DynamoDB</strong> no server-side expressions beyond update and condition expressions</li><li class="note-item"><strong>Cassandra</strong> write to several tables, or materialized views (experimental)</li><li class="note-item"><strong>Neo4j</strong> <code>CASE WHEN</code>, <code>coalesce()</code>, <code>date.truncate('month', d)</code></li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await db.createCollection("pendingOrders", { viewOn: "orders", pipeline: [...] })</code></li><li class="note-item"><strong>Python</strong> <code>db.create_collection("pendingOrders", viewOn="orders", pipeline=[...])</code></li><li class="note-item"><strong>Java</strong> <code>db.createView("pendingOrders", "orders", List.of(match(eq("status", "pending"))))</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Expr Table | Out Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-expr"><h2 class="section-title">Expression Operators</h2><table><thead><tr><th>Kind</th><th>Examples</th></tr></thead><tbody><tr><td>Conditional</td><td class="desc"><code>$cond</code>, <code>$switch</code>, <code>$ifNull</code></td></tr><tr><td>Comparison</td><td class="desc"><code>$eq</code>, <code>$gt</code>, <code>$cmp</code></td></tr><tr><td>Arithmetic</td><td class="desc"><code>$add</code>, <code>$multiply</code>, <code>$round</code></td></tr><tr><td>String</td><td class="desc"><code>$concat</code>, <code>$toUpper</code>, <code>$substrCP</code>, <code>$split</code></td></tr><tr><td>Date</td><td class="desc"><code>$dateTrunc</code>, <code>$dateDiff</code>, <code>$dateToString</code></td></tr><tr><td>Array</td><td class="desc"><code>$size</code>, <code>$filter</code>, <code>$map</code>, <code>$reduce</code></td></tr><tr><td>Conversion</td><td class="desc"><code>$toString</code>, <code>$toDecimal</code>, <code>$convert</code></td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-out"><h2 class="section-title">$out vs $merge</h2><table><thead><tr><th></th><th><code>$out</code></th><th><code>$merge</code></th></tr></thead><tbody><tr><td>Target</td><td class="desc">Replaced</td><td class="desc">Updated in place</td></tr><tr><td>Incremental</td><td class="desc">No</td><td class="desc">Yes</td></tr><tr><td>Other database</td><td class="desc">Yes</td><td class="desc">Yes</td></tr><tr><td>Sharded target</td><td class="desc">No</td><td class="desc">Yes</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using <code>$out</code> when other code still writes to that collection</li><li class="note-item">Treating a view as a cache; it recomputes every time</li><li class="note-item">Comparing values of different types inside <code>$cond</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Refresh summaries with <code>$merge</code> on a schedule</li><li class="note-item">Use <code>$filter</code> / <code>$map</code> to work on arrays without <code>$unwind</code></li><li class="note-item">Keep heavy expressions out of hot read paths</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>$cond</code> / <code>$switch</code> — logic</li><li class="note-item"><code>$dateTrunc</code> — date buckets</li><li class="note-item"><code>$out</code> replaces · <code>$merge</code> upserts</li><li class="note-item">Views — saved pipelines</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-20-advanced-stages.html">$facet, $bucket &amp; Window Stages</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-22-mongodb-indexes.html">Index Types</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

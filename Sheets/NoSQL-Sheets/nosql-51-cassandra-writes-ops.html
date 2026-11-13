@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 51: Writes, TTL &amp; Operations</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>Writes, TTL &amp; Operations</h1>
+			<div class="sheet-desc"><code>USING TTL</code> · tombstones · lightweight transactions <code>IF</code> · batches · <code>nodetool</code> · compaction</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Expiry, Compare-and-Set, Upkeep</h2><div class="description">Writes can expire with <strong><code>USING TTL</code></strong> (or a table default). Because data is immutable on disk, a delete or expiry writes a <strong>tombstone</strong> that hides old values until compaction removes it after <strong><code>gc_grace_seconds</code></strong> (10 days). <strong>Lightweight transactions</strong> (<code>IF NOT EXISTS</code>, <code>IF col = value</code>) use Paxos for compare-and-set within one partition, at higher latency. <strong>Counter</strong> columns live in their own tables. Keep clusters healthy with regular <strong>repair</strong> and watch <strong>compaction</strong>.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Every cell stores a write timestamp; the newest wins</li><li class="note-item">LWTs cost about four round trips</li><li class="note-item">Counters can't mix with normal columns or use TTL</li><li class="note-item">Unified Compaction Strategy arrived in 5.0</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">Deletes and expired TTLs write tombstones; reading partitions full of them is slow and fails at 100,000 (<code>tombstone_failure_threshold</code>). Avoid queue-like delete patterns</li><li class="note-item"><code>ALLOW FILTERING</code> scans whole partitions or the whole cluster; never ship it on large tables</li><li class="note-item">Run repair within <code>gc_grace_seconds</code> (10 days) or deleted data can come back</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">TTL, LWT, Counters &amp; Deletes</h2><pre><code class="language-sql">-- TTL per write, read it back, table default
+INSERT INTO sessions (id, customer_id) VALUES (uuid(), 42) USING TTL 1800;
+UPDATE carts USING TTL 86400 SET items = items + [7] WHERE customer_id = 42;
+SELECT TTL(customer_id), WRITETIME(customer_id) FROM sessions WHERE id = ?;
+ALTER TABLE sessions WITH default_time_to_live = 1800;
+
+-- lightweight transactions: compare-and-set in one partition
+INSERT INTO users_by_email (email, customer_id)
+  VALUES ('ada@example.com', 42) IF NOT EXISTS;
+UPDATE products SET stock = 8 WHERE product_id = 7 IF stock = 10;
+--  [applied] | stock
+--      False |     9        ← not applied; shows the current value
+
+-- counters live in their own tables
+CREATE TABLE product_views (product_id int PRIMARY KEY, views counter);
+UPDATE product_views SET views = views + 1 WHERE product_id = 7;
+
+-- a delete writes a tombstone
+DELETE FROM orders_by_customer
+ WHERE customer_id = 42 AND order_date = '2026-11-01' AND order_id = 1001;
+
+-- whole partitions delete cheaply (one tombstone)
+DELETE FROM orders_by_customer WHERE customer_id = 42;</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>TTL()</code> shows seconds left; <code>WRITETIME()</code> shows the write's microsecond timestamp</div><div class="explain-item"><code>IF NOT EXISTS</code> makes email unique without a read-then-write race</div><div class="explain-item">A failed LWT returns <code>[applied] = False</code> and the current values</div><div class="explain-item">Deleting a whole partition writes one tombstone instead of one per row</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>IF NOT EXISTS</code> ↔ <code>INSERT … ON CONFLICT DO NOTHING</code> · <code>IF stock = 10</code> ↔ optimistic <code>UPDATE … WHERE stock = 10</code></li><li class="note-item">Counter ↔ <code>UPDATE … SET n = n + 1</code>; TTL has no SQL equivalent · <a class="xref" href="../SQL-Sheets/sql-53-upsert-merge.html">See SQL 53</a>, <a class="xref" href="../SQL-Sheets/sql-70-locking-deadlocks.html">70</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> TTL indexes; conditional updates through filters</li><li class="note-item"><strong>Redis</strong> <code>EXPIRE</code>; <code>SET NX</code>; <code>INCR</code></li><li class="note-item"><strong>DynamoDB</strong> TTL attribute; condition expressions; atomic <code>ADD</code></li><li class="note-item"><strong>Neo4j</strong> no TTL; <code>MERGE</code> + uniqueness constraints for insert-if-absent</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>const rs = await client.execute(cql, [8, 7, 10], { prepare: true }); rs.wasApplied()</code></li><li class="note-item"><strong>Python</strong> <code>session.execute(stmt, (8, 7, 10)).was_applied</code></li><li class="note-item"><strong>Java</strong> <code>session.execute(bound).wasApplied()</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Nodetool Table | Compact Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-nodetool"><h2 class="section-title">nodetool</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td><code>status</code></td><td class="desc">Nodes, load, ownership</td></tr><tr><td><code>repair -pr shop</code></td><td class="desc">Sync replicas (primary ranges)</td></tr><tr><td><code>compactionstats</code></td><td class="desc">Running compactions</td></tr><tr><td><code>tablestats shop.t</code></td><td class="desc">Sizes, latencies, tombstones</td></tr><tr><td><code>snapshot -t tag shop</code></td><td class="desc">Hard-link backup</td></tr><tr><td><code>drain</code></td><td class="desc">Flush before shutdown</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-compact"><h2 class="section-title">Compaction Strategies</h2><table><thead><tr><th>Strategy</th><th>Fits</th></tr></thead><tbody><tr><td>STCS (size-tiered)</td><td class="desc">Write-heavy, general default</td></tr><tr><td>LCS (leveled)</td><td class="desc">Read-heavy, updates</td></tr><tr><td>TWCS (time-window)</td><td class="desc">Time series with TTL</td></tr><tr><td>UCS (unified, 5.0)</td><td class="desc">Tunable replacement for all three</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using a table as a queue (insert, read, delete) and drowning in tombstones</li><li class="note-item">LWTs on hot paths where plain writes would do</li><li class="note-item">Skipping repairs for weeks</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use TWCS for TTL-heavy time series</li><li class="note-item">Delete whole partitions rather than many rows</li><li class="note-item">Schedule repairs with Cassandra Reaper or your platform's tool</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>USING TTL</code> — expiry</li><li class="note-item">Tombstones — deletes cost reads</li><li class="note-item"><code>IF</code> — compare-and-set (LWT)</li><li class="note-item">Repair within 10 days</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-50-cassandra-query-modeling.html">Query-First Modeling</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-52-graph-model-neo4j.html">The Graph Model &amp; Neo4j</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+	</body>
+</html>

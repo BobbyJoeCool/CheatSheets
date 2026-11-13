@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 27: Transactions, Read &amp; Write Concerns</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s27">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 27</div>
+			<h1>Transactions, Read &amp; Write Concerns</h1>
+			<div class="sheet-desc">single-document atomicity · <code>startSession</code> · <code>withTransaction</code> · write concern <code>majority</code> · read concern · read preference</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Atomic Across Documents</h2><div class="description">Every write to <strong>one document</strong> is atomic, which covers most needs when related data is embedded. For changes across documents or collections, MongoDB has <strong>multi-document transactions</strong> on replica sets and sharded clusters: start a <strong>session</strong>, run the operations, then commit or abort. <strong>Write concern</strong> (how many replicas confirm), <strong>read concern</strong> (how committed the data must be) and <strong>read preference</strong> (which member to read) tune durability and freshness.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>withTransaction()</code> retries transient errors and commits for you</li><li class="note-item">Pass the session to every operation inside the transaction</li><li class="note-item">Transactions can't create collections on sharded clusters</li><li class="note-item">Prefer a schema that needs one document</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">Transactions need a replica set or sharded cluster; a standalone server rejects them. Run a one-node replica set locally</li><li class="note-item">Keep transactions short: they abort after 60 s by default and hold cache while open</li><li class="note-item">Retry on <code>TransientTransactionError</code> and <code>UnknownTransactionCommitResult</code>; <code>withTransaction()</code> does this</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Single-Document Atomicity &amp; Transactions</h2><pre><code class="language-javascript">// one document: already atomic, no transaction needed
+db.products.updateOne({ _id: 7, stock: { $gte: 2 } }, { $inc: { stock: -2 } })
+
+// several documents: a transaction
+const session = db.getMongo().startSession()
+const shop = session.getDatabase("shop")
+session.withTransaction(() =&gt; {
+  const r = shop.products.updateOne({ _id: 7, stock: { $gte: 2 } },
+                                    { $inc: { stock: -2 } })
+  if (r.modifiedCount === 0) throw new Error("out of stock")   // aborts
+  shop.orders.insertOne({ _id: 1002, customerId: 42, status: "pending",
+    items: [ { productId: 7, qty: 2, unitPrice: NumberDecimal("19.99") } ] })
+}, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } })
+session.endSession()
+
+// concerns outside transactions
+db.orders.insertOne(doc, { writeConcern: { w: "majority", j: true } })
+db.orders.find().readConcern("majority")
+db.orders.find().readPref("secondaryPreferred")</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">The filter <code>stock: { $gte: 2 }</code> makes the decrement conditional and race-free</div><div class="explain-item">Throwing inside the callback aborts and rolls back both writes</div><div class="explain-item"><code>snapshot</code> reads see one consistent point in time for the whole transaction</div><div class="explain-item"><code>secondaryPreferred</code> reads may be slightly stale</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item"><code>startSession</code> + <code>withTransaction</code> ↔ <code>BEGIN … COMMIT</code>; throwing ↔ <code>ROLLBACK</code></li><li class="note-item"><code>snapshot</code> read concern ↔ snapshot isolation (<code>REPEATABLE READ</code> in PostgreSQL) · <a class="xref" href="../SQL-Sheets/sql-68-transactions.html">See SQL 68</a>, <a class="xref" href="../SQL-Sheets/sql-69-isolation-levels.html">69</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> <code>MULTI</code> / <code>EXEC</code> without rollback (sheet 41)</li><li class="note-item"><strong>DynamoDB</strong> <code>TransactWriteItems</code>: up to 100 actions, all-or-nothing</li><li class="note-item"><strong>Cassandra</strong> lightweight transactions per partition only</li><li class="note-item"><strong>Neo4j</strong> every query runs in a transaction; <code>session.executeWrite()</code> retries</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await session.withTransaction(async () =&gt; { await products.updateOne(f, u, { session }) })</code></li><li class="note-item"><strong>Python</strong> <code>with client.start_session() as s: s.with_transaction(lambda s: products.update_one(f, u, session=s))</code></li><li class="note-item"><strong>Java</strong> <code>session.withTransaction(() -&gt; { products.updateOne(session, f, u); return null; })</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Wc Table | Rc Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-wc"><h2 class="section-title">Write Concern</h2><table><thead><tr><th>Value</th><th>Confirms when</th></tr></thead><tbody><tr><td><code>w: 1</code></td><td class="desc">The primary has it</td></tr><tr><td><code>w: "majority"</code></td><td class="desc">Most voting members have it (default)</td></tr><tr><td><code>j: true</code></td><td class="desc">It's in the journal on disk</td></tr><tr><td><code>wtimeout</code></td><td class="desc">Stop waiting after ms</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-rc"><h2 class="section-title">Read Concern &amp; Preference</h2><table><thead><tr><th>Setting</th><th>Meaning</th></tr></thead><tbody><tr><td><code>local</code></td><td class="desc">Latest on that member (default)</td></tr><tr><td><code>majority</code></td><td class="desc">Acknowledged by a majority</td></tr><tr><td><code>snapshot</code></td><td class="desc">One point in time (transactions)</td></tr><tr><td><code>primary</code></td><td class="desc">Read from the primary</td></tr><tr><td><code>secondaryPreferred</code></td><td class="desc">Secondary if available</td></tr><tr><td><code>nearest</code></td><td class="desc">Lowest latency member</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Forgetting to pass <code>session</code> to an operation, which then runs outside the transaction</li><li class="note-item">Long transactions that do slow work (HTTP calls) inside</li><li class="note-item">Using transactions to patch a schema that should embed</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Model so most changes touch one document</li><li class="note-item">Use conditional updates for stock and balances</li><li class="note-item">Keep transactions under a few hundred milliseconds</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">One document — always atomic</li><li class="note-item">Sessions + <code>withTransaction()</code></li><li class="note-item">Write concern — durability</li><li class="note-item">Read concern / preference — freshness</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-26-schema-validation.html">Schema Validation</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-28-change-streams.html">Change Streams</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

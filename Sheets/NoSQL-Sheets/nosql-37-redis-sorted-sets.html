@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 37: Sorted Sets</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s37">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 37</div>
+			<h1>Sorted Sets</h1>
+			<div class="sheet-desc"><code>ZADD</code> · <code>ZRANGE</code> · <code>REV</code> / <code>BYSCORE</code> · <code>ZINCRBY</code> · <code>ZRANK</code> · leaderboards · rate limits</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Ranked Members</h2><div class="description">A <strong>sorted set</strong> stores unique members, each with a numeric <strong>score</strong>, kept in score order. Rank, range and score lookups are fast (O(log n)), which makes sorted sets the standard tool for <strong>leaderboards</strong>, "top N" lists, time-ordered indexes and <strong>sliding-window rate limits</strong>. The unified <strong><code>ZRANGE</code></strong> reads by rank, score (<code>BYSCORE</code>) or name (<code>BYLEX</code>), in either direction (<code>REV</code>).</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Ties sort by member name</li><li class="note-item"><code>(</code> in a score range means exclusive: <code>(10</code></li><li class="note-item"><code>-inf</code> and <code>+inf</code> are open bounds</li><li class="note-item">Scores are 64-bit floats</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Leaderboards, Ranges &amp; Rate Limits</h2><pre><code class="language-bash">&gt; ZADD bestsellers:books 214 product:7 98 product:12 340 product:5
+&gt; ZINCRBY bestsellers:books 1 product:7          # one more sale
+"215"
+&gt; ZRANGE bestsellers:books 0 2 REV WITHSCORES    # top 3
+1) "product:5"
+2) "340"
+3) "product:7"
+4) "215"
+...
+&gt; ZREVRANK bestsellers:books product:7           # 0-based, from the top
+(integer) 1
+&gt; ZSCORE bestsellers:books product:7
+
+# products by price
+&gt; ZADD products:by_price 19.99 product:7 9.99 product:3 24.50 product:21
+&gt; ZRANGE products:by_price 10 20 BYSCORE          # 10 ≤ price ≤ 20
+&gt; ZRANGE products:by_price (10 +inf BYSCORE LIMIT 0 5
+&gt; ZCOUNT products:by_price 10 20
+
+# sliding window: at most 100 requests per 60 s per IP
+&gt; ZREMRANGEBYSCORE rate:1.2.3.4 0 1793491140000  # drop entries older than 60 s
+&gt; ZADD rate:1.2.3.4 1793491200000 req-8f2c       # score = now in ms
+&gt; ZCARD rate:1.2.3.4                             # &gt; 100 → reject
+&gt; EXPIRE rate:1.2.3.4 60</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>ZINCRBY</code> updates a score atomically and re-sorts the member</div><div class="explain-item"><code>REV</code> reads highest first; <code>WITHSCORES</code> adds each score after its member</div><div class="explain-item"><code>(10</code> excludes products costing exactly 10</div><div class="explain-item">Run the rate-limit steps in a <code>MULTI</code> or Lua script so they're atomic</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Sorted set ↔ an indexed column with <code>ORDER BY score DESC LIMIT 3</code></li><li class="note-item"><code>ZREVRANK</code> ↔ <code>RANK() OVER (ORDER BY score DESC)</code> · <a class="xref" href="../SQL-Sheets/sql-45-ranking-functions.html">See SQL 45</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> index on the score field + <code>sort().limit()</code>; <code>$rank</code> window</li><li class="note-item"><strong>DynamoDB</strong> a GSI with the score as sort key, queried with <code>ScanIndexForward = false</code></li><li class="note-item"><strong>Cassandra</strong> a clustering column <code>score DESC</code> within a partition</li><li class="note-item"><strong>Neo4j</strong> <code>ORDER BY p.sales DESC LIMIT 3</code></li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await r.zIncrBy("bestsellers:books", 1, "product:7")</code></li><li class="note-item"><strong>Python</strong> <code>r.zincrby("bestsellers:books", 1, "product:7")</code></li><li class="note-item"><strong>Java</strong> <code>jedis.zincrby("bestsellers:books", 1, "product:7");</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Z Table | Zuse Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-z"><h2 class="section-title">Sorted Set Commands</h2><table><thead><tr><th>Command</th><th>Does</th></tr></thead><tbody><tr><td><code>ZADD [NX|XX|GT|LT]</code></td><td class="desc">Add or update scores</td></tr><tr><td><code>ZINCRBY</code></td><td class="desc">Add to a score</td></tr><tr><td><code>ZRANGE … [BYSCORE|BYLEX] [REV]</code></td><td class="desc">Read a range</td></tr><tr><td><code>ZRANK</code> / <code>ZREVRANK</code></td><td class="desc">Position</td></tr><tr><td><code>ZSCORE</code> / <code>ZCOUNT</code></td><td class="desc">Score / count in range</td></tr><tr><td><code>ZREM</code> / <code>ZREMRANGEBYSCORE</code></td><td class="desc">Remove</td></tr><tr><td><code>ZPOPMIN</code> / <code>ZPOPMAX</code></td><td class="desc">Pop lowest / highest</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-zuse"><h2 class="section-title">Use Cases</h2><table><thead><tr><th>Use</th><th>Score</th></tr></thead><tbody><tr><td>Leaderboard</td><td class="desc">Points or sales</td></tr><tr><td>Time index</td><td class="desc">Unix time</td></tr><tr><td>Rate limit</td><td class="desc">Request time in ms</td></tr><tr><td>Priority queue</td><td class="desc">Priority</td></tr><tr><td>Autocomplete</td><td class="desc">0 for all, read <code>BYLEX</code></td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Using a list and sorting in the app instead of a sorted set</li><li class="note-item">Forgetting to trim old entries in time-based sets</li><li class="note-item">Running rate-limit steps as separate, non-atomic calls</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>ZADD … GT</code> to keep only a member's best score</li><li class="note-item">Pair a time-indexed sorted set with hashes holding the details</li><li class="note-item">Cap leaderboards with <code>ZREMRANGEBYRANK</code></li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Members ranked by score</li><li class="note-item"><code>ZRANGE … REV</code> — top N</li><li class="note-item"><code>BYSCORE</code> — ranges</li><li class="note-item">Rate limits and time indexes</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-36-redis-lists-sets.html">Lists &amp; Sets</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-38-redis-streams-pubsub.html">Streams &amp; Pub/Sub</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+	</body>
+</html>

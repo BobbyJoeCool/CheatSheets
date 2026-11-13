@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 28: Change Streams</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s28">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 28</div>
+			<h1>Change Streams</h1>
+			<div class="sheet-desc"><code>watch()</code> · change events · resume token · <code>fullDocument</code> · pipeline filters · event-driven sync</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">React to Every Change</h2><div class="description">A <strong>change stream</strong> pushes inserts, updates, replaces and deletes to your app as they happen, built on the replication log (oplog). Open one with <strong><code>watch()</code></strong> on a collection, database or whole deployment, filter it with a pipeline, and save each event's <strong>resume token</strong> so you can continue after a restart without missing events. Use it for event-driven sync: updating caches, search indexes or other services.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Requires a replica set or sharded cluster</li><li class="note-item">Resume tokens work while the event is still in the oplog</li><li class="note-item"><code>fullDocument: "updateLookup"</code> fetches the current document for updates</li><li class="note-item">Events for one document arrive in order</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">watch(), Filters &amp; Resume Tokens</h2><pre><code class="language-javascript">// inserts and updates on orders, with the full document
+const cs = db.orders.watch(
+  [ { $match: { operationType: { $in: ["insert", "update"] } } } ],
+  { fullDocument: "updateLookup" })
+
+while (!cs.isClosed()) {
+  const e = cs.tryNext()
+  if (!e) { sleep(500); continue }
+  printjson({ op: e.operationType, id: e.documentKey._id,
+              status: e.fullDocument?.status })
+  saveToken(e._id)                       // resume token
+}
+
+// continue after a crash
+db.orders.watch([], { resumeAfter: loadToken() })
+
+// start from a moment in time
+db.orders.watch([], { startAtOperationTime: Timestamp({ t: 1793491200, i: 0 }) })
+
+// pre-images: the document before the change (6.0+)
+db.runCommand({ collMod: "orders", changeStreamPreAndPostImages: { enabled: true } })
+db.orders.watch([], { fullDocumentBeforeChange: "whenAvailable" })
+
+// a whole database or deployment
+db.watch()
+db.getMongo().watch()</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>documentKey</code> holds the <code>_id</code> (and shard key) of the changed document</div><div class="explain-item">An update event carries <code>updateDescription</code> with changed and removed fields</div><div class="explain-item"><code>saveToken</code> / <code>loadToken</code> stand for your own storage, such as a small collection</div><div class="explain-item">Pre-images must be enabled per collection before you can read them</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Change streams ↔ logical replication / logical decoding, or <code>LISTEN</code> / <code>NOTIFY</code> for simple cases</li><li class="note-item">Triggers run inside the database; change streams run in your app · <a class="xref" href="../SQL-Sheets/sql-67-triggers.html">See SQL 67</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> keyspace notifications (<code>notify-keyspace-events</code>) or Streams</li><li class="note-item"><strong>DynamoDB</strong> DynamoDB Streams (24 h) or Kinesis Data Streams</li><li class="note-item"><strong>Cassandra</strong> CDC commit-log files, usually read by Debezium</li><li class="note-item"><strong>Neo4j</strong> CDC (Enterprise and Aura) via <code>db.cdc.query</code></li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>for await (const e of orders.watch(pipeline)) handle(e)</code></li><li class="note-item"><strong>Python</strong> <code>with orders.watch(pipeline) as s: for e in s: handle(e)</code></li><li class="note-item"><strong>Java</strong> <code>orders.watch(pipeline).forEach(e -&gt; handle(e));</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Event Table | Opts Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-event"><h2 class="section-title">Event Fields</h2><table><thead><tr><th>Field</th><th>Holds</th></tr></thead><tbody><tr><td><code>_id</code></td><td class="desc">Resume token</td></tr><tr><td><code>operationType</code></td><td class="desc">insert, update, replace, delete, …</td></tr><tr><td><code>documentKey</code></td><td class="desc"><code>_id</code> of the document</td></tr><tr><td><code>fullDocument</code></td><td class="desc">The document (insert, or with updateLookup)</td></tr><tr><td><code>updateDescription</code></td><td class="desc">Changed / removed fields</td></tr><tr><td><code>clusterTime</code></td><td class="desc">When it happened</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-opts"><h2 class="section-title">Options</h2><table><thead><tr><th>Option</th><th>Effect</th></tr></thead><tbody><tr><td><code>fullDocument</code></td><td class="desc"><code>updateLookup</code>, <code>whenAvailable</code>, <code>required</code></td></tr><tr><td><code>resumeAfter</code></td><td class="desc">Continue after a token</td></tr><tr><td><code>startAfter</code></td><td class="desc">Like resumeAfter, also after invalidate</td></tr><tr><td><code>startAtOperationTime</code></td><td class="desc">Begin at a timestamp</td></tr><tr><td><code>fullDocumentBeforeChange</code></td><td class="desc">Include pre-images</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Not saving resume tokens, so a restart misses events</li><li class="note-item">Doing slow work inline and falling off the end of the oplog</li><li class="note-item">Assuming <code>updateLookup</code> returns the document as of the event (it's the current one)</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Store the token after processing each event</li><li class="note-item">Make handlers idempotent; events can repeat after a resume</li><li class="note-item">Filter with <code>$match</code> on the server, not in the app</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>watch()</code> — live changes</li><li class="note-item">Filter with a pipeline</li><li class="note-item">Save resume tokens</li><li class="note-item">Replica set required</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-27-transactions-concerns.html">Transactions, Read &amp; Write Concerns</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-29-replica-sets-sharding.html">Replica Sets &amp; Sharding</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 05: Embedding vs Referencing</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s05">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 05</div>
+			<h1>Embedding vs Referencing</h1>
+			<div class="sheet-desc">one-to-few · one-to-many · many-to-many · embed · reference · extended reference · document size</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Together or Apart</h2><div class="description"><strong>Embed</strong> data inside its parent when it's read together, owned by the parent and <strong>bounded</strong> in size, such as a customer's two addresses. <strong>Reference</strong> it by id when it grows without limit, is shared by many parents or changes on its own, such as reviews. An <strong>extended reference</strong> copies just the few fields you display (a customer name on an order) next to the id. Record size limits set the hard ceiling: 16 MB per MongoDB document, 400 KB per DynamoDB item.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">One-to-few: embed</li><li class="note-item">One-to-many: embed ids, or reference from the child</li><li class="note-item">One-to-millions: the child stores the parent's id</li><li class="note-item">Many-to-many: arrays of ids, or a link collection</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">An array that grows forever (reviews, events) slows every read and eventually hits the 16 MB limit. Move children to their own collection with the parent's id</li><li class="note-item">Large documents rewrite and replicate more on each update; keep frequently updated documents small</li><li class="note-item">Copied fields go stale; decide who updates the copies and when (sheet 58)</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Embed, Reference, Extended Reference</h2><pre><code class="language-javascript">// Embed: one-to-few, read with the parent, owned by it
+db.customers.insertOne({
+  _id: 42, name: "Ada Lovelace",
+  addresses: [ { type: "ship", city: "Des Moines", country: "US" },
+               { type: "bill", city: "Ames", country: "US" } ]
+})
+
+// Reference: one-to-many that grows; the child points at the parent
+db.reviews.insertOne({ productId: 7, customerId: 42, stars: 5,
+                       text: "Clear and short", createdAt: new Date() })
+db.reviews.createIndex({ productId: 1, createdAt: -1 })
+
+// Extended reference: copy only the fields you display
+db.orders.insertOne({
+  _id: 1001,
+  customer: { id: 42, name: "Ada Lovelace" },
+  items: [ { productId: 7, name: "SQL Pocket Guide", qty: 2, unitPrice: 19.99 },
+           { productId: 3, name: "USB-C Cable", qty: 1, unitPrice: 9.99 } ]
+})
+
+// Many-to-many: arrays of ids on one side
+db.products.updateOne({ _id: 7 }, { $addToSet: { categoryIds: 3 } })</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Addresses never grow past a handful and are always shown with the customer</div><div class="explain-item">Reviews can number in the thousands, so each is its own document with an index on <code>productId</code></div><div class="explain-item"><code>unitPrice</code> is copied on purpose: the order must keep the price paid, even if the product's price changes</div><div class="explain-item">The copied customer name may go stale; it's refreshed by whoever changes the name, or accepted as a snapshot</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Reference ↔ foreign key + <code>JOIN</code>; embed has no direct form (closest: a <code>jsonb</code> column)</li><li class="note-item">Many-to-many ↔ a junction table · <a class="xref" href="../SQL-Sheets/sql-56-primary-foreign-keys.html">See SQL 56</a>, <a class="xref" href="../SQL-Sheets/sql-62-relationships-er-modeling.html">62</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>Redis</strong> embed as a JSON value or hash fields; reference with key names like <code>customer:42</code></li><li class="note-item"><strong>DynamoDB</strong> embed as map / list attributes (400 KB cap); reference with items under one partition key</li><li class="note-item"><strong>Cassandra</strong> embed with collections or UDTs; reference by copying into query tables</li><li class="note-item"><strong>Neo4j</strong> references are relationships; embedded values are properties</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> Mongoose: <code>addresses: [addressSchema]</code> vs <code>customer: { type: ObjectId, ref: "Customer" }</code> + <code>.populate()</code></li><li class="note-item"><strong>Python</strong> Beanie: <code>addresses: list[Address]</code> vs <code>customer: Link[Customer]</code></li><li class="note-item"><strong>Java</strong> Spring Data: <code>List&lt;Address&gt; addresses</code> vs <code>@DocumentReference Customer customer</code></li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Rules Table | Limits Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-rules"><h2 class="section-title">Rules of Thumb</h2><table><thead><tr><th>Relationship</th><th>Usually</th></tr></thead><tbody><tr><td>One-to-one</td><td class="desc">Embed</td></tr><tr><td>One-to-few</td><td class="desc">Embed</td></tr><tr><td>One-to-many (hundreds)</td><td class="desc">Embed ids or reference</td></tr><tr><td>One-to-millions</td><td class="desc">Child stores parent id</td></tr><tr><td>Many-to-many</td><td class="desc">Id arrays or link collection</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-limits"><h2 class="section-title">Record Size Limits</h2><table><thead><tr><th>Engine</th><th>Limit</th></tr></thead><tbody><tr><td>MongoDB</td><td class="desc">16 MB per document</td></tr><tr><td>DynamoDB</td><td class="desc">400 KB per item</td></tr><tr><td>Redis</td><td class="desc">512 MB per string value</td></tr><tr><td>Cassandra</td><td class="desc">Keep partitions under ~100 MB</td></tr><tr><td>Neo4j</td><td class="desc">No record limit; keep properties small</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Embedding a list that grows without bound</li><li class="note-item">Referencing everything and then <code>$lookup</code>-ing on every read</li><li class="note-item">Copying fields without deciding how they get updated</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Ask "is it read together?" and "does it grow?" first</li><li class="note-item">Cap embedded arrays with <code>$slice</code> (subset pattern)</li><li class="note-item">Copy values that should freeze in time, like prices on orders</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Embed — bounded, read together</li><li class="note-item">Reference — grows or is shared</li><li class="note-item">Extended reference — copy display fields</li><li class="note-item">Watch the size limits</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-04-access-pattern-modeling.html">Modeling From Access Patterns</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-06-choosing-an-engine.html">Choosing an Engine</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

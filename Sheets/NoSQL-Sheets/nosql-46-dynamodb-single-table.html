@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NoSQL — Sheet 46: Single-Table Design</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/nosql-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s46">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 46</div>
+			<h1>Single-Table Design</h1>
+			<div class="sheet-desc">access-pattern table · composite sort keys · item collections · adjacency list · when not to</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes | Production Check -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">One Table, Many Entities</h2><div class="description"><strong>Single-table design</strong> stores several entity types in one table, with generic key names (<code>PK</code>, <code>SK</code>) and typed key values (<code>CUSTOMER#42</code>, <code>ORDER#1001</code>). Entities read together share a partition key, so one Query returns a <strong>pre-joined</strong> item collection. It starts from an <strong>access-pattern table</strong>: each pattern maps to a key condition on the table or a GSI. It shines for known, high-volume patterns and hurts when questions change often.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Store a <code>type</code> attribute on every item</li><li class="note-item">Copy display fields into child items to avoid extra reads</li><li class="note-item">GSI overloading: one index, many entity types</li><li class="note-item">Adjacency lists model many-to-many</li></ul></section></div><div class="col" id="col-1-3"><section class="section-notes section-prod" id="prod"><h2 class="section-title">Production Check</h2><ul class="note-list"><li class="note-item">Hot partitions: one partition key taking most traffic is throttled (about 3,000 reads / 1,000 writes per second); use high-cardinality keys or write sharding</li><li class="note-item">With an LSI, each item collection is capped at 10 GB</li><li class="note-item">Single-table makes new ad hoc questions hard; if access patterns are still unclear, start with one table per entity</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code | Explain + SQL Equivalent + Across Engines + In Your Code -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Shop as One Table</h2><pre><code class="language-javascript">// Items in table "Shop" (typed key values, generic names)
+{ PK: "CUSTOMER#42", SK: "PROFILE", type: "customer",
+  name: "Ada Lovelace", email: "ada@example.com" }
+{ PK: "CUSTOMER#42", SK: "ORDER#2026-11-01#1001", type: "order",
+  status: "pending", total: 49.97, GSI1PK: "ORDER#1001", GSI1SK: "META" }
+{ PK: "ORDER#1001", SK: "ITEM#7", type: "line",
+  qty: 2, unitPrice: 19.99, name: "SQL Pocket Guide" }
+{ PK: "ORDER#1001", SK: "ITEM#3", type: "line",
+  qty: 1, unitPrice: 9.99, name: "USB-C Cable" }
+{ PK: "PRODUCT#7", SK: "META", type: "product",
+  name: "SQL Pocket Guide", stock: 10,
+  GSI1PK: "CATEGORY#Books", GSI1SK: "PRODUCT#7" }
+
+// Access patterns → key conditions
+// AP1 profile + recent orders      PK = CUSTOMER#42
+// AP2 orders, newest first         PK = CUSTOMER#42 AND begins_with(SK, "ORDER#"), reversed
+// AP3 an order's lines             PK = ORDER#1001
+// AP4 order header by id           GSI1: GSI1PK = ORDER#1001
+// AP5 products in a category       GSI1: GSI1PK = CATEGORY#Books</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">AP1 returns the profile and all orders in one Query because they share a partition key</div><div class="explain-item">Line items copy the product name so an order page needs no product lookups</div><div class="explain-item">GSI1 serves two unrelated patterns because its key values are typed</div><div class="explain-item">Adding AP6 later may mean a new GSI or a backfill of new key attributes</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">Several entities in one table is the opposite of normalization; an item collection is a stored join</li><li class="note-item">Adjacency lists ↔ a junction table for many-to-many · <a class="xref" href="../SQL-Sheets/sql-61-normalization.html">See SQL 61</a>, <a class="xref" href="../SQL-Sheets/sql-62-relationships-er-modeling.html">62</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> one collection per entity, with related data embedded</li><li class="note-item"><strong>Redis</strong> key prefixes play the same role (<code>order:1001:items</code>)</li><li class="note-item"><strong>Cassandra</strong> one table per query rather than one table for everything</li><li class="note-item"><strong>Neo4j</strong> no keys to design; relationships carry the structure</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> ElectroDB or DynamoDB Toolbox model several entities on one table</li><li class="note-item"><strong>Python</strong> PynamoDB models, or boto3 with small key-builder functions</li><li class="note-item"><strong>Java</strong> Enhanced Client beans per entity with <code>@DynamoDbPartitionKey</code> / <code>@DynamoDbSortKey</code> on one table</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Keys Table | When Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-keys"><h2 class="section-title">Key Design Patterns</h2><table><thead><tr><th>Pattern</th><th>Example</th></tr></thead><tbody><tr><td>Composite sort key</td><td class="desc"><code>ORDER#&lt;date&gt;#&lt;id&gt;</code></td></tr><tr><td>Hierarchy</td><td class="desc"><code>COUNTRY#US#STATE#IA#CITY#Ames</code></td></tr><tr><td>Adjacency list</td><td class="desc"><code>PK = A</code>, <code>SK = B</code> per edge</td></tr><tr><td>Sparse index</td><td class="desc">Only some items have <code>GSI1PK</code></td></tr><tr><td>Write sharding</td><td class="desc"><code>STATUS#pending#0</code>…<code>#9</code></td></tr><tr><td>GSI overloading</td><td class="desc">Typed GSI key values</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-when"><h2 class="section-title">Single Table or Not?</h2><table><thead><tr><th>Situation</th><th>Choose</th></tr></thead><tbody><tr><td>Patterns known and stable</td><td class="desc">Single table</td></tr><tr><td>High volume, low latency</td><td class="desc">Single table</td></tr><tr><td>Patterns still changing</td><td class="desc">Table per entity</td></tr><tr><td>Heavy analytics needs</td><td class="desc">Export to an analytics store</td></tr><tr><td>Team new to DynamoDB</td><td class="desc">Table per entity first</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Starting with the item layout instead of the access-pattern table</li><li class="note-item">Generic keys with no <code>type</code> attribute, impossible to debug</li><li class="note-item">Putting every customer's orders under one partition key like <code>ORDERS</code></li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Keep the access-pattern table next to the code</li><li class="note-item">Write helper functions that build keys</li><li class="note-item">Use NoSQL Workbench to visualize the table</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">Entities share one table</li><li class="note-item">Typed key values</li><li class="note-item">Item collections = stored joins</li><li class="note-item">Design from access patterns</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="nosql-45-dynamodb-indexes.html">Secondary Indexes</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">NoSQL Reference · 61 Sheets</a>
+				<a class="nav-link next" href="nosql-47-dynamodb-streams-ttl-tx.html">Streams, TTL &amp; Transactions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
