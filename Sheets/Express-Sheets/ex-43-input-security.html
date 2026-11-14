@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 43: Input Security &amp; CSRF</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s43">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 43</div>
+			<h1>Input Security &amp; CSRF</h1>
+			<div class="sheet-desc">SQL / NoSQL injection · prototype pollution · XSS escaping · CSRF tokens (csrf-csrf) · sameSite · npm audit</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Most web vulnerabilities come from trusting input. <strong>Injection</strong> happens when input becomes code (SQL strings, Mongo operators, shell commands). <strong>XSS</strong> happens when input is rendered as HTML unescaped. <strong>CSRF</strong> happens when a browser sends your cookie on a request another site triggered. The fixes are parameters, escaping, validation, <code>sameSite</code> cookies and CSRF tokens for cookie-authenticated forms.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Parameterized queries stop SQL injection (sheet 33)</li><li class="note-item">Validate types: <code>{ "$gt": "" }</code> where a string was expected is an attack</li><li class="note-item">Never merge user objects into config (<code>Object.assign(cfg, req.body)</code>)</li><li class="note-item"><code>csurf</code> is deprecated; use <code>csrf-csrf</code> or <code>csrf-sync</code></li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Defenses in One Place</h2><pre><code class="language-javascript">import { doubleCsrf } from "csrf-csrf";
+
+// 1. type-check before querying (blocks NoSQL operator injection)
+app.post("/login", async (req, res) =&gt; {
+  const { email, password } = req.body;
+  if (typeof email !== "string" || typeof password !== "string")
+    return res.sendStatus(400);
+  const user = await User.findOne({ email });          // safe: plain string
+  // …
+});
+
+// 2. CSRF tokens for cookie-based forms
+const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
+  getSecret: () =&gt; process.env.CSRF_SECRET,
+  getSessionIdentifier: (req) =&gt; req.session.id,
+});
+app.use((req, res, next) =&gt; {
+  res.locals.csrfToken = generateCsrfToken(req, res);
+  next();
+});
+app.use(doubleCsrfProtection);           // checks POST/PUT/PATCH/DELETE
+// form: &lt;input type="hidden" name="_csrf" value="&lt;%= csrfToken %&gt;"&gt;
+
+// 3. no prototype pollution from merges
+const allowedKeys = ["title", "done"];
+const patch = Object.fromEntries(
+  Object.entries(req.body).filter(([k]) =&gt; allowedKeys.includes(k)));
+
+// 4. never build shell commands from input
+execFile("convert", [file.path, "out.png"]);   // not exec(`convert ${name}`)</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>typeof</code> check — rejects <code>{ "$ne": null }</code> objects</div><div class="explain-item">Double-submit CSRF — token in cookie + form, must match</div><div class="explain-item">Allowlist keys — <code>__proto__</code> / <code>constructor</code> never get through</div><div class="explain-item"><code>execFile</code> with an args array — no shell parsing</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>csurf</code> package</span> → <span class="idiom-prefer"><code>csrf-csrf</code> / <code>csrf-sync</code></span></li><li class="note-item"><span class="idiom-avoid"><code>Object.assign(obj, req.body)</code></span> → <span class="idiom-prefer">pick allowed fields (or a zod schema)</span></li><li class="note-item"><span class="idiom-avoid"><code>child_process.exec</code> with input</span> → <span class="idiom-prefer"><code>execFile</code> / <code>spawn</code> with an args array</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Attacks Table | Csrf Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-attacks"><h2 class="section-title">Attacks &amp; Fixes</h2><table><thead><tr><th>Attack</th><th>Fix</th></tr></thead><tbody><tr><td>SQL injection</td><td class="desc"><code>$1</code> parameters, ORM</td></tr><tr><td>NoSQL injection</td><td class="desc">type checks, <code>sanitizeFilter</code></td></tr><tr><td>XSS</td><td class="desc">escaped templates, CSP (41)</td></tr><tr><td>CSRF</td><td class="desc"><code>sameSite</code> + CSRF token</td></tr><tr><td>prototype pollution</td><td class="desc">allowlist keys, <code>Object.create(null)</code></td></tr><tr><td>path traversal</td><td class="desc"><code>root</code> option (16)</td></tr><tr><td>command injection</td><td class="desc"><code>execFile</code> args</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-csrf"><h2 class="section-title">Do You Need CSRF Tokens?</h2><table><thead><tr><th>Auth via</th><th>Needed?</th></tr></thead><tbody><tr><td>cookie / session (forms)</td><td class="desc">yes</td></tr><tr><td>cookie, sameSite=strict</td><td class="desc">mostly covered</td></tr><tr><td>Authorization header (JWT)</td><td class="desc">no</td></tr><tr><td>API key header</td><td class="desc">no</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Escaping on input instead of output: data gets double-escaped and still unsafe elsewhere</li><li class="note-item">Skipping CSRF because "it's an API" while auth uses cookies: browsers send them anyway</li><li class="note-item">Ignoring <code>npm audit</code> warnings for direct dependencies</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Run <code>npm audit --omit=dev</code> in CI and update Express patch releases promptly</li><li class="note-item">Validate every request with schemas (sheet 30); it closes most of these at once</li><li class="note-item">Read the OWASP Top 10 and the Express security best practices page</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">parameters — stop SQL injection</li><li class="note-item">type checks — stop NoSQL injection</li><li class="note-item">escape output + CSP — stop XSS</li><li class="note-item">sameSite + tokens — stop CSRF</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-42-cors-rate-limiting.html" class="nav-link prev">CORS &amp; Rate Limiting</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-44-socket-io.html" class="nav-link next" title="WebSockets with Socket.IO">WebSockets</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

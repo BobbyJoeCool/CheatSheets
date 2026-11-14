@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 29: REST API Design</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s29">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 29</div>
+			<h1>REST API Design</h1>
+			<div class="sheet-desc">resource routes · CRUD ↔ HTTP methods · 201 + Location · 204 · idempotency · consistent JSON</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">A REST API models <strong>resources</strong> as nouns in URLs and uses HTTP methods as the verbs. <code>GET</code> reads, <code>POST</code> creates, <code>PUT</code> replaces, <code>PATCH</code> changes some fields, <code>DELETE</code> removes. Good APIs return accurate status codes, a <code>Location</code> header for created resources, and the same JSON shape everywhere. Express gives you the routing; these conventions are up to you.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Plural nouns: <code>/todos</code>, <code>/todos/7</code>, <code>/users/3/todos</code></li><li class="note-item"><strong>Idempotent</strong>: <code>GET</code>, <code>PUT</code>, <code>DELETE</code> can be retried safely; <code>POST</code> can't</li><li class="note-item">Return the created or updated resource so clients don't need a second call</li><li class="note-item">HTTP set covers methods, status codes and headers in depth</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Complete Resource</h2><pre><code class="language-javascript">const r = express.Router();
+
+r.get("/", async (req, res) =&gt; res.json(await repo.list()));
+
+r.get("/:id", async (req, res) =&gt; {
+  res.json(await repo.findOrThrow(req.params.id));       // 404 via HttpError
+});
+
+r.post("/", async (req, res) =&gt; {
+  const todo = await repo.create(req.body);
+  res.status(201).location(`${req.baseUrl}/${todo.id}`).json(todo);
+});
+
+r.put("/:id", async (req, res) =&gt; {                      // full replace
+  res.json(await repo.replace(req.params.id, req.body));
+});
+
+r.patch("/:id", async (req, res) =&gt; {                    // partial
+  res.json(await repo.update(req.params.id, req.body));
+});
+
+r.delete("/:id", async (req, res) =&gt; {
+  await repo.remove(req.params.id);
+  res.sendStatus(204);
+});
+
+app.use("/api/todos", r);</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>201</code> + <code>Location</code> — where the new resource lives</div><div class="explain-item"><code>PUT</code> sends the whole object; missing fields are cleared</div><div class="explain-item"><code>PATCH</code> sends only what changes</div><div class="explain-item"><code>204</code> — success, no body</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>POST /todos/7/delete</code></span> → <span class="idiom-prefer"><code>DELETE /todos/7</code></span></li><li class="note-item"><span class="idiom-avoid"><code>200 { success: false }</code></span> → <span class="idiom-prefer">a 4xx status with an error body</span></li><li class="note-item"><span class="idiom-avoid">Different JSON shapes per endpoint</span> → <span class="idiom-prefer">one envelope for lists, items and errors</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Crud Table | Props Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-crud"><h2 class="section-title">Routes for /todos</h2><table><thead><tr><th>Method + Path</th><th>Action</th><th>Success</th></tr></thead><tbody><tr><td>GET /todos</td><td class="desc">list</td><td class="desc">200</td></tr><tr><td>POST /todos</td><td class="desc">create</td><td class="desc">201 + Location</td></tr><tr><td>GET /todos/:id</td><td class="desc">read one</td><td class="desc">200</td></tr><tr><td>PUT /todos/:id</td><td class="desc">replace</td><td class="desc">200</td></tr><tr><td>PATCH /todos/:id</td><td class="desc">update fields</td><td class="desc">200</td></tr><tr><td>DELETE /todos/:id</td><td class="desc">remove</td><td class="desc">204</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-props"><h2 class="section-title">Method Properties</h2><table><thead><tr><th>Method</th><th>Safe</th><th>Idempotent</th></tr></thead><tbody><tr><td>GET</td><td class="desc">yes</td><td class="desc">yes</td></tr><tr><td>POST</td><td class="desc">no</td><td class="desc">no</td></tr><tr><td>PUT</td><td class="desc">no</td><td class="desc">yes</td></tr><tr><td>PATCH</td><td class="desc">no</td><td class="desc">no*</td></tr><tr><td>DELETE</td><td class="desc">no</td><td class="desc">yes</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Treating <code>PUT</code> as partial update: clients that send one field wipe the rest</li><li class="note-item">Returning <code>200</code> for created resources: clients can't tell create from update</li><li class="note-item">Nesting URLs three levels deep (<code>/users/1/projects/2/todos/3</code>): use filters instead</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add an <code>Idempotency-Key</code> header for retry-safe POSTs (payments)</li><li class="note-item">Document the API with OpenAPI (sheet 32)</li><li class="note-item">Version from day one: mount under <code>/api/v1</code></li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">nouns in URLs, verbs as methods</li><li class="note-item"><code>201</code> + <code>Location</code> — creates</li><li class="note-item"><code>204</code> — deletes</li><li class="note-item">one JSON shape — everywhere</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-28-rendering-views.html" class="nav-link prev">Rendering Views &amp; Locals</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-30-validation.html" class="nav-link next">Request Validation</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

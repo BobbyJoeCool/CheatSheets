@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 35: MongoDB with Mongoose</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s35">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 35</div>
+			<h1>MongoDB with Mongoose</h1>
+			<div class="sheet-desc">mongoose.connect() · Schema · model() · find / findById · CastError → 400 · lean() · timestamps</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>Mongoose</strong> adds schemas, validation and models on top of the MongoDB driver. Connect once at startup, define a <code>Schema</code> per collection, and query through the model. Two errors need mapping: a malformed id raises **<code>CastError</code><strong> (should be 400), and a duplicate unique field raises </strong>error code 11000** (should be 409). Use <code>.lean()</code> for read-only queries to get plain objects quickly.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>_id</code> is an <code>ObjectId</code>; Mongoose adds an <code>id</code> string getter</li><li class="note-item"><code>timestamps: true</code> adds <code>createdAt</code> / <code>updatedAt</code></li><li class="note-item"><code>runValidators: true</code> is needed for validators on updates</li><li class="note-item">Never pass raw <code>req.query</code> / <code>req.body</code> as a filter (operator injection)</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Model + Routes</h2><pre><code class="language-javascript">import mongoose from "mongoose";
+await mongoose.connect(process.env.MONGODB_URI);
+
+const todoSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true, maxlength: 200 },
+  done: { type: Boolean, default: false },
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+}, { timestamps: true });
+export const Todo = mongoose.model("Todo", todoSchema);
+
+app.get("/todos", async (req, res) =&gt; {
+  res.json(await Todo.find({ owner: req.user.id })
+    .sort("-createdAt").limit(20).lean());
+});
+
+app.get("/todos/:id", async (req, res) =&gt; {
+  const todo = await Todo.findOne({ _id: req.params.id, owner: req.user.id })
+    .lean();
+  if (!todo) throw new HttpError(404, "Todo not found");
+  res.json(todo);
+});
+
+app.patch("/todos/:id", async (req, res) =&gt; {
+  const todo = await Todo.findByIdAndUpdate(req.params.id,
+    { $set: { title: req.valid.body.title } },
+    { new: true, runValidators: true });
+  res.json(todo);
+});
+
+app.use((err, req, res, next) =&gt; {
+  if (err.name === "CastError") return res.status(400).json({ error: "id" });
+  if (err.code === 11000) return res.status(409).json({ error: "duplicate" });
+  next(err);
+});</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Connect once with top-level <code>await</code> before <code>listen</code></div><div class="explain-item"><code>.lean()</code> — plain objects, no document methods, faster</div><div class="explain-item"><code>{ new: true }</code> — return the updated document</div><div class="explain-item">Error mapper sits before your generic error handler</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>Todo.find(req.query)</code></span> → <span class="idiom-prefer">build the filter from validated fields</span></li><li class="note-item"><span class="idiom-avoid">Full documents for read-only lists</span> → <span class="idiom-prefer"><code>.lean()</code> + <code>.select()</code></span></li><li class="note-item"><span class="idiom-avoid">Checking ownership after loading</span> → <span class="idiom-prefer">include <code>owner</code> in the query</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Q Table | Err Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-q"><h2 class="section-title">Common Queries</h2><table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td>Model.find(filter)</td><td class="desc">many docs</td></tr><tr><td>Model.findById(id)</td><td class="desc">one by _id</td></tr><tr><td>Model.create(data)</td><td class="desc">insert</td></tr><tr><td>Model.findByIdAndUpdate()</td><td class="desc">update + return</td></tr><tr><td>Model.deleteOne(filter)</td><td class="desc">delete</td></tr><tr><td>Model.countDocuments()</td><td class="desc">count</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-err"><h2 class="section-title">Mongoose Errors → HTTP</h2><table><thead><tr><th>Error</th><th>HTTP</th></tr></thead><tbody><tr><td>CastError</td><td class="desc">400 bad id</td></tr><tr><td>ValidationError</td><td class="desc">400 / 422</td></tr><tr><td>code 11000</td><td class="desc">409 duplicate</td></tr><tr><td>DocumentNotFoundError</td><td class="desc">404</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Passing <code>req.body</code> as a filter: <code>{ "password": { "$ne": "" } }</code> logs anyone in</li><li class="note-item">Forgetting <code>runValidators</code> on updates: invalid data gets saved</li><li class="note-item">Letting CastError bubble up as 500: bad ids look like server bugs</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Sanitize with <code>mongoose.set("sanitizeFilter", true)</code> as a safety net</li><li class="note-item">Add indexes for every field you filter or sort on</li><li class="note-item">NoSQL set covers MongoDB queries and modeling</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>mongoose.connect</code> — once</li><li class="note-item"><code>Schema</code> + <code>model</code> — define</li><li class="note-item"><code>.lean()</code> — fast reads</li><li class="note-item">CastError → 400, 11000 → 409</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-34-orm-prisma-drizzle.html" class="nav-link prev">ORMs: Prisma &amp; Drizzle</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-36-redis-caching.html" class="nav-link next">Caching with Redis</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

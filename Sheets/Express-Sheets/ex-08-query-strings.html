@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 08: Query Strings</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s08">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 08</div>
+			<h1>Query Strings</h1>
+			<div class="sheet-desc">req.query · query parser · simple vs extended · qs · arrays ?tag=a&amp;tag=b · read-only getter</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Everything after <code>?</code> in the URL is parsed into **<code>req.query</code><strong>. Express 5 uses the </strong>"simple"** parser by default (Node's <code>querystring</code>): flat keys only, repeated keys become arrays. The <strong>"extended"</strong> parser (<code>qs</code>) adds nested objects like <code>?filter[status]=done</code>. Values are strings or arrays of strings, never numbers or booleans, so coerce and validate.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Missing key → <code>undefined</code>; empty value <code>?q=</code> → <code>""</code></li><li class="note-item"><code>req.query</code> is a <strong>getter</strong> in Express 5: you can't reassign it</li><li class="note-item">Set the parser with <code>app.set("query parser", "extended")</code> or a function</li><li class="note-item">Nested <code>qs</code> parsing is a classic source of type confusion and prototype bugs</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid + Express 4 → 5 -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Reading the Query</h2><pre><code class="language-javascript">// GET /todos?status=done&amp;limit=10&amp;tag=home&amp;tag=urgent
+app.get("/todos", (req, res) =&gt; {
+  const { status = "all", tag = [] } = req.query;
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const tags = [].concat(tag);          // string or array → array
+
+  console.log(req.query);
+  // { status: "done", limit: "10", tag: ["home", "urgent"] }
+  res.json({ status, limit, tags });
+});
+
+// opt in to nested objects (qs)
+app.set("query parser", "extended");
+// /todos?filter[status]=done&amp;sort[by]=date
+//   req.query.filter → { status: "done" }
+
+// custom parser function
+app.set("query parser", (str) =&gt;
+  Object.fromEntries(new URLSearchParams(str)));  // last value wins</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Defaults in destructuring cover missing keys</div><div class="explain-item"><code>Number(x) || 20</code> — falls back on <code>NaN</code> and <code>0</code>; cap with <code>Math.min</code></div><div class="explain-item"><code>[].concat(tag)</code> — normalizes one value vs many</div><div class="explain-item">Set the parser before routes that read <code>req.query</code></div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Assigning <code>req.query = cleaned</code></span> → <span class="idiom-prefer">store results on <code>req.validated</code> or <code>res.locals</code></span></li><li class="note-item"><span class="idiom-avoid">Trusting <code>req.query.limit</code> as a number</span> → <span class="idiom-prefer">coerce, clamp and validate</span></li><li class="note-item"><span class="idiom-avoid"><code>"extended"</code> by default</span> → <span class="idiom-prefer"><code>"simple"</code> unless you need nesting</span></li></ul></section><section class="section-notes section-version" id="v4v5"><h2 class="section-title">Express 4 → 5</h2><ul class="note-list"><li class="note-item"><strong>4.x</strong> default <code>"extended"</code> (<code>qs</code>) parser → <strong>5.x</strong> default <code>"simple"</code></li><li class="note-item"><strong>4.x</strong> <code>req.query</code> writable → <strong>5.x</strong> read-only getter</li></ul></section></div>
+			</div>
+			<!-- Row 3: Parse Table | Parsers Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-parse"><h2 class="section-title">URL → req.query (simple)</h2><table><thead><tr><th>Query string</th><th>req.query</th></tr></thead><tbody><tr><td>?q=cat</td><td class="desc"><code>{ q: "cat" }</code></td></tr><tr><td>?q=</td><td class="desc"><code>{ q: "" }</code></td></tr><tr><td>?a=1&amp;a=2</td><td class="desc"><code>{ a: ["1","2"] }</code></td></tr><tr><td>?f[x]=1</td><td class="desc"><code>{ "f[x]": "1" }</code></td></tr><tr><td>?flag</td><td class="desc"><code>{ flag: "" }</code></td></tr><tr><td>(none)</td><td class="desc"><code>{}</code></td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-parsers"><h2 class="section-title">query parser Values</h2><table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td>"simple"</td><td class="desc">flat, Node <code>querystring</code> (default)</td></tr><tr><td>"extended"</td><td class="desc">nested via <code>qs</code></td></tr><tr><td>false</td><td class="desc">no parsing; <code>req.query</code> is <code>{}</code></td></tr><tr><td>fn(str)</td><td class="desc">your own parser</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Checking <code>if (req.query.done === true)</code>: the value is the string <code>"true"</code></li><li class="note-item">Assuming one value: <code>?tag=a&amp;tag=b</code> makes an array and <code>tag.toLowerCase()</code> throws</li><li class="note-item">Passing <code>req.query</code> straight into a Mongo filter: <code>?role[$ne]=x</code> with extended parsing injects operators</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Parse the whole query with zod and keep the typed result (sheet 30)</li><li class="note-item">Build links with <code>new URLSearchParams(obj).toString()</code></li><li class="note-item">Use <code>req.originalUrl</code> if you need the raw query string</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>req.query</code> — parsed <code>?a=b</code> pairs</li><li class="note-item"><code>"simple"</code> — default flat parser</li><li class="note-item"><code>"extended"</code> — nested (<code>qs</code>)</li><li class="note-item">values are strings — coerce them</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-07-route-parameters.html" class="nav-link prev">Route Parameters</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-09-express-router.html" class="nav-link next">express.Router</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

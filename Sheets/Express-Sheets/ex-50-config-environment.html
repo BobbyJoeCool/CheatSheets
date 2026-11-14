@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 50: Configuration &amp; Environments</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s50">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 50</div>
+			<h1>Configuration &amp; Environments</h1>
+			<div class="sheet-desc">NODE_ENV=production · process.env · --env-file · validating config with zod · app.get("env") · secrets</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Configuration comes from <strong>environment variables</strong> so the same build runs in dev, staging and production. Read and validate them <strong>once at startup</strong> into a typed config object, and crash immediately if something required is missing. Set <code>NODE_ENV=production</code> in production: Express then caches views, hides stack traces from its default error handler, and many libraries switch to faster code paths.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>app.get("env")</code> mirrors <code>NODE_ENV</code> (default <code>"development"</code>)</li><li class="note-item">Node 20.6+ loads <code>.env</code> with <code>--env-file</code>; 22.9+ has <code>--env-file-if-exists</code></li><li class="note-item">Never commit <code>.env</code>; commit <code>.env.example</code> with dummy values</li><li class="note-item">Platforms (Render, Fly, ECS) inject env vars; no <code>.env</code> in production</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Validated Config Module</h2><pre><code class="language-javascript">// src/config.js
+import { z } from "zod";
+
+const Env = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"])
+    .default("development"),
+  PORT: z.coerce.number().int().default(3000),
+  DATABASE_URL: z.string().url(),
+  SESSION_SECRET: z.string().min(32),
+  CORS_ORIGINS: z.string().default("")
+    .transform((s) =&gt; s.split(",").filter(Boolean)),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+});
+
+const parsed = Env.safeParse(process.env);
+if (!parsed.success) {
+  const bad = parsed.error.issues.map((i) =&gt; i.path.join("."));
+  console.error("Invalid environment:", bad.join(", "));
+  process.exit(1);                            // fail fast at boot
+}
+const isProd = parsed.data.NODE_ENV === "production";
+export const config = Object.freeze({ ...parsed.data, isProd });
+
+// elsewhere
+import { config } from "./config.js";
+app.use(cors({ origin: config.CORS_ORIGINS, credentials: true }));
+app.listen(config.PORT);</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>z.coerce.number()</code> — env vars are always strings</div><div class="explain-item"><code>process.exit(1)</code> — fail at boot, not at the first request</div><div class="explain-item"><code>Object.freeze</code> — config can't be changed at runtime</div><div class="explain-item">Only <code>config.js</code> reads <code>process.env</code></div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>process.env.X</code> scattered through the code</span> → <span class="idiom-prefer">one validated <code>config</code> module</span></li><li class="note-item"><span class="idiom-avoid">Defaults for secrets (<code>|| "dev-secret"</code>)</span> → <span class="idiom-prefer">required in production; fail if missing</span></li><li class="note-item"><span class="idiom-avoid">Branching on <code>NODE_ENV</code> everywhere</span> → <span class="idiom-prefer">explicit settings (<code>config.LOG_LEVEL</code>)</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Env Table | Files Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-env"><h2 class="section-title">What NODE_ENV=production Changes</h2><table><thead><tr><th>Area</th><th>Effect</th></tr></thead><tbody><tr><td>Express views</td><td class="desc"><code>view cache</code> on</td></tr><tr><td>default error handler</td><td class="desc">no stack traces</td></tr><tr><td>npm ci</td><td class="desc">skips devDependencies with <code>--omit=dev</code></td></tr><tr><td>libraries</td><td class="desc">less debug overhead</td></tr><tr><td>your code</td><td class="desc">only what you choose</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-files"><h2 class="section-title">Env Files</h2><table><thead><tr><th>File</th><th>Commit?</th></tr></thead><tbody><tr><td>.env</td><td class="desc">no</td></tr><tr><td>.env.example</td><td class="desc">yes (dummy values)</td></tr><tr><td>.env.test</td><td class="desc">maybe (no secrets)</td></tr><tr><td>secrets manager</td><td class="desc">for production secrets</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Running production without <code>NODE_ENV=production</code>: slower views and stack traces in error pages</li><li class="note-item">Validating config lazily: the app boots fine and fails on the first real request</li><li class="note-item">Logging <code>process.env</code> at startup: secrets end up in log storage</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Print a redacted config summary at boot (keys, not values)</li><li class="note-item">Keep feature flags in config, not in <code>if (isProd)</code> checks</li><li class="note-item">Use the platform's secret store (AWS Secrets Manager, Doppler) for rotation</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">env vars — config source</li><li class="note-item">validate once — fail fast</li><li class="note-item"><code>NODE_ENV=production</code> — always in prod</li><li class="note-item"><code>.env</code> — local only</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-49-integration-mocking.html" class="nav-link prev" title="Integration Tests &amp; Mocking">Integration Tests</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-51-logging-monitoring.html" class="nav-link next">Logging &amp; Monitoring</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

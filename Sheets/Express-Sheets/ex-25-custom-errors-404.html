@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 25: Custom Errors &amp; 404 Handling</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s25">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 25</div>
+			<h1>Custom Errors &amp; 404 Handling</h1>
+			<div class="sheet-desc">class HttpError extends Error · err.status · http-errors · catch-all 404 · JSON error envelope · unhandledRejection</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">A small <strong>error class</strong> with a <code>status</code> and a machine-readable <code>code</code> makes errors predictable: throw it from anywhere, and one error handler turns it into a JSON response. Unmatched routes are not errors in Express; add a <strong>404 middleware</strong> (no path) after all routes. For crashes outside requests, log and exit from <code>process.on("unhandledRejection")</code> and <code>"uncaughtException"</code>.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>http-errors</code> gives you <code>createError(404, "msg")</code> with the right name and status</li><li class="note-item"><code>err.expose</code> (http-errors) is true for 4xx: safe to show the message</li><li class="note-item">Keep an error code (<code>"TODO_NOT_FOUND"</code>) separate from the human message</li><li class="note-item">Let a process manager restart the app after a fatal error</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Error Class, 404, Envelope</h2><pre><code class="language-javascript">// errors.js
+export class HttpError extends Error {
+  constructor(status, message, code = `HTTP_${status}`) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+// in a route
+if (!todo) throw new HttpError(404, "Todo not found", "NOT_FOUND");
+
+// after all routes: 404, then the error envelope
+app.use((req, res, next) =&gt; next(new HttpError(404, `No route ${req.path}`)));
+app.use((err, req, res, next) =&gt; {
+  const status = err.status ?? 500;
+  res.status(status).json({ error: {
+    code: err.code ?? "INTERNAL",
+    message: status &lt; 500 ? err.message : "Something went wrong",
+    requestId: req.id,
+  } });
+});
+
+process.on("unhandledRejection", (err) =&gt; {
+  console.error(err);
+  process.exit(1);
+});</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>this.status</code> — read by your handler and Express's default handler</div><div class="explain-item">404 middleware has no path and sits after every route</div><div class="explain-item">One envelope shape: <code>{ error: { code, message, details, requestId } }</code></div><div class="explain-item">Exit on unhandled rejections; the supervisor restarts cleanly</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>res.status(404).send("nope")</code> scattered around</span> → <span class="idiom-prefer"><code>throw notFound("Todo")</code></span></li><li class="note-item"><span class="idiom-avoid"><code>throw "not found"</code> (a string)</span> → <span class="idiom-prefer">throw <code>Error</code> subclasses (stack traces)</span></li><li class="note-item"><span class="idiom-avoid">Catch-all <code>app.get("*")</code> for 404</span> → <span class="idiom-prefer">final <code>app.use((req, res, next) =&gt; …)</code></span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Createerror Table | Map Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-createError"><h2 class="section-title">http-errors</h2><table><thead><tr><th>Call</th><th>Result</th></tr></thead><tbody><tr><td>createError(404)</td><td class="desc">NotFoundError, status 404</td></tr><tr><td>createError(400, "bad id")</td><td class="desc">custom message</td></tr><tr><td>createError.Unauthorized()</td><td class="desc">401</td></tr><tr><td>err.expose</td><td class="desc">true for &lt; 500</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-map"><h2 class="section-title">Mapping Errors to Status</h2><table><thead><tr><th>Error</th><th>Status</th></tr></thead><tbody><tr><td>validation failed</td><td class="desc">400 / 422</td></tr><tr><td>not logged in / allowed</td><td class="desc">401 / 403</td></tr><tr><td>missing record</td><td class="desc">404</td></tr><tr><td>unique violation</td><td class="desc">409</td></tr><tr><td>unexpected</td><td class="desc">500</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Throwing strings or plain objects: no stack trace, and <code>err.status</code> checks break</li><li class="note-item">Leaking database messages in 500 responses: exposes table names and queries</li><li class="note-item">Keeping the process alive after <code>uncaughtException</code>: state may be corrupt</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Add <code>Error.captureStackTrace(this, HttpError)</code> to trim the constructor frame</li><li class="note-item">Follow RFC 9457 (<code>application/problem+json</code>) if clients expect it</li><li class="note-item">Return the same envelope for 404 routes and 404 records</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>HttpError(status, msg)</code> — throwable errors</li><li class="note-item">404 middleware — after all routes</li><li class="note-item">one error envelope — <code>{ error: {…} }</code></li><li class="note-item">fatal errors — log and exit</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-24-async-errors.html" class="nav-link prev" title="Async Errors in Express 5">Async Errors</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-26-static-files.html" class="nav-link next">Serving Static Files</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

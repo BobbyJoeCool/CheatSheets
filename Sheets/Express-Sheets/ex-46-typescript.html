@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 46: Express with TypeScript</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s46">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 46</div>
+			<h1>Express with TypeScript</h1>
+			<div class="sheet-desc">@types/express · Request&lt;Params, ResBody, ReqBody, Query&gt; · typed handlers · declaration merging req.user · tsx · type stripping</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Express is written in JavaScript; types come from **<code>@types/express</code>**. <code>Request</code> and <code>Response</code> are generics, so a handler can declare the shape of its params, body, query and response. Extra properties you add in middleware (<code>req.user</code>) are declared once with <strong>declaration merging</strong>. Run TypeScript directly in development with <code>tsx</code> or Node's built-in type stripping, and compile with <code>tsc</code> for production.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Install: <code>npm i -D typescript @types/express @types/node tsx</code></li><li class="note-item"><code>@types/express</code> 5.x matches Express 5</li><li class="note-item">Node 22.18+ runs <code>.ts</code> files directly (erasable syntax only)</li><li class="note-item">Generics: <code>Request&lt;Params, ResBody, ReqBody, ReqQuery&gt;</code></li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Typed Handlers</h2><pre><code class="language-typescript">import express from "express";
+import type { Request, Response, NextFunction } from "express";
+import { z } from "zod";
+
+const TodoBody = z.object({
+  title: z.string().min(1), done: z.boolean().default(false) });
+type TodoIn = z.infer&lt;typeof TodoBody&gt;;
+interface Todo extends TodoIn { id: number }
+
+const app = express();
+app.use(express.json());
+
+type Err = { error: string };
+app.get("/todos/:id",
+  (req: Request&lt;{ id: string }&gt;, res: Response&lt;Todo | Err&gt;) =&gt; {
+    const todo = repo.find(Number(req.params.id));
+    if (!todo) return res.status(404).json({ error: "not found" });
+    res.json(todo);
+  });
+
+app.post("/todos", (req: Request&lt;{}, Todo, TodoIn&gt;, res: Response&lt;Todo&gt;) =&gt; {
+  res.status(201).json(repo.create(TodoBody.parse(req.body)));
+});
+
+const requireAuth = (req: Request, res: Response, next: NextFunction) =&gt;
+  req.user ? next() : res.sendStatus(401);     // req.user from merging</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">types/express.d.ts</h2><pre><code class="language-typescript">import type { User } from "../src/models.js";
+declare global {
+  namespace Express {
+    interface Request { user?: User; id: string }
+  }
+}
+export {};</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>z.infer</code> — one schema gives both runtime check and type</div><div class="explain-item"><code>Response&lt;Todo&gt;</code> — <code>res.json()</code> only accepts that shape</div><div class="explain-item"><code>Request&lt;{}, Todo, TodoIn&gt;</code> — <code>{}</code> params, response, body</div><div class="explain-item">Declaration merging — every <code>req</code> gains <code>user</code> and <code>id</code></div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>(req as any).user</code></span> → <span class="idiom-prefer">declaration merging in a <code>.d.ts</code></span></li><li class="note-item"><span class="idiom-avoid"><code>ts-node</code> + nodemon</span> → <span class="idiom-prefer"><code>tsx watch</code> or <code>node --watch</code> with type stripping</span></li><li class="note-item"><span class="idiom-avoid">Trusting <code>req.body</code> types</span> → <span class="idiom-prefer">parse with zod; types alone don't validate</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Generics Table | Run Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-generics"><h2 class="section-title">Request Generics</h2><table><thead><tr><th>Position</th><th>Types</th></tr></thead><tbody><tr><td>1 Params</td><td class="desc"><code>req.params</code></td></tr><tr><td>2 ResBody</td><td class="desc">response body type</td></tr><tr><td>3 ReqBody</td><td class="desc"><code>req.body</code></td></tr><tr><td>4 ReqQuery</td><td class="desc"><code>req.query</code></td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-run"><h2 class="section-title">Running TypeScript</h2><table><thead><tr><th>Command</th><th>When</th></tr></thead><tbody><tr><td>tsx watch src/server.ts</td><td class="desc">development</td></tr><tr><td>node src/server.ts</td><td class="desc">Node 22.18+ (strip only)</td></tr><tr><td>tsc -p .</td><td class="desc">build to <code>dist/</code></td></tr><tr><td>node dist/server.js</td><td class="desc">production</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Annotating <code>req.body</code> as <code>TodoIn</code> and skipping validation: types vanish at runtime</li><li class="note-item">Forgetting <code>export {}</code> in the <code>.d.ts</code>: the global augmentation isn't applied</li><li class="note-item">Using enums or namespaces with Node type stripping: not erasable; use <code>tsx</code> or <code>tsc</code></li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Set <code>"module": "nodenext"</code> and import <code>.js</code> extensions from <code>.ts</code> files</li><li class="note-item">Type <code>RequestHandler&lt;…&gt;</code> once and reuse for many handlers</li><li class="note-item">JavaScript &amp; TypeScript set covers tsconfig in depth</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>@types/express</code> — types for Express 5</li><li class="note-item"><code>Request&lt;P, R, B, Q&gt;</code> — typed handlers</li><li class="note-item">declaration merging — custom <code>req</code> props</li><li class="note-item">zod — runtime + static types</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-45-sse-streaming.html" class="nav-link prev" title="Server-Sent Events &amp; Streaming">Server-Sent Events</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-47-app-architecture.html" class="nav-link next">Application Architecture</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+	</body>
+</html>

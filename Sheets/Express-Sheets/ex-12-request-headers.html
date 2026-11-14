@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 12: Headers &amp; Content Negotiation</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Headers &amp; Content Negotiation</h1>
+			<div class="sheet-desc">req.get() · req.is("json") · req.accepts() · req.acceptsLanguages() · req.fresh · req.xhr</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Read any request header with **<code>req.get(name)</code>** (case-insensitive). <code>req.is(type)</code> checks the <strong>Content-Type</strong> of the body the client sent. <code>req.accepts(types)</code> reads the <strong>Accept</strong> header and returns the best match for what the client wants back, or <code>false</code>. <code>req.fresh</code> compares the client's cached ETag / Last-Modified with the response so you can reply <code>304</code>.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>req.headers</code> — raw object, keys lowercased</li><li class="note-item"><code>req.get("Referrer")</code> and <code>"Referer"</code> both work</li><li class="note-item"><code>req.is()</code> returns the matching type, <code>false</code>, or <code>null</code> (no body)</li><li class="note-item"><code>req.xhr</code> — true when <code>X-Requested-With: XMLHttpRequest</code> (old jQuery convention)</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Reading Headers &amp; Negotiating</h2><pre><code class="language-javascript">app.post("/upload", (req, res) =&gt; {
+  if (!req.is("application/json") &amp;&amp; !req.is("multipart/*")) {
+    return res.status(415).send("Unsupported Media Type");
+  }
+  const agent = req.get("User-Agent");       // "Mozilla/5.0 …"
+  const auth = req.get("authorization");     // case-insensitive
+  res.json({ agent, hasAuth: Boolean(auth) });
+});
+
+app.get("/todos/:id", (req, res) =&gt; {
+  const type = req.accepts(["json", "html"]); // best match or false
+  if (type === "html") return res.render("todo", { todo });
+  if (type === "json") return res.json(todo);
+  res.sendStatus(406);                        // Not Acceptable
+});
+
+app.get("/greeting", (req, res) =&gt; {
+  const lang = req.acceptsLanguages("en", "es", "fr") || "en";
+  res.send({ en: "Hello", es: "Hola", fr: "Bonjour" }[lang]);
+});</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>req.is("multipart/*")</code> — wildcards and short names (<code>"json"</code>) work</div><div class="explain-item"><code>req.accepts([...])</code> — returns the first type the client prefers</div><div class="explain-item"><code>415</code> wrong body type; <code>406</code> can't produce an acceptable type</div><div class="explain-item"><code>res.format()</code> does the accepts switch for you (sheet 14)</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>req.headers["Content-Type"]</code> (wrong case)</span> → <span class="idiom-prefer"><code>req.get("Content-Type")</code></span></li><li class="note-item"><span class="idiom-avoid">Parsing Accept by hand</span> → <span class="idiom-prefer"><code>req.accepts()</code> / <code>res.format()</code></span></li><li class="note-item"><span class="idiom-avoid"><code>req.xhr</code> to detect API calls</span> → <span class="idiom-prefer">check <code>req.accepts("json")</code> or a path prefix</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Methods Table | Cache Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-methods"><h2 class="section-title">Request Header Helpers</h2><table><thead><tr><th>Method</th><th>Reads</th><th>Returns</th></tr></thead><tbody><tr><td>req.get(name)</td><td class="desc">any header</td><td class="desc">value or undefined</td></tr><tr><td>req.is(type)</td><td class="desc">Content-Type</td><td class="desc">type / false / null</td></tr><tr><td>req.accepts(t)</td><td class="desc">Accept</td><td class="desc">best type / false</td></tr><tr><td>req.acceptsLanguages()</td><td class="desc">Accept-Language</td><td class="desc">lang / false</td></tr><tr><td>req.acceptsEncodings()</td><td class="desc">Accept-Encoding</td><td class="desc">enc / false</td></tr><tr><td>req.acceptsCharsets()</td><td class="desc">Accept-Charset</td><td class="desc">charset / false</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-cache"><h2 class="section-title">Caching Helpers</h2><table><thead><tr><th>Property</th><th>True when</th></tr></thead><tbody><tr><td>req.fresh</td><td class="desc">client cache still valid → send 304</td></tr><tr><td>req.stale</td><td class="desc"><code>!req.fresh</code></td></tr><tr><td>req.xhr</td><td class="desc">X-Requested-With: XMLHttpRequest</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Indexing <code>req.headers</code> with capital letters: Node lowercases the keys, so you get <code>undefined</code></li><li class="note-item">Calling <code>req.accepts("json")</code> and ignoring a <code>false</code> result: browsers get JSON they didn't ask for</li><li class="note-item">Checking <code>req.is("json")</code> on a GET: no body means <code>null</code>, not <code>false</code></li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Return 415 early for routes that only take JSON</li><li class="note-item">Express already sends 304 for <code>res.send</code> when <code>req.fresh</code> and ETags match</li><li class="note-item">Use <code>res.vary("Accept")</code> when the body depends on Accept (sheet 15)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>req.get(name)</code> — read a header</li><li class="note-item"><code>req.is(type)</code> — body Content-Type</li><li class="note-item"><code>req.accepts(types)</code> — what client wants</li><li class="note-item"><code>req.fresh</code> — cache still valid</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-11-request-properties.html" class="nav-link prev">Request Properties</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-13-request-body.html" class="nav-link next">Parsing the Request Body</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

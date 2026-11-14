@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 19: App-Level &amp; Router-Level Middleware</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s19">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 19</div>
+			<h1>App-Level &amp; Router-Level Middleware</h1>
+			<div class="sheet-desc">app.use(fn) · app.use("/path", fn) · router.use() · per-route middleware · middleware arrays · scoping</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Where you mount middleware decides which requests it sees. <strong>App-level</strong> <code>app.use(fn)</code> sees everything; adding a path limits it to that prefix. <strong>Router-level</strong> <code>router.use(fn)</code> sees only requests that reach that router. <strong>Route-level</strong> middleware sits in the handler list of one route. Mount as narrowly as you can so expensive work (auth, parsing, DB lookups) runs only where needed.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Prefix matching is by segment: <code>/api</code> matches <code>/api/x</code> but not <code>/apiary</code></li><li class="note-item">Inside <code>app.use("/api", fn)</code>, <code>req.url</code> has the prefix stripped</li><li class="note-item"><code>app.use(a, b, c)</code> and <code>app.use([a, b])</code> mount several at once</li><li class="note-item">A sub-app (<code>express()</code>) can be mounted like a router</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Three Scopes</h2><pre><code class="language-javascript">// app-level: every request
+app.use(helmet());
+app.use(express.json());
+
+// app-level with a path: only /admin/*
+app.use("/admin", requireAuth, requireRole("admin"));
+
+// router-level: only requests that reach this router
+const api = express.Router();
+api.use(rateLimit({ windowMs: 60_000, limit: 100 }));
+api.use((req, res, next) =&gt; {
+  res.type("json");                 // all API responses are JSON
+  next();
+});
+api.get("/todos", listTodos);
+
+// route-level: one route
+api.post("/todos", requireAuth, validate(todoSchema), createTodo);
+
+app.use("/api", api);
+
+// sub-app with its own settings
+const docs = express();
+docs.set("view engine", "ejs");
+app.use("/docs", docs);</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>/admin</code> guard — runs before any <code>/admin</code> route</div><div class="explain-item">Rate limit only counts API traffic, not static files</div><div class="explain-item"><code>validate(schema)</code> — factory returning middleware (22)</div><div class="explain-item">Sub-apps keep separate settings; routers don't have settings</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>requireAuth</code> on every route by hand</span> → <span class="idiom-prefer"><code>router.use(requireAuth)</code> for the group</span></li><li class="note-item"><span class="idiom-avoid">Global JSON parser for a mostly-static site</span> → <span class="idiom-prefer"><code>express.json()</code> on the API router</span></li><li class="note-item"><span class="idiom-avoid">Path checks inside middleware (<code>if (req.path.startsWith…)</code>)</span> → <span class="idiom-prefer">mount at that path</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Scope Table | Url Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-scope"><h2 class="section-title">Scopes Compared</h2><table><thead><tr><th>Mount</th><th>Runs for</th></tr></thead><tbody><tr><td>app.use(fn)</td><td class="desc">every request</td></tr><tr><td>app.use("/a", fn)</td><td class="desc">/a and below</td></tr><tr><td>router.use(fn)</td><td class="desc">requests reaching router</td></tr><tr><td>app.get(p, mw, h)</td><td class="desc">that route only</td></tr><tr><td>app.all(p, fn)</td><td class="desc">any method, exact path</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-url"><h2 class="section-title">Inside app.use("/api", fn)</h2><table><thead><tr><th>Request</th><th>req.url / req.baseUrl</th></tr></thead><tbody><tr><td>/api</td><td class="desc"><code>/</code> · <code>/api</code></td></tr><tr><td>/api/todos?x=1</td><td class="desc"><code>/todos?x=1</code> · <code>/api</code></td></tr><tr><td>/apiary</td><td class="desc">not matched</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Expecting <code>app.use("/api")</code> to match <code>/api-docs</code>: prefixes match whole segments only</li><li class="note-item">Putting auth on <code>app</code> globally: login and health routes get blocked too</li><li class="note-item">Assuming a sub-app sees parent settings changed after mounting</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Mount public routes (health, login, static) before global auth</li><li class="note-item">Use arrays of middleware as named policies: <code>const staff = [auth, role("staff")]</code></li><li class="note-item">Use <code>app.all("/admin/{*rest}", guard)</code> when you need method-agnostic exact paths</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>app.use(fn)</code> — global</li><li class="note-item"><code>app.use(path, fn)</code> — prefix</li><li class="note-item"><code>router.use(fn)</code> — one router</li><li class="note-item">route-level — one route</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-18-middleware-basics.html" class="nav-link prev">Middleware Basics</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-20-built-in-middleware.html" class="nav-link next">Built-in Middleware</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

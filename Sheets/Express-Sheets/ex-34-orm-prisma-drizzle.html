@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 34: ORMs: Prisma &amp; Drizzle</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s34">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 34</div>
+			<h1>ORMs: Prisma &amp; Drizzle</h1>
+			<div class="sheet-desc">PrismaClient singleton · findMany · create · P2002 → 409 · Drizzle db.select().from() · migrations</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">An <strong>ORM</strong> maps tables to typed objects so you write <code>prisma.todo.findMany()</code> instead of SQL strings. <strong>Prisma</strong> uses its own schema file and generates a client; <strong>Drizzle</strong> defines tables in TypeScript and keeps a SQL-like query API. Either way: create <strong>one client</strong> for the app, translate known database errors to HTTP codes, and run migrations as a deploy step, not at request time.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Prisma unique-constraint error: code <code>P2002</code>; record not found: <code>P2025</code></li><li class="note-item">Drizzle returns plain objects; <code>.returning()</code> for inserted rows (Postgres)</li><li class="note-item">Migrations: <code>prisma migrate dev</code> / <code>drizzle-kit generate</code> + <code>migrate</code></li><li class="note-item">Prisma set covers schema, relations and the client in depth</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">The Same Routes, Two ORMs</h2><pre><code class="language-javascript">// ── Prisma ──
+import { prisma } from "./db.js";             // one shared client
+
+app.get("/todos", async (req, res) =&gt; {
+  res.json(await prisma.todo.findMany({
+    where: { userId: req.user.id, done: false },
+    orderBy: { createdAt: "desc" }, take: 20,
+  }));
+});
+app.post("/users", async (req, res) =&gt; {
+  try {
+    res.status(201).json(await prisma.user.create({ data: req.valid.body }));
+  } catch (err) {
+    if (err.code === "P2002") throw new HttpError(409, "Email already used");
+    throw err;
+  }
+});
+
+// ── Drizzle ──
+import { drizzle } from "drizzle-orm/node-postgres";
+import { eq, and, desc } from "drizzle-orm";
+import { todos } from "./schema.js";
+const db = drizzle(process.env.DATABASE_URL);
+
+app.get("/v2/todos", async (req, res) =&gt; {
+  res.json(await db.select().from(todos)
+    .where(and(eq(todos.userId, req.user.id), eq(todos.done, false)))
+    .orderBy(desc(todos.createdAt)).limit(20));
+});
+app.post("/v2/todos", async (req, res) =&gt; {
+  const [row] = await db.insert(todos)
+    .values({ ...req.valid.body, userId: req.user.id }).returning();
+  res.status(201).json(row);
+});</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Shared client — one connection pool for the app</div><div class="explain-item"><code>take</code> / <code>.limit()</code> — always bound list queries</div><div class="explain-item"><code>P2002</code> — translate to 409 instead of a 500</div><div class="explain-item">Drizzle <code>eq</code>, <code>and</code>, <code>desc</code> — typed SQL operators</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>new PrismaClient()</code> inside handlers</span> → <span class="idiom-prefer">one exported client</span></li><li class="note-item"><span class="idiom-avoid">Running migrations on app start in production</span> → <span class="idiom-prefer">a separate deploy step</span></li><li class="note-item"><span class="idiom-avoid">Selecting whole rows with passwords</span> → <span class="idiom-prefer"><code>select</code> / pick only needed columns</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Compare Table | Errors Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-compare"><h2 class="section-title">Prisma vs Drizzle</h2><table><thead><tr><th></th><th>Prisma</th><th>Drizzle</th></tr></thead><tbody><tr><td>schema</td><td class="desc">schema.prisma</td><td class="desc">TS table definitions</td></tr><tr><td>queries</td><td class="desc">object API</td><td class="desc">SQL-like builder</td></tr><tr><td>codegen</td><td class="desc"><code>prisma generate</code></td><td class="desc">none</td></tr><tr><td>migrations</td><td class="desc"><code>prisma migrate</code></td><td class="desc"><code>drizzle-kit</code></td></tr><tr><td>raw SQL</td><td class="desc"><code>$queryRaw</code> tagged</td><td class="desc"><code>sql</code> tagged</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-errors"><h2 class="section-title">ORM Errors → HTTP</h2><table><thead><tr><th>Error</th><th>HTTP</th></tr></thead><tbody><tr><td>Prisma P2002</td><td class="desc">409 Conflict</td></tr><tr><td>Prisma P2025</td><td class="desc">404 Not Found</td></tr><tr><td>PG 23505 (Drizzle)</td><td class="desc">409 Conflict</td></tr><tr><td>validation in ORM</td><td class="desc">400</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Creating a client per request: exhausts database connections fast</li><li class="note-item">Returning ORM objects with password hashes straight to <code>res.json</code></li><li class="note-item">Leaving N+1 queries in list endpoints: use <code>include</code> / joins</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Map ORM errors in one place: the error handler (sheet 25)</li><li class="note-item">Use <code>$transaction([...])</code> / <code>db.transaction(async (tx) =&gt; …)</code> for multi-step writes</li><li class="note-item">Log slow queries in development (<code>log: ["query"]</code> in Prisma)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">one client — shared</li><li class="note-item"><code>findMany</code> / <code>select().from()</code> — reads</li><li class="note-item">map <code>P2002</code> → 409</li><li class="note-item">migrations — deploy step</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-33-postgres-pg.html" class="nav-link prev">PostgreSQL with pg</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-35-mongodb-mongoose.html" class="nav-link next">MongoDB with Mongoose</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

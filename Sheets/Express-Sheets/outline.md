@@ -20,7 +20,7 @@ Teaching is code-first: every sheet has a working example with inline notes, the
 
 ## Differences in Layout from Basic Structure
 
-- **Extra boxes:** **Prefer / Avoid** (`section-notes section-idiom`, `id="idiom"`) under Code Explained on every sheet except the quick references (56–57) · **Express 4 → 5** (`section-notes section-version`, `id="v4v5"`) under Prefer / Avoid on the sheets where Express 5 changed behavior: 01, 05, 06, 07, 08, 09, 11, 13, 14, 15, 16, 17, 23, 24, 26, 55.
+- **Extra boxes:** **Prefer / Avoid** (`section-notes section-idiom`, `id="idiom"`) under Code Explained on every sheet except the quick references (56–57) · **Express 4 → 5** (`section-notes section-version`, `id="v4v5"`) under Prefer / Avoid on the sheets where Express 5 changed behavior: 01, 03, 05, 06, 07, 08, 09, 11, 13, 14, 15, 16, 17, 23, 24, 26, 54, 55.
 - As a framework set it skips the language-basics groups; JavaScript lives in the JavaScript & TypeScript set and Node in the Node.js set.
 - Groups follow the life of a request (routing → request → response → middleware → errors) before views, APIs, data, auth, security, real-time, structure, testing and production.
 - Prefer / Avoid: 3 `note-item` lines, `<span class="idiom-avoid">…</span> → <span class="idiom-prefer">…</span>`, same markup as the Node set. Examples: `body-parser` package → `express.json()`; `try` / `catch` + `next(err)` in every handler → let Express 5 catch rejected promises; `res.send(JSON.stringify(x))` → `res.json(x)`.
@@ -164,7 +164,7 @@ Teaching is code-first: every sheet has a working example with inline notes, the
 
 | # | Filename | Sheet Title | Key Topics |
 |---|---|---|---|
-| 54 | `ex-54-express-4-to-5.html` | Migrating from Express 4 to 5 | path syntax changes · removed `app.del` / `req.param()` / `res.sendfile` · `res.json(obj, status)` removed · `req.body` / `req.query` defaults · `@expressjs/codemod` |
+| 54 | `ex-54-express-4-to-5.html` | Migrating from Express 4 to 5 | path syntax changes · removed `app.del` / `req.param()` / `res.sendfile` · `res.json(obj, status)` removed · `req.body` / `req.query` defaults · `v5-migration-recipe` codemod |
 | 55 | `ex-55-framework-comparison.html` | Express vs Fastify, Koa, Hono & NestJS | middleware model · schema validation · performance · TypeScript story · ecosystem size · when to pick each |
 | 56 | `ex-56-quick-reference-api.html` | Quick Reference — app, req & res | `app` methods & settings · `req` properties & methods · `res` methods · route path syntax · `Router` options |
 | 57 | `ex-57-quick-reference-middleware.html` | Quick Reference — Middleware & Packages | built-in middleware options · common packages & mount order · error handler shape · status codes · npm commands |

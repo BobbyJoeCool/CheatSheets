@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 49: Integration Tests &amp; Mocking</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s49">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 49</div>
+			<h1>Integration Tests &amp; Mocking</h1>
+			<div class="sheet-desc">test database · seeding &amp; cleanup · mocking services · testing middleware alone · auth in tests · supertest.agent()</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Route tests with fakes are fast; <strong>integration tests</strong> run against a real database to catch query and migration bugs. Use a separate test database, reset it between tests (truncate or wrap each test in a rolled-back transaction), and seed only what each test needs. For external services (email, payments) inject fakes. **<code>request.agent(app)</code>** keeps cookies between requests for session-based login flows.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Point tests at <code>DATABASE_URL</code> for a throwaway DB (Docker / Testcontainers)</li><li class="note-item">Run migrations once before the suite, not per test</li><li class="note-item">Test middleware alone by mounting it on a tiny app</li><li class="note-item">Use <code>mock.fn()</code> (node:test) or <code>vi.fn()</code> (Vitest) for spies</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Real DB, Fake Mailer, Logged-In Agent</h2><pre><code class="language-javascript">import { test, before, beforeEach, after, mock } from "node:test";
+import assert from "node:assert/strict";
+import request from "supertest";
+import pg from "pg";
+
+const db = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
+const mailer = { send: mock.fn(async () =&gt; {}) };
+const app = createApp({ db, mailer });
+
+before(() =&gt; migrate(db));
+beforeEach(async () =&gt; {
+  await db.query("TRUNCATE users, todos RESTART IDENTITY CASCADE");
+  mailer.send.mock.resetCalls();
+});
+after(() =&gt; db.end());
+
+test("signup sends a welcome email", async () =&gt; {
+  await request(app).post("/signup")
+    .send({ email: "a@b.co", password: "pw-123456" }).expect(201);
+  assert.equal(mailer.send.mock.callCount(), 1);
+  assert.equal(mailer.send.mock.calls[0].arguments[0].to, "a@b.co");
+});
+
+test("session login flow", async () =&gt; {
+  await seedUser(db, { email: "a@b.co", password: "pw-123456" });
+  const agent = request.agent(app);                // keeps cookies
+  await agent.post("/login")
+    .send({ email: "a@b.co", password: "pw-123456" }).expect(200);
+  await agent.get("/me").expect(200);              // cookie sent
+});
+
+test("requireRole alone", async () =&gt; {
+  const mini = express()
+    .use((req, res, next) =&gt; { req.user = { role: "user" }; next(); })
+    .get("/", requireRole("admin"), (req, res) =&gt; res.send("ok"));
+  await request(mini).get("/").expect(403);
+});</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>TRUNCATE … RESTART IDENTITY</code> — clean tables, ids from 1</div><div class="explain-item"><code>mock.fn()</code> — records calls; no emails sent</div><div class="explain-item"><code>request.agent</code> — cookie jar across requests</div><div class="explain-item">Mini app — test one middleware in isolation</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Tests against the dev database</span> → <span class="idiom-prefer">a dedicated test database</span></li><li class="note-item"><span class="idiom-avoid">Mocking <code>pg</code> / Prisma internals</span> → <span class="idiom-prefer">a real test DB or a repo fake</span></li><li class="note-item"><span class="idiom-avoid">Order-dependent tests</span> → <span class="idiom-prefer">reset state in <code>beforeEach</code></span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Reset Table | Fakes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-reset"><h2 class="section-title">Resetting the Database</h2><table><thead><tr><th>Approach</th><th>Trade-off</th></tr></thead><tbody><tr><td>TRUNCATE per test</td><td class="desc">simple, a bit slower</td></tr><tr><td>transaction + ROLLBACK</td><td class="desc">fast; one connection</td></tr><tr><td>Testcontainers</td><td class="desc">real DB in Docker per run</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-fakes"><h2 class="section-title">What to Fake</h2><table><thead><tr><th>Dependency</th><th>Fake with</th></tr></thead><tbody><tr><td>email / SMS</td><td class="desc"><code>mock.fn()</code> sender</td></tr><tr><td>clock</td><td class="desc"><code>{ now: () =&gt; fixedDate }</code></td></tr><tr><td>HTTP APIs</td><td class="desc"><code>msw</code> / nock</td></tr><tr><td>database</td><td class="desc">usually real</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Running test files in parallel against one database: tests wipe each other's data</li><li class="note-item">Forgetting <code>db.end()</code>: the runner never exits</li><li class="note-item">Asserting on generated ids without resetting sequences: tests break on rerun</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>node --test --test-concurrency=1</code> for shared-DB suites</li><li class="note-item">Seed with small factory functions (<code>seedUser</code>, <code>seedTodo</code>)</li><li class="note-item">Keep a few end-to-end browser tests too (Playwright set)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">test DB — reset in <code>beforeEach</code></li><li class="note-item">fakes — inject via <code>createApp</code></li><li class="note-item"><code>request.agent</code> — cookie sessions</li><li class="note-item">mini app — test middleware alone</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-48-supertest.html" class="nav-link prev" title="Testing Routes with Supertest">Testing Routes</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-50-config-environment.html" class="nav-link next" title="Configuration &amp; Environments">Configuration</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

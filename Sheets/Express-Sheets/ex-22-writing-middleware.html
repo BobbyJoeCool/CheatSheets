@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 22: Writing Configurable Middleware</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s22">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 22</div>
+			<h1>Writing Configurable Middleware</h1>
+			<div class="sheet-desc">factory (opts) =&gt; (req, res, next) · async middleware · res.on("finish") · request-id · timing · packaging</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Reusable middleware is usually a <strong>factory</strong>: a function that takes options and returns the <code>(req, res, next)</code> function. That lets one implementation serve many routes with different settings, the same way <code>express.json({ limit })</code> works. Express 5 handles <code>async</code> middleware: if the returned promise rejects, the error goes to your error handler.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Validate options once in the factory, not on every request</li><li class="note-item">Use <code>res.on("finish")</code> / <code>"close"</code> to run code after the response</li><li class="note-item">Don't monkey-patch <code>res.send</code>; listen to events or wrap in a handler instead</li><li class="note-item">Export the factory as the default export of its own module</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Three Reusable Middleware</h2><pre><code class="language-javascript">// 1. role guard factory
+export const requireRole = (...roles) =&gt; (req, res, next) =&gt; {
+  if (!req.user) return res.sendStatus(401);
+  if (!roles.includes(req.user.role)) return res.sendStatus(403);
+  next();
+};
+
+// 2. response-time header with options
+export function responseTime({ header = "X-Response-Time", digits = 1 } = {}) {
+  return (req, res, next) =&gt; {
+    const start = process.hrtime.bigint();
+    res.on("finish", () =&gt; {
+      const ms = Number(process.hrtime.bigint() - start) / 1e6;
+      console.log(`${header}: ${ms.toFixed(digits)}ms`);
+    });
+    next();
+  };
+}
+
+// 3. async loader: rejected promise → error middleware
+export const loadUser = (repo) =&gt; async (req, res, next) =&gt; {
+  req.user = req.session?.userId ? await repo.find(req.session.userId) : null;
+  next();
+};
+
+app.use(responseTime({ digits: 2 }), loadUser(usersRepo));
+app.delete("/todos/:id", requireRole("admin", "owner"), deleteTodo);</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>requireRole("admin")</code> — returns a fresh middleware per call</div><div class="explain-item">Default params <code>= {}</code> — calling with no options still works</div><div class="explain-item"><code>hrtime.bigint()</code> — nanosecond clock, immune to clock changes</div><div class="explain-item">Headers can't be set in <code>finish</code>; log there or set them earlier</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Copy-pasted middleware with tiny differences</span> → <span class="idiom-prefer">one factory with options</span></li><li class="note-item"><span class="idiom-avoid">Wrapping <code>res.send</code> to read the body</span> → <span class="idiom-prefer"><code>res.on("finish")</code> + <code>res.statusCode</code></span></li><li class="note-item"><span class="idiom-avoid"><code>.then().catch(next)</code> boilerplate in Express 5</span> → <span class="idiom-prefer">plain <code>async</code> middleware</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Events Table | Shapes Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-events"><h2 class="section-title">Response Events</h2><table><thead><tr><th>Event</th><th>Fires when</th></tr></thead><tbody><tr><td>finish</td><td class="desc">response fully handed to the OS</td></tr><tr><td>close</td><td class="desc">connection closed (incl. aborts)</td></tr><tr><td>req "close"</td><td class="desc">client went away</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-shapes"><h2 class="section-title">Middleware Shapes</h2><table><thead><tr><th>Shape</th><th>Use</th></tr></thead><tbody><tr><td>(req,res,next)</td><td class="desc">plain middleware</td></tr><tr><td>(opts) =&gt; mw</td><td class="desc">configurable</td></tr><tr><td>async (req,res,next)</td><td class="desc">awaits I/O</td></tr><tr><td>(err,req,res,next)</td><td class="desc">error handler (23)</td></tr><tr><td>[mw1, mw2]</td><td class="desc">bundle / policy</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling the factory per request (<code>app.use((req,res,next) =&gt; cors()(req,res,next))</code>): rebuilds state every time</li><li class="note-item">Trying <code>res.set()</code> inside <code>finish</code>: headers are already sent</li><li class="note-item">Forgetting to call <code>next()</code> in the success path of async middleware: the request hangs</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Test middleware alone with fake <code>req</code>/<code>res</code> objects or a tiny app + Supertest (49)</li><li class="note-item">Accept dependencies (repos, clients) as factory args for easy mocking</li><li class="note-item">Look at <code>on-finished</code> and <code>on-headers</code> packages for edge cases</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">factory — <code>(opts) =&gt; (req, res, next)</code></li><li class="note-item"><code>async</code> middleware — Express 5 catches rejections</li><li class="note-item"><code>res.on("finish")</code> — after-response work</li><li class="note-item">inject dependencies via args</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-21-third-party-middleware.html" class="nav-link prev" title="Essential Third-Party Middleware">Third-Party Middleware</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-23-error-middleware.html" class="nav-link next" title="Error-Handling Middleware">Error Middleware</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
