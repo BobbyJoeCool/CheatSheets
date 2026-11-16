@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 51: Logging &amp; Monitoring</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s51">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 51</div>
+			<h1>Logging &amp; Monitoring</h1>
+			<div class="sheet-desc">pino-http · morgan formats · request ids · log levels · /health &amp; /ready routes · OpenTelemetry</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Production logs should be <strong>structured JSON</strong>, one line per event, with a request id tying lines together. <strong>pino-http</strong> logs every request with method, URL, status and duration, and gives each request a child logger at <code>req.log</code>. Add <strong>health</strong> routes so load balancers and orchestrators know when to send traffic, and <strong>OpenTelemetry</strong> for traces and metrics across services.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>/health</code> (liveness): process is up; <code>/ready</code> (readiness): dependencies reachable</li><li class="note-item">Log levels: <code>trace</code> <code>debug</code> <code>info</code> <code>warn</code> <code>error</code> <code>fatal</code></li><li class="note-item">Redact secrets (<code>authorization</code>, cookies, passwords)</li><li class="note-item">Pretty-print only in development (<code>pino-pretty</code>)</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">pino-http + Health Checks</h2><pre><code class="language-javascript">import pino from "pino";
+import { pinoHttp } from "pino-http";
+import { randomUUID } from "node:crypto";
+
+export const logger = pino({
+  level: config.LOG_LEVEL,
+  redact: ["req.headers.authorization", "req.headers.cookie", "*.password"],
+  transport: config.isProd ? undefined : { target: "pino-pretty" },
+});
+
+app.use(pinoHttp({
+  logger,
+  genReqId: (req, res) =&gt; {
+    const id = req.get("x-request-id") ?? randomUUID();
+    res.set("X-Request-Id", id);
+    return id;
+  },
+  customLogLevel: (req, res, err) =&gt; (err || res.statusCode &gt;= 500 ? "error"
+    : res.statusCode &gt;= 400 ? "warn" : "info"),
+  autoLogging: { ignore: (req) =&gt; req.url === "/health" },
+}));
+
+app.get("/todos", async (req, res) =&gt; {
+  req.log.info({ userId: req.user.id }, "listing todos");   // has req id
+  res.json(await repo.list());
+});
+
+app.get("/health", (req, res) =&gt; res.json({ status: "ok" }));
+app.get("/ready", async (req, res) =&gt; {
+  try { await db.query("SELECT 1"); res.json({ db: "ok" }); }
+  catch { res.status(503).json({ db: "down" }); }
+});</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>redact</code> — paths replaced with <code>[Redacted]</code></div><div class="explain-item"><code>genReqId</code> — reuse an incoming id or make one</div><div class="explain-item"><code>customLogLevel</code> — 5xx as error, 4xx as warn</div><div class="explain-item"><code>/ready</code> returns 503 so the balancer stops routing</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>console.log</code> in production</span> → <span class="idiom-prefer">pino JSON logs</span></li><li class="note-item"><span class="idiom-avoid">Logging whole request bodies</span> → <span class="idiom-prefer">log ids and fields you need; redact</span></li><li class="note-item"><span class="idiom-avoid">One <code>/health</code> that checks everything</span> → <span class="idiom-prefer">cheap liveness + separate readiness</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Levels Table | Otel Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-levels"><h2 class="section-title">When to Use Each Level</h2><table><thead><tr><th>Level</th><th>For</th></tr></thead><tbody><tr><td>fatal</td><td class="desc">about to exit</td></tr><tr><td>error</td><td class="desc">request failed, needs attention</td></tr><tr><td>warn</td><td class="desc">unexpected but handled</td></tr><tr><td>info</td><td class="desc">normal milestones, requests</td></tr><tr><td>debug</td><td class="desc">detail for troubleshooting</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-otel"><h2 class="section-title">Observability Stack</h2><table><thead><tr><th>Piece</th><th>Tool</th></tr></thead><tbody><tr><td>logs</td><td class="desc">pino → Loki / Datadog / CloudWatch</td></tr><tr><td>metrics</td><td class="desc">prom-client <code>/metrics</code></td></tr><tr><td>traces</td><td class="desc">OpenTelemetry auto-instrumentation</td></tr><tr><td>errors</td><td class="desc">Sentry <code>setupExpressErrorHandler</code></td></tr><tr><td>uptime</td><td class="desc">external ping of <code>/health</code></td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Logging auth headers or passwords: credentials leak into log storage</li><li class="note-item">Readiness that never fails: traffic keeps flowing to a server with a dead DB connection</li><li class="note-item">Using <code>pino-pretty</code> in production: slow and breaks log parsers</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Start OpenTelemetry with <code>node --import @opentelemetry/auto-instrumentations-node/register</code></li><li class="note-item">Include <code>req.id</code> in error responses (sheet 25)</li><li class="note-item">Alert on error rate and p95 latency, not on single errors</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>pino-http</code> — JSON request logs</li><li class="note-item"><code>req.log</code> — per-request logger</li><li class="note-item"><code>/health</code> &amp; <code>/ready</code> — probes</li><li class="note-item">redact secrets</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-50-config-environment.html" class="nav-link prev" title="Configuration &amp; Environments">Configuration</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-52-performance.html" class="nav-link next">Performance</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

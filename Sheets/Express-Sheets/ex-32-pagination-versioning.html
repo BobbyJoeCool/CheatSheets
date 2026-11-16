@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 32: Pagination, Filtering &amp; Versioning</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s32">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 32</div>
+			<h1>Pagination, Filtering &amp; Versioning</h1>
+			<div class="sheet-desc">?page=&amp;limit= · cursor pagination · ?sort= · filter params · /api/v1 routers · etag · swagger-ui-express</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">List endpoints need <strong>limits</strong>: offset pagination (<code>?page=2&amp;limit=20</code>) is simple, while <strong>cursor</strong> pagination (<code>?after=&lt;id&gt;</code>) stays fast and stable as data changes. Filtering and sorting come from validated query params, never raw ones. <strong>Version</strong> the API with path prefixes so breaking changes ship as <code>/api/v2</code> while <code>/api/v1</code> keeps working, and describe it all with an OpenAPI document.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Always cap <code>limit</code> (e.g. max 100)</li><li class="note-item">Return paging metadata or <code>Link</code> headers so clients know there's more</li><li class="note-item">Allowlist sortable fields; never pass <code>?sort=</code> straight to SQL</li><li class="note-item">Express sends weak <code>ETag</code>s for <code>res.json</code>: conditional GETs get 304 for free</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Cursor Pagination + Versions</h2><pre><code class="language-javascript">// GET /api/v1/todos?limit=20&amp;after=120&amp;sort=-created&amp;status=open
+const SORTS = { created: "created_at", title: "title" };
+
+v1.get("/todos", async (req, res) =&gt; {
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const after = req.query.after ? Number(req.query.after) : null;
+  const raw = String(req.query.sort ?? "-created");
+  const column = SORTS[raw.replace(/^-/, "")] ?? "created_at";
+  const dir = raw.startsWith("-") ? "desc" : "asc";
+
+  const rows = await repo.list({ limit: limit + 1, after, column, dir });
+  const hasMore = rows.length &gt; limit;
+  const items = rows.slice(0, limit);
+  const next = hasMore
+    ? `${req.baseUrl}/todos?limit=${limit}&amp;after=${items.at(-1).id}` : null;
+  if (next) res.links({ next });
+  res.json({ items, next });
+});
+
+app.use("/api/v1", v1);
+app.use("/api/v2", v2);                      // breaking changes live here
+
+import swaggerUi from "swagger-ui-express";
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiSpec));</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>limit + 1</code> rows — cheap way to know if another page exists</div><div class="explain-item"><code>SORTS</code> map — allowlist; unknown values fall back</div><div class="explain-item"><code>res.links({ next })</code> — standard <code>Link</code> header</div><div class="explain-item"><code>swagger-ui-express</code> — serves interactive docs from a spec</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Unbounded <code>SELECT *</code> for lists</span> → <span class="idiom-prefer">a default and maximum <code>limit</code></span></li><li class="note-item"><span class="idiom-avoid"><code>OFFSET 100000</code> on big tables</span> → <span class="idiom-prefer">cursor (<code>WHERE id &gt; ?</code>) pagination</span></li><li class="note-item"><span class="idiom-avoid">Changing v1 responses in place</span> → <span class="idiom-prefer">ship breaking changes under <code>/api/v2</code></span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Styles Table | Ver Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-styles"><h2 class="section-title">Pagination Styles</h2><table><thead><tr><th>Style</th><th>Query</th><th>Trade-off</th></tr></thead><tbody><tr><td>offset</td><td class="desc">?page=3&amp;limit=20</td><td class="desc">simple; slow + shifts on inserts</td></tr><tr><td>cursor</td><td class="desc">?after=120&amp;limit=20</td><td class="desc">fast, stable; no page jumps</td></tr><tr><td>keyset (multi-col)</td><td class="desc">?after=2026-01-01,120</td><td class="desc">stable sort on non-unique</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-ver"><h2 class="section-title">Versioning Options</h2><table><thead><tr><th>Option</th><th>Example</th></tr></thead><tbody><tr><td>path prefix</td><td class="desc">/api/v2/todos</td></tr><tr><td>header</td><td class="desc">Accept-Version: 2</td></tr><tr><td>media type</td><td class="desc">application/vnd.app.v2+json</td></tr><tr><td>query</td><td class="desc">?v=2 (avoid)</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Letting <code>?limit=100000</code> through: one request dumps the table</li><li class="note-item">Building <code>ORDER BY ${req.query.sort}</code>: SQL injection</li><li class="note-item">Offset paging a feed that changes: users see duplicates or miss rows</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Generate the OpenAPI spec from zod schemas (<code>zod-openapi</code>) to keep docs honest</li><li class="note-item">Return <code>total</code> only when cheap; counts on big tables are slow</li><li class="note-item">Turn ETag off (<code>app.set("etag", false)</code>) only if a proxy handles it</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">cap <code>limit</code> — always</li><li class="note-item">cursor pagination — <code>?after=id</code></li><li class="note-item">allowlist sort/filter fields</li><li class="note-item"><code>/api/v1</code>, <code>/api/v2</code> — versions</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-31-file-uploads.html" class="nav-link prev">File Uploads with Multer</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-33-postgres-pg.html" class="nav-link next">PostgreSQL with pg</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 47: Application Architecture</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s47">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 47</div>
+			<h1>Application Architecture</h1>
+			<div class="sheet-desc">routes → controllers → services → data layer · dependency injection by hand · createApp() factory · config module · feature folders</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">As an app grows, split it into <strong>layers</strong>: routes map URLs, <strong>controllers</strong> translate HTTP to function calls, <strong>services</strong> hold business rules, and a <strong>data layer</strong> talks to the database. A <code>createApp(deps)</code> factory that receives its dependencies (DB, cache, mailer) makes testing easy: pass fakes in tests, real clients in <code>server.js</code>. Group files by <strong>feature</strong> once there are more than a handful of resources.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Services never touch <code>req</code> / <code>res</code>: they take plain values and throw errors</li><li class="note-item">Controllers stay thin: validate, call one service method, respond</li><li class="note-item">Config is read and validated once, in one module</li><li class="note-item">No framework needed for DI; function arguments are enough</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code + Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Feature Folder</h2><pre><code class="language-markup">src/
+├─ app.js        # createApp(deps)
+├─ server.js     # real deps + listen
+├─ todos/
+│  ├─ todos.routes.js    todos.service.js
+│  └─ todos.repo.js      todos.schema.js
+└─ users/ …</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Wiring with Plain Functions</h2><pre><code class="language-javascript">// todos.service.js: business rules, no HTTP
+export const todoService = ({ repo, clock }) =&gt; ({
+  async complete(id, userId) {
+    const todo = await repo.find(id);
+    if (todo?.userId !== userId) throw new HttpError(404, "Todo not found");
+    return repo.update(id, { done: true, doneAt: clock.now() });
+  },
+});
+
+// todos.routes.js: HTTP in, HTTP out
+export const todoRoutes = (svc) =&gt; Router()
+  .post("/:id/complete", async (req, res) =&gt;
+    res.json(await svc.complete(req.params.id, req.user.id)));
+
+// app.js
+export function createApp({ db, clock = { now: () =&gt; new Date() } }) {
+  const todos = todoService({ repo: todoRepo(db), clock });
+  return express().use(express.json())
+    .use("/api/todos", todoRoutes(todos)).use(errorHandler);
+}
+
+// server.js
+createApp({ db: new pg.Pool(config.db) }).listen(config.port);</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Service takes <code>repo</code> and <code>clock</code> — fake both in tests</div><div class="explain-item">Route file only maps HTTP to the service</div><div class="explain-item"><code>createApp</code> — no globals; build as many apps as tests need</div><div class="explain-item"><code>server.js</code> is the only place real clients are created</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Services that read <code>req.body</code></span> → <span class="idiom-prefer">services take plain arguments</span></li><li class="note-item"><span class="idiom-avoid">Importing the DB client everywhere</span> → <span class="idiom-prefer">inject it through <code>createApp</code></span></li><li class="note-item"><span class="idiom-avoid">A heavy DI framework for a small app</span> → <span class="idiom-prefer">factory functions; NestJS if you want the full thing</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Layers Table | Signs Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-layers"><h2 class="section-title">Layers</h2><table><thead><tr><th>Layer</th><th>Knows about</th><th>Never</th></tr></thead><tbody><tr><td>routes</td><td class="desc">URLs, middleware</td><td class="desc">SQL</td></tr><tr><td>controller</td><td class="desc">req / res</td><td class="desc">business rules</td></tr><tr><td>service</td><td class="desc">rules, errors</td><td class="desc">req / res</td></tr><tr><td>repo</td><td class="desc">DB queries</td><td class="desc">HTTP status codes</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-signs"><h2 class="section-title">Time to Restructure</h2><table><thead><tr><th>Sign</th><th>Move to</th></tr></thead><tbody><tr><td>SQL in handlers</td><td class="desc">repos</td></tr><tr><td>copy-pasted rules</td><td class="desc">services</td></tr><tr><td>10+ resources</td><td class="desc">feature folders</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Throwing HTTP-shaped errors from the repo: the data layer shouldn't know about status codes</li><li class="note-item">Module-level DB clients: tests can't swap them without mocking imports</li><li class="note-item">Splitting a 5-route app into 20 files: structure should follow size</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Write services first and test them without Express at all</li><li class="note-item">Keep one <code>index.js</code> per feature that exports its router factory</li><li class="note-item">Look at NestJS when you want enforced modules and DI (sheet 55)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">routes → controller → service → repo</li><li class="note-item"><code>createApp(deps)</code> — injectable app</li><li class="note-item">services — no <code>req</code> / <code>res</code></li><li class="note-item">feature folders — as you grow</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-46-typescript.html" class="nav-link prev">Express with TypeScript</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-48-supertest.html" class="nav-link next" title="Testing Routes with Supertest">Testing Routes</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

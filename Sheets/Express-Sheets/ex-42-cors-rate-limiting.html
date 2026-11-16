@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 42: CORS &amp; Rate Limiting</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s42">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 42</div>
+			<h1>CORS &amp; Rate Limiting</h1>
+			<div class="sheet-desc">cors({ origin, credentials }) · origin allowlist · preflight OPTIONS · express-rate-limit windowMs / limit · trust proxy</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">Browsers block JavaScript from reading responses from another origin unless the server sends <strong>CORS</strong> headers. The <code>cors</code> package adds them and answers <strong>preflight</strong> <code>OPTIONS</code> requests. <strong>Rate limiting</strong> caps how many requests a client can make in a window and replies <code>429</code>. Both depend on correct client identity: CORS on the <code>Origin</code> header, rate limits on <code>req.ip</code> (set <code>trust proxy</code>).</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">CORS only affects browsers; curl and servers ignore it</li><li class="note-item"><code>credentials: true</code> needs an exact origin, never <code>*</code></li><li class="note-item">Preflight happens for non-simple requests (JSON bodies, custom headers)</li><li class="note-item">Use a Redis store for limits across several instances</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Allowlisted CORS + Tiered Limits</h2><pre><code class="language-javascript">import cors from "cors";
+import { rateLimit } from "express-rate-limit";
+import { RedisStore } from "rate-limit-redis";
+
+const allowed = new Set(["https://app.example.com", "http://localhost:5173"]);
+app.use(cors({
+  // no Origin header = same-origin request or a non-browser tool
+  origin: (origin, cb) =&gt; cb(null, !origin || allowed.has(origin)),
+  credentials: true,                    // allow cookies
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 600,                          // cache preflight 10 min
+}));
+
+app.set("trust proxy", 1);              // real client IP for limits
+
+const api = rateLimit({
+  windowMs: 60_000, limit: 120,
+  standardHeaders: "draft-8", legacyHeaders: false,
+  store: new RedisStore({ sendCommand: (...a) =&gt; redis.sendCommand(a) }),
+});
+const login = rateLimit({
+  windowMs: 15 * 60_000, limit: 5, skipSuccessfulRequests: true,
+  message: { error: "Too many login attempts, try again later" },
+});
+
+app.use("/api", api);
+app.post("/auth/login", login, loginHandler);</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>origin</code> function — return <code>true</code> to reflect the request's origin</div><div class="explain-item"><code>maxAge</code> — fewer preflight round-trips</div><div class="explain-item"><code>skipSuccessfulRequests</code> — only failed logins count</div><div class="explain-item"><code>RedisStore</code> — shared counters across instances</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>origin: "*"</code> with <code>credentials: true</code></span> → <span class="idiom-prefer">an explicit allowlist</span></li><li class="note-item"><span class="idiom-avoid">One global limit for everything</span> → <span class="idiom-prefer">tight limits on login/signup, looser on reads</span></li><li class="note-item"><span class="idiom-avoid"><code>app.options("*", cors())</code></span> → <span class="idiom-prefer">global <code>app.use(cors())</code> (handles preflight)</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Opts Table | Rl Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-opts"><h2 class="section-title">cors Options</h2><table><thead><tr><th>Option</th><th>Sets</th></tr></thead><tbody><tr><td>origin</td><td class="desc">Access-Control-Allow-Origin</td></tr><tr><td>credentials</td><td class="desc">...-Allow-Credentials</td></tr><tr><td>methods</td><td class="desc">...-Allow-Methods</td></tr><tr><td>allowedHeaders</td><td class="desc">...-Allow-Headers</td></tr><tr><td>exposedHeaders</td><td class="desc">...-Expose-Headers</td></tr><tr><td>maxAge</td><td class="desc">...-Max-Age</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-rl"><h2 class="section-title">rateLimit Options</h2><table><thead><tr><th>Option</th><th>Default</th></tr></thead><tbody><tr><td>windowMs</td><td class="desc">60000</td></tr><tr><td>limit</td><td class="desc">5</td></tr><tr><td>standardHeaders</td><td class="desc">false → set "draft-8"</td></tr><tr><td>keyGenerator</td><td class="desc">IP based</td></tr><tr><td>skip(req)</td><td class="desc">never</td></tr><tr><td>store</td><td class="desc">memory</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Thinking CORS protects your API: it stops browsers reading responses, not attackers sending requests</li><li class="note-item">Rate limiting without <code>trust proxy</code> behind a proxy: the proxy IP gets blocked for everyone</li><li class="note-item">In-memory limit store on several instances: each counts separately</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Expose custom headers (<code>X-Total-Count</code>) with <code>exposedHeaders</code> or JS can't read them</li><li class="note-item">Return <code>Retry-After</code> on 429 (standard headers do this)</li><li class="note-item">Rate limit by user id (<code>keyGenerator</code>) on authenticated routes</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>cors({ origin })</code> — allowlist origins</li><li class="note-item">preflight — handled by <code>cors()</code></li><li class="note-item"><code>rateLimit</code> — 429 after <code>limit</code></li><li class="note-item"><code>trust proxy</code> — real IPs</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-41-security-headers.html" class="nav-link prev" title="Helmet &amp; Security Headers">Helmet</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-43-input-security.html" class="nav-link next">Input Security &amp; CSRF</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

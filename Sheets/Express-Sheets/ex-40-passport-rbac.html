@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 40: Passport &amp; Role-Based Access</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s40">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 40</div>
+			<h1>Passport &amp; Role-Based Access</h1>
+			<div class="sheet-desc">passport.use(new LocalStrategy()) · passport.authenticate() · serializeUser · OAuth strategies · requireRole · req.user</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>Passport</strong> is authentication middleware with 500+ <strong>strategies</strong>: username/password (<code>passport-local</code>), OAuth providers (Google, GitHub), JWT and more. Each strategy verifies credentials and hands back a user; with sessions, <code>serializeUser</code> stores the user id and <code>deserializeUser</code> loads it into <code>req.user</code> on later requests. <strong>Authorization</strong> (who may do what) is your job: a small <code>requireRole</code> middleware covers most apps.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Mount order: <code>express-session</code> → <code>passport.initialize()</code> → <code>passport.session()</code></li><li class="note-item"><code>req.isAuthenticated()</code>, <code>req.login(user, cb)</code>, <code>req.logout(cb)</code></li><li class="note-item">Passport 0.6+ regenerates the session on login automatically</li><li class="note-item"><code>req.logout</code> needs a callback since 0.6</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Local + GitHub Login, Roles</h2><pre><code class="language-javascript">import passport from "passport";
+import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as GitHubStrategy } from "passport-github2";
+
+passport.use(new LocalStrategy({ usernameField: "email" },
+  async (email, password, done) =&gt; {
+    const user = await users.findByEmail(email);
+    const ok = user &amp;&amp; (await argon2.verify(user.passwordHash, password));
+    done(null, ok ? user : false);
+  }));
+passport.use(new GitHubStrategy({ clientID, clientSecret, callbackURL },
+  async (at, rt, profile, done) =&gt; done(null, await users.fromGitHub(profile))));
+
+passport.serializeUser((user, done) =&gt; done(null, user.id));
+passport.deserializeUser((id, done) =&gt; users.find(id).then((u) =&gt; done(null, u)));
+
+app.use(session({ /* sheet 37 */ }), passport.initialize(), passport.session());
+
+app.post("/login", passport.authenticate("local",
+  { successRedirect: "/", failureRedirect: "/login" }));
+app.get("/auth/github", passport.authenticate("github"));
+app.get("/auth/github/cb",
+  passport.authenticate("github", { failureRedirect: "/login" }),
+  (req, res) =&gt; res.redirect("/"));
+
+const requireRole = (...roles) =&gt; (req, res, next) =&gt;
+  !req.isAuthenticated() ? res.sendStatus(401)
+  : roles.includes(req.user.role) ? next() : res.sendStatus(403);
+app.delete("/users/:id", requireRole("admin"), deleteUser);</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>done(null, false)</code> — credentials wrong; <code>done(err)</code> — real error</div><div class="explain-item"><code>serializeUser</code> — what goes in the session (just the id)</div><div class="explain-item"><code>authenticate("github")</code> — redirects to GitHub, then the callback</div><div class="explain-item"><code>requireRole</code> — 401 if anonymous, 403 if wrong role</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Role checks inside every handler</span> → <span class="idiom-prefer"><code>requireRole("admin")</code> in the route</span></li><li class="note-item"><span class="idiom-avoid">Serializing the whole user</span> → <span class="idiom-prefer">serialize the id; deserialize per request</span></li><li class="note-item"><span class="idiom-avoid">Rolling your own OAuth dance</span> → <span class="idiom-prefer">a Passport strategy (or Auth.js / Better Auth)</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Strategies Table | Req Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-strategies"><h2 class="section-title">Popular Strategies</h2><table><thead><tr><th>Package</th><th>Logs in with</th></tr></thead><tbody><tr><td>passport-local</td><td class="desc">username + password</td></tr><tr><td>passport-google-oauth20</td><td class="desc">Google</td></tr><tr><td>passport-github2</td><td class="desc">GitHub</td></tr><tr><td>passport-jwt</td><td class="desc">Bearer JWT</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-req"><h2 class="section-title">Passport on req</h2><table><thead><tr><th>Member</th><th>Does</th></tr></thead><tbody><tr><td>req.user</td><td class="desc">logged-in user</td></tr><tr><td>req.isAuthenticated()</td><td class="desc">boolean</td></tr><tr><td>req.login(user, cb)</td><td class="desc">log in manually</td></tr><tr><td>req.logout(cb)</td><td class="desc">log out</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Mounting <code>passport.session()</code> before <code>express-session</code>: <code>req.session</code> is undefined</li><li class="note-item">Calling <code>req.logout()</code> without a callback on Passport 0.6+: throws</li><li class="note-item">Checking roles on the client only: anyone can call the API directly</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Use <code>passport.authenticate("jwt", { session: false })</code> for APIs</li><li class="note-item">Put permissions in a table (<code>can(user, "delete", todo)</code>) once roles get complex</li><li class="note-item">Consider hosted auth (Auth0, Clerk) or Better Auth for MFA and passkeys</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">strategy — how credentials are checked</li><li class="note-item"><code>authenticate()</code> — run a strategy</li><li class="note-item"><code>serializeUser</code> / <code>deserializeUser</code> — session ↔ user</li><li class="note-item"><code>requireRole</code> — authorization</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-39-jwt.html" class="nav-link prev">JWT Authentication</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-41-security-headers.html" class="nav-link next" title="Helmet &amp; Security Headers">Helmet</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

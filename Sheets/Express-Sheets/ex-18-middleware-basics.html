@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 18: Middleware Basics</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s18">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 18</div>
+			<h1>Middleware Basics</h1>
+			<div class="sheet-desc">(req, res, next) · next() · ending vs passing on · app.use() order · res.locals · req augmentation</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>Middleware</strong> is any function with the signature <code>(req, res, next)</code>. Express keeps one ordered list of middleware and routes; each request walks that list until something sends a response. A middleware can <strong>change</strong> <code>req</code>/<code>res</code>, <strong>end</strong> the request by sending, or <strong>pass</strong> control with <code>next()</code>. If it does neither, the request hangs.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>app.use(fn)</code> runs <code>fn</code> for every method and every path</li><li class="note-item"><code>app.use("/api", fn)</code> runs for paths starting with <code>/api</code></li><li class="note-item"><code>res.locals</code> — per-request data for later middleware and views</li><li class="note-item">Async middleware may <code>await</code>; a rejected promise goes to error middleware</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">A Logging + Context Middleware</h2><pre><code class="language-javascript">import { randomUUID } from "node:crypto";
+
+// 1. runs first: add an id and a start time
+app.use((req, res, next) =&gt; {
+  req.id = req.get("X-Request-Id") ?? randomUUID();
+  res.set("X-Request-Id", req.id);
+  req.startedAt = performance.now();
+  next();                                    // pass on
+});
+
+// 2. log when the response is done
+app.use((req, res, next) =&gt; {
+  res.on("finish", () =&gt; {
+    const ms = (performance.now() - req.startedAt).toFixed(1);
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`);
+  });
+  next();
+});
+
+// 3. short-circuit: maintenance mode
+app.use((req, res, next) =&gt; {
+  if (process.env.MAINTENANCE) return res.status(503).send("Back soon");
+  next();
+});
+
+app.get("/", (req, res) =&gt; res.send(`request ${req.id}`));</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Order matters: #1 must run before anything reads <code>req.id</code></div><div class="explain-item"><code>res.on("finish")</code> — fires after the last byte is handed off</div><div class="explain-item"><code>return res.status(503)…</code> — ends the chain; <code>next</code> not called</div><div class="explain-item">Adding props to <code>req</code> is the normal way to pass data on</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Forgetting <code>next()</code> in a branch</span> → <span class="idiom-prefer">every path either responds or calls <code>next()</code></span></li><li class="note-item"><span class="idiom-avoid">Global variables for request data</span> → <span class="idiom-prefer"><code>req.x</code> or <code>res.locals.x</code></span></li><li class="note-item"><span class="idiom-avoid">Heavy work in global middleware</span> → <span class="idiom-prefer">mount it only where needed (19)</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Outcomes Table | Order Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-outcomes"><h2 class="section-title">What Middleware Can Do</h2><table><thead><tr><th>Action</th><th>Code</th></tr></thead><tbody><tr><td>pass on</td><td class="desc"><code>next()</code></td></tr><tr><td>end request</td><td class="desc"><code>res.send(...)</code></td></tr><tr><td>raise error</td><td class="desc"><code>next(err)</code> or <code>throw</code></td></tr><tr><td>skip route</td><td class="desc"><code>next("route")</code> (10)</td></tr><tr><td>add data</td><td class="desc"><code>req.user = u</code></td></tr><tr><td>hang (bug)</td><td class="desc">neither</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-order"><h2 class="section-title">Typical Order</h2><table><thead><tr><th>#</th><th>Middleware</th></tr></thead><tbody><tr><td>1</td><td class="desc">request id / logging</td></tr><tr><td>2</td><td class="desc">security headers, CORS</td></tr><tr><td>3</td><td class="desc">body &amp; cookie parsers</td></tr><tr><td>4</td><td class="desc">sessions / auth</td></tr><tr><td>5</td><td class="desc">routes</td></tr><tr><td>6</td><td class="desc">404 handler</td></tr><tr><td>7</td><td class="desc">error handler</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling <code>next()</code> and then <code>res.send()</code>: two parties try to respond</li><li class="note-item">Mounting a parser after the routes that need it: <code>req.body</code> is undefined there</li><li class="note-item">Throwing inside a <code>setTimeout</code> callback: Express can't catch it; the process crashes</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Name middleware functions so stack traces and logs are readable</li><li class="note-item">Use <code>res.on("finish")</code> for metrics instead of wrapping <code>res.send</code></li><li class="note-item">Keep the order list above as a comment at the top of <code>app.js</code></li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>(req, res, next)</code> — middleware shape</li><li class="note-item"><code>next()</code> — continue</li><li class="note-item">send — end the chain</li><li class="note-item">order of <code>app.use</code> = run order</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-17-cookies.html" class="nav-link prev">Cookies</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-19-app-router-middleware.html" class="nav-link next" title="App-Level &amp; Router-Level Middleware">App &amp; Router Middleware</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

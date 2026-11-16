@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 36: Caching with Redis</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s36">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 36</div>
+			<h1>Caching with Redis</h1>
+			<div class="sheet-desc">redis / ioredis client · cache-aside middleware · EX TTL · cache keys · invalidation · Cache-Control</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description"><strong>Caching</strong> saves repeated work: store a computed result in Redis with a time-to-live and serve it until it expires or you invalidate it. The usual pattern is <strong>cache-aside</strong>: look in the cache, and on a miss load from the database and write the result back. Pair server caching with HTTP <code>Cache-Control</code> headers so browsers and CDNs avoid the request entirely.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item"><code>client.set(key, value, { EX: 60 })</code> — expire after 60 s</li><li class="note-item">Cache JSON strings; parse on the way out</li><li class="note-item">Invalidate on writes (<code>del</code>) or use short TTLs</li><li class="note-item">Include everything that changes the result in the key (user, query)</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Cache-Aside Middleware</h2><pre><code class="language-javascript">import { createClient } from "redis";
+export const redis = createClient({ url: process.env.REDIS_URL });
+redis.on("error", (err) =&gt; console.error("redis", err));
+await redis.connect();
+
+const cache = (ttl = 60) =&gt; async (req, res, next) =&gt; {
+  if (req.method !== "GET") return next();
+  const key = `cache:${req.user?.id ?? "anon"}:${req.originalUrl}`;
+  const hit = await redis.get(key);
+  if (hit) return res.set("X-Cache", "HIT").type("json").send(hit);
+
+  const json = res.json.bind(res);
+  res.json = (body) =&gt; {                         // store what we send
+    if (res.statusCode === 200)
+      redis.set(key, JSON.stringify(body), { EX: ttl });
+    return json(body);
+  };
+  res.set("X-Cache", "MISS");
+  next();
+};
+
+app.get("/stats", cache(300), async (req, res) =&gt;
+  res.json(await expensiveStats()));
+
+app.post("/todos", async (req, res) =&gt; {
+  const todo = await repo.create(req.valid.body);
+  await redis.del(`cache:${req.user.id}:/todos`);  // invalidate
+  res.status(201).json(todo);
+});
+
+app.get("/public/countries", (req, res) =&gt; {
+  res.set("Cache-Control", "public, max-age=86400");  // browsers + CDN
+  res.json(countries);
+});</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Key includes user + URL: no data leaks between users</div><div class="explain-item">Wrapping <code>res.json</code> — captures the body on a miss</div><div class="explain-item">Only cache 200s; errors shouldn't stick</div><div class="explain-item"><code>Cache-Control: public</code> — lets CDNs cache shared data</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Caching per-user data under a shared key</span> → <span class="idiom-prefer">user id in the key</span></li><li class="note-item"><span class="idiom-avoid">No TTL (<code>set</code> without <code>EX</code>)</span> → <span class="idiom-prefer">always expire</span></li><li class="note-item"><span class="idiom-avoid">Redis for data that never changes</span> → <span class="idiom-prefer"><code>Cache-Control</code> + CDN, or in-memory</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Cmds Table | Cc Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-cmds"><h2 class="section-title">Redis Client Calls</h2><table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td>get(k)</td><td class="desc">read (string or null)</td></tr><tr><td>set(k, v, { EX: s })</td><td class="desc">write with TTL</td></tr><tr><td>del(k)</td><td class="desc">invalidate</td></tr><tr><td>incr(k)</td><td class="desc">counters / rate limits</td></tr><tr><td>expire(k, s)</td><td class="desc">set TTL</td></tr><tr><td>scanIterator({ MATCH })</td><td class="desc">find keys (not KEYS)</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-cc"><h2 class="section-title">Cache-Control Values</h2><table><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>no-store</td><td class="desc">never cache</td></tr><tr><td>private, max-age=60</td><td class="desc">browser only</td></tr><tr><td>public, max-age=3600</td><td class="desc">shared caches too</td></tr><tr><td>s-maxage=600</td><td class="desc">CDN TTL</td></tr><tr><td>stale-while-revalidate=30</td><td class="desc">serve stale while refreshing</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Leaving user id out of the key: one user's data is served to others</li><li class="note-item">Calling <code>KEYS cache:*</code> in production: blocks Redis; use <code>SCAN</code></li><li class="note-item">App crashes when Redis is down: catch cache errors and fall through to the DB</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Reuse the Redis client for sessions (37) and rate limits (42)</li><li class="note-item">Start with <code>Cache-Control</code> headers; add Redis when the DB is the bottleneck</li><li class="note-item">Log hit rate (<code>X-Cache</code>) to see whether caching helps</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item">cache-aside — check, load, store</li><li class="note-item"><code>EX</code> — always a TTL</li><li class="note-item">key = user + URL</li><li class="note-item"><code>Cache-Control</code> — browser / CDN caching</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-35-mongodb-mongoose.html" class="nav-link prev">MongoDB with Mongoose</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-37-sessions.html" class="nav-link next" title="Sessions with express-session">Sessions</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>

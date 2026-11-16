@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 53: Deployment</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s53">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 53</div>
+			<h1>Deployment</h1>
+			<div class="sheet-desc">trust proxy behind Nginx · graceful shutdown server.close() · SIGTERM · Dockerfile · PM2 · HTTPS termination · serverless</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">In production an Express app usually runs behind a <strong>reverse proxy</strong> or load balancer that terminates HTTPS, so set <code>trust proxy</code> correctly. It runs under a supervisor (Docker, Kubernetes, systemd, PM2) that restarts it and sends <strong>SIGTERM</strong> on deploys: handle that by closing the server, finishing in-flight requests and closing database pools before exiting. Containers are the most common packaging.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Listen on <code>0.0.0.0</code> inside containers (Express's default host is all interfaces)</li><li class="note-item">Health checks: <code>/health</code> liveness, <code>/ready</code> readiness (51)</li><li class="note-item">Run as a non-root user</li><li class="note-item">Serverless: <code>serverless-http</code> for Lambda; Vercel can run an Express app</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code + Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Graceful Shutdown</h2><pre><code class="language-javascript">const server = app.listen(config.PORT);
+
+function shutdown(signal) {
+  logger.info({ signal }, "shutting down");
+  server.close(async () =&gt; {     // stop accepting; wait for in-flight
+    await db.end();
+    await redis.quit();
+    process.exit(0);
+  });
+  server.closeIdleConnections();             // drop idle keep-alives
+  setTimeout(() =&gt; process.exit(1), 10_000).unref();   // hard stop
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);</code></pre></section><section class="section-code" id="code-2"><h2 class="section-title">Dockerfile</h2><pre><code class="language-docker">FROM node:22-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY src ./src
+USER node
+EXPOSE 3000
+CMD ["node", "src/server.js"]</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>server.close(cb)</code> — waits for open requests to finish</div><div class="explain-item">Timeout + <code>unref()</code> — never hang forever</div><div class="explain-item"><code>CMD ["node", …]</code> — node gets SIGTERM directly (not via npm)</div><div class="explain-item"><code>npm ci --omit=dev</code> — production deps only</div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid"><code>CMD npm start</code></span> → <span class="idiom-prefer"><code>CMD ["node", "src/server.js"]</code> (signals reach Node)</span></li><li class="note-item"><span class="idiom-avoid">Express serving HTTPS certs itself</span> → <span class="idiom-prefer">terminate TLS at the proxy / load balancer</span></li><li class="note-item"><span class="idiom-avoid">Killing the process on deploy</span> → <span class="idiom-prefer">handle SIGTERM and drain</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Nginx Table | Where Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-nginx"><h2 class="section-title">Behind Nginx</h2><table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody><tr><td>proxy_pass</td><td class="desc">http://127.0.0.1:3000</td></tr><tr><td>X-Forwarded-For</td><td class="desc">$proxy_add_x_forwarded_for</td></tr><tr><td>X-Forwarded-Proto</td><td class="desc">$scheme</td></tr><tr><td>Express</td><td class="desc"><code>app.set("trust proxy", 1)</code></td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-where"><h2 class="section-title">Where to Run It</h2><table><thead><tr><th>Platform</th><th>Notes</th></tr></thead><tbody><tr><td>Render / Railway / Fly</td><td class="desc">push repo or image</td></tr><tr><td>AWS ECS / Cloud Run</td><td class="desc">container + LB</td></tr><tr><td>Kubernetes</td><td class="desc">probes + SIGTERM</td></tr><tr><td>VPS + PM2</td><td class="desc"><code>pm2 start</code> + <code>pm2 startup</code></td></tr><tr><td>Lambda / Vercel</td><td class="desc">serverless adapter</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item"><code>CMD npm start</code> in Docker: npm doesn't forward SIGTERM, so connections are cut on deploy</li><li class="note-item">No shutdown timeout: one stuck request blocks the deploy</li><li class="note-item">Forgetting <code>trust proxy</code> behind the load balancer: secure cookies never set and IPs are wrong</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Docker set covers multi-stage builds and <code>.dockerignore</code></li><li class="note-item">Run migrations as a separate release step, not on boot</li><li class="note-item">Pin the Node major in the image tag (<code>node:22-slim</code>)</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>trust proxy</code> — behind a proxy</li><li class="note-item">SIGTERM → <code>server.close()</code> — drain</li><li class="note-item">Docker — <code>npm ci --omit=dev</code>, <code>USER node</code></li><li class="note-item">TLS at the proxy</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-52-performance.html" class="nav-link prev">Performance</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-54-express-4-to-5.html" class="nav-link next" title="Migrating from Express 4 to 5">Express 4 → 5</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-docker.min.js"></script>
+	</body>
+</html>

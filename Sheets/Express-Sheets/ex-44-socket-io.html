@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Express — Sheet 44: WebSockets with Socket.IO</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/ex-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s44">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 44</div>
+			<h1>WebSockets with Socket.IO</h1>
+			<div class="sheet-desc">http.createServer(app) · new Server(server) · io.on("connection") · socket.emit / on · rooms · ws alternative</div>
+		</header>
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1">
+				<div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Description</h2><div class="description">HTTP is request/response; <strong>WebSockets</strong> keep a two-way connection open so the server can push messages. Express doesn't handle WebSockets itself, so you create the HTTP server explicitly and attach <strong>Socket.IO</strong> (or the lighter <code>ws</code> package) to it. Socket.IO adds reconnection, rooms, acknowledgements and fallbacks, at the cost of needing its own client library.</div></section></div>
+				<div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Share the same <code>http.Server</code> between Express and Socket.IO</li><li class="note-item"><code>io.engine.use(sessionMiddleware)</code> reuses express-session (Socket.IO 4.6+)</li><li class="note-item">Several instances need the Redis adapter to broadcast across servers</li><li class="note-item">Load balancers need sticky sessions for Socket.IO's polling fallback</li></ul></section></div>
+			</div>
+			<!-- Row 2: Code | Explain + Prefer / Avoid -->
+			<div class="row row-code-explain" id="row-2">
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Chat Rooms</h2><pre><code class="language-javascript">import { createServer } from "node:http";
+import { Server } from "socket.io";
+
+const server = createServer(app);                 // instead of app.listen
+const io = new Server(server, {
+  cors: { origin: "https://app.example.com", credentials: true } });
+
+io.engine.use(sessionMiddleware);                 // req.session in sockets
+io.use((socket, next) =&gt; {                        // auth for every connection
+  const userId = socket.request.session?.userId;
+  if (!userId) return next(new Error("unauthorized"));
+  socket.data.userId = userId;
+  next();
+});
+
+io.on("connection", (socket) =&gt; {
+  socket.on("join", (room) =&gt; socket.join(room));
+  socket.on("message", ({ room, text }, ack) =&gt; {
+    io.to(room).emit("message", { from: socket.data.userId, text });
+    ack?.({ ok: true });                          // acknowledgement
+  });
+  socket.on("disconnect", (reason) =&gt; console.log("left", reason));
+});
+
+app.post("/rooms/:id/announce", (req, res) =&gt; {   // push from a REST route
+  io.to(req.params.id).emit("announcement", req.body);
+  res.sendStatus(202);
+});
+
+server.listen(3000);</code></pre></section></div>
+				<div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>createServer(app)</code> — one server for HTTP and WebSocket traffic</div><div class="explain-item"><code>io.use</code> — runs once per connection; reject with <code>next(err)</code></div><div class="explain-item"><code>io.to(room).emit</code> — everyone in the room; <code>socket.to(room)</code> — everyone but sender</div><div class="explain-item">REST routes can push through <code>io</code></div></div></section><section class="section-notes section-idiom" id="idiom"><h2 class="section-title">Prefer / Avoid</h2><ul class="note-list"><li class="note-item"><span class="idiom-avoid">Polling an endpoint every second</span> → <span class="idiom-prefer">push with Socket.IO or SSE (45)</span></li><li class="note-item"><span class="idiom-avoid">Trusting <code>socket.handshake.query.userId</code></span> → <span class="idiom-prefer">authenticate with the session or a token</span></li><li class="note-item"><span class="idiom-avoid">Socket.IO for one-way updates</span> → <span class="idiom-prefer">Server-Sent Events</span></li></ul></section></div>
+			</div>
+			<!-- Row 3: Emit Table | Vs Table -->
+			<div class="row" id="row-3">
+				<div class="col" id="col-3-1"><section id="tbl-emit"><h2 class="section-title">Emitting</h2><table><thead><tr><th>Call</th><th>Reaches</th></tr></thead><tbody><tr><td>socket.emit(e, d)</td><td class="desc">this client</td></tr><tr><td>socket.broadcast.emit(e, d)</td><td class="desc">all but this client</td></tr><tr><td>io.emit(e, d)</td><td class="desc">everyone</td></tr><tr><td>io.to(room).emit(e, d)</td><td class="desc">room members</td></tr><tr><td>socket.to(room).emit(e, d)</td><td class="desc">room minus sender</td></tr></tbody></table></section></div>
+				<div class="col" id="col-3-2"><section id="tbl-vs"><h2 class="section-title">Socket.IO vs ws</h2><table><thead><tr><th></th><th>Socket.IO</th><th>ws</th></tr></thead><tbody><tr><td>protocol</td><td class="desc">own (on WS)</td><td class="desc">plain WebSocket</td></tr><tr><td>client</td><td class="desc">socket.io-client</td><td class="desc">browser <code>WebSocket</code></td></tr><tr><td>rooms / acks</td><td class="desc">built in</td><td class="desc">DIY</td></tr><tr><td>reconnect</td><td class="desc">built in</td><td class="desc">DIY</td></tr></tbody></table></section></div>
+			</div>
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4">
+				<div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Calling <code>app.listen()</code> and also <code>server.listen()</code>: two servers, sockets attached to the wrong one</li><li class="note-item">Skipping auth in <code>io.use</code>: anyone can connect and join any room</li><li class="note-item">Running several instances without the Redis adapter: messages reach only one server's clients</li></ul></section></div>
+				<div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Validate socket payloads like request bodies (zod)</li><li class="note-item">Use <code>@socket.io/redis-adapter</code> when you scale out</li><li class="note-item">Use <code>ws</code> when clients are plain browsers or devices speaking raw WebSocket</li></ul></section></div>
+				<div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>createServer(app)</code> — shared server</li><li class="note-item"><code>new Server(server)</code> — attach Socket.IO</li><li class="note-item">rooms — <code>join</code> / <code>to(room)</code></li><li class="note-item"><code>io.use</code> — authenticate</li></ul></section></div>
+			</div>
+		</main>
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a href="ex-43-input-security.html" class="nav-link prev">Input Security &amp; CSRF</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a href="index.html" class="nav-toc">Express · 57 Sheets</a>
+				<a href="ex-45-sse-streaming.html" class="nav-link next" title="Server-Sent Events &amp; Streaming">Server-Sent Events</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+	</body>
+</html>
