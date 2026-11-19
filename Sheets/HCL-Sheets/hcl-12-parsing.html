@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>HCL — Sheet 12: Parsing &amp; Generating HCL in Code</title>
+		<link rel="stylesheet" href="../CSS/cheatsheet.css" />
+		<link rel="stylesheet" href="../CSS/hcl-cheatsheet.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+	</head>
+	<body id="s12">
+		<header class="page-header">
+			<div class="sheet-number">Sheet 12</div>
+			<h1>Parsing &amp; Generating HCL in Code</h1>
+			<div class="sheet-desc"><code>hclsimple.DecodeFile</code> · <code>gohcl</code> tags · <code>hclparse</code> · <code>hclwrite</code> · <code>cty</code> · <code>python-hcl2</code> · diagnostics</div>
+		</header>
+
+		<main>
+			<!-- Row 1: Description | Notes -->
+			<div class="row row-desc-notes" id="row-1"><div class="col" id="col-1-1"><section class="section-desc" id="desc"><h2 class="section-title">Reading and Writing HCL from Code</h2><div class="description">The reference implementation is the Go module <strong><code>github.com/hashicorp/hcl/v2</code></strong>. <code>hclsimple</code> decodes a file into a struct, <code>gohcl</code> maps fields with struct tags, and <code>hclwrite</code> generates or edits files while keeping comments. Other languages use ports such as <strong>python-hcl2</strong> or convert to JSON first.</div></section></div><div class="col" id="col-1-2"><section class="section-notes" id="notes"><h2 class="section-title">Notes</h2><ul class="note-list"><li class="note-item">Errors come back as <strong>diagnostics</strong> with file, line and column ranges</li><li class="note-item">An <code>hcl.EvalContext</code> supplies the variables and functions expressions may use</li><li class="note-item"><code>gohcl</code> tags: <code>hcl:"name"</code>, <code>hcl:"name,optional"</code>, <code>hcl:"name,block"</code>, <code>hcl:"name,label"</code></li><li class="note-item"><code>hclwrite</code> keeps comments and layout, so it is the safe way to edit a user's file</li><li class="note-item">Ports in other languages may lag behind Go on templates and <code>for</code> expressions</li></ul></section></div></div>
+			<!-- end row-1 -->
+			<!-- Row 2: Code + Code | Explain + Same Data In… + Gotcha -->
+			<div class="row row-code-explain" id="row-2"><div class="col" id="col-2-1"><section class="section-code" id="code-go"><h2 class="section-title">Go (hcl/v2)</h2><pre><code class="language-go">// app.hcl: name = "inventory"
+//          server "web" { addr = ":8080" }
+type Config struct {
+  Name    string   `hcl:"name"`
+  Port    int      `hcl:"port,optional"`
+  Servers []Server `hcl:"server,block"`
+}
+type Server struct {
+  Label string `hcl:"label,label"`
+  Addr  string `hcl:"addr"`
+}
+
+var cfg Config
+err := hclsimple.DecodeFile("app.hcl", nil, &amp;cfg)
+if err != nil { log.Fatal(err) }   // diagnostics
+
+f := hclwrite.NewEmptyFile()
+f.Body().SetAttributeValue("name", cty.StringVal("web"))
+os.WriteFile("out.hcl", f.Bytes(), 0o644)</code></pre></section><section class="section-code" id="code-python"><h2 class="section-title">Python (python-hcl2 v7)</h2><pre><code class="language-python">import hcl2
+
+with open("app.hcl") as f:
+    data = hcl2.load(f)      # plain dict
+data["server"]               # list of block dicts</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item"><code>hcl:"server,block"</code> maps every <code>server</code> block into the slice</div><div class="explain-item"><code>hcl:"label,label"</code> receives the block's label</div><div class="explain-item">Passing <code>nil</code> as the eval context means expressions can't use variables or functions</div><div class="explain-item"><code>hcl2.load</code> returns blocks as lists of dicts and keeps <code>"${…}"</code> expressions as strings; v8 also keeps string quotes by default</div></div></section><section class="section-notes section-same" id="same"><h2 class="section-title">Same Data In…</h2><ul class="note-list"><li class="note-item"><strong>Go</strong> <code>cfg.Servers[0].Label == "web"</code></li><li class="note-item"><strong>Python</strong> <code>{'name': 'inventory', 'server': [{'web': {'addr': ':8080'}}]}</code></li><li class="note-item"><strong>JSON</strong> <code>hcl2json app.hcl</code> prints a JSON form any language can read</li></ul></section><section class="section-notes section-gotcha" id="gotcha"><h2 class="section-title">Gotcha</h2><ul class="note-list"><li class="note-item"><code>hclsimple</code> picks native or JSON syntax from the file extension (<code>.hcl</code> or <code>.json</code>)</li><li class="note-item">python-hcl2 targets Terraform-style files; unusual expressions may parse differently than in Go</li></ul></section></div></div>
+			<!-- end row-2 -->
+			<!-- Row 3: Go Table | Other Table -->
+			<div class="row" id="row-3"><div class="col" id="col-3-1"><section id="tbl-go"><h2 class="section-title">Go Packages (hcl/v2)</h2><table><thead><tr><th>Package</th><th>Use</th></tr></thead><tbody><tr><td>hclsimple</td><td class="desc">decode a file into a struct in one call</td></tr><tr><td>gohcl</td><td class="desc">struct tags, <code>DecodeBody</code></td></tr><tr><td>hclparse</td><td class="desc">parse files, keep sources for error output</td></tr><tr><td>hclsyntax</td><td class="desc">native-syntax parser and AST</td></tr><tr><td>hclwrite</td><td class="desc">generate and edit files, keeps comments</td></tr><tr><td>cty</td><td class="desc">the value and type system (go-cty)</td></tr></tbody></table></section></div><div class="col" id="col-3-2"><section id="tbl-other"><h2 class="section-title">Other Languages</h2><table><thead><tr><th>Language</th><th>Option</th></tr></thead><tbody><tr><td>Python</td><td class="desc"><code>python-hcl2</code>: <code>hcl2.load(f)</code></td></tr><tr><td>JavaScript</td><td class="desc"><code>@cdktf/hcl2json</code> (WASM build of hcl2json)</td></tr><tr><td>Rust</td><td class="desc"><code>hcl-rs</code> crate</td></tr><tr><td>Java</td><td class="desc"><code>hcl4j</code> (community)</td></tr><tr><td>Any</td><td class="desc"><code>hcl2json app.hcl</code>, then a JSON parser</td></tr></tbody></table></section></div></div>
+			<!-- end row-3 -->
+			<!-- Row 4: Mistakes | Tips | Summary -->
+			<div class="row row-footer-trio" id="row-4"><div class="col" id="col-4-1"><section class="section-mistakes" id="mistakes"><h2 class="section-title">⚠ Common Mistakes</h2><ul class="note-list"><li class="note-item">Decoding without an <code>EvalContext</code> and then wondering why <code>var.x</code> fails</li><li class="note-item">Rewriting a user's file with string formatting instead of <code>hclwrite</code></li><li class="note-item">Ignoring diagnostic warnings that point at likely typos</li></ul></section></div><div class="col" id="col-4-2"><section class="section-tips" id="tips"><h2 class="section-title">✓ Tips &amp; Best Practices</h2><ul class="note-list"><li class="note-item">Print diagnostics with <code>hcl.NewDiagnosticTextWriter</code> for caret-style error output</li><li class="note-item">Add a field tagged <code>hcl:",remain"</code> to collect attributes and blocks you didn't map</li><li class="note-item">Parse generated files back before writing them to disk</li></ul></section></div><div class="col" id="col-4-3"><section class="section-summary" id="summary"><h2 class="section-title">Quick Summary</h2><ul class="note-list"><li class="note-item"><code>hclsimple.DecodeFile</code> — file → struct</li><li class="note-item"><code>gohcl</code> tags — map attributes, blocks, labels</li><li class="note-item"><code>hclwrite</code> — generate and edit, comments kept</li><li class="note-item"><code>python-hcl2</code> / <code>hcl2json</code> — other languages</li></ul></section></div></div>
+			<!-- end row-4 -->
+		</main>
+
+		<footer class="page-footer">
+			<nav aria-label="Sheet navigation">
+				<a class="nav-link prev" href="hcl-11-in-the-wild.html">HCL Beyond Terraform</a>
+				<a class="nav-home" href="../../index.html" title="All cheat sheets">⌂ All Sheets</a>
+				<a class="nav-toc" href="index.html">HCL Reference · 16 Sheets</a>
+				<a class="nav-link next" href="hcl-13-gotchas.html">Gotchas &amp; Common Errors</a>
+			</nav>
+		</footer>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+	</body>
+</html>
