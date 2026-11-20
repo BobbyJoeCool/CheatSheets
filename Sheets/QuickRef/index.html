@@ -57,7 +57,7 @@
 		<div id="sheets-container"></div>
 
 		<script>
-			const QR = /quick\s*ref/i;
+			const QR = /quick\s*ref/i; // matches "Quick Ref" and "Quick Reference" sheet titles
 			const SHEET_CSS = ['../CSS/print-all.css'];
 			const container = document.getElementById('sheets-container');
 			const status = document.getElementById('status');
@@ -65,11 +65,20 @@
 			const jump = document.getElementById('lang-jump');
 			const parser = new DOMParser();
 
+			// fetch text, failing on HTTP errors instead of parsing an error page
+			async function getText(url) {
+				const r = await fetch(url);
+				if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+				return r.text();
+			}
+
 			// Collections in site order: [{ name, dir }] from the root index cards
 			async function collections() {
 				const rootUrl = new URL('../../index.html', location.href);
-				const doc = parser.parseFromString(await fetch(rootUrl).then(r => r.text()), 'text/html');
-				return [...doc.querySelectorAll('.sheet-section .card')].map(card => ({
+				const doc = parser.parseFromString(await getText(rootUrl), 'text/html');
+				const cards = [...doc.querySelectorAll('.sheet-section .card')];
+				if (!cards.length) throw new Error('no collection cards found on the root index.html');
+				return cards.map(card => ({
 					name: card.querySelector('h3')?.textContent.trim() || '',
 					dir: new URL(card.getAttribute('href').replace(/[^/]*$/, ''), rootUrl),
 				}));
@@ -96,7 +105,7 @@
 				}`;
 
 			async function renderSheet(url, lang, setIndex) {
-				const doc = parser.parseFromString(await fetch(url).then(r => r.text()), 'text/html');
+				const doc = parser.parseFromString(await getText(url), 'text/html');
 				const host = document.createElement('div');
 				host.className = 'qr-host';
 				const root = host.attachShadow({ mode: 'open' });
@@ -141,7 +150,7 @@
 				const sets = await collections();
 				const found = await Promise.all(sets.map(async s => {
 					try {
-						const { pages } = await fetch(new URL('manifest.json', s.dir)).then(r => r.json());
+						const { pages } = JSON.parse(await getText(new URL('manifest.json', s.dir)));
 						return { ...s, pages: pages.filter(p => QR.test(p.title)) };
 					} catch {
 						return { ...s, pages: [] };
@@ -150,23 +159,31 @@
 				const todo = found.filter(s => s.pages.length);
 				const total = todo.reduce((n, s) => n + s.pages.length, 0);
 				let done = 0;
+				const failed = [];
 				const loads = [];
 				for (const s of todo) {
 					const anchor = 'qr-' + s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 					jump.add(new Option(`${s.name} (${s.pages.length})`, anchor));
 					for (const [i, p] of s.pages.entries()) {
-						const r = await renderSheet(new URL(p.file, s.dir), s.name, new URL('index.html', s.dir).href);
-						if (i === 0) r.host.id = anchor;
-						container.appendChild(r.host);
-						loads.push(...r.loads);
-						if (window.Prism) Prism.highlightAllUnder(r.page);
+						// one missing or broken sheet is reported, not fatal to the rest
+						try {
+							const r = await renderSheet(new URL(p.file, s.dir), s.name, new URL('index.html', s.dir).href);
+							if (i === 0) r.host.id = anchor;
+							container.appendChild(r.host);
+							loads.push(...r.loads);
+							if (window.Prism) Prism.highlightAllUnder(r.page);
+						} catch (err) {
+							failed.push(`${s.name}: ${p.file}`);
+							console.error(err);
+						}
 						status.textContent = `${++done} / ${total}`;
 					}
 				}
 				await Promise.all(loads);
 				void document.body.offsetHeight;
 				await document.fonts.ready;
-				status.textContent = `${total} sheets · ${todo.length} languages`;
+				status.textContent = `${total - failed.length} sheets · ${todo.length} languages`
+					+ (failed.length ? ` · ${failed.length} failed to load (${failed.join(', ')})` : '');
 				btn.disabled = jump.disabled = false;
 			}
 
