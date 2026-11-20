@@ -31,24 +31,29 @@ async function getProduct(id) {
   return p
 }
 
-// write: update the source of truth, then drop the cache entry
+// write: update the source, then drop the entry (TTL bounds a stale refill)
 async function updatePrice(id, price) {
   await db.collection("products").updateOne({ _id: id }, { $set: { price } })
   await redis.del(`product:${id}`)
 }
 
 // stampede protection: one caller rebuilds, others wait briefly
-async function getWithLock(key, load, ttl = 3600) {
+const UNLOCK_IF_TOKEN = 'if redis.call("get",KEYS[1])==ARGV[1] then return redis.call("del",KEYS[1]) end return 0'
+async function getWithLock(key, load, ttl = 3600, tries = 20) {
   const hit = await redis.get(key)
   if (hit) return JSON.parse(hit)
-  if (await redis.set(`lock:${key}`, "1", { NX: true, EX: 10 })) {
-    const v = await load()
-    await redis.set(key, JSON.stringify(v), { EX: ttl })
-    await redis.del(`lock:${key}`)
-    return v
+  const token = crypto.randomUUID()                           // our lock id
+  if (await redis.set(`lock:${key}`, token, { NX: true, EX: 10 })) {
+    try {
+      const v = await load()
+      await redis.set(key, JSON.stringify(v), { EX: ttl })
+      return v
+    } finally {                                               // free only our own lock
+      await redis.eval(UNLOCK_IF_TOKEN, { keys: [`lock:${key}`], arguments: [token] })
+    }
   }
   await new Promise(r =&gt; setTimeout(r, 50))
-  return getWithLock(key, load, ttl)
+  return tries &gt; 0 ? getWithLock(key, load, ttl, tries - 1) : load()
 }</code></pre></section></div><div class="col" id="col-2-2"><section class="section-explain" id="explain"><h2 class="section-title">Code Explained</h2><div class="section-body"><div class="explain-item">Jitter spreads expiry times so a batch of keys doesn't expire together</div><div class="explain-item">Deleting rather than updating the cache avoids racing writers storing old values</div><div class="explain-item">The lock expires after 10 s even if the loader crashes</div><div class="explain-item">Callers that miss the lock retry after 50 ms and usually find the fresh value</div></div></section><section class="section-notes section-sql" id="sql"><h2 class="section-title">SQL Equivalent</h2><ul class="note-list"><li class="note-item">A cache is a copy kept outside the database; the nearest SQL feature is a materialized view</li><li class="note-item">The database's own buffer cache saves disk reads, not network round trips · <a class="xref" href="../SQL-Sheets/sql-64-views-materialized-views.html">See SQL 64</a></li></ul></section><section class="section-notes section-engines" id="engines"><h2 class="section-title">Across Engines</h2><ul class="note-list"><li class="note-item"><strong>MongoDB</strong> WiredTiger keeps hot data in RAM; Redis still saves the network and query work</li><li class="note-item"><strong>DynamoDB</strong> DAX: a write-through cache with microsecond reads</li><li class="note-item"><strong>Cassandra</strong> key and row caches; Redis often fronts hot rows</li><li class="note-item"><strong>Neo4j</strong> page cache; cache computed recommendations in Redis</li></ul></section><section class="section-notes section-code-lang" id="code-lang"><h2 class="section-title">In Your Code</h2><ul class="note-list"><li class="note-item"><strong>Node</strong> <code>await redis.set(key, JSON.stringify(p), { EX: 3600 })</code></li><li class="note-item"><strong>Python</strong> <code>r.set(key, json.dumps(p), ex=3600)</code></li><li class="note-item"><strong>Java</strong> Spring: <code>@Cacheable(value = "products", key = "#id")</code> with <code>spring-boot-starter-data-redis</code></li></ul></section></div></div>
 			<!-- end row-2 -->
 			<!-- Row 3: Patterns Table | Ttl Table -->
