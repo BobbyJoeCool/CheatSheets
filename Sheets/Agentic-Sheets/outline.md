@@ -157,7 +157,7 @@ This is a practice/tooling topic, so the language-basics groups from the Outline
 |---|---|---|---|
 | 53 | `ai-53-codex-overview.html` | Codex — Overview & Setup | Codex CLI · IDE extension · desktop app · Codex cloud · npm / brew install · codex login · ChatGPT plan vs API key |
 | 54 | `ai-54-codex-cli-basics.html` | Codex CLI Basics | codex · codex "prompt" · /init · /model · /diff · /compact · /status · @ file search |
-| 55 | `ai-55-codex-config-safety.html` | Codex Config, Approvals & Sandbox | ~/.codex/config.toml · approval_policy · sandbox_mode · read-only / workspace-write / danger-full-access · profiles · --full-auto |
+| 55 | `ai-55-codex-config-safety.html` | Codex Config, Approvals & Sandbox | ~/.codex/config.toml · approval_policy · sandbox_mode · read-only / workspace-write / danger-full-access · profiles · --sandbox |
 | 56 | `ai-56-codex-agents-skills-mcp.html` | Codex AGENTS.md, Skills & MCP | AGENTS.md hierarchy · ~/.codex/AGENTS.md · AGENTS.override.md · skills · [mcp_servers] · codex mcp add |
 | 57 | `ai-57-codex-automation.html` | Codex Automation & Cloud | codex exec · --json · codex resume · cloud tasks · @codex review on GitHub · parallel tasks · applying diffs |
 
