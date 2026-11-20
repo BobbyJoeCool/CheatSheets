@@ -23,20 +23,18 @@
 			</div>
 			<!-- Row 2: Code | Explain + Other Framework + Prefer / Avoid -->
 			<div class="row row-code-explain" id="row-2">
-				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Shared Resources</h2><pre><code class="language-python">from contextlib import asynccontextmanager
+				<div class="col" id="col-2-1"><section class="section-code" id="code"><h2 class="section-title">Shared Resources</h2><pre><code class="language-python">from contextlib import AsyncExitStack, asynccontextmanager
 import httpx
 from fastapi import FastAPI, Request
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup
-    engine = create_async_engine(settings.database_url)
-    client = httpx.AsyncClient(timeout=10)
-    model = load_model("sentiment.bin")
-    yield {"client": client, "model": model}
-    # shutdown
-    await client.aclose()
-    await engine.dispose()
+    async with AsyncExitStack() as stack:        # cleanup runs even on errors
+        engine = create_async_engine(settings.database_url)
+        stack.push_async_callback(engine.dispose)
+        client = await stack.enter_async_context(httpx.AsyncClient(timeout=10))
+        model = load_model("sentiment.bin")
+        yield {"client": client, "model": model}  # shutdown: stack unwinds
 
 app = FastAPI(lifespan=lifespan)
 
