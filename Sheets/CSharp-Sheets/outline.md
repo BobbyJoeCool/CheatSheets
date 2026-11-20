@@ -121,7 +121,7 @@ At 128 sheets the set is above the guide's 90–120 typed/enterprise range becau
 | 040 | `cs-040-for-loops.html` | for Loops | for · counter variables · multiple variables · reverse loops · nested loops · for (;;) |
 | 041 | `cs-041-foreach.html` | foreach Loops | foreach · IEnumerable · var · ref foreach · deconstruction in foreach · collection modified exception |
 | 042 | `cs-042-while-do-while.html` | while & do-while | while · do-while · sentinel loops · condition-at-end · input validation loops · infinite loops |
-| 043 | `cs-043-loop-control.html` | Loop Control & Jumps | break · continue · labeled break / continue (C# 15 preview) · goto · return · yield break |
+| 043 | `cs-043-loop-control.html` | Loop Control & Jumps | break · continue · labeled break / continue (C# 15) · goto · return · yield break |
 
 ### Group 7: Error Handling (Sheets 044–048)
 
@@ -148,7 +148,7 @@ At 128 sheets the set is above the guide's 90–120 typed/enterprise range becau
 | 057 | `cs-057-events.html` | Events | event · EventHandler&lt;T&gt; · EventArgs · += / -= · ?.Invoke · unsubscribe leaks · custom add / remove |
 | 058 | `cs-058-recursion.html` | Recursion | base case · call stack · StackOverflowException · no guaranteed tail calls · memoization · iterative rewrite |
 | 059 | `cs-059-iterators-yield.html` | Iterators & yield | yield return · yield break · IEnumerable&lt;T&gt; · deferred execution · infinite sequences · IAsyncEnumerable&lt;T&gt; |
-| 060 | `cs-060-extension-members.html` | Extension Methods & Members | this T · static class · extension blocks (C# 14) · extension properties · static extension members · extension indexers (C# 15 preview) |
+| 060 | `cs-060-extension-members.html` | Extension Methods & Members | this T · static class · extension blocks (C# 14) · extension properties · static extension members · extension indexers (C# 15) |
 
 ### Group 9: Data Structures & Collections (Sheets 061–074)
 
@@ -156,7 +156,7 @@ At 128 sheets the set is above the guide's 90–120 typed/enterprise range becau
 |---|---|---|---|
 | 061 | `cs-061-arrays.html` | Arrays — Basics | T[] · new int[5] · initializers · Length · multidimensional [,] · jagged [][] · Array.Resize |
 | 062 | `cs-062-array-methods.html` | Arrays — Methods | Array.Sort · Array.BinarySearch · Array.IndexOf · Array.Reverse · Array.Fill · Array.Copy · Array.Clear |
-| 063 | `cs-063-collection-expressions.html` | Collection Expressions | [1, 2, 3] · .. spread · [] empty · target typing · with(...) arguments (C# 15 preview) · CollectionBuilder |
+| 063 | `cs-063-collection-expressions.html` | Collection Expressions | [1, 2, 3] · .. spread · [] empty · target typing · with(...) arguments (C# 15) · CollectionBuilder |
 | 064 | `cs-064-list-basics.html` | List&lt;T&gt; — Basics | new List&lt;T&gt; · Add · Insert · indexer · Count · Capacity · Remove · RemoveAt |
 | 065 | `cs-065-list-methods.html` | List&lt;T&gt; — Methods | Find · FindAll · Exists · Sort(Comparison) · ConvertAll · AsReadOnly · RemoveAll · CollectionsMarshal.AsSpan |
 | 066 | `cs-066-dictionary-basics.html` | Dictionary — Basics | Dictionary&lt;K,V&gt; · Add · indexer · TryGetValue · ContainsKey · Remove · KeyValuePair iteration |
@@ -237,7 +237,7 @@ At 128 sheets the set is above the guide's 90–120 typed/enterprise range becau
 | 116 | `cs-116-span-memory.html` | Span, Memory & Performance | Span&lt;T&gt; · Memory&lt;T&gt; · stackalloc · ArrayPool&lt;T&gt; · implicit span conversions (C# 14) · BenchmarkDotNet |
 | 117 | `cs-117-garbage-collection.html` | Garbage Collection & Finalizers | generations 0/1/2 · Large Object Heap · finalizers ~T() · GC.SuppressFinalize · WeakReference · event-handler leaks |
 | 118 | `cs-118-reflection-attributes.html` | Reflection & Attributes | Type · GetProperties · Activator.CreateInstance · custom attributes · [AttributeUsage] · GetCustomAttribute&lt;T&gt; |
-| 119 | `cs-119-unions-closed.html` | Union Types & Closed Hierarchies | union keyword (C# 15 preview) · case types · closed modifier · exhaustive switch · IUnion · sealed-record workaround for C# 14 |
+| 119 | `cs-119-unions-closed.html` | Union Types & Closed Hierarchies | union keyword (C# 15) · case types · closed modifier · exhaustive switch · IUnion · sealed-record workaround for C# 14 |
 
 ### Group 15: LINQ (Sheets 120–125)
 
